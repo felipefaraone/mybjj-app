@@ -472,7 +472,24 @@ function rAddStu(){
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="email@example.com"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select onchange="S._addCC=this.value" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" placeholder="4xx xxx xxx" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date"/></div></div><div class="slbl" style="margin-top:8px">Program & rank</div><div class="ef"><div class="erow"><div class="elbl">Program</div><div class="seg"><button class="segb ${isKids?'':'on'}" onclick="S._addProg='adult';render()">Adults</button><button class="segb ${isKids?'on':''}" onclick="S._addProg='kids';render()">Kids</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">${UNITS.filter(u=>u.active).map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel">${beltOpts.map(b=>`<option>${b}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Degree</div><select class="esel"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child\\u2019s progress.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" placeholder="Parent or guardian full name"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" placeholder="4xx xxx xxx" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="parent@email.com"/></div></div>`:''}<div class="slbl" style="margin-top:8px">Background</div><div class="ef"><div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb ${isTransfer?'':'on'}" onclick="S._addTransfer=false;render()">New student</button><button class="segb ${isTransfer?'on':''}" onclick="S._addTransfer=true;render()">Transfer</button></div></div>${isTransfer?`<div class="erow"><div class="elbl">From</div><input class="einput" placeholder="Previous academy name"/></div><div class="erow"><div class="elbl">Since</div><input class="einput" type="date"/></div>`:''}</div>${isTransfer?'<div class="gnote" style="margin-top:4px">Set belt and degree above to match their current rank. Journey will start with a transfer milestone. Head instructor must validate the belt.</div>':''}<div style="height:16px"></div><button onclick="sendInvite()" class="bblue" style="margin-bottom:24px">Send invite</button></div></div>`;
 }
 
-function rMUnits(){return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Manage Units</div></div><div class="sbody"><div class="slbl">All units</div><div class="ef" style="padding:0">${(function(){var CC={AU:"Australia",NZ:"New Zealand",JP:"Japan",KR:"Korea",US:"United States"};var g={};UNITS.forEach(function(u){if(!g[u.country])g[u.country]=[];g[u.country].push(u);});var out="";["AU","NZ","JP","KR","US"].forEach(function(code){var list=g[code];if(!list||!list.length)return;out+='<div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);padding:10px 0 4px">'+CC[code]+"</div>";list.forEach(function(u,i){var coming=u.address==="Coming soon";var ac=u.active?"#15803d":"#9ca3af";out+='<div class="erow">'+'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500">'+u.name+"</div>"+'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+u.address+"</div></div>"+(coming?'<span style="font-size:10px;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700">Soon</span>':'<span style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;background:'+ac+'20;color:'+ac+">"+(u.active?"Active":"Inactive")+"</span>")+"</div>";});});return out;})()}</div><div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><input class="einput" id="nu-country" placeholder="e.g. Australia"/></div></div><button class="bblue" onclick="addUnit()">Add unit</button><div style="height:24px"></div></div></div>`;}
+function rMUnits(){
+  var CC={AU:"Australia",NZ:"New Zealand",JP:"Japan",KR:"Korea",US:"United States"};
+  var FLAG={AU:"\u{1F1E6}\u{1F1FA}",NZ:"\u{1F1F3}\u{1F1FF}",JP:"\u{1F1EF}\u{1F1F5}",KR:"\u{1F1F0}\u{1F1F7}",US:"\u{1F1FA}\u{1F1F8}"};
+  var g={};UNITS.forEach(function(u){if(!g[u.country])g[u.country]=[];g[u.country].push(u);});
+  var sections="";
+  ["AU","NZ","JP","KR","US"].forEach(function(code){
+    var list=g[code];if(!list||!list.length)return;
+    var cards=list.map(function(u){
+      var coming=u.address==="Coming soon";
+      var badge=coming?'<span style="font-size:10px;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700">Coming soon</span>':(u.active?'<span style="font-size:10px;color:#15803d;background:#15803d20;padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700">Active</span>':'<span style="font-size:10px;color:#9ca3af;background:#9ca3af20;padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700">Inactive</span>');
+      var stuCount=STUDENTS.filter(function(s){return s.unit===u.id;}).length;
+      return '<div class="card" style="padding:12px 14px;margin-bottom:6px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text)">'+u.name+'</div>'+badge+'</div><div style="font-size:12px;color:var(--text3)">'+u.city+(u.address&&u.address!=="Coming soon"?' \u00B7 '+u.address:'')+'</div>'+(stuCount?'<div style="font-size:11px;color:var(--text2);margin-top:4px">'+stuCount+' students</div>':'')+'</div>';
+    }).join("");
+    sections+='<div style="margin-bottom:16px"><div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">'+(FLAG[code]||"")+' '+CC[code]+'</div>'+cards+'</div>';
+  });
+  var ccOptions=["AU","NZ","JP","KR","US"].map(function(c){return '<option value="'+c+'">'+CC[c]+'</option>';}).join("");
+  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Manage Units</div></div><div class="sbody">'+sections+'<div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><select class="einput" id="nu-country" style="background:var(--card)">'+ccOptions+'</select></div><div class="erow"><div class="elbl">Address</div><input class="einput" id="nu-addr" placeholder="e.g. 120 Military Rd"/></div></div><button class="bblue" onclick="addUnit()">Add unit</button><div style="height:24px"></div></div></div>';
+}
 
 function rStaffProf(){
   const s=STAFF.find(x=>x.id===S.viewStaff);if(!s)return '';
@@ -624,8 +641,8 @@ function nextBeltColor(belt,prog){
   var OA=['white','blue','purple','brown','black'];
   var OK=['white','grey','yellow','orange','green'];
   var O=prog==='kids'?OK:OA;
-  var C={white:'#1A5DAD',blue:'#7e22ce',purple:'#7c2d12',brown:'#111827',black:'#b45309',
-         grey:'#ca8a04',yellow:'#ea580c',orange:'#16a34a',green:'#374151'};
+  var C={white:'#e5e7eb',blue:'#1A5DAD',purple:'#7e22ce',brown:'#7c2d12',black:'#111827',
+         grey:'#9ca3af',yellow:'#ca8a04',orange:'#ea580c',green:'#15803d'};
   var i=O.indexOf(belt);
   if(i<0||i>=O.length-1)return '#111827';
   return C[O[i+1]]||'#1A5DAD';
@@ -942,16 +959,15 @@ function rARoster(){
   let unitOpts='<option value="all">All units</option>';
   activeUnits.forEach(u=>{unitOpts+='<option value="'+u.id+'"'+(rfUnit===u.id?' selected':'')+'>'+u.name+', '+u.country+'</option>';});
 
-  let beltOptHtml='<option value="all">All belts</option>';
+  let beltOptHtml='<option value="all">Select belt</option>';
   beltOpts.forEach(k=>{beltOptHtml+='<option value="'+k+'"'+(rfBelt===k?' selected':'')+'>'+beltMap[k].label+'</option>';});
 
   const clearBtn=S.rq?'<button onclick="setRQ(String())" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1">×</button>':'';
 
   const filterHtml=
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
-    
-    +'<select onchange="setRF2(this)" data-key="rfBelt" style="flex:1;min-width:80px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-family:Barlow Condensed,sans-serif;font-weight:600;font-size:12px;color:var(--text2);outline:none">'+beltOptHtml+'</select>'
-    
+    '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">'
+    +'<select onchange="setRF2(this)" data-key="rfBelt" style="flex:1;min-width:100px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-family:Barlow Condensed,sans-serif;font-weight:600;font-size:12px;color:var(--text2);outline:none">'+beltOptHtml+'</select>'
+    +'<button onclick="toggleRFNear()" style="background:'+(rfNear?'#1A5DAD':'var(--card)')+';color:'+(rfNear?'#fff':'var(--text2)')+';border:1px solid '+(rfNear?'#1A5DAD':'var(--border)')+';border-radius:8px;padding:7px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap">Near grad</button>'
     +'</div>'
     +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
     +'<div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px">'
@@ -959,7 +975,6 @@ function rARoster(){
     +'<input value="'+(S.rq||'')+'" oninput="setRQ(this.value)" placeholder="Search students..." style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/>'
     +clearBtn
     +'</div>'
-    +'<button onclick="toggleRFNear()" style="background:'+(rfNear?'#1A5DAD':'var(--card)')+';color:'+(rfNear?'#fff':'var(--text2)')+';border:1px solid '+(rfNear?'#1A5DAD':'var(--border)')+';border-radius:8px;padding:7px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap">Near grad</button>'
     +'</div>';
 
   const rows=list.map(s=>{
@@ -981,8 +996,8 @@ function rARoster(){
       +'<div style="font-size:12px;color:var(--text2);margin-bottom:6px">'
       +'<span style="color:'+(near?(isProm?'#111827':'#1A5DAD'):'var(--text2)')+';font-weight:'+(near?600:400)+'">'+s.grade+'/'+goal+' Gi · '+lbl.toLowerCase()+'</span>'
       +' &nbsp;·&nbsp; <span style="color:var(--text3)">'+s.total+' total</span></div>'
-      +pb(s.grade,goal,near?nextBeltColor(s.belt,s.prog):'#93c5fd')
-      +(near?'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:#1A5DAD;margin-top:6px">READY FOR EVALUATION</div>':'')
+      +pbBelt(s.grade,goal,s.belt,s.prog)
+      +((pct>=100)?'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:#1A5DAD;margin-top:6px">READY FOR EVALUATION</div>':'')
       +'</div>';
   }).join('');
 
@@ -1096,7 +1111,19 @@ function markRead(id){const n=NOTIFS.find(x=>x.id===id);if(n)n.read=true;render(
 function markAllRead(){NOTIFS.forEach(n=>n.read=true);render();}
 function delNotif(id){NOTIFS=NOTIFS.filter(x=>x.id!==id);render();}
 function togUA(id){const u=UNITS.find(x=>x.id===id);if(u)u.active=!u.active;render();}
-function addUnit(){const n=document.getElementById('nu-name')?.value;const c=document.getElementById('nu-city')?.value;const co=document.getElementById('nu-country')?.value;if(!n)return;UNITS.push({id:'u'+Date.now(),name:n,city:c||'',country:co||'',active:true});render();}
+function addUnit(){
+  const n=(document.getElementById('nu-name')?.value||'').trim();
+  const c=(document.getElementById('nu-city')?.value||'').trim();
+  const co=(document.getElementById('nu-country')?.value||'').trim();
+  const addr=(document.getElementById('nu-addr')?.value||'').trim();
+  if(!n||!c||!co){
+    var missing=[];
+    if(!n)missing.push('name');if(!c)missing.push('city');if(!co)missing.push('country');
+    showSaveToast2('Missing: '+missing.join(', '),'error');return;
+  }
+  UNITS.push({id:'u'+Date.now(),name:n,city:c,country:co,active:true,address:addr||c});
+  showSaveToast2(n+' unit added');render();
+}
 function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;render();}
 function openFb(sid){S.addFb=sid;render();}
 function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];s.feedback.unshift({ins:'Prof. Mario',date:'Apr 2026',text:txt});S.addFb=null;render();}
