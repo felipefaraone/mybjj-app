@@ -366,7 +366,7 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const TODAY=new Date(2026,2,31);
 let IDC=300;
-const S={loggedIn:false,me:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,editWeek:false,sweek:1,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null};
+const S={loggedIn:false,me:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null};
 S.ci['2026-03-31_06:00']=true;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -476,6 +476,7 @@ function rMUnits(){
   var CC={AU:"Australia",NZ:"New Zealand",JP:"Japan",KR:"Korea",US:"United States"};
   var FLAG={AU:"\u{1F1E6}\u{1F1FA}",NZ:"\u{1F1F3}\u{1F1FF}",JP:"\u{1F1EF}\u{1F1F5}",KR:"\u{1F1F0}\u{1F1F7}",US:"\u{1F1FA}\u{1F1F8}"};
   var g={};UNITS.forEach(function(u){if(!g[u.country])g[u.country]=[];g[u.country].push(u);});
+  var editId=S._editUnit||null;
   var sections="";
   ["AU","NZ","JP","KR","US"].forEach(function(code){
     var list=g[code];if(!list||!list.length)return;
@@ -483,14 +484,38 @@ function rMUnits(){
       var coming=u.address==="Coming soon";
       var badge=coming?'<span style="font-size:10px;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700">Coming soon</span>':(u.active?'<span style="font-size:10px;color:#15803d;background:#15803d20;padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700">Active</span>':'<span style="font-size:10px;color:#9ca3af;background:#9ca3af20;padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700">Inactive</span>');
       var stuCount=STUDENTS.filter(function(s){return s.unit===u.id;}).length;
-      return '<div class="card" style="padding:12px 14px;margin-bottom:6px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text)">'+u.name+'</div>'+badge+'</div><div style="font-size:12px;color:var(--text3)">'+u.city+(u.address&&u.address!=="Coming soon"?' \u00B7 '+u.address:'')+'</div>'+(stuCount?'<div style="font-size:11px;color:var(--text2);margin-top:4px">'+stuCount+' students</div>':'')+'</div>';
+      var isEdit=editId===u.id;
+      if(isEdit){
+        var ccOpts=["AU","NZ","JP","KR","US"].map(function(c){return '<option value="'+c+'" '+(c===u.country?'selected':'')+'>'+CC[c]+'</option>';}).join("");
+        return '<div class="card" style="padding:12px 14px;margin-bottom:6px;border:2px solid #1A5DAD">'
+          +'<div class="ef" style="margin-bottom:8px">'
+          +'<div class="erow"><div class="elbl">Name</div><input class="einput" id="eu-name" value="'+u.name+'"/></div>'
+          +'<div class="erow"><div class="elbl">City</div><input class="einput" id="eu-city" value="'+u.city+'"/></div>'
+          +'<div class="erow"><div class="elbl">Country</div><select class="einput" id="eu-country" style="background:var(--card)">'+ccOpts+'</select></div>'
+          +'<div class="erow"><div class="elbl">Address</div><input class="einput" id="eu-addr" value="'+(u.address||'')+'"/></div>'
+          +'<div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb '+(u.active?'on':'')+'" onclick="toggleUnitActive(\''+u.id+'\',true)">Active</button><button class="segb '+(!u.active?'on':'')+'" onclick="toggleUnitActive(\''+u.id+'\',false)">Inactive</button></div></div>'
+          +'</div>'
+          +'<div style="display:flex;gap:8px">'
+          +'<button class="bblue" style="flex:1;padding:10px" onclick="saveEditUnit(\''+u.id+'\')">Save</button>'
+          +'<button style="flex:1;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text2);cursor:pointer" onclick="S._editUnit=null;render()">Cancel</button>'
+          +'</div></div>';
+      }
+      return '<div class="card" style="padding:12px 14px;margin-bottom:6px">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text)">'+u.name+'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px">'+badge
+        +'<button onclick="S._editUnit=\''+u.id+'\';render()" style="background:none;border:none;cursor:pointer;padding:2px" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+        +'<button onclick="confirmDeleteUnit(\''+u.id+'\',\''+u.name.replace(/'/g,"\\'")+'\')" style="background:none;border:none;cursor:pointer;padding:2px" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
+        +'</div></div>'
+        +'<div style="font-size:12px;color:var(--text3)">'+u.city+(u.address&&u.address!=="Coming soon"?' \u00B7 '+u.address:'')+'</div>'
+        +(stuCount?'<div style="font-size:11px;color:var(--text2);margin-top:4px">'+stuCount+' students</div>':'')
+        +'</div>';
     }).join("");
     sections+='<div style="margin-bottom:16px"><div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">'+(FLAG[code]||"")+' '+CC[code]+'</div>'+cards+'</div>';
   });
   var ccOptions=["AU","NZ","JP","KR","US"].map(function(c){return '<option value="'+c+'">'+CC[c]+'</option>';}).join("");
-  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Manage Units</div></div><div class="sbody">'+sections+'<div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><select class="einput" id="nu-country" style="background:var(--card)">'+ccOptions+'</select></div><div class="erow"><div class="elbl">Address</div><input class="einput" id="nu-addr" placeholder="e.g. 120 Military Rd"/></div></div><button class="bblue" onclick="addUnit()">Add unit</button><div style="height:24px"></div></div></div>';
+  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Manage Units</div></div><div class="sbody">'+(S._deleteConfirm?rDeleteUnitConfirm():'')+sections+'<div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><select class="einput" id="nu-country" style="background:var(--card)">'+ccOptions+'</select></div><div class="erow"><div class="elbl">Address</div><input class="einput" id="nu-addr" placeholder="e.g. 120 Military Rd"/></div></div><button class="bblue" onclick="addUnit()">Add unit</button><div style="height:24px"></div></div></div>';
 }
-
 function rStaffProf(){
   const s=STAFF.find(x=>x.id===S.viewStaff);if(!s)return '';
   const b=BA[s.belt]||BA.white;const isOwner=S.me.role==='owner';
@@ -1130,6 +1155,49 @@ function addUnit(){
   UNITS.push({id:'u'+Date.now(),name:n,city:c,country:co,active:true,address:addr||c});
   showSaveToast2(n+' unit added');render();
 }
+function saveEditUnit(id){
+  var u=UNITS.find(function(x){return x.id===id;});if(!u)return;
+  var n=(document.getElementById('eu-name')?.value||'').trim();
+  var c=(document.getElementById('eu-city')?.value||'').trim();
+  var co=(document.getElementById('eu-country')?.value||'').trim();
+  var addr=(document.getElementById('eu-addr')?.value||'').trim();
+  if(!n||!c){showSaveToast2('Name and city are required','error');return;}
+  u.name=n;u.city=c;u.country=co;u.address=addr||c;
+  S._editUnit=null;showSaveToast2(n+' updated');render();
+}
+function toggleUnitActive(id,val){
+  var u=UNITS.find(function(x){return x.id===id;});if(!u)return;
+  u.active=val;render();
+}
+function confirmDeleteUnit(id,name){
+  S._deleteConfirm={id:id,name:name,step:1};render();
+}
+function cancelDeleteUnit(){S._deleteConfirm=null;render();}
+function executeDeleteUnit(){
+  if(!S._deleteConfirm)return;
+  var id=S._deleteConfirm.id;
+  var name=S._deleteConfirm.name;
+  var stuCount=STUDENTS.filter(function(s){return s.unit===id;}).length;
+  if(stuCount>0){showSaveToast2('Cannot delete: '+stuCount+' students assigned','error');S._deleteConfirm=null;render();return;}
+  var idx=UNITS.findIndex(function(u){return u.id===id;});
+  if(idx>=0)UNITS.splice(idx,1);
+  S._deleteConfirm=null;S._editUnit=null;
+  showSaveToast2(name+' deleted');render();
+}
+function rDeleteUnitConfirm(){
+  var d=S._deleteConfirm;if(!d)return '';
+  var stuCount=STUDENTS.filter(function(s){return s.unit===d.id;}).length;
+  return '<div class="cov" onclick="cancelDeleteUnit()" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:340px;margin:0 auto;padding:24px;text-align:center">'
+    +'<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="1.5" style="margin-bottom:12px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;margin-bottom:8px">Delete '+d.name+'?</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-bottom:6px;line-height:1.5">This action cannot be undone. The unit and all its configuration will be permanently removed.</div>'
+    +(stuCount>0?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin:10px 0;font-size:12px;color:#DC2626;font-weight:600">'+stuCount+' students are assigned to this unit. Reassign them first.</div>':'')
+    +'<div style="display:flex;gap:10px;margin-top:16px">'
+    +'<button style="flex:1;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);cursor:pointer" onclick="cancelDeleteUnit()">Cancel</button>'
+    +(stuCount>0?'':'<button style="flex:1;padding:12px;background:#DC2626;border:none;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:#fff;cursor:pointer" onclick="executeDeleteUnit()">Delete permanently</button>')
+    +'</div></div></div>';
+}
+
 function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;render();}
 function openFb(sid){S.addFb=sid;render();}
 function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];s.feedback.unshift({ins:'Prof. Mario',date:'Apr 2026',text:txt});S.addFb=null;render();}
