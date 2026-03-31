@@ -692,8 +692,15 @@ function rTechniquesLog(s){
 function rProgress(){
   var s=S.me;
   if(s.role==='admin'||s.role==='owner'){
+    var staff=STAFF.find(function(x){return x.name===s.name;})||null;
     var b=BA[s.belt]||BA.white;
-    return '<div style="height:16px"></div><div class="card"><div class="slbl" style="margin-bottom:10px">My rank</div>'+bb(s.belt,s.deg||0,'adult')+'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Instructor rank is updated by the head instructor.</div></div><div style="padding:16px 0;text-align:center;color:var(--text3);font-size:13px">Student progress tracking available in the Roster tab.</div>';
+    var isOwner=s.role==='owner';
+    var sJourney=staff?staff.journey:[];
+    var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,'adult')+(isOwner?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>')+'</div>';
+    var journeyTab='<div class="card"><div class="slbl" style="margin-bottom:16px">My BJJ journey</div>'+rTL(sJourney)+'</div>';
+    var techsTab=rTechniquesLog(s);
+    var iContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:techsTab;
+    return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button></div>'+iContent+'<div style="height:16px"></div>';
   }
   var stu=STUDENTS.find(function(x){return x.id===s.id;})||s;
   var bmap=s.prog==='kids'?BK:BA;
