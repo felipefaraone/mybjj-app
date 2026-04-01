@@ -847,7 +847,16 @@ function rPromoWall(){
 function rSchedule(){
   const isA=S.me.role==='admin'||S.me.role==='owner';
   const showWall=S.sweek===-1;const showEv=S.sweek===0;const w=SCHED.find(x=>x.week===S.sweek);
-  const tabsHtml='<div class="stabs"><button class="stab '+(showWall?'active':'')+'" onclick="setSweek(-1)">Wall</button><button class="stab '+(showEv?'active':'')+'" onclick="setSweek(0)">Events</button>'+SCHED.map(x=>'<button class="stab '+(S.sweek===x.week&&!showEv&&!showWall?'active':'')+'" onclick="setSweek('+x.week+')">Wk '+x.week+'</button>').join('')+'</div>';
+  const wallSt=showWall?'background:#7c2d12;color:#fff;border-color:#7c2d12':'background:var(--card);color:var(--text2);border:1px solid var(--border)';
+  const evSt=showEv?'background:#15803d;color:#fff;border-color:#15803d':'background:var(--card);color:var(--text2);border:1px solid var(--border)';
+  const wkBase='padding:8px 4px;border-radius:8px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;cursor:pointer;text-align:center;white-space:nowrap;';
+  const tabsHtml='<div style="display:flex;gap:6px;margin-bottom:6px">'
+    +'<button style="flex:1;'+wkBase+wallSt+'" onclick="setSweek(-1)">🏅 Wall</button>'
+    +'<button style="flex:1;'+wkBase+evSt+'" onclick="setSweek(0)">Events</button>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat('+SCHED.length+',1fr);gap:6px;margin-bottom:16px">'
+    +SCHED.map(x=>{const isWkActive=S.sweek===x.week&&!showEv&&!showWall;const wkSt=isWkActive?'background:#1A5DAD;color:#fff;border-color:#1A5DAD':'background:var(--card);color:var(--text2);border:1px solid var(--border)';return '<button style="'+wkBase+wkSt+'" onclick="setSweek('+x.week+')">Wk '+x.week+'</button>';}).join('')
+    +'</div>';
 
   function techRow(tech,idx,cat){
     const tv=typeof tech==='object'?tech:{t:tech,video:''};
