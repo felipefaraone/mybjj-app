@@ -353,11 +353,11 @@ let PROMOTION_LOG=[
 ];
 
 let EVENTS=[
-  {id:'e1',title:'Grappling Industries',date:'22 Mar 2026',type:'competition',desc:'Brock, Jack and Diggaj competing. Come support the team!',link:'',going:['jac','dan','dig'],units:['nb']},
-  {id:'e2',title:'Sydney Cup MMA Grappling',date:'28-29 Mar 2026',type:'competition',desc:'Open registration. Great comp for all levels.',link:'https://aus-grappling-federation.smoothcomp.com/en/event/28312',going:['mar','dan'],units:['nb']},
-  {id:'e3',title:'Pacheco vs myBJJ',date:'25 Apr 2026',type:'social',desc:'Porrada Club. Brazilian Cultural Centre, 142 Victoria Rd Marrickville. 2pm start.',link:'',going:['ff','jam','adm','anna'],units:['nb']},
-  {id:'e4',title:'NSWBJJF Autumn Cup',date:'24 May 2026',type:'competition',desc:'Season highlight. Register early via SmoothComp.',link:'https://smoothcomp.com/event/30587',going:['dio','jac'],units:['nb']},
-  {id:'e5',title:'Subversion XX',date:'25 Jul 2026',type:'social',desc:'Annual team event. Details TBC.',link:'',going:[],units:['nb']},
+  {id:'e1',title:'Grappling Industries',date:'22 Mar 2026',type:'competition',desc:'Brock, Jack and Diggaj competing. Come support the team!',link:'',competing:['jac','dan','dig'],supporting:['ff','lia'],units:['nb']},
+  {id:'e2',title:'Sydney Cup MMA Grappling',date:'28-29 Mar 2026',type:'competition',desc:'Open registration. Great comp for all levels.',link:'https://aus-grappling-federation.smoothcomp.com/en/event/28312',competing:['mar','dan'],supporting:['eri'],units:['nb']},
+  {id:'e3',title:'Pacheco vs myBJJ',date:'25 Apr 2026',type:'social',desc:'Porrada Club. Brazilian Cultural Centre, 142 Victoria Rd Marrickville. 2pm start.',link:'',competing:['ff','jam'],supporting:['adm','anna','lia'],units:['nb']},
+  {id:'e4',title:'NSWBJJF Autumn Cup',date:'24 May 2026',type:'competition',desc:'Season highlight. Register early via SmoothComp.',link:'https://smoothcomp.com/event/30587',competing:['dio','jac'],supporting:[],units:['nb']},
+  {id:'e5',title:'Subversion XX',date:'25 Jul 2026',type:'social',desc:'Annual team event. Details TBC.',link:'',competing:[],supporting:[],units:['nb']},
 ];
 let NOTIFS=[{id:'n1',title:'Class cancelled — Wed 6pm',body:'The 18:00 No-Gi class this Wednesday is cancelled. See you Thursday!',time:'2h ago',read:false},{id:'n2',title:'New curriculum posted',body:'April curriculum is live. Week 1 focuses on Closed Guard.',time:'1d ago',read:false},{id:'n3',title:'Getting close!',body:'Only 18 more Gi classes until your next degree.',time:'3d ago',read:true}];
 const SME={id:'ff',name:'Felipe F.',belt:'white',deg:4,total:87,giTotal:52,grade:37,giGrade:22,initials:'FF',role:'student',prog:'adult'};
@@ -366,7 +366,7 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null};
+const S={loggedIn:false,me:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false};
 S.ci['2026-03-31_06:00']=true;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -584,8 +584,40 @@ function rPromoPanel(s){
       +'</div>')
     :'';
 
+  // Revert last promotion
+  const lastPromo=PROMOTION_LOG.find(p=>p.studentId===s.id);
+  let revertRow='';
+  if(lastPromo){
+    const revertLabel=lastPromo.isNewBelt
+      ?'Revert to '+lastPromo.fromBelt.charAt(0).toUpperCase()+lastPromo.fromBelt.slice(1)+(lastPromo.fromDeg?' '+lastPromo.fromDeg+'-stripe':'')
+      :'Remove stripe (back to '+lastPromo.fromBelt.charAt(0).toUpperCase()+lastPromo.fromBelt.slice(1)+' '+lastPromo.fromDeg+'-stripe)';
+    revertRow='<div class="divider" style="padding-top:10px;display:flex;align-items:center;justify-content:space-between">'
+      +'<div><div style="font-size:13px;color:var(--text2);font-weight:500">Revert last promotion</div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+revertLabel+'</div></div>'
+      +'<button onclick="revertPromo(this.dataset.sid)" data-sid="'+s.id+'" style="background:none;color:var(--red-text);border:1px solid var(--red-text);border-radius:8px;padding:7px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer">Revert</button>'
+      +'</div>';
+  }
+
   return '<div class="slbl">Promote</div>'
-    +'<div class="card" style="padding:14px 16px">'+stripeRow+beltRow+'</div>';
+    +'<div class="card" style="padding:14px 16px">'+stripeRow+beltRow+revertRow+'</div>';
+}
+
+function revertPromo(id){
+  const s=STUDENTS.find(x=>x.id===id);if(!s)return;
+  const idx=PROMOTION_LOG.findIndex(p=>p.studentId===id);
+  if(idx<0)return;
+  const p=PROMOTION_LOG[idx];
+  if(!confirm('Revert promotion for '+s.name+'? This will restore their previous belt/stripe.'))return;
+  s.belt=p.fromBelt;s.deg=p.fromDeg;s.grade=0;s.giGrade=0;
+  PROMOTION_LOG.splice(idx,1);
+  // Remove last journey entry added by this promotion
+  if(s.journey&&s.journey.length){
+    s.journey.pop();
+    // Restore current flag to new last done entry
+    const prev=s.journey.slice().reverse().find(j=>j.done);
+    if(prev)prev.current=true;
+  }
+  render();
 }
 
 function doPromote(id, isBeltPromotion){
@@ -642,9 +674,41 @@ function doPromote(id, isBeltPromotion){
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
   const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;const gg=s.prog==='kids'?GGK:GGA;const goal=gg[s.belt]||40;const pct=Math.round(s.grade/goal*100);
+  const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
+  const lbl=nxlbl(s.belt,s.deg,s.prog);
+  const isReady=pct>=100;
+  const giTag=(s.hasGi!==false&&s.giTotal>0)
+    ?'<span style="display:inline-flex;align-items:center;gap:3px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;color:var(--green-text);letter-spacing:.5px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>GI</span>'
+    :'<span style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">NO-GI ONLY</span>';
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${s.name}</div></div><div class="sbody">
-    <div class="card" style="display:flex;align-items:center;gap:12px">${av(s.initials,b.bg,b.fg,48)}<div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px">${s.name}</div><div style="margin-top:4px">${bb(s.belt,s.deg||0,s.prog)}<div style="margin-top:4px">${(s.hasGi!==false&&s.giTotal>0)?'<span style="display:inline-flex;align-items:center;gap:3px;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;color:var(--green-text);letter-spacing:.5px"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg>GI</span>':'<span style="display:inline-flex;align-items:center;gap:3px;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">NO GI ONLY</span>'}</div></div><div style="font-size:12px;color:var(--text2);margin-top:4px">${s.total} total · ${s.prog}</div></div></div>
-    <div class="card">${pbBelt(s.grade,goal,s.belt,s.prog)}<div style="font-size:11px;color:var(--text3);margin-top:6px">${nxlbl(s.belt,s.deg,s.prog)} · ${pct}% · ${s.giGrade}/${goal} Gi classes</div></div>
+    <div class="card" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+        ${av(s.initials,b.bg,b.fg,52)}
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">${s.name}</div>
+          <div style="margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${bb(s.belt,s.deg||0,s.prog)}${giTag}</div>
+          <div style="margin-top:5px;font-size:11px;color:var(--text3)">${unitName} · ${s.prog}</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div style="display:flex;gap:0;margin-bottom:10px">
+          <div style="flex:1;text-align:center;border-right:1px solid var(--border)">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${s.total}</div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div>
+          </div>
+          <div style="flex:1;text-align:center;border-right:1px solid var(--border)">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${s.giGrade}</div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi classes</div>
+          </div>
+          <div style="flex:1;text-align:center">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'#1A5DAD':'var(--text)'}">${pct}%</div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div>
+          </div>
+        </div>
+        ${pbBelt(s.grade,goal,s.belt,s.prog)}
+        <div style="font-size:11px;color:var(--text3);margin-top:5px">${s.grade}/${goal} Gi · ${lbl.toLowerCase()}${isReady?' — <span style="color:#1A5DAD;font-weight:700">READY FOR EVALUATION</span>':''}</div>
+      </div>
+    </div>
     ${rPromoPanel(s)}
     <div class="slbl">Journey</div>
     <div class="card" style="padding:12px 16px">${rTL(s.journey)}</div>
@@ -901,29 +965,71 @@ function rSchedule(){
       +'</div>'+(w.video&&!w.standUp?.some(t=>(t.video||t)===w.video)?rVC(w.video):'')+'</div>'
       +(S.editWeek===S.sweek?rWEditor(w):'');
   }
-  return '<div style="height:16px"></div><div class="slbl">April 2026 programme \xb7 '+S.unit+'</div>'+tabsHtml+bodyHtml+'<div style="height:16px"></div>';
+  const evEditor=(S.editEv||S.addEv)?rEEdit():'';
+  return '<div style="height:16px"></div><div class="slbl">April 2026 programme \xb7 '+S.unit+'</div>'+tabsHtml+bodyHtml+'<div style="height:16px"></div>'+evEditor;
 }
 
+function evStack(ids){
+  const all=[...STUDENTS,...STAFF];
+  return ids.slice(0,5).map((id,gi)=>{
+    const s=all.find(x=>x.id===id);if(!s)return '';
+    const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+    return '<div title="'+s.name+'" style="width:26px;height:26px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:9px;border:2px solid var(--card);margin-left:'+(gi>0?'-7px':'0')+'">'+s.initials+'</div>';
+  }).join('')+(ids.length>5?'<div style="width:26px;height:26px;border-radius:50%;background:var(--bg);color:var(--text2);display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;border:2px solid var(--card);margin-left:-7px">+'+(ids.length-5)+'</div>':'');
+}
 function rEvents(isA){
+  const me=S.me.id;
   const curUnit=UNITS.find(u=>u.name===S.unit);
   const curUnitId=curUnit?curUnit.id:'';
   const rows=EVENTS.filter(e=>!e.units||e.units.includes(curUnitId)).map(e=>{
-    const going=e.going.filter(id=>STUDENTS.find(s=>s.id===id));
-    const iGoing=e.going.includes(S.me.id);
-    const typeCol=e.type==='competition'?'#1A5DAD':'#15803d';
-    const typeLbl=e.type==='competition'?'Competition':'Social';
-    const stackHtml=going.slice(0,4).map((id,gi)=>{
-      const s=STUDENTS.find(x=>x.id===id);if(!s)return '';
-      const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
-      return '<div style="width:22px;height:22px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:8px;border:2px solid var(--card);margin-left:'+(gi>0?'-5px':'0')+'">'+s.initials+'</div>';
-    }).join('');
-    const moreHtml=going.length>4?'<div style="width:22px;height:22px;border-radius:50%;background:var(--bg);color:var(--text2);display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-size:8px;font-weight:700;border:2px solid var(--card);margin-left:-5px">+'+(going.length-4)+'</div>':'';
-    const linkHtml=e.link?('<div class="lcard" style="margin-bottom:10px" onclick="window.open(\'' +e.link+ '\',\'_blank\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><div style="font-size:12px;color:var(--text2)">Register / more info</div></div>'):'';
-    const goBtn='<button onclick="toggleEv(\''+e.id+'\')" style="background:'+(iGoing?'var(--green-bg)':'#1A5DAD')+';color:'+(iGoing?'var(--green-text)':'#fff')+';border:'+(iGoing?'1px solid var(--green-border)':'none')+';border-radius:7px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer">'+(iGoing?'Going \u2713':'I\'m going')+'</button>';
-    return '<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px"><div style="flex:1"><div style="margin-bottom:4px"><span style="background:'+typeCol+'20;color:'+typeCol+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+typeLbl+'</span></div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:var(--text);line-height:1.1">'+e.title+'</div><div style="font-size:12px;color:var(--text3);margin-top:2px">'+e.date+'</div></div></div><div style="font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.5">'+e.desc+'</div>'+linkHtml+'<div class="divider" style="padding-top:10px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:6px"><div style="display:flex">'+stackHtml+moreHtml+'</div><span style="font-size:11px;color:var(--text2)">'+going.length+' going</span></div>'+goBtn+'</div></div></div>';
+    const isComp=e.type==='competition';
+    const typeCol=isComp?'#1A5DAD':'#15803d';
+    const typeLbl=isComp?'Competition':'Social';
+    const competing=e.competing||[];
+    const supporting=e.supporting||[];
+    const iComp=competing.includes(me);
+    const iSupp=supporting.includes(me);
+    const compLbl=isComp?'Competing':'Going';
+    const suppLbl='Supporting';
+    const btnBase='flex:1;border-radius:10px;padding:10px 8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer;border:1.5px solid;transition:all .15s;text-align:center';
+    const compBtn='<button onclick="toggleEv(\''+e.id+'\',\'competing\')" style="'+btnBase+';background:'+(iComp?'#1A5DAD':'transparent')+';color:'+(iComp?'#fff':'#1A5DAD')+';border-color:#1A5DAD">'+(iComp?'\u2713 '+compLbl:compLbl)+'</button>';
+    const suppBtn='<button onclick="toggleEv(\''+e.id+'\',\'supporting\')" style="'+btnBase+';background:'+(iSupp?'#0f766e20':'transparent')+';color:'+(iSupp?'#0f766e':'var(--text3)')+';border-color:'+(iSupp?'#0f766e':'var(--border)')+'">'+suppLbl+(iSupp?' \u2713':'')+'</button>';
+    const linkHtml=e.link?('<div class="lcard" style="margin-bottom:12px" onclick="window.open(\''+e.link+'\',\'_blank\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><div style="font-size:12px;color:var(--text2)">Register / more info</div></div>'):'';
+    const editBtn=isA?('<button onclick="openEditEv(\''+e.id+'\')" style="background:none;border:none;color:var(--text3);font-size:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.5px;padding:0">EDIT</button>'):'';
+    // Attendance section
+    const compRow='<div style="margin-bottom:8px"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:'+(isComp?'#1A5DAD':'#15803d')+';margin-bottom:5px">'+(isComp?'COMPETING':'GOING')+' · '+competing.length+'</div>'+(competing.length?'<div style="display:flex">'+evStack(competing)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>';
+    const suppRow='<div><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);margin-bottom:5px">SUPPORTING · '+supporting.length+'</div>'+(supporting.length?'<div style="display:flex">'+evStack(supporting)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>';
+    return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
+      +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">'
+      +'<div style="flex:1"><div style="margin-bottom:5px;display:flex;align-items:center;gap:8px"><span style="background:'+typeCol+'20;color:'+typeCol+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+typeLbl+'</span></div>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;color:var(--text);line-height:1.1">'+e.title+'</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:3px">'+e.date+'</div></div>'
+      +editBtn+'</div>'
+      +(e.desc?'<div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.5">'+e.desc+'</div>':'')
+      +linkHtml
+      +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+      +compRow+suppRow
+      +'</div>'
+      +'<div style="display:flex;gap:8px">'+compBtn+suppBtn+'</div>'
+      +'</div>';
   });
-  const addBtn=isA?'<button class="badd" style="margin-top:4px" onclick="addEvent()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add event</button>':'';
+  const addBtn=isA?'<button class="badd" style="margin-top:4px" onclick="openAddEv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add event</button>':'';
   return rows.join('')+addBtn;
+}
+function rEEdit(){
+  const isNew=!S.editEv;
+  const e=S.editEv||{title:'',date:'',type:'competition',desc:'',link:''};
+  const typeOpts=[['competition','Competition'],['social','Social']].map(([v,l])=>'<option value="'+v+'"'+(e.type===v?' selected':'')+'>'+l+'</option>').join('');
+  return '<div class="sub open" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeEEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+(isNew?'Add event':'Edit event')+'</div><button class="ssave" onclick="saveEv()">Save</button></div>'
+    +'<div class="sbody"><div class="ef">'
+    +'<div class="erow"><div class="elbl">Title</div><input class="einput" id="ev-title" value="'+e.title+'" placeholder="Event name"/></div>'
+    +'<div class="erow"><div class="elbl">Date</div><input class="einput" id="ev-date" value="'+e.date+'" placeholder="e.g. 25 Apr 2026"/></div>'
+    +'<div class="erow"><div class="elbl">Type</div><select class="esel" id="ev-type">'+typeOpts+'</select></div>'
+    +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4">'+e.desc+'</textarea></div>'
+    +'<div class="erow"><div class="elbl">Link</div><input class="einput" id="ev-link" value="'+(e.link||'')+'" placeholder="https://... (optional)"/></div>'
+    +'</div>'
+    +(!isNew?'<button class="bdel" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px" onclick="delEv(\''+e.id+'\')">Delete event</button>':'')
+    +'<div style="height:24px"></div></div></div>';
 }
 
 function rWEditor(w){
@@ -1005,6 +1111,15 @@ function rARoster(){
     });
   }
   if(q)list=list.filter(s=>s.name.toLowerCase().includes(q));
+  list=[...list].sort((a,b)=>{
+    const ggA=a.prog==='kids'?GGK:GGA;const ggB=b.prog==='kids'?GGK:GGA;
+    const pA=Math.round(a.grade/(ggA[a.belt]||40)*100);
+    const pB=Math.round(b.grade/(ggB[b.belt]||40)*100);
+    const rankA=pA>=100?0:pA>=80?1:2;
+    const rankB=pB>=100?0:pB>=80?1:2;
+    if(rankA!==rankB)return rankA-rankB;
+    return a.name.localeCompare(b.name);
+  });
   const activeUnits=UNITS.filter(u=>u.active);
   const beltMap=S.rseg==='adult'?BA:BK;
   const beltOpts=Object.keys(beltMap);
@@ -1258,9 +1373,42 @@ function addTech(week,cat){const w=SCHED.find(x=>x.week===week);if(!w){return;}i
 function removeTech(week,cat,idx){const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;w[cat].splice(idx,1);render();}
 function toggleProg(week,prog){const w=SCHED.find(x=>x.week===week);if(!w)return;if(!w.programs)w.programs=[];const i=w.programs.indexOf(prog);if(i>=0)w.programs.splice(i,1);else w.programs.push(prog);render();}
 function editTechVideo2(week,cat,idx){const w=SCHED.find(x=>x.week===week);if(!w)return;const list=w[cat]||[];const tech=list[idx];if(!tech)return;const tv=typeof tech==='object'?tech:{t:tech,video:''};const url=prompt('Video URL for "'+tv.t+'" (YouTube or Instagram):',tv.video||'');if(url===null)return;if(typeof list[idx]==='string')list[idx]={t:list[idx],video:url};else list[idx].video=url;render();}
-function toggleEv(id){const e=EVENTS.find(x=>x.id===id);if(!e)return;const me=S.me.id;const idx=e.going.indexOf(me);if(idx>=0)e.going.splice(idx,1);else e.going.push(me);render();}
-function addEvent(){alert('In the real app, an event creation form would open here.');}
-function editEvent(id){alert('In the real app, an event edit form would open here.');}
+function toggleEv(id,intent){
+  const e=EVENTS.find(x=>x.id===id);if(!e)return;
+  if(!e.competing)e.competing=[];if(!e.supporting)e.supporting=[];
+  const me=S.me.id;
+  const other=intent==='competing'?'supporting':'competing';
+  const arr=e[intent];const otherArr=e[other];
+  const idx=arr.indexOf(me);
+  if(idx>=0){arr.splice(idx,1);}
+  else{arr.push(me);const oi=otherArr.indexOf(me);if(oi>=0)otherArr.splice(oi,1);}
+  render();
+}
+function openAddEv(){S.addEv=true;S.editEv=null;render();}
+function openEditEv(id){const e=EVENTS.find(x=>x.id===id);if(!e)return;S.editEv={...e};S.addEv=false;render();}
+function closeEEdit(){S.editEv=null;S.addEv=false;render();}
+function saveEv(){
+  const title=(document.getElementById('ev-title')||{}).value||'';
+  const date=(document.getElementById('ev-date')||{}).value||'';
+  const type=(document.getElementById('ev-type')||{}).value||'competition';
+  const desc=(document.getElementById('ev-desc')||{}).value||'';
+  const link=(document.getElementById('ev-link')||{}).value||'';
+  if(!title.trim()){alert('Title is required.');return;}
+  const curUnit=UNITS.find(u=>u.name===S.unit);const uid=curUnit?curUnit.id:'nb';
+  if(S.addEv){
+    EVENTS.push({id:'ev'+Date.now(),title,date,type,desc,link,competing:[],supporting:[],units:[uid]});
+  } else if(S.editEv){
+    const idx=EVENTS.findIndex(x=>x.id===S.editEv.id);
+    if(idx>=0)EVENTS[idx]={...EVENTS[idx],title,date,type,desc,link};
+  }
+  closeEEdit();
+}
+function delEv(id){
+  if(!confirm('Delete this event?'))return;
+  const idx=EVENTS.findIndex(x=>x.id===id);
+  if(idx>=0)EVENTS.splice(idx,1);
+  closeEEdit();
+}
 function editTechVideo(week,techIdx){
   const w=SCHED.find(x=>x.week===week);if(!w)return;
   const tech=w.techs[techIdx];
