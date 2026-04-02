@@ -782,8 +782,8 @@ function rProgress(){
       var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,'adult')+(isOwner?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>')+'</div>';
       var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney)+'</div>';
       var techsTab=rTechniquesLog(s);
-      var iContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:techsTab;
-      return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button></div>'+iContent+'<div style="height:16px"></div>';
+      var iContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:rPromoWall();
+      return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button></div>'+iContent+'<div style="height:16px"></div>';
     }
     // Coach (admin without STAFF record) — show student-like view
     var coachStu=STUDENTS.find(function(x){return x.id===s.id;})||s;
@@ -798,8 +798,8 @@ function rProgress(){
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
     var techsTab=rTechniquesLog(s);
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback notes yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
-    var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:feedbackTab;
-    return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
+    var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='feedback'?feedbackTab:rPromoWall();
+    return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button></div>'+cContent+'<div style="height:16px"></div>';
   }
   var stu=STUDENTS.find(function(x){return x.id===s.id;})||s;
   var bmap=s.prog==='kids'?BK:BA;
@@ -818,9 +818,9 @@ function rProgress(){
 
   var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback notes yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
 
-  var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:feedbackTab;
+  var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='feedback'?feedbackTab:rPromoWall();
 
-  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${S.ptab==='rank'?'active':''}" onclick="setPtab('rank')">Rank</button><button class="stab ${S.ptab==='journey'?'active':''}" onclick="setPtab('journey')">Journey</button><button class="stab ${S.ptab==='techniques'?'active':''}" onclick="setPtab('techniques')">Techniques</button><button class="stab ${S.ptab==='feedback'?'active':''}" onclick="setPtab('feedback')">Feedback</button></div>${content}<div style="height:16px"></div>`;
+  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${S.ptab==='rank'?'active':''}" onclick="setPtab('rank')">Rank</button><button class="stab ${S.ptab==='journey'?'active':''}" onclick="setPtab('journey')">Journey</button><button class="stab ${S.ptab==='techniques'?'active':''}" onclick="setPtab('techniques')">Techniques</button><button class="stab ${S.ptab==='feedback'?'active':''}" onclick="setPtab('feedback')">Feedback</button><button class="stab ${S.ptab==='wall'?'active':''}" onclick="setPtab('wall')">Wall</button></div>${content}<div style="height:16px"></div>`;
 }
 
 function rPromoWall(){
@@ -846,16 +846,14 @@ function rPromoWall(){
 }
 function rSchedule(){
   const isA=S.me.role==='admin'||S.me.role==='owner';
-  const showWall=S.sweek===-1;const showEv=S.sweek===0;const w=SCHED.find(x=>x.week===S.sweek);
-  const wallSt=showWall?'background:#7c2d12;color:#fff;border-color:#7c2d12':'background:var(--card);color:var(--text2);border:1px solid var(--border)';
+  const showEv=S.sweek===0;const w=SCHED.find(x=>x.week===S.sweek);
   const evSt=showEv?'background:#15803d;color:#fff;border-color:#15803d':'background:var(--card);color:var(--text2);border:1px solid var(--border)';
   const wkBase='padding:8px 4px;border-radius:8px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;cursor:pointer;text-align:center;white-space:nowrap;';
   const tabsHtml='<div style="display:flex;gap:6px;margin-bottom:6px">'
-    +'<button style="flex:1;'+wkBase+wallSt+'" onclick="setSweek(-1)">🏅 Wall</button>'
     +'<button style="flex:1;'+wkBase+evSt+'" onclick="setSweek(0)">Events</button>'
     +'</div>'
     +'<div style="display:grid;grid-template-columns:repeat('+SCHED.length+',1fr);gap:6px;margin-bottom:16px">'
-    +SCHED.map(x=>{const isWkActive=S.sweek===x.week&&!showEv&&!showWall;const wkSt=isWkActive?'background:#1A5DAD;color:#fff;border-color:#1A5DAD':'background:var(--card);color:var(--text2);border:1px solid var(--border)';return '<button style="'+wkBase+wkSt+'" onclick="setSweek('+x.week+')">Wk '+x.week+'</button>';}).join('')
+    +SCHED.map(x=>{const isWkActive=S.sweek===x.week&&!showEv;const wkSt=isWkActive?'background:#1A5DAD;color:#fff;border-color:#1A5DAD':'background:var(--card);color:var(--text2);border:1px solid var(--border)';return '<button style="'+wkBase+wkSt+'" onclick="setSweek('+x.week+')">Wk '+x.week+'</button>';}).join('')
     +'</div>';
 
   function techRow(tech,idx,cat){
@@ -877,8 +875,7 @@ function rSchedule(){
   }
 
   let bodyHtml='';
-  if(showWall){bodyHtml=rPromoWall();}
-  else if(showEv){bodyHtml=rEvents(isA);}
+  if(showEv){bodyHtml=rEvents(isA);}
   else if(w){
     const progCols={Fundamentals:'#1A5DAD',Mixed:'#7e22ce',Advanced:'#dc2626',Junior:'#15803d'};
     // Programme badges: only show to admins in view mode (students don't need to know which class type)
