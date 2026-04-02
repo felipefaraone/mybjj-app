@@ -753,7 +753,7 @@ function rClass(){
   ${hol?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${HN[sk]||'Public Holiday'}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Academy closed · No classes scheduled today</div></div></div>`
   :cls.length===0?`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`
   :cls.map(c=>{
-    const t=CT.find(x=>x.id===c.type)||CT[0];const isIn=!!S.ci[c.id];const isCf=!!S.pconf[c.id+'_'+me.id];const att=gatt(c.time);const all=[...att,...(isIn&&!att.includes(me.id)?[me.id]:[])];
+    const t=CT.find(x=>x.id===c.type)||CT[0];const isIn=!!S.ci[c.id];const isCf=!!S.pconf[c.id+'_'+me.id];const att=isT?gatt(c.time):[];const all=[...att,...(isIn&&!att.includes(me.id)?[me.id]:[])];
     const isStudentAdmin=me.role==='admin'&&!!STUDENTS.find(x=>x.id===me.id);
     const _nowSyd=new Date(new Date().toLocaleString('en-AU',{timeZone:'Australia/Sydney'}));const _nowMin=_nowSyd.getHours()*60+_nowSyd.getMinutes();const [_ch,_cm]=c.time.split(':').map(Number);const isEnded=isT&&(_nowMin>_ch*60+_cm+c.dur);
     let cc='card';let btn='';
@@ -989,16 +989,19 @@ function rEvents(isA){
     const supporting=e.supporting||[];
     const iComp=competing.includes(me);
     const iSupp=supporting.includes(me);
-    const compLbl=isComp?'Competing':'Going';
+    const evOpts=e.options||['competing','supporting'];
+    const showComp=evOpts.includes('competing');
+    const showSupp=evOpts.includes('supporting');
+    const compLbl='Competing';
     const suppLbl='Supporting';
     const btnBase='flex:1;border-radius:10px;padding:10px 8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer;border:1.5px solid;transition:all .15s;text-align:center';
-    const compBtn='<button onclick="toggleEv(\''+e.id+'\',\'competing\')" style="'+btnBase+';background:'+(iComp?'#1A5DAD':'transparent')+';color:'+(iComp?'#fff':'#1A5DAD')+';border-color:#1A5DAD">'+(iComp?'\u2713 '+compLbl:compLbl)+'</button>';
-    const suppBtn='<button onclick="toggleEv(\''+e.id+'\',\'supporting\')" style="'+btnBase+';background:'+(iSupp?'#0f766e20':'transparent')+';color:'+(iSupp?'#0f766e':'var(--text3)')+';border-color:'+(iSupp?'#0f766e':'var(--border)')+'">'+suppLbl+(iSupp?' \u2713':'')+'</button>';
+    const compBtn=showComp?'<button onclick="toggleEv(\''+e.id+'\',\'competing\')" style="'+btnBase+';background:'+(iComp?'#1A5DAD':'transparent')+';color:'+(iComp?'#fff':'#1A5DAD')+';border-color:#1A5DAD">'+(iComp?'\u2713 '+compLbl:compLbl)+'</button>':'';
+    const suppBtn=showSupp?'<button onclick="toggleEv(\''+e.id+'\',\'supporting\')" style="'+btnBase+';background:'+(iSupp?'#0f766e20':'transparent')+';color:'+(iSupp?'#0f766e':'var(--text3)')+';border-color:'+(iSupp?'#0f766e':'var(--border)')+'">'+suppLbl+(iSupp?' \u2713':'')+'</button>':'';
     const linkHtml=e.link?('<div class="lcard" style="margin-bottom:12px" onclick="window.open(\''+e.link+'\',\'_blank\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><div style="font-size:12px;color:var(--text2)">Register / more info</div></div>'):'';
     const editBtn=isA?('<button onclick="openEditEv(\''+e.id+'\')" style="background:none;border:none;color:var(--text3);font-size:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.5px;padding:0">EDIT</button>'):'';
     // Attendance section
-    const compRow='<div style="margin-bottom:8px"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:'+(isComp?'#1A5DAD':'#15803d')+';margin-bottom:5px">'+(isComp?'COMPETING':'GOING')+' · '+competing.length+'</div>'+(competing.length?'<div style="display:flex">'+evStack(competing)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>';
-    const suppRow='<div><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);margin-bottom:5px">SUPPORTING · '+supporting.length+'</div>'+(supporting.length?'<div style="display:flex">'+evStack(supporting)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>';
+    const compRow=showComp?'<div style="margin-bottom:8px"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:#1A5DAD;margin-bottom:5px">COMPETING · '+competing.length+'</div>'+(competing.length?'<div style="display:flex">'+evStack(competing)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>':'';
+    const suppRow=showSupp?'<div><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);margin-bottom:5px">SUPPORTING · '+supporting.length+'</div>'+(supporting.length?'<div style="display:flex">'+evStack(supporting)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>':'';
     return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">'
       +'<div style="flex:1"><div style="margin-bottom:5px;display:flex;align-items:center;gap:8px"><span style="background:'+typeCol+'20;color:'+typeCol+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+typeLbl+'</span></div>'
@@ -1007,9 +1010,7 @@ function rEvents(isA){
       +editBtn+'</div>'
       +(e.desc?'<div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.5">'+e.desc+'</div>':'')
       +linkHtml
-      +'<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">'
-      +compRow+suppRow
-      +'</div>'
+      +((showComp||showSupp)?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:'+(showComp&&showSupp?'1fr 1fr':'1fr')+';gap:12px">'+compRow+suppRow+'</div>':'')
       +'<div style="display:flex;gap:8px">'+compBtn+suppBtn+'</div>'
       +'</div>';
   });
@@ -1019,7 +1020,9 @@ function rEvents(isA){
 function rEEdit(){
   const isNew=!S.editEv;
   const e=S.editEv||{title:'',date:'',type:'competition',desc:'',link:''};
+  const eOpts=e.options||['competing','supporting'];
   const typeOpts=[['competition','Competition'],['social','Social']].map(([v,l])=>'<option value="'+v+'"'+(e.type===v?' selected':'')+'>'+l+'</option>').join('');
+  const chkStyle='display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2);cursor:pointer;font-family:Barlow,sans-serif';
   return '<div class="sub open" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeEEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+(isNew?'Add event':'Edit event')+'</div><button class="ssave" onclick="saveEv()">Save</button></div>'
     +'<div class="sbody"><div class="ef">'
     +'<div class="erow"><div class="elbl">Title</div><input class="einput" id="ev-title" value="'+e.title+'" placeholder="Event name"/></div>'
@@ -1027,6 +1030,7 @@ function rEEdit(){
     +'<div class="erow"><div class="elbl">Type</div><select class="esel" id="ev-type">'+typeOpts+'</select></div>'
     +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4">'+e.desc+'</textarea></div>'
     +'<div class="erow"><div class="elbl">Link</div><input class="einput" id="ev-link" value="'+(e.link||'')+'" placeholder="https://... (optional)"/></div>'
+    +'<div class="erow"><div class="elbl">Options</div><div style="display:flex;gap:14px"><label style="'+chkStyle+'"><input type="checkbox" id="ev-opt-competing"'+(eOpts.includes('competing')?' checked':'')+'>Competing</label><label style="'+chkStyle+'"><input type="checkbox" id="ev-opt-supporting"'+(eOpts.includes('supporting')?' checked':'')+'>Supporting</label></div></div>'
     +'</div>'
     +(!isNew?'<button class="bdel" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px" onclick="delEv(\''+e.id+'\')">Delete event</button>':'')
     +'<div style="height:24px"></div></div></div>';
@@ -1394,12 +1398,16 @@ function saveEv(){
   const desc=(document.getElementById('ev-desc')||{}).value||'';
   const link=(document.getElementById('ev-link')||{}).value||'';
   if(!title.trim()){alert('Title is required.');return;}
+  const opts=[];
+  if(document.getElementById('ev-opt-competing')?.checked)opts.push('competing');
+  if(document.getElementById('ev-opt-supporting')?.checked)opts.push('supporting');
+  const options=opts.length?opts:['competing','supporting'];
   const curUnit=UNITS.find(u=>u.name===S.unit);const uid=curUnit?curUnit.id:'nb';
   if(S.addEv){
-    EVENTS.push({id:'ev'+Date.now(),title,date,type,desc,link,competing:[],supporting:[],units:[uid]});
+    EVENTS.push({id:'ev'+Date.now(),title,date,type,desc,link,options,competing:[],supporting:[],units:[uid]});
   } else if(S.editEv){
     const idx=EVENTS.findIndex(x=>x.id===S.editEv.id);
-    if(idx>=0)EVENTS[idx]={...EVENTS[idx],title,date,type,desc,link};
+    if(idx>=0)EVENTS[idx]={...EVENTS[idx],title,date,type,desc,link,options};
   }
   closeEEdit();
 }
