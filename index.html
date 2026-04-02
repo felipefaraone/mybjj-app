@@ -1018,20 +1018,23 @@ function rARoster(){
 
   const clearBtn=S.rq?'<button onclick="setRQ(String())" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1">×</button>':'';
 
+  const hasFilter=rfBelt!=='all'||rfNear||!!q;
+
   const filterHtml=
-    '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">'
-    +'<select onchange="setRF2(this)" data-key="rfBelt" style="flex:1;min-width:100px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-family:Barlow Condensed,sans-serif;font-weight:600;font-size:12px;color:var(--text2);outline:none">'+beltOptHtml+'</select>'
-    +'<button onclick="toggleRFNear()" style="background:'+(rfNear?'#1A5DAD':'var(--card)')+';color:'+(rfNear?'#fff':'var(--text2)')+';border:1px solid '+(rfNear?'#1A5DAD':'var(--border)')+';border-radius:8px;padding:7px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap">Near grad</button>'
+    '<div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--text3);margin-bottom:6px">FILTERS</div>'
+    +'<div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;margin-bottom:8px">'
+    +'<select onchange="setRF2(this)" data-key="rfBelt" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-family:Barlow Condensed,sans-serif;font-weight:600;font-size:12px;color:var(--text2);outline:none;width:100%">'+beltOptHtml+'</select>'
+    +'<button onclick="toggleRFNear()" style="background:'+(rfNear?'#1A5DAD':'var(--bg)')+';color:'+(rfNear?'#fff':'var(--text2)')+';border:1px solid '+(rfNear?'#1A5DAD':'var(--border)')+';border-radius:8px;padding:7px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">Near grad</button>'
     +'</div>'
-    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
-    +'<div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px">'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">'
+    +'<div style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px">'
     +'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-    +'<input value="'+(S.rq||'')+'" oninput="setRQ(this.value)" placeholder="Search students..." style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/>'
+    +'<input value="'+(S.rq||'')+'" oninput="setRQ(this.value)" placeholder="Search by name..." style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/>'
     +clearBtn
     +'</div>'
     +'</div>';
 
-  const rows=list.map(s=>{
+  const rows=!hasFilter?'':list.map(s=>{
     const bmap=s.prog==='kids'?BK:BA;
     const gg=s.prog==='kids'?GGK:GGA;
     const b=bmap[s.belt]||BA.white;
@@ -1055,7 +1058,9 @@ function rARoster(){
       +'</div>';
   }).join('');
 
-  const emptyMsg=list.length===0?'<div style="padding:32px;text-align:center;color:var(--text3);font-size:14px">No students match these filters.</div>':'';
+  const emptyMsg=!hasFilter
+    ?'<div style="padding:40px 16px;text-align:center"><div style="font-size:13px;color:var(--text3);line-height:1.6">Select a belt, toggle Near grad,<br>or search to view students.</div></div>'
+    :list.length===0?'<div style="padding:32px;text-align:center;color:var(--text3);font-size:14px">No students match these filters.</div>':'';
   const totalReg=allAdults.length+allKids.length;
   const regLine='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">'+totalReg+' registered students</div>';
   const seg='<div class="rsw">'+'<div class="rseg '+(S.rseg==="adult"?"active":"")+'" onclick="S.rseg=String.fromCharCode(97,100,117,108,116);render()">Adults ('+allAdults.length+')</div>'+'<div class="rseg '+(S.rseg==="kids"?"active":"")+'" onclick="S.rseg=String.fromCharCode(107,105,100,115);render()">Junior ('+allKids.length+')</div></div>';
