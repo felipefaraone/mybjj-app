@@ -1,5 +1,7 @@
 # myBJJ — Academy Management App
 
+https://felipefaraone.github.io/mybjj-app/
+
 A fully functional web app for managing a Brazilian Jiu-Jitsu academy, built from scratch as a personal project to scratch my own itch as both a BJJ practitioner and a product manager who wanted a tool that actually fit how academies work day-to-day.
 
 The app is a single-file SPA with zero dependencies — just vanilla HTML, CSS, and JavaScript.
