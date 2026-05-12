@@ -157,6 +157,30 @@ html,body{height:100%;background:var(--bg)}body{display:flex;justify-content:cen
 .nav{bottom:36px}
 .appfoot{position:fixed;bottom:0;left:0;right:0;height:34px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:18px;z-index:9;padding-bottom:env(safe-area-inset-bottom,0px)}
 .nav{bottom:34px}
+.awrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;background:linear-gradient(180deg,var(--blue-tint) 0%,var(--bg) 100%);font-family:Barlow,sans-serif}
+.abrand{text-align:center;margin-bottom:28px}
+.abrandhead{font-family:'Bebas Neue',sans-serif;font-size:64px;letter-spacing:1px;color:var(--blue);line-height:1}
+.abrandsub{color:var(--text2);font-size:13px;letter-spacing:1px;text-transform:uppercase;margin-top:4px}
+.acard{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;box-shadow:var(--sh-md);display:flex;flex-direction:column;gap:12px}
+.atitle{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);letter-spacing:.5px}
+.atxt{color:var(--text2);font-size:14px;line-height:1.5}
+.abtn{display:flex;align-items:center;justify-content:center;gap:10px;height:48px;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:17px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border:1px solid transparent;transition:transform .05s ease}
+.abtn:active{transform:scale(.98)}
+.abtn[disabled]{opacity:.55;cursor:not-allowed}
+.aprimary{background:var(--blue);color:#fff}
+.asec{background:var(--surface);color:var(--text);border-color:var(--border2)}
+.aglogo{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#fff;color:var(--blue);align-items:center;justify-content:center;font-weight:700;font-family:'Barlow Condensed',sans-serif}
+.adiv{display:flex;align-items:center;gap:10px;color:var(--text3);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:4px 0}
+.adiv:before,.adiv:after{content:'';flex:1;height:1px;background:var(--border)}
+.ainput{height:46px;padding:0 14px;border:1px solid var(--border2);border-radius:10px;font-family:Barlow,sans-serif;font-size:15px;color:var(--text);background:var(--input-bg);outline:none}
+.ainput:focus{border-color:var(--blue)}
+.amsg{font-size:13px;color:var(--text2);padding:8px 12px;background:var(--blue-tint);border-radius:8px;line-height:1.4}
+.alink{background:none;border:none;color:var(--blue);font-family:Barlow,sans-serif;font-size:14px;cursor:pointer;padding:8px 0;text-decoration:underline;align-self:flex-start}
+.adev{width:100%;max-width:380px;margin-top:18px;padding:12px 14px;border:1px dashed var(--border2);border-radius:10px;background:#fff8e7}
+.adevlbl{font-size:10px;color:var(--amber-text);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;font-weight:700}
+.adevrow{display:flex;flex-wrap:wrap;gap:6px}
+.adevbtn{padding:6px 12px;border:1px solid var(--amber-border);background:var(--amber-bg);color:var(--amber-text);border-radius:6px;font-family:Barlow,sans-serif;font-size:13px;cursor:pointer}
+.adevbtn:active{background:#fde68a}
 </style>
 </head>
 <body>
@@ -167,8 +191,8 @@ const SUPABASE_URL='https://dcilltzgegqsrgatskhz.supabase.co';
 const SUPABASE_ANON_KEY='sb_publishable_EdatFnl6MfCgyd7tv7wHRw_Z5msKQTC';
 let sb=null;
 function initSupabase(){if(sb)return sb;if(!window.supabase||!window.supabase.createClient){console.warn('[mybjj] supabase-js not loaded');return null;}sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);return sb;}
-async function testSupabase(){try{const c=initSupabase();if(!c)return;const{data,error}=await c.from('units').select('id,name').limit(1);if(error)console.warn('[mybjj] supabase test:',error.message);else console.log('[mybjj] supabase OK · units rows visible to anon:',data);}catch(e){console.warn('[mybjj] supabase test failed:',e);}}
-initSupabase();testSupabase();
+const IS_DEV=(location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.hostname==='');
+initSupabase();
 
 const BA={white:{label:'White',bg:'#e5e7eb',fg:'#111827'},blue:{label:'Blue',bg:'#1A5DAD',fg:'#fff'},purple:{label:'Purple',bg:'#7e22ce',fg:'#fff'},brown:{label:'Brown',bg:'#7c2d12',fg:'#fff'},black:{label:'Black',bg:'#111827',fg:'#fff',bdr:'1px solid #374151'}};
 const BK={white:{label:'White',bg:'#e5e7eb',fg:'#111827'},grey:{label:'Grey',bg:'#9ca3af',fg:'#fff'},yellow:{label:'Yellow',bg:'#ca8a04',fg:'#fff'},orange:{label:'Orange',bg:'#ea580c',fg:'#fff'},green:{label:'Green',bg:'#16a34a',fg:'#fff'}};
@@ -374,7 +398,7 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false};
 S.ci['2026-03-31_06:00']=true;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -1272,10 +1296,95 @@ function rPromoAlert(){
   var moreText=ready.length>5?'<div onclick="S.tab=\'admin\';S.atab=\'roster\';S.rfNear=true;render()" style="font-size:11px;color:#1A5DAD;text-align:center;padding-top:4px;cursor:pointer;font-weight:600">+'+(ready.length-5)+' more in Roster →</div>':'';
   return '<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg);margin-top:12px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text)"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--amber-text)">'+ready.length+' student'+(ready.length>1?'s':'')+' ready for evaluation</div></div><button onclick="S.evalDismissed=true;render()" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--amber-text);opacity:.6;line-height:1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>'+items+moreText+'</div>';
 }
-function render(){document.getElementById('app').innerHTML=S.loggedIn?rApp():rLogin();if(S.loggedIn){requestAnimationFrame(()=>{const el=document.getElementById('dp-'+dk(S.selDay||TODAY));if(el){const strip=el.closest('.dstrip');if(strip){const target=el.offsetLeft-(strip.offsetWidth/2)+(el.offsetWidth/2);strip.scrollTo({left:target,behavior:'smooth'});}}});}}
+function render(){
+  const app=document.getElementById('app');
+  if(S.loggedIn){
+    app.innerHTML=rApp();
+    requestAnimationFrame(()=>{const el=document.getElementById('dp-'+dk(S.selDay||TODAY));if(el){const strip=el.closest('.dstrip');if(strip){const target=el.offsetLeft-(strip.offsetWidth/2)+(el.offsetWidth/2);strip.scrollTo({left:target,behavior:'smooth'});}}});
+    return;
+  }
+  if(S.authState==='pending'||S.authState==='rejected'){app.innerHTML=rPending();return;}
+  if(S.authState==='checking'){app.innerHTML='<div class="awrap"><div class="abrand"><div class="abrandhead">myBJJ</div><div class="abrandsub">Neutral Bay pilot</div></div></div>';return;}
+  app.innerHTML=rAuth();
+}
 
 function doLogin(r){if(r==='owner'){S.me=AME;S.atab='roster';}else if(r==='instructor_jonathan')S.me=INSE_JOHN;else if(r==='admin')S.me=INSE_FELIPE;else S.me=SME;S.loggedIn=true;S.tab=(r==='admin'||r==='owner'||r==='instructor_jonathan')?'admin':'class';render();}
-function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;render();}
+function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;S.authState='unauthenticated';S.authEmail='';S.authMsg='';if(sb)sb.auth.signOut();render();}
+
+async function bootAuth(){
+  const c=initSupabase();
+  if(!c){S.authState='unauthenticated';render();return;}
+  try{
+    const{data:{session}}=await c.auth.getSession();
+    if(session) await onAuthed(); else {S.authState='unauthenticated';render();}
+  }catch(e){console.warn('[mybjj] bootAuth',e);S.authState='unauthenticated';render();}
+  c.auth.onAuthStateChange((ev)=>{
+    if(ev==='SIGNED_IN') onAuthed();
+    else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';render();}
+  });
+}
+
+async function onAuthed(){
+  try{
+    const c=initSupabase();
+    const{data,error}=await c.rpc('claim_profile');
+    if(error){console.warn('[mybjj] claim_profile',error.message);S.authState='unauthenticated';S.authMsg=error.message;render();return;}
+    S.profile=data;
+    if(data.status==='approved'){S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';}
+    else if(data.status==='rejected') S.authState='rejected';
+    else S.authState='pending';
+    render();
+  }catch(e){console.warn('[mybjj] onAuthed',e);S.authState='unauthenticated';render();}
+}
+
+function meFromProfile(p){
+  const base=p.role==='owner'?AME:(p.role==='admin'||p.role==='instructor')?INSE_FELIPE:SME;
+  const r=p.role==='owner'?'owner':(p.role==='admin'||p.role==='instructor')?'admin':'student';
+  return Object.assign({},base,{id:p.id,name:p.full_name||p.email,role:r,email:p.email});
+}
+
+async function signInGoogle(){
+  const c=initSupabase(); if(!c) return;
+  S.authBusy=true;S.authMsg='';render();
+  try{
+    const{error}=await c.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
+    if(error) S.authMsg=error.message;
+  }catch(e){S.authMsg=String(e);}
+  S.authBusy=false;render();
+}
+
+async function signInMagic(){
+  const c=initSupabase(); if(!c) return;
+  const email=(S.authEmail||'').trim().toLowerCase();
+  if(!email||!/^\S+@\S+\.\S+$/.test(email)){S.authMsg='Please enter a valid email.';render();return;}
+  S.authBusy=true;S.authMsg='';render();
+  try{
+    const{error}=await c.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
+    if(error) S.authMsg=error.message;
+    else{S.authState='magic-sent';S.authMsg='Check your inbox — we sent you a sign-in link.';}
+  }catch(e){S.authMsg=String(e);}
+  S.authBusy=false;render();
+}
+
+function rAuth(){
+  const busy=S.authBusy?'disabled':'';
+  const sent=S.authState==='magic-sent';
+  const msg=S.authMsg?`<div class="amsg">${S.authMsg}</div>`:'';
+  const form=sent
+    ? `<div class="atitle">Check your email</div><div class="atxt">${S.authMsg||'We sent you a sign-in link.'}</div><button class="alink" onclick="S.authState='unauthenticated';S.authMsg='';render()">Use another method</button>`
+    : `<button class="abtn aprimary" onclick="signInGoogle()" ${busy}><span class="aglogo">G</span> Continue with Google</button><div class="adiv"><span>or</span></div><input class="ainput" type="email" autocomplete="email" placeholder="you@example.com" value="${S.authEmail||''}" oninput="S.authEmail=this.value"/><button class="abtn asec" onclick="signInMagic()" ${busy}>Continue with email</button>${msg}`;
+  const dev=IS_DEV?`<div class="adev"><div class="adevlbl">Dev shortcuts · localhost only</div><div class="adevrow"><button class="adevbtn" onclick="doLogin('owner')">Owner</button><button class="adevbtn" onclick="doLogin('admin')">Admin</button><button class="adevbtn" onclick="doLogin('instructor_jonathan')">Instructor</button><button class="adevbtn" onclick="doLogin('student')">Student</button></div></div>`:'';
+  return `<div class="awrap"><div class="abrand"><div class="abrandhead">myBJJ</div><div class="abrandsub">Neutral Bay pilot</div></div><div class="acard">${form}</div>${dev}</div>`;
+}
+
+function rPending(){
+  const email=(S.profile&&S.profile.email)||'';
+  const title=S.authState==='rejected'?'Access denied':'Pending approval';
+  const body=S.authState==='rejected'
+    ? `Hi ${email}.<br/>Your account has been rejected. Please contact your unit admin.`
+    : `Hi ${email}.<br/>Your account isn’t on the access list yet. Once an admin approves you, you’ll be able to sign in here.`;
+  return `<div class="awrap"><div class="abrand"><div class="abrandhead">myBJJ</div><div class="abrandsub">Neutral Bay pilot</div></div><div class="acard"><div class="atitle">${title}</div><div class="atxt">${body}</div><button class="abtn asec" onclick="logout()">Sign out</button></div></div>`;
+}
 function setTab(t){S.tab=t;render();}
 function openPanel(){S.panelOpen=true;S.sub=null;S.inboxOpen=false;render();}
 function closePanel(){S.panelOpen=false;S.unitOpen=false;S.sub=null;render();}
@@ -1444,7 +1553,7 @@ function setRF(k,v){S[k]=v;render();}
 
 function fmt(n,role){if(role==='admin'||role==='owner')return n;var p=n.trim().split(' ');if(p.length<2)return p[0];return p[0]+' '+p[p.length-1][0]+'.';}
 
-render();
+render();bootAuth();
 </script>
 </body>
 </html>
