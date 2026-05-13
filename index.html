@@ -384,7 +384,7 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null};
 S.ci['2026-03-31_06:00']=true;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -740,13 +740,14 @@ function rStuProf(){
         <div style="font-size:11px;color:var(--text3);margin-top:5px">${s.grade}/${goal} Gi · ${lbl.toLowerCase()}${isReady?' — <span style="color:#1A5DAD;font-weight:700">READY FOR EVALUATION</span>':''}</div>
       </div>
     </div>
+    ${canEditClassCounts()?`<button class="bout" style="margin-top:12px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
     ${rPromoPanel(s)}
     <div class="slbl">Journey</div>
     <div class="card" style="padding:12px 16px">${rTL(s.journey)}</div>
     <div class="slbl">Instructor feedback <button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:'Barlow',sans-serif;margin-left:8px" onclick="openFb('${s.id}')">+ Add note</button></div>
     ${S.addFb===s.id?`<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Coaching notes for ${s.name.split(' ')[0]}..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveFb('${s.id}')">Save</button></div></div>`:''}
     ${(s.feedback||[]).length===0&&S.addFb!==s.id?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback notes yet.</div>`:''}
-    ${(s.feedback||[]).map(f=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div class="fbdate">${f.date}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}
+    ${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">${f.date}</div>${canDeleteFeedback(f)?`<button onclick="deleteFeedback('${s.id}',${i})" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color='var(--red-text)'" onmouseout="this.style.color='var(--text3)'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`:''}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}
     ${S.editJny?rJnyEditor():''}
     <div style="height:24px"></div></div></div>`;}
 
@@ -1194,7 +1195,7 @@ function rARoster(){
     const lbl=nxlbl(s.belt,s.deg,s.prog);
     const isProm=lbl==='Next promotion';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
-    return '<div class="card" style="cursor:pointer" onclick="viewStu(this.dataset.sid)" data-sid="'+s.id+'">'
+    return '<div class="card" style="cursor:pointer;position:relative" onclick="viewStu(this.dataset.sid)" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
       +'<div style="display:flex;align-items:center;gap:10px">'+av(s.initials,b.bg,b.fg,34)
       +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text)">'+s.name+'</div>'
@@ -1205,6 +1206,7 @@ function rARoster(){
       +' &nbsp;·&nbsp; <span style="color:var(--text3)">'+s.total+' total</span></div>'
       +pbBelt(s.grade,goal,s.belt,s.prog)
       +((pct>=100)?'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:#1A5DAD;margin-top:6px">READY FOR EVALUATION</div>':'')
+      +(canEditClassCounts()?'<button onclick="event.stopPropagation();openEditCounts(\''+s.id+'\')" title="Edit class counts" style="position:absolute;top:10px;right:10px;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;cursor:pointer;color:var(--text2);display:flex;align-items:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')
       +'</div>';
   }).join('');
 
@@ -1240,7 +1242,7 @@ function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'
 
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Admin',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const vt=isA?TABS:TABS.filter(t=>t.id!=='admin');if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const vt=isA?TABS:TABS.filter(t=>t.id!=='admin');if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -1385,8 +1387,25 @@ async function withSb(builder,label){
     return r;
   }catch(e){console.warn('[mybjj] '+label+' exception:',e);}
 }
-function meStaffDbId(){const s=STAFF.find(x=>x.name===(S.me&&S.me.name));return s&&s._dbId;}
+function meStaffDbId(){
+  if(S.profile&&S.profile.id){const byUid=STAFF.find(x=>x._userId===S.profile.id);if(byUid)return byUid._dbId;}
+  const s=STAFF.find(x=>x.name===(S.me&&S.me.name));return s&&s._dbId;
+}
 function meUnitDbId(){const cur=UNITS.find(u=>u.name===S.unit);return cur&&cur._dbId;}
+function isOwner(){return !!(S.me&&S.me.role==='owner');}
+function isProfessor(){return !!(S.me&&S.me.role==='admin'&&S.me.belt==='black');}
+function isCoach(){return !!(S.me&&S.me.role==='admin'&&S.me.belt!=='black');}
+function canEditClassCounts(){return isOwner()||isProfessor();}
+function canDeleteFeedback(f){if(isOwner())return true;if(!f)return false;if(S.me&&S.me.role==='admin')return f.ins===S.me.name;return false;}
+function friendlyMutationError(err){
+  if(!err)return 'Something went wrong. Please try again.';
+  let m=''; if(typeof err==='string')m=err; else if(err.message)m=err.message; else m=String(err);
+  const s=m.toLowerCase();
+  if(s.includes('not authoris')||s.includes('not authoriz')||s.includes('permission')||s.includes('forbidden')||s.includes('row-level')||s.includes('rls')||s.includes('policy')) return "You don't have permission to do that.";
+  if(s.includes('non-negative')||s.includes('must be')||s.includes('invalid input')||s.includes('validation')||s.includes('check constraint')) return 'Please check the values and try again.';
+  if(s.includes('network')||s.includes('failed to fetch')||s.includes('fetch')||s.includes('timeout')||s.includes('offline')) return 'Connection issue. Please try again.';
+  return 'Something went wrong. Please try again.';
+}
 
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
@@ -1395,7 +1414,7 @@ async function hydrateData(){
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active').order('name'),
       c.from('students').select('id,legacy_id,full_name,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id'),
-      c.from('staff').select('id,legacy_id,full_name,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id'),
+      c.from('staff').select('id,legacy_id,full_name,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
@@ -1413,7 +1432,7 @@ async function hydrateData(){
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
-      STAFF=sf.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.full_name,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
+      STAFF=sf.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,name:r.full_name,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
     if(pm.data&&pm.data.length){
@@ -1579,7 +1598,55 @@ function rDeleteUnitConfirm(){
 
 function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;render();}
 function openFb(sid){S.addFb=sid;render();}
-function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});s.feedback.unshift({ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
+function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
+function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
+function deleteFeedback(sid,idx){
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.feedback||!s.feedback[idx])return;
+  if(!confirm("Delete this feedback? This can't be undone."))return;
+  const entry=s.feedback[idx];
+  s.feedback.splice(idx,1);render();
+  if(s._dbId)withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback after delete');
+  if(entry._dbId)withSb(async(cli)=>{const r=await cli.from('feedback').delete().eq('id',entry._dbId);if(r&&r.error)showSaveToast2(friendlyMutationError(r.error),'error');return r;},'delete feedback');
+}
+function openEditCounts(sid){S.editCounts=sid;render();}
+function closeEditCounts(){S.editCounts=null;render();}
+function saveEditCounts(sid){
+  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
+  const num=(id)=>{const el=document.getElementById(id);const v=el?Number(el.value):NaN;return Number.isFinite(v)?v:NaN;};
+  const total=num('ec-total'),gi=num('ec-gi'),nogi=num('ec-nogi'),grade=num('ec-grade'),giGrade=num('ec-gi-grade');
+  const vals=[total,gi,nogi,grade,giGrade];
+  if(vals.some(n=>!Number.isInteger(n)||n<0)){
+    const err=document.getElementById('ec-err');const txt=document.getElementById('ec-err-txt');
+    if(err&&txt){txt.textContent='All counters must be whole numbers ≥ 0.';err.style.display='flex';}
+    return;
+  }
+  s.total=total;s.giTotal=gi;s.grade=grade;s.giGrade=giGrade;
+  S.editCounts=null;render();
+  showSaveToast2('Class counts updated for '+s.name);
+  withSb(async(cli)=>{const r=await cli.rpc('update_class_counts',{p_legacy_id:s.id,p_total:total,p_gi:gi,p_nogi:nogi,p_grade:grade,p_gi_grade:giGrade});if(r&&r.error)showSaveToast2(friendlyMutationError(r.error),'error');return r;},'edit class counts');
+}
+function rEditCounts(){
+  if(!S.editCounts)return '';
+  const s=STUDENTS.find(x=>x.id===S.editCounts);if(!s)return '';
+  const safe=n=>(typeof n==='number'?n:0);
+  const nogi=Math.max(safe(s.total)-safe(s.giTotal),0);
+  return `<div class="cov" onclick="closeEditCounts()" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:360px;margin:0 auto;padding:22px">
+<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">Edit class counts</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:16px">${s.name}</div>
+<div class="ef" style="margin-bottom:0">
+<div class="erow"><div class="elbl">Total classes</div><input class="einput" id="ec-total" type="number" min="0" step="1" value="${safe(s.total)}"/></div>
+<div class="erow"><div class="elbl">Gi classes</div><input class="einput" id="ec-gi" type="number" min="0" step="1" value="${safe(s.giTotal)}"/></div>
+<div class="erow"><div class="elbl">No-Gi classes</div><input class="einput" id="ec-nogi" type="number" min="0" step="1" value="${nogi}"/></div>
+<div class="erow"><div class="elbl">Stripe progress (all)</div><input class="einput" id="ec-grade" type="number" min="0" step="1" value="${safe(s.grade)}"/></div>
+<div class="erow"><div class="elbl">Stripe progress (Gi)</div><input class="einput" id="ec-gi-grade" type="number" min="0" step="1" value="${safe(s.giGrade)}"/></div>
+</div>
+<div id="ec-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="ec-err-txt"></span></div>
+<div style="display:flex;gap:10px;margin-top:18px">
+<button class="bout" style="flex:1" onclick="closeEditCounts()">Cancel</button>
+<button class="bmain" style="flex:1" onclick="saveEditCounts('${s.id}')">Save</button>
+</div>
+</div></div>`;
+}
 function addJny(sid){S.editJny={sid,idx:null,isNew:true};render();}
 function getJnyTarget(sid){
   if(sid.startsWith('staff:')){const id=sid.replace('staff:','');const s=STAFF.find(x=>x.id===id);return s;}
