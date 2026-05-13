@@ -164,6 +164,7 @@ html,body{height:100%;background:var(--bg)}body{display:flex;justify-content:cen
 .nav{bottom:36px}
 .appfoot{position:fixed;bottom:0;left:0;right:0;height:34px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:18px;z-index:9;padding-bottom:env(safe-area-inset-bottom,0px)}
 .nav{bottom:34px}
+@media (max-width:767px){.tech-drag-handle{display:none!important}}
 .bout{width:100%;background:#fff;color:#1A5DAD;border:1.5px solid #1A5DAD;border-radius:12px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;cursor:pointer;margin-bottom:8px}
 .bout:active{background:var(--blue-tint)}
 .bmain[disabled],.bout[disabled]{opacity:.55;cursor:not-allowed}
@@ -999,9 +1000,9 @@ function rSchedule(){
   function techRow(tech,idx,cat){
     const tv=typeof tech==='object'?tech:{t:tech,video:''};
     const hasVideo=!!(tv.video);
-    const inlineLink=hasVideo?inlineLinkHtml(tv.video,'Open '+(tv.t||'video')):'';
-    const editBtn=isA?'<button onclick="editTechVideo2('+w.week+',\''+cat+'\','+idx+')" title="Edit video link" style="background:none;border:none;cursor:pointer;padding:3px;flex-shrink:0;opacity:'+(hasVideo?'1':'0.4')+';color:'+(hasVideo?'#1A5DAD':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
-    return '<div style="margin-bottom:7px"><div style="background:var(--bg);border-radius:7px;padding:9px 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border)'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'"><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35">'+tv.t+inlineLink+'</div>'+editBtn+'</div></div>';
+    const linkSibling=hasVideo?'<a href="'+escAttr(tv.video)+'" target="_blank" rel="noopener" title="'+escAttr('Open '+(tv.t||'video'))+'" style="display:inline-flex;align-items:center;color:#1A5DAD;text-decoration:none;flex-shrink:0">'+LINK_ICON+'</a>':'';
+    const editBtn=isA?'<button onclick="editTechVideo2('+w.week+',\''+cat+'\','+idx+')" title="Edit video link" aria-label="Edit video link" style="background:none;border:none;cursor:pointer;padding:0;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;opacity:'+(hasVideo?'1':'0.4')+';color:'+(hasVideo?'#1A5DAD':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
+    return '<div style="margin-bottom:7px"><div style="background:var(--bg);border-radius:7px;padding:0 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border);min-height:38px;max-width:100%;overflow:hidden'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'"><div title="'+escAttr(tv.t||'')+'" style="flex:1;min-width:0;font-size:12px;color:var(--text);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(tv.t||'')+'</div>'+linkSibling+editBtn+'</div></div>';
   }
 
   let bodyHtml='';
@@ -1117,21 +1118,22 @@ function rWEditor(w){
     return arr.map((t,i)=>{
       const tv=typeof t==='object'?t:{t:t,video:''};
       const isLast=i===arr.length-1;
-      const handle='<span draggable="true" ondragstart="_dragTechStart(event,'+w.week+',\''+cat+'\','+i+')" ondragend="_dragTechEnd()" title="Drag to reorder" style="cursor:grab;color:var(--text3);flex-shrink:0;display:inline-flex;align-items:center;padding:2px 2px;user-select:none;touch-action:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>';
-      const upBtn=i===0?'':'<button onclick="bumpTech('+w.week+',\''+cat+'\','+i+',-1)" title="Move up" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:3px 4px;flex-shrink:0;display:inline-flex;align-items:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg></button>';
-      const downBtn=isLast?'':'<button onclick="bumpTech('+w.week+',\''+cat+'\','+i+',1)" title="Move down" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:3px 4px;flex-shrink:0;display:inline-flex;align-items:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>';
-      return '<div ondragover="_dragTechOver(event,'+w.week+',\''+cat+'\')" ondrop="_dragTechDrop(event,'+w.week+',\''+cat+'\','+i+')" style="background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:6px;border:1px solid var(--border)">'
-        +'<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">'
+      const handle='<span class="tech-drag-handle" draggable="true" ondragstart="_dragTechStart(event,'+w.week+',\''+cat+'\','+i+')" ondragend="_dragTechEnd()" title="Drag to reorder" style="cursor:grab;color:var(--text3);flex-shrink:0;display:inline-flex;align-items:center;width:20px;height:24px;justify-content:center;user-select:none;touch-action:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>';
+      const arrowBtnStyle='background:none;border:none;color:var(--text3);cursor:pointer;width:24px;height:24px;padding:0;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border-radius:4px';
+      const upBtn=i===0?'<span style="width:24px;height:24px;flex-shrink:0"></span>':'<button onclick="bumpTech('+w.week+',\''+cat+'\','+i+',-1)" title="Move up" aria-label="Move up" style="'+arrowBtnStyle+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg></button>';
+      const downBtn=isLast?'<span style="width:24px;height:24px;flex-shrink:0"></span>':'<button onclick="bumpTech('+w.week+',\''+cat+'\','+i+',1)" title="Move down" aria-label="Move down" style="'+arrowBtnStyle+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>';
+      return '<div ondragover="_dragTechOver(event,'+w.week+',\''+cat+'\')" ondrop="_dragTechDrop(event,'+w.week+',\''+cat+'\','+i+')" style="background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid var(--border);max-width:100%;overflow:hidden">'
+        +'<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;min-width:0">'
         +handle
-        +'<input value="'+(tv.t||'').replace(/"/g,'&quot;')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'t\',this.value)" placeholder="Technique name" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:12px;color:var(--text);min-width:0"/>'
+        +'<input value="'+(tv.t||'').replace(/"/g,'&quot;')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'t\',this.value)" placeholder="Technique name" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:12px;color:var(--text);min-width:0;height:24px"/>'
         +upBtn+downBtn
-        +'<button onclick="removeTech('+w.week+',\''+cat+'\','+i+')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0">×</button>'
+        +'<button onclick="removeTech('+w.week+',\''+cat+'\','+i+')" title="Remove" aria-label="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;width:24px;height:24px;padding:0;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center">×</button>'
         +'</div>'
-        +'<input value="'+(tv.video||'').replace(/"/g,'&quot;')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'video\',this.value)" placeholder="Video URL (YouTube or Instagram)..." style="width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:11px;color:var(--text3)"/>'
+        +'<input value="'+(tv.video||'').replace(/"/g,'&quot;')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'video\',this.value)" placeholder="Video URL (YouTube or Instagram)..." style="width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:11px;color:var(--text3);min-width:0"/>'
         +'</div>';
     }).join('');
   }
-  return '<div class="cov" style="align-items:flex-end"><div class="csheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">'
+  return '<div class="cov" style="align-items:flex-end;justify-content:center;overflow-x:hidden"><div class="csheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto;overflow-x:hidden;max-width:min(480px,100%);margin:0 auto">'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;margin-bottom:14px">Edit Week '+w.week+'</div>'
     +'<div class="slbl">Theme</div><div class="ef" style="margin-bottom:12px"><div class="erow"><input id="we-theme" value="'+w.theme+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/></div></div>'
     +'<div class="slbl">Programmes</div><div style="display:flex;flex-wrap:wrap;margin-bottom:14px">'+progToggles+'</div>'
