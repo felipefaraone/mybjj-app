@@ -185,6 +185,13 @@ const BK={white:{label:'White',bg:'#e5e7eb',fg:'#111827'},grey:{label:'Grey',bg:
 const GGA={white:40,blue:60,purple:70,brown:80,black:120};
 const GGK={white:30,grey:30,yellow:30,orange:30,green:30};
 const MAXD={white:4,blue:4,purple:4,brown:4,black:6,grey:4,yellow:4,orange:4,green:4};
+const PROGRESSION_THRESHOLDS={
+  white: {classes_per_stripe:25, min_gi_ratio:0.7},
+  blue:  {classes_per_stripe:40, min_gi_ratio:0.7},
+  purple:{classes_per_stripe:60, min_gi_ratio:0.7},
+  brown: {classes_per_stripe:80, min_gi_ratio:0.7},
+  black: {classes_per_stripe:null, min_gi_ratio:null}
+};
 const CT=[{id:'nogi',lbl:'No-Gi',tc:'tn',gi:false},{id:'alev',lbl:'All Levels',tc:'ta',gi:true},{id:'beg',lbl:'Beginner',tc:'tb',gi:true},{id:'adv',lbl:'Advanced',tc:'tv',gi:true},{id:'omat',lbl:'Open Mat',tc:'to',gi:false},{id:'mma',lbl:'MMA',tc:'tm',gi:false},{id:'jun',lbl:'Junior',tc:'tj',gi:true},{id:'jnogi',lbl:'Junior No-Gi',tc:'tn',gi:false},{id:'jmma',lbl:'Junior MMA',tc:'tm',gi:false},{id:'mini',lbl:'Mini Champs',tc:'ti',gi:false}];
 const AUD=['Adults','Junior','All'];
 const DL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -384,7 +391,7 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false};
 S.ci['2026-03-31_06:00']=true;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -394,6 +401,30 @@ function bdays(){const a=[];for(let i=0;i<7;i++){const d=new Date(TODAY);d.setDa
 function fd(d){return `${DS[d.getDay()]}, ${d.getDate()} ${MS[d.getMonth()]}`;}
 function gatt(t){const p={'06:00':['jam','eri'],'07:30':['lia'],'08:30':['jam'],'09:30':['jam','eri'],'10:00':['lia'],'10:30':['lia'],'12:00':['jam'],'16:00':['lia'],'17:00':['lia'],'18:00':['jam'],'18:30':['eri']};return p[t]||['jam'];}
 function nxlbl(belt,deg){return deg>=(MAXD[belt]||4)?'Next promotion':'Next degree';}
+
+function studentEligibility(s){
+  if(!s) return {eligible:false,reason:'',percent:0};
+  if(s.belt==='black') return {eligible:false,reason:'Black belt — by time only',percent:null};
+  if(s.hasGi===false)  return {eligible:false,reason:'No-Gi only — Gi training required',percent:0};
+  const t=PROGRESSION_THRESHOLDS[s.belt];
+  if(!t||!t.classes_per_stripe){
+    const gg=s.prog==='kids'?GGK:GGA;
+    const goal=gg[s.belt]||40;
+    const percent=Math.min(100,Math.floor(((s.grade||0)/goal)*100));
+    return {eligible:(s.grade||0)>=goal,reason:percent>=100?'Eligible for next stripe':'Tracking',percent};
+  }
+  const required=t.classes_per_stripe;
+  const minGi=required*t.min_gi_ratio;
+  const grade=s.grade||0;
+  const giGrade=s.giGrade||0;
+  const percent=Math.min(100,Math.floor((grade/required)*100));
+  const eligible=grade>=required&&giGrade>=minGi;
+  let reason;
+  if(eligible) reason='Eligible for next stripe';
+  else if(grade<required) reason='Needs '+(required-grade)+' more class'+(required-grade===1?'':'es');
+  else reason='Needs '+Math.ceil(minGi-giGrade)+' more Gi class'+(Math.ceil(minGi-giGrade)===1?'':'es');
+  return {eligible,reason,percent};
+}
 function av(ini,bg,fg,sz,role){
   sz=sz||32;const fs=Math.round(sz*.34);
   let ring='';
@@ -704,10 +735,13 @@ function doPromote(id, isBeltPromotion){
 }
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
-  const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;const gg=s.prog==='kids'?GGK:GGA;const goal=gg[s.belt]||40;const pct=Math.round(s.grade/goal*100);
+  const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+  const gg=s.prog==='kids'?GGK:GGA;const goal=gg[s.belt]||40;
+  const elig=studentEligibility(s);
+  const pct=elig.percent==null?null:elig.percent;
   const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
   const lbl=nxlbl(s.belt,s.deg,s.prog);
-  const isReady=pct>=100;
+  const isReady=elig.eligible;
   const giTag=(s.hasGi!==false&&s.giTotal>0)
     ?'<span style="display:inline-flex;align-items:center;gap:3px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;color:var(--green-text);letter-spacing:.5px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>GI</span>'
     :'<span style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">NO-GI ONLY</span>';
@@ -732,12 +766,12 @@ function rStuProf(){
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi classes</div>
           </div>
           <div style="flex:1;text-align:center">
-            <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'#1A5DAD':'var(--text)'}">${pct}%</div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div>
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div>
           </div>
         </div>
-        ${pbBelt(s.grade,goal,s.belt,s.prog)}
-        <div style="font-size:11px;color:var(--text3);margin-top:5px">${s.grade}/${goal} Gi · ${lbl.toLowerCase()}${isReady?' — <span style="color:#1A5DAD;font-weight:700">READY FOR EVALUATION</span>':''}</div>
+        ${pct==null?'':pbBelt(elig.percent,100,s.belt,s.prog)}
+        ${elig.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${elig.reason}</span></div>`:''}
       </div>
     </div>
     ${canEditClassCounts()?`<button class="bout" style="margin-top:12px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
@@ -1134,25 +1168,21 @@ function rARoster(){
   const curU=UNITS.find(u=>u.name===S.unit);const rfUnit=curU?curU.id:'all';
   const rfBelt=S.rfBelt||'all';
   const rfNear=!!S.rfNear;
+  const rfEligible=!!S.rfEligible&&canEditClassCounts();
   const allAdults=STUDENTS.filter(s=>s.prog==='adult');
   const allKids=STUDENTS.filter(s=>s.prog==='kids');
   let list=S.rseg==='adult'?allAdults:allKids;
   if(rfUnit!=='all')list=list.filter(s=>s.unit===rfUnit);
   if(rfBelt!=='all')list=list.filter(s=>s.belt===rfBelt);
-  if(rfNear){
-    list=list.filter(s=>{
-      const gg=s.prog==='kids'?GGK:GGA;
-      const goal=gg[s.belt]||40;
-      return Math.round(s.grade/goal*100)>=80;
-    });
-  }
+  if(rfNear)list=list.filter(s=>(studentEligibility(s).percent||0)>=80);
+  if(rfEligible)list=list.filter(s=>studentEligibility(s).eligible);
   if(q)list=list.filter(s=>s.name.toLowerCase().includes(q));
   list=[...list].sort((a,b)=>{
-    const ggA=a.prog==='kids'?GGK:GGA;const ggB=b.prog==='kids'?GGK:GGA;
-    const pA=Math.round(a.grade/(ggA[a.belt]||40)*100);
-    const pB=Math.round(b.grade/(ggB[b.belt]||40)*100);
-    const rankA=pA>=100?0:pA>=80?1:2;
-    const rankB=pB>=100?0:pB>=80?1:2;
+    const ea=studentEligibility(a),eb=studentEligibility(b);
+    const pA=ea.percent==null?-1:ea.percent;
+    const pB=eb.percent==null?-1:eb.percent;
+    const rankA=ea.eligible?0:pA>=80?1:2;
+    const rankB=eb.eligible?0:pB>=80?1:2;
     if(rankA!==rankB)return rankA-rankB;
     return a.name.localeCompare(b.name);
   });
@@ -1169,7 +1199,7 @@ function rARoster(){
 
   const clearBtn=S.rq?'<button onclick="setRQ(String())" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1">×</button>':'';
 
-  const hasFilter=rfBelt!=='all'||rfNear||!!q;
+  const hasFilter=rfBelt!=='all'||rfNear||rfEligible||!!q;
 
   const chipBase='border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
   const filterHtml=
@@ -1183,6 +1213,7 @@ function rARoster(){
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'
     +'<select onchange="setRF2(this)" data-key="rfBelt" style="'+chipBase+';background:'+(rfBelt!=='all'?'#1A5DAD15':'transparent')+';border-color:'+(rfBelt!=='all'?'#1A5DAD':'var(--border)')+';color:'+(rfBelt!=='all'?'#1A5DAD':'var(--text3)')+';outline:none;appearance:none;-webkit-appearance:none;padding-right:20px">'+beltOptHtml+'</select>'
     +'<button onclick="toggleRFNear()" style="'+chipBase+';background:'+(rfNear?'#1A5DAD15':'transparent')+';border-color:'+(rfNear?'#1A5DAD':'var(--border)')+';color:'+(rfNear?'#1A5DAD':'var(--text3)')+'">Near grad'+(rfNear?' ✕':'')+'</button>'
+    +(canEditClassCounts()?'<button onclick="toggleRFEligible()" style="'+chipBase+';background:'+(rfEligible?'var(--green-bg)':'transparent')+';border-color:'+(rfEligible?'var(--green-text)':'var(--border)')+';color:'+(rfEligible?'var(--green-text)':'var(--text3)')+'">Eligible only'+(rfEligible?' ✕':'')+'</button>':'')
     +'</div>';
 
   const rows=!hasFilter?'':list.map(s=>{
@@ -1190,22 +1221,24 @@ function rARoster(){
     const gg=s.prog==='kids'?GGK:GGA;
     const b=bmap[s.belt]||BA.white;
     const goal=gg[s.belt]||40;
-    const pct=Math.round(s.grade/goal*100);
+    const elig=studentEligibility(s);
+    const pct=elig.percent==null?0:elig.percent;
     const near=pct>=80;
+    const isElig=elig.eligible;
     const lbl=nxlbl(s.belt,s.deg,s.prog);
     const isProm=lbl==='Next promotion';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     return '<div class="card" style="cursor:pointer;position:relative" onclick="viewStu(this.dataset.sid)" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
       +'<div style="display:flex;align-items:center;gap:10px">'+av(s.initials,b.bg,b.fg,34)
-      +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text)">'+s.name+'</div>'
+      +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+(isElig?'<span title="Eligible for promotion" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-text)"></span>':'')+s.name+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div></div></div>'
       +bb(s.belt,s.deg||0,s.prog)+'</div>'
       +'<div style="font-size:12px;color:var(--text2);margin-bottom:6px">'
       +'<span style="color:'+(near?(isProm?'#111827':'#1A5DAD'):'var(--text2)')+';font-weight:'+(near?600:400)+'">'+s.grade+'/'+goal+' Gi · '+lbl.toLowerCase()+'</span>'
       +' &nbsp;·&nbsp; <span style="color:var(--text3)">'+s.total+' total</span></div>'
-      +pbBelt(s.grade,goal,s.belt,s.prog)
-      +((pct>=100)?'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:#1A5DAD;margin-top:6px">READY FOR EVALUATION</div>':'')
+      +pbBelt(pct,100,s.belt,s.prog)
+      +(isElig?'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);margin-top:6px;letter-spacing:.5px">ELIGIBLE FOR NEXT STRIPE</div>':'')
       +(canEditClassCounts()?'<button onclick="event.stopPropagation();openEditCounts(\''+s.id+'\')" title="Edit class counts" style="position:absolute;top:10px;right:10px;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;cursor:pointer;color:var(--text2);display:flex;align-items:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')
       +'</div>';
   }).join('');
@@ -1610,16 +1643,26 @@ function deleteFeedback(sid,idx){
 }
 function openEditCounts(sid){S.editCounts=sid;render();}
 function closeEditCounts(){S.editCounts=null;render();}
+function ecRecalc(){
+  const s=STUDENTS.find(x=>x.id===S.editCounts);if(!s)return;
+  const giEl=document.getElementById('ec-gi'),nogiEl=document.getElementById('ec-nogi'),totEl=document.getElementById('ec-total');
+  const gi=s.hasGi===false?0:(giEl?Math.max(0,Math.floor(Number(giEl.value)||0)):0);
+  const nogi=nogiEl?Math.max(0,Math.floor(Number(nogiEl.value)||0)):0;
+  if(totEl)totEl.textContent=(gi+nogi)+' class'+(gi+nogi===1?'':'es');
+}
 function saveEditCounts(sid){
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
-  const num=(id)=>{const el=document.getElementById(id);const v=el?Number(el.value):NaN;return Number.isFinite(v)?v:NaN;};
-  const total=num('ec-total'),gi=num('ec-gi'),nogi=num('ec-nogi'),grade=num('ec-grade'),giGrade=num('ec-gi-grade');
-  const vals=[total,gi,nogi,grade,giGrade];
-  if(vals.some(n=>!Number.isInteger(n)||n<0)){
-    const err=document.getElementById('ec-err');const txt=document.getElementById('ec-err-txt');
-    if(err&&txt){txt.textContent='All counters must be whole numbers ≥ 0.';err.style.display='flex';}
-    return;
-  }
+  const num=(id)=>{const el=document.getElementById(id);const v=el?Number(el.value):NaN;return Number.isFinite(v)?Math.floor(v):NaN;};
+  const noGiOnly=s.hasGi===false;
+  const gi=noGiOnly?0:num('ec-gi');
+  const nogi=num('ec-nogi');
+  const grade=num('ec-grade');
+  const err=document.getElementById('ec-err');const errTxt=document.getElementById('ec-err-txt');
+  const showErr=(msg)=>{if(err&&errTxt){errTxt.textContent=msg;err.style.display='flex';}};
+  if([gi,nogi,grade].some(n=>!Number.isInteger(n)||n<0)){showErr('All counters must be whole numbers ≥ 0.');return;}
+  const total=gi+nogi;
+  if(grade>total){showErr('Classes since last promotion can’t exceed Gi + No-Gi.');return;}
+  const giGrade=Math.min(grade,gi);
   s.total=total;s.giTotal=gi;s.grade=grade;s.giGrade=giGrade;
   S.editCounts=null;render();
   showSaveToast2('Class counts updated for '+s.name);
@@ -1629,16 +1672,25 @@ function rEditCounts(){
   if(!S.editCounts)return '';
   const s=STUDENTS.find(x=>x.id===S.editCounts);if(!s)return '';
   const safe=n=>(typeof n==='number'?n:0);
-  const nogi=Math.max(safe(s.total)-safe(s.giTotal),0);
+  const noGiOnly=s.hasGi===false;
+  const initGi=noGiOnly?0:safe(s.giTotal);
+  const initNogi=Math.max(safe(s.total)-safe(s.giTotal),0);
+  const initTotal=initGi+initNogi;
+  const giField=noGiOnly?
+    `<div class="erow"><div class="elbl">Gi classes</div><div class="einput" style="display:flex;align-items:center;color:var(--text3);background:var(--input-bg)">0 <span style="font-size:11px;margin-left:8px">(No-Gi only)</span></div></div>`
+    :`<div class="erow"><div class="elbl">Gi classes</div><input class="einput" id="ec-gi" type="number" min="0" step="1" value="${initGi}" oninput="ecRecalc()"/></div>`;
+  const noGiNotice=noGiOnly?
+    `<div class="inv" style="margin-bottom:12px;margin-top:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>This student trains No-Gi only. They will not be eligible for promotions until they start Gi training.</span></div>`
+    :'';
   return `<div class="cov" onclick="closeEditCounts()" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:360px;margin:0 auto;padding:22px">
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">Edit class counts</div>
 <div style="font-size:12px;color:var(--text2);margin-bottom:16px">${s.name}</div>
+${noGiNotice}
 <div class="ef" style="margin-bottom:0">
-<div class="erow"><div class="elbl">Total classes</div><input class="einput" id="ec-total" type="number" min="0" step="1" value="${safe(s.total)}"/></div>
-<div class="erow"><div class="elbl">Gi classes</div><input class="einput" id="ec-gi" type="number" min="0" step="1" value="${safe(s.giTotal)}"/></div>
-<div class="erow"><div class="elbl">No-Gi classes</div><input class="einput" id="ec-nogi" type="number" min="0" step="1" value="${nogi}"/></div>
-<div class="erow"><div class="elbl">Stripe progress (all)</div><input class="einput" id="ec-grade" type="number" min="0" step="1" value="${safe(s.grade)}"/></div>
-<div class="erow"><div class="elbl">Stripe progress (Gi)</div><input class="einput" id="ec-gi-grade" type="number" min="0" step="1" value="${safe(s.giGrade)}"/></div>
+${giField}
+<div class="erow"><div class="elbl">No-Gi classes</div><input class="einput" id="ec-nogi" type="number" min="0" step="1" value="${initNogi}" oninput="ecRecalc()"/></div>
+<div class="erow"><div class="elbl">Since last promotion</div><input class="einput" id="ec-grade" type="number" min="0" step="1" value="${safe(s.grade)}"/></div>
+<div class="erow"><div class="elbl">Total</div><div class="einput" style="display:flex;align-items:center;color:var(--text2);background:var(--input-bg)" id="ec-total">${initTotal} class${initTotal===1?'':'es'}</div></div>
 </div>
 <div id="ec-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="ec-err-txt"></span></div>
 <div style="display:flex;gap:10px;margin-top:18px">
@@ -1725,6 +1777,7 @@ function saveW(week){const w=SCHED.find(x=>x.week===week);if(!w)return;w.theme=d
 function setRQ(v){S.rq=v;render();}
 function setRF2(el){S[el.dataset.key]=el.value;render();}
 function toggleRFNear(){S.rfNear=!S.rfNear;render();}
+function toggleRFEligible(){S.rfEligible=!S.rfEligible;render();}
 function setRF(k,v){S[k]=v;render();}
 
 function fmt(n,role){if(role==='admin'||role==='owner')return n;var p=n.trim().split(' ');if(p.length<2)return p[0];return p[0]+' '+p[p.length-1][0]+'.';}
