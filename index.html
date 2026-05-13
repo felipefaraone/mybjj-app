@@ -748,7 +748,7 @@ function rStuProf(){
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${s.name}</div></div><div class="sbody">
     <div class="card" style="padding:16px">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-        ${avStu(s,52)}
+        ${canUploadPhotoFor(s)?`<div onclick="triggerPhotoUpload('${s.id}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">${avStu(s,52)}<div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div>`:avStu(s,52)}
         <div style="flex:1;min-width:0">
           <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">${s.name}</div>
           <div style="margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${bb(s.belt,s.deg||0,s.prog)}${giTag}</div>
@@ -774,8 +774,7 @@ function rStuProf(){
         ${elig.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${elig.reason}</span></div>`:''}
       </div>
     </div>
-    ${(isOwner()||isProfessor()||isCoach())?`<button class="bout" style="margin-top:12px;padding:10px" onclick="triggerPhotoUpload('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${s.photoUrl?'Replace photo':'Upload photo'}</button>`:''}
-    ${canEditClassCounts()?`<button class="bout" style="margin-top:8px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
+    ${canEditClassCounts()?`<button class="bout" style="margin-top:12px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
     ${rPromoPanel(s)}
     <div class="slbl">Journey</div>
     <div class="card" style="padding:12px 16px">${rTL(s.journey)}</div>
@@ -1454,7 +1453,9 @@ function avStu(s,size,roleIcon){
 }
 
 let _crop={img:null,scale:1,x:0,y:0,panning:false,lastX:0,lastY:0,sid:null};
+let _pinch=null;
 const _CROP_SIZE=320;
+function canUploadPhotoFor(s){return isOwner()||isProfessor()||isCoach();}
 
 function triggerPhotoUpload(sid){
   let inp=document.getElementById('photo-input');
@@ -1492,30 +1493,43 @@ function _cropDraw(){
   ctx.drawImage(_crop.img,_crop.x,_crop.y,_crop.img.naturalWidth*_crop.scale,_crop.img.naturalHeight*_crop.scale);
 }
 function _cropPoint(ev){if(ev.touches&&ev.touches[0])return{x:ev.touches[0].clientX,y:ev.touches[0].clientY};return{x:ev.clientX,y:ev.clientY};}
-function _cropPanStart(ev){_crop.panning=true;const p=_cropPoint(ev);_crop.lastX=p.x;_crop.lastY=p.y;ev.preventDefault();}
-function _cropPanMove(ev){if(!_crop.panning)return;const p=_cropPoint(ev);_crop.x+=p.x-_crop.lastX;_crop.y+=p.y-_crop.lastY;_crop.lastX=p.x;_crop.lastY=p.y;_cropDraw();ev.preventDefault();}
-function _cropPanEnd(){_crop.panning=false;}
-function _cropZoom(ev){
-  ev.preventDefault();
-  const delta=ev.deltaY>0?0.9:1.1;
-  const newScale=Math.max(0.3,Math.min(5,_crop.scale*delta));
+function _pinchInfo(ev){const t1=ev.touches[0],t2=ev.touches[1];const dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;return{dist:Math.sqrt(dx*dx+dy*dy)};}
+function _cropApplyZoom(newScale){
+  newScale=Math.max(0.3,Math.min(5,newScale));
+  if(newScale===_crop.scale)return;
   const cx=_CROP_SIZE/2,cy=_CROP_SIZE/2;
   _crop.x=cx-(cx-_crop.x)*(newScale/_crop.scale);
   _crop.y=cy-(cy-_crop.y)*(newScale/_crop.scale);
-  _crop.scale=newScale;_cropDraw();
+  _crop.scale=newScale;
 }
+function _cropPanStart(ev){
+  if(ev.touches&&ev.touches.length===2){_pinch=_pinchInfo(ev);_crop.panning=false;ev.preventDefault();return;}
+  _crop.panning=true;const p=_cropPoint(ev);_crop.lastX=p.x;_crop.lastY=p.y;ev.preventDefault();
+}
+function _cropPanMove(ev){
+  if(ev.touches&&ev.touches.length===2&&_pinch){
+    const cur=_pinchInfo(ev);
+    if(_pinch.dist>0)_cropApplyZoom(_crop.scale*(cur.dist/_pinch.dist));
+    _pinch=cur;_cropDraw();ev.preventDefault();return;
+  }
+  if(!_crop.panning)return;
+  const p=_cropPoint(ev);_crop.x+=p.x-_crop.lastX;_crop.y+=p.y-_crop.lastY;_crop.lastX=p.x;_crop.lastY=p.y;_cropDraw();ev.preventDefault();
+}
+function _cropPanEnd(){_crop.panning=false;_pinch=null;}
+function _cropZoom(ev){ev.preventDefault();_cropApplyZoom(_crop.scale*(ev.deltaY>0?0.9:1.1));_cropDraw();}
 function closeCrop(){S.cropOpen=false;_crop.img=null;_crop.sid=null;render();}
 function rCropModal(){
   if(!S.cropOpen)return '';
-  return `<div class="cov" onclick="closeCrop()" style="align-items:center;z-index:200"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 auto;padding:22px">
-<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:4px">Crop photo</div>
-<div style="font-size:12px;color:var(--text2);margin-bottom:14px">Drag to position. Scroll or pinch to zoom.</div>
+  return `<div class="cov" onclick="closeCrop()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<button onclick="closeCrop()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:4px;padding-right:40px">Crop photo</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:14px;padding-right:40px">Drag to position. Pinch or scroll to zoom.</div>
 <div style="display:flex;justify-content:center;margin-bottom:14px">
-<canvas id="crop-canvas" width="${_CROP_SIZE}" height="${_CROP_SIZE}" style="border-radius:50%;background:#000;cursor:move;touch-action:none;max-width:100%" onmousedown="_cropPanStart(event)" onmousemove="_cropPanMove(event)" onmouseup="_cropPanEnd()" onmouseleave="_cropPanEnd()" ontouchstart="_cropPanStart(event)" ontouchmove="_cropPanMove(event)" ontouchend="_cropPanEnd()" onwheel="_cropZoom(event)"></canvas>
+<canvas id="crop-canvas" width="${_CROP_SIZE}" height="${_CROP_SIZE}" style="border-radius:50%;background:#000;cursor:move;touch-action:none;width:min(${_CROP_SIZE}px,calc(100vw - 80px));height:min(${_CROP_SIZE}px,calc(100vw - 80px));aspect-ratio:1/1" onmousedown="_cropPanStart(event)" onmousemove="_cropPanMove(event)" onmouseup="_cropPanEnd()" onmouseleave="_cropPanEnd()" ontouchstart="_cropPanStart(event)" ontouchmove="_cropPanMove(event)" ontouchend="_cropPanEnd()" ontouchcancel="_cropPanEnd()" onwheel="_cropZoom(event)"></canvas>
 </div>
 <div style="display:flex;gap:10px">
-<button class="bout" style="flex:1" onclick="closeCrop()">Cancel</button>
-<button class="bmain" style="flex:1" onclick="uploadCroppedPhoto()">Upload</button>
+<button class="bout" style="flex:1;min-height:44px" onclick="closeCrop()">Cancel</button>
+<button class="bmain" style="flex:1;min-height:44px" onclick="uploadCroppedPhoto()">Upload</button>
 </div>
 </div></div>`;
 }
