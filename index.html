@@ -1315,6 +1315,17 @@ function sendInvite(){
   const inviteRole=isKids?'parent':'student';
   const unitDbId=meUnitDbId();
   withSb(c=>c.from('whitelist').upsert({email:inviteEmail.toLowerCase(),role:inviteRole,unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'}),'whitelist invite');
+  if(inviteRole==='student'){
+    const fullName=(fname+' '+lname).trim().toLowerCase();
+    const curU=UNITS.find(u=>u.name===S.unit);
+    const curUnit=curU?curU.id:null;
+    const matches=STUDENTS.filter(s=>s.unit===curUnit&&(s.name||'').trim().toLowerCase()===fullName);
+    if(matches.length===1){
+      const m=matches[0];
+      m.email=email.toLowerCase();
+      withSb(c=>c.from('students').update({email:email.toLowerCase()}).eq('legacy_id',m.id),'link student email');
+    }
+  }
   showSaveToast2('Invite sent to '+fname+' '+lname);closeSub();
 }
 function showSaveToast2(msg,type){const t=document.createElement('div');const isErr=type==='error';t.innerHTML=(isErr?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>')+msg;t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(isErr?'#DC2626':'#1A5DAD')+';color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s;white-space:nowrap';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},2200);}
@@ -1823,8 +1834,8 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active').order('name'),
-      c.from('students').select('id,legacy_id,full_name,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url'),
-      c.from('staff').select('id,legacy_id,full_name,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active'),
+      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url,user_id'),
+      c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
@@ -1838,11 +1849,11 @@ async function hydrateData(){
       touched=true;
     }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
     if(st.data&&st.data.length){
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
-      STAFF=sf.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:r.full_name,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
+      STAFF=sf.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:r.full_name,email:r.email||null,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
     if(pm.data&&pm.data.length){
