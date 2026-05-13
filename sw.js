@@ -1,5 +1,5 @@
-const CACHE = 'mybjj-v1';
-const STATIC = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
+const CACHE = 'mybjj-v2';
+const STATIC = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png', '/icon-192-maskable.png', '/icon-512-maskable.png'];
 
 self.addEventListener('install', e => {
   self.skipWaiting();
