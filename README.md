@@ -31,7 +31,7 @@ I mapped the full product from scratch: user roles, data model, UX flows, and ed
 - Manage the full student roster with filters (belt, unit, near graduation)
 - Add new, returning, or transfer students
 - Create, edit, and delete classes in the weekly schedule
-- Manage class details: duration, instructor, audience level (adults/junior/all)
+- Manage class details: duration, instructor, audience level (adults/kids/all)
 - See which students are attending each session
 
 ### For the Head Professor (Owner)
