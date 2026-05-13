@@ -1526,14 +1526,10 @@ async function saveEditStaff(sid){
   const s=STAFF.find(x=>x.id===sid);if(!s)return;
   const fname=(document.getElementById('es-fullname')?.value||'').trim();
   const initials=(document.getElementById('es-initials')?.value||'').trim();
-  const journeyTxt=document.getElementById('es-journey')?.value||'[]';
   const err=document.getElementById('es-err'),errTxt=document.getElementById('es-err-txt');
   const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}};
   if(!fname)return showErr('Full name is required.');
-  let journey;
-  try{journey=JSON.parse(journeyTxt);}catch(_){return showErr('Invalid JSON format in Journey field.');}
-  if(!Array.isArray(journey))return showErr('Journey must be a JSON array.');
-  const payload={full_name:fname,initials,journey};
+  const payload={full_name:fname,initials};
   const ownerEdit=isOwner();
   let willChangeRole=false;
   if(ownerEdit){
@@ -1556,13 +1552,13 @@ async function saveEditStaff(sid){
       }
     }
     // Optimistic local
-    s.name=fname;s.initials=initials;s.journey=journey;
+    s.name=fname;s.initials=initials;
     if(belt)s.belt=belt;
     if(Number.isInteger(degree))s.deg=degree;
     if(unitLegacy)s.unit=unitLegacy;
     if(willChangeRole){s.role=payload.role;s.roleTitle=payload.role_title;}
   }else{
-    s.name=fname;s.initials=initials;s.journey=journey;
+    s.name=fname;s.initials=initials;
   }
   S.editStaff=null;render();
   const cli=initSupabase();
@@ -1625,7 +1621,6 @@ function rEditStaffModal(){
   const degOpts=[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'" '+(s.deg===i?'selected':'')+'>'+i+'</option>').join('');
   const unitOpts=activeUnits.map(u=>'<option value="'+u.id+'" '+(s.unit===u.id?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
   const isMe=isStaffSelf(s);
-  const journeyJson=JSON.stringify(s.journey||[],null,2).replace(/</g,'&lt;');
   const adminFields=ownerEdit?`
 <div class="erow"><div class="elbl">Belt</div><select class="esel" id="es-belt">${beltOpts}</select></div>
 <div class="erow"><div class="elbl">Degree</div><select class="esel" id="es-degree">${degOpts}</select></div>
@@ -1642,7 +1637,7 @@ ${selfOnlyNote}
 <div class="erow"><div class="elbl">Initials</div><input class="einput" id="es-initials" maxlength="3" value="${(s.initials||'').replace(/"/g,'&quot;')}"/></div>
 ${adminFields}
 </div>
-<div style="margin-top:14px"><div class="elbl" style="margin-bottom:6px">Journey (JSON)</div><textarea id="es-journey" style="width:100%;min-height:160px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:11px;line-height:1.4;background:var(--input-bg);color:var(--text);resize:vertical">${journeyJson}</textarea><div style="font-size:11px;color:var(--text3);margin-top:4px">Advanced — leave as-is unless you know what you're editing.</div></div>
+<div style="margin-top:14px;font-size:11px;color:var(--text3);line-height:1.5">Promotion history is automatically updated when you use the Promote button. To fix historical entries, contact support.</div>
 <div id="es-err" class="inv" style="display:none;margin-top:12px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="es-err-txt"></span></div>
 <div style="display:flex;gap:10px;margin-top:16px">
 <button class="bout" style="flex:1;min-height:44px" onclick="closeEditStaff()">Cancel</button>
