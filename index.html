@@ -1296,13 +1296,36 @@ function render(){
 function doLogin(r){if(r==='owner'){S.me=AME;S.atab='roster';}else if(r==='instructor_jonathan')S.me=INSE_JOHN;else if(r==='admin')S.me=INSE_FELIPE;else S.me=SME;S.loggedIn=true;S.tab=(r==='admin'||r==='owner'||r==='instructor_jonathan')?'admin':'class';render();}
 function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;S.authState='unauthenticated';S.authEmail='';S.authMsg='';if(sb)sb.auth.signOut();render();}
 
+function friendlyAuthError(err){
+  if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
+  let m='';
+  if(typeof err==='string') m=err;
+  else if(err.message) m=err.message;
+  else if(err.error_description) m=err.error_description;
+  else if(err.error) m=typeof err.error==='string'?err.error:(err.error.message||'');
+  else m=String(err);
+  const s=m.toLowerCase();
+  if(s.includes('rate limit')||s.includes('over_email_send_rate_limit')||s.includes('too many requests')||s.includes('429')) return 'Too many sign-in attempts. Please wait a few minutes and try again.';
+  if(s.includes('invalid email')||s.includes('invalid format')||s.includes('not a valid email')||s.includes('validation_failed')||s.includes('email address')&&s.includes('invalid')) return 'Please enter a valid email address.';
+  if(s.includes('user not found')||s.includes('invalid login credentials')||s.includes('email not confirmed')||s.includes('not authorized')||s.includes('not allowed')) return "We couldn't sign you in. Check your email or contact your academy admin.";
+  if(s.includes('network')||s.includes('failed to fetch')||s.includes('fetch')||s.includes('typeerror: load')||s.includes('offline')||s.includes('econnreset')||s.includes('timeout')) return 'Connection issue. Please try again.';
+  return 'Something went wrong. Please try again or contact your academy admin.';
+}
+
 async function bootAuth(){
+  if(location.hash&&location.hash.indexOf('error')!==-1){
+    try{
+      const p=new URLSearchParams(location.hash.replace(/^#/,''));
+      const ed=p.get('error_description')||p.get('error');
+      if(ed){S.authMsg=friendlyAuthError(ed);history.replaceState(null,'',location.pathname+location.search);}
+    }catch(_){}
+  }
   const c=initSupabase();
   if(!c){S.authState='unauthenticated';render();return;}
   try{
     const{data:{session}}=await c.auth.getSession();
     if(session) await onAuthed(); else {S.authState='unauthenticated';render();}
-  }catch(e){console.warn('[mybjj] bootAuth',e);S.authState='unauthenticated';render();}
+  }catch(e){console.warn('[mybjj] bootAuth',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
   c.auth.onAuthStateChange((ev)=>{
     if(ev==='SIGNED_IN') onAuthed();
     else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';render();}
@@ -1313,13 +1336,13 @@ async function onAuthed(){
   try{
     const c=initSupabase();
     const{data,error}=await c.rpc('claim_profile');
-    if(error){console.warn('[mybjj] claim_profile',error.message);S.authState='unauthenticated';S.authMsg=error.message;render();return;}
+    if(error){console.warn('[mybjj] claim_profile',error.message);S.authState='unauthenticated';S.authMsg=friendlyAuthError(error);render();return;}
     S.profile=data;
     if(data.status==='approved'){S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';}
     else if(data.status==='rejected') S.authState='rejected';
     else S.authState='pending';
     render();
-  }catch(e){console.warn('[mybjj] onAuthed',e);S.authState='unauthenticated';render();}
+  }catch(e){console.warn('[mybjj] onAuthed',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
 }
 
 function meFromProfile(p){
@@ -1329,25 +1352,25 @@ function meFromProfile(p){
 }
 
 async function signInGoogle(){
-  const c=initSupabase(); if(!c) return;
+  const c=initSupabase(); if(!c){S.authMsg=friendlyAuthError('network');render();return;}
   S.authBusy=true;S.authMsg='';render();
   try{
     const{error}=await c.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
-    if(error) S.authMsg=error.message;
-  }catch(e){S.authMsg=String(e);}
+    if(error){console.warn('[mybjj] google',error);S.authMsg=friendlyAuthError(error);}
+  }catch(e){console.warn('[mybjj] google',e);S.authMsg=friendlyAuthError(e);}
   S.authBusy=false;render();
 }
 
 async function signInMagic(){
-  const c=initSupabase(); if(!c) return;
+  const c=initSupabase(); if(!c){S.authMsg=friendlyAuthError('network');render();return;}
   const email=(S.authEmail||'').trim().toLowerCase();
-  if(!email||!/^\S+@\S+\.\S+$/.test(email)){S.authMsg='Please enter a valid email.';render();return;}
+  if(!email||!/^\S+@\S+\.\S+$/.test(email)){S.authMsg='Please enter a valid email address.';render();return;}
   S.authBusy=true;S.authMsg='';render();
   try{
     const{error}=await c.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
-    if(error) S.authMsg=error.message;
+    if(error){console.warn('[mybjj] magic',error);S.authMsg=friendlyAuthError(error);}
     else{S.authState='magic-sent';S.authMsg='Check your inbox — we sent you a sign-in link.';}
-  }catch(e){S.authMsg=String(e);}
+  }catch(e){console.warn('[mybjj] magic',e);S.authMsg=friendlyAuthError(e);}
   S.authBusy=false;render();
 }
 
@@ -1362,7 +1385,7 @@ function demoCards(){
 function rAuth(){
   const busy=S.authBusy?'disabled':'';
   const sent=S.authState==='magic-sent';
-  const msg=S.authMsg&&!sent?`<div class="amsg">${S.authMsg}</div>`:'';
+  const msg=S.authMsg&&!sent?`<div class="inv" style="margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${S.authMsg}</span></div>`:'';
   const GICON=`<svg width="14" height="14" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>`;
   const MAIL=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
   const form=sent
