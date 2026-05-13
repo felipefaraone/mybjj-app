@@ -411,7 +411,7 @@ function studentEligibility(s){
     const gg=s.prog==='kids'?GGK:GGA;
     const goal=gg[s.belt]||40;
     const percent=Math.min(100,Math.floor(((s.grade||0)/goal)*100));
-    return {eligible:(s.grade||0)>=goal,reason:percent>=100?'Eligible for next stripe':'Tracking',percent};
+    return {eligible:(s.grade||0)>=goal,reason:percent>=100?'Eligible for next stripe':'Needs '+(goal-(s.grade||0))+' more class'+(goal-(s.grade||0)===1?'':'es')+' to become eligible for next stripe',percent};
   }
   const required=t.classes_per_stripe;
   const minGi=required*t.min_gi_ratio;
@@ -421,8 +421,8 @@ function studentEligibility(s){
   const eligible=grade>=required&&giGrade>=minGi;
   let reason;
   if(eligible) reason='Eligible for next stripe';
-  else if(grade<required) reason='Needs '+(required-grade)+' more class'+(required-grade===1?'':'es');
-  else reason='Needs '+Math.ceil(minGi-giGrade)+' more Gi class'+(Math.ceil(minGi-giGrade)===1?'':'es');
+  else if(grade<required) reason='Needs '+(required-grade)+' more class'+(required-grade===1?'':'es')+' to become eligible for next stripe';
+  else reason='Needs '+Math.ceil(minGi-giGrade)+' more Gi class'+(Math.ceil(minGi-giGrade)===1?'':'es')+' to become eligible for next stripe';
   return {eligible,reason,percent};
 }
 function av(ini,bg,fg,sz,role){
