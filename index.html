@@ -399,7 +399,7 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all'};
 S.ci['2026-03-31_06:00']=true;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -913,7 +913,84 @@ function rTechniquesLog(s){
   return html;
 }
 
+function rParentChildView(){
+  const kids=parentChildren();
+  if(!kids.length){
+    return '<div style="height:16px"></div><div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--text2);line-height:1.5">No linked children yet.<br/>Once your academy admin adds your child with this email as the parent contact, you\'ll see their profile here.</div></div>';
+  }
+  const child=parentSelectedChild();
+  const bmap=child.prog==='kids'?BK:BA;const b=bmap[child.belt]||BA.white;
+  const unitName=(UNITS.find(u=>u.id===child.unit)||{name:'—'}).name;
+  const elig=studentEligibility(child);
+  const pct=elig.percent==null?null:elig.percent;
+  const isReady=elig.eligible;
+  const switcher=kids.length>1?'<div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px">'+kids.map(k=>{
+    const sel=k.id===child.id;
+    return '<button onclick="setParentChild(\''+k.id+'\')" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:24px;border:1.5px solid '+(sel?'#1A5DAD':'var(--border)')+';background:'+(sel?'#1A5DAD15':'transparent')+';cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:'+(sel?'#1A5DAD':'var(--text2)')+'">'+avStu(k,24)+'<span>'+k.name.split(' ')[0]+'</span></button>';
+  }).join('')+'</div>':'';
+  const photoTrigger=avStu(child,72);
+  const photoBlock=canUploadPhotoFor(child)
+    ? '<div onclick="triggerPhotoUpload(\''+child.id+'\')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">'+photoTrigger+'<div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div>'
+    : photoTrigger;
+  const recentPromos=PROMOTION_LOG.filter(p=>p.studentId===child.id).slice(0,6);
+  const promosHtml=recentPromos.length?'<div class="slbl">Recent promotions</div><div class="card" style="padding:8px 16px">'+recentPromos.map((p,i)=>{
+    const last=i===recentPromos.length-1;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'"><div style="flex:1"><div style="font-size:13px;color:var(--text)">'+(p.isNewBelt?'Belt promotion':'+1 stripe')+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+new Date(p.date).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})+' · '+p.promotedBy+'</div></div>'+bb(p.toBelt,p.toDeg,child.prog)+'</div>';
+  }).join('')+'</div>':'';
+  return '<div style="height:16px"></div>'+switcher
+    +'<div class="card" style="padding:16px">'
+    +'<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">'+photoBlock
+    +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+child.name+'</div>'
+    +(child.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px">'+child.nickname+'</div>':'')
+    +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(child.belt,child.deg||0,child.prog)+'</div>'
+    +'<div style="margin-top:5px;font-size:11px;color:var(--text3)">'+unitName+' · '+child.prog+'</div></div></div>'
+    +'<div style="border-top:1px solid var(--border);padding-top:12px"><div style="display:flex;gap:0;margin-bottom:10px">'
+    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+child.total+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>'
+    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+child.giTotal+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi classes</div></div>'
+    +'<div style="flex:1;text-align:center"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:'+(isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)'))+'">'+(pct==null?'—':pct+'%')+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">'+(isReady?'Ready':'Progress')+'</div></div>'
+    +'</div>'+(pct==null?'':pbBelt(elig.percent,100,child.belt,child.prog))
+    +(elig.reason?'<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:'+(isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(isReady?'var(--green-border)':'var(--border)')+';font-size:12px;line-height:1.4;color:'+(isReady?'var(--green-text)':'var(--text2)')+';font-family:Barlow Condensed,sans-serif;font-weight:600;letter-spacing:.5px">'+elig.reason+'</div>':'')
+    +'</div></div>'
+    +promosHtml
+    +'<div style="height:24px"></div>';
+}
+function setParentChild(id){S.parentChild=id;render();}
+
+function rMembers(){
+  const curU=UNITS.find(u=>u.name===S.unit);
+  const curUnit=curU?curU.id:null;
+  const beltFilter=S.membersBelt||'all';
+  const meRole=S.me&&S.me.role;
+  let list=STUDENTS.filter(s=>s.unit===curUnit);
+  if(meRole==='student')list=list.filter(s=>s.prog!=='kids');
+  else if(meRole==='parent')list=list.filter(s=>s.prog!=='kids'||s._parentUserId===(S.profile&&S.profile.id));
+  if(beltFilter!=='all')list=list.filter(s=>s.belt===beltFilter);
+  list=list.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const belts=['white','blue','purple','brown','black'];
+  const chipBase='border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
+  const chip=(value,label)=>{
+    const sel=beltFilter===value;
+    return '<button onclick="setMembersBelt(\''+value+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'#1A5DAD':'var(--border)')+';color:'+(sel?'#1A5DAD':'var(--text3)')+'">'+label+'</button>';
+  };
+  const chips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;min-width:0">'+chip('all','All')+belts.map(b=>chip(b,b.charAt(0).toUpperCase()+b.slice(1))).join('')+'</div>';
+  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+' · '+list.length+'</div>';
+  if(!list.length)return '<div style="height:16px"></div>'+headline+chips+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
+  const rows=list.map(s=>{
+    return '<div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden">'
+      +avStu(s,40)
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div>'
+      +(s.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.nickname+'</div>':'')
+      +'</div>'
+      +'<div style="flex-shrink:0">'+bb(s.belt,s.deg||0,s.prog)+'</div>'
+      +'</div>';
+  }).join('');
+  return '<div style="height:16px"></div>'+headline+chips+rows;
+}
+function setMembersBelt(b){S.membersBelt=b;render();}
+
 function rProgress(){
+  if(isParent())return rParentChildView();
   var s=S.me;
   if(s.role==='admin'||s.role==='owner'){
     var staff=STAFF.find(function(x){return x.name===s.name;})||null;
@@ -1306,51 +1383,78 @@ function rCDel(){const cd=S.cdel;if(!cd)return '';const t=CT.find(x=>x.id===cd.t
 
 function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'alev',ins:'Prof. Mario',dur:60,aud:'Adults'};const dow=S.editDow||2;return `<div class="sub open" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeCEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">${isNew?'Add class':'Edit class'}</div><button class="ssave" onclick="saveCls()">Save</button></div><div class="sbody"><div class="ef"><div class="erow"><div class="elbl">Day</div><select class="esel" id="ce-dow">${[1,2,3,4,5,6].map(d=>`<option value="${d}" ${d===dow?'selected':''}>${DL[d]}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Time</div><input class="einput" id="ce-time" type="time" value="${c.time}"/></div><div class="erow"><div class="elbl">Duration</div><select class="esel" id="ce-dur">${[30,45,50,60,90].map(d=>`<option value="${d}" ${d===c.dur?'selected':''}>${d} min</option>`).join('')}</select></div></div><div class="slbl" style="margin-top:8px">Class type</div><div class="ef"><div class="erow" style="flex-wrap:wrap;gap:8px;padding:12px 16px">${CT.map(t=>`<div onclick="setCet('${t.id}')" style="cursor:pointer"><span class="ctag ${t.tc}" style="cursor:pointer;opacity:${(S._cet||c.type)===t.id?'1':'.4'}">${t.lbl}</span></div>`).join('')}</div></div><div class="slbl" style="margin-top:8px">Audience & instructor</div><div class="ef"><div class="erow"><div class="elbl">Audience</div><div class="seg">${AUD.map(a=>`<button class="segb ${(S._cea||c.aud)===a?'on':''}" onclick="setCea('${a}')">${a}</button>`).join('')}</div></div><div class="erow"><div class="elbl">Instructor</div><select class="esel" id="ce-ins">${INS.map(i=>`<option ${i===c.ins?'selected':''}>${i}</option>`).join('')}</select></div></div>${!isNew?`<button class="bdel" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px" onclick="reqDel('${c.id}',${dow})">Delete this class</button>`:''}<div style="height:24px"></div></div></div>`;}
 
-const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Admin',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`}];
+const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Admin',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const vt=isA?TABS:TABS.filter(t=>t.id!=='admin');if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const vt=isA?TABS:TABS.filter(t=>t.id!=='admin');if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
 
-function sendInvite(){
+async function sendInvite(){
   const inputs=document.querySelectorAll('.sbody .einput');
   const fname=inputs[0]?inputs[0].value.trim():'';
   const lname=inputs[1]?inputs[1].value.trim():'';
   const email=inputs[2]?inputs[2].value.trim():'';
   const status=S._addTransfer||'new';
-  if(!fname||!lname||!email){
-    const missing=[];
-    if(!fname)missing.push('first name');
-    if(!lname)missing.push('last name');
-    if(!email)missing.push('email');
-    showSaveToast2('Missing: '+missing.join(', '),'error');return;
+  const isKids=S._addProg==='kids';
+  if(!fname||!lname){
+    const missing=[];if(!fname)missing.push('first name');if(!lname)missing.push('last name');
+    return showSaveToast2('Missing: '+missing.join(', '),'error');
   }
+  if(!isKids&&!email)return showSaveToast2('Missing: email','error');
+  if(email&&!/^\S+@\S+\.\S+$/.test(email))return showSaveToast2('Please enter a valid email address.','error');
   if(status==='transfer'){
     const fromAcad=document.getElementById('add-from')?.value?.trim()||'';
-    if(!fromAcad){showSaveToast2('Missing: previous academy','error');return;}
+    if(!fromAcad)return showSaveToast2('Missing: previous academy','error');
   }
-  const label=status==='transfer'?'Transfer from '+(document.getElementById('add-from')?.value||'another academy'):status==='returning'?'Returning student':'New student';
-  if(!confirm('Send invite to '+fname+' '+lname+' ('+email+')?\n\nStatus: '+label))return;
-  const isKids=S._addProg==='kids';
-  const parentEmailInput=isKids?inputs[inputs.length-1]:null;
-  const parentEmail=parentEmailInput?parentEmailInput.value.trim():'';
-  const inviteEmail=(isKids&&parentEmail)?parentEmail:email;
-  const inviteRole=isKids?'parent':'student';
+  // Kids-specific parent fields. The form always lays them out at indices
+  // 5/6/7 (after the 5 base personal fields, before any optional
+  // transfer/returning extras), so reading by fixed position is safer
+  // than length-N which would shift when transfer/returning fields appear.
+  const parentName=isKids&&inputs[5]?inputs[5].value.trim():'';
+  const parentPhone=isKids&&inputs[6]?inputs[6].value.trim():'';
+  const parentEmail=isKids&&inputs[7]?inputs[7].value.trim().toLowerCase():'';
+  if(isKids){
+    if(!parentEmail)return showSaveToast2('Parent email is required for kids students.','error');
+    if(!/^\S+@\S+\.\S+$/.test(parentEmail))return showSaveToast2('Please enter a valid parent email.','error');
+  }
+  const curU=UNITS.find(u=>u.name===S.unit);
+  const unitLegacy=curU?curU.id:null;
   const unitDbId=meUnitDbId();
-  withSb(c=>c.from('whitelist').upsert({email:inviteEmail.toLowerCase(),role:inviteRole,unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'}),'whitelist invite');
-  if(inviteRole==='student'){
-    const fullName=(fname+' '+lname).trim().toLowerCase();
-    const curU=UNITS.find(u=>u.name===S.unit);
-    const curUnit=curU?curU.id:null;
-    const matches=STUDENTS.filter(s=>s.unit===curUnit&&(s.name||'').trim().toLowerCase()===fullName);
-    if(matches.length===1){
-      const m=matches[0];
-      m.email=email.toLowerCase();
-      withSb(c=>c.from('students').update({email:email.toLowerCase()}).eq('legacy_id',m.id),'link student email');
+  if(!unitLegacy||!unitDbId)return showSaveToast2('Unit not set. Pick a unit first.','error');
+  const fullName=(fname+' '+lname).trim();
+  const label=status==='transfer'?'Transfer from '+(document.getElementById('add-from')?.value||'another academy'):status==='returning'?'Returning student':'New student';
+  if(!confirm('Send invite to '+fullName+' ('+(isKids?parentEmail+' (parent)':email)+')?\n\nStatus: '+label))return;
+  const cli=initSupabase();
+  if(!cli)return showSaveToast2('Connection issue','error');
+  if(isKids){
+    // Uniqueness: parent_email must not equal an existing student.email in this unit
+    const dup=await cli.from('students').select('id,full_name').eq('unit_id',unitDbId).eq('email',parentEmail).limit(1);
+    if(dup&&dup.data&&dup.data.length){return showSaveToast2("That email already belongs to a student in this unit. Use a different parent email.",'error');}
+    const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
+    const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
+    const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
+    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,prog:'kids',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,has_gi:true,journey:[],feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone||null,parent_email:parentEmail}).select('id,legacy_id').single();
+    if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
+    console.log('[mybjj] add kids student OK');
+    if(ins&&ins.data){
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email:null,hasGi:true,name:fullName,nickname:null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail});
     }
+    const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
+    if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
+    else console.log('[mybjj] parent whitelist OK');
+    showSaveToast2(fullName+' added. '+parentEmail+' will see their child after first sign-in.');
+    closeSub();return;
   }
-  showSaveToast2('Invite sent to '+fname+' '+lname);closeSub();
+  // Adult path: keep existing behaviour — whitelist + best-effort email link
+  await cli.from('whitelist').upsert({email:email.toLowerCase(),role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'}).then(r=>r&&r.error?console.warn('[mybjj] whitelist invite:',r.error):console.log('[mybjj] whitelist invite OK'));
+  const lowerName=fullName.toLowerCase();
+  const matches=STUDENTS.filter(s=>s.unit===unitLegacy&&(s.name||'').trim().toLowerCase()===lowerName);
+  if(matches.length===1){
+    const m=matches[0];m.email=email.toLowerCase();
+    withSb(c=>c.from('students').update({email:email.toLowerCase()}).eq('legacy_id',m.id),'link student email');
+  }
+  showSaveToast2('Invite sent to '+fullName);closeSub();
 }
 function showSaveToast2(msg,type){const t=document.createElement('div');const isErr=type==='error';t.innerHTML=(isErr?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>')+msg;t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(isErr?'#DC2626':'#1A5DAD')+';color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s;white-space:nowrap';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},2200);}
 
@@ -1439,6 +1543,7 @@ async function onAuthed(){
     S.profile=data;
     if(data.status==='approved'){
       S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';
+      if(S.me.role==='parent')S.tab='progress';
       render();
       hydrateData();
       return;
@@ -1451,8 +1556,23 @@ async function onAuthed(){
 
 function meFromProfile(p){
   const base=p.role==='owner'?AME:(p.role==='admin'||p.role==='instructor')?INSE_FELIPE:SME;
-  const r=p.role==='owner'?'owner':(p.role==='admin'||p.role==='instructor')?'admin':'student';
-  return Object.assign({},base,{id:p.id,name:p.full_name||p.email,role:r,email:p.email});
+  let r;
+  if(p.role==='owner') r='owner';
+  else if(p.role==='admin'||p.role==='instructor') r='admin';
+  else if(p.role==='parent') r='parent';
+  else r='student';
+  return Object.assign({},base,{id:p.id,name:p.full_name||p.email,role:r,email:p.email,initials:(p.full_name||p.email||'?').slice(0,2).toUpperCase()});
+}
+function isParent(){return !!(S.me&&S.me.role==='parent');}
+function parentChildren(){
+  if(!isParent()||!S.profile||!S.profile.id) return [];
+  return STUDENTS.filter(s=>s._parentUserId===S.profile.id);
+}
+function parentSelectedChild(){
+  const kids=parentChildren();
+  if(!kids.length) return null;
+  if(S.parentChild){const m=kids.find(k=>k.id===S.parentChild);if(m) return m;}
+  return kids[0];
 }
 
 async function withSb(builder,label){
@@ -1495,7 +1615,11 @@ function avStu(s,size,roleIcon){
 let _crop={img:null,scale:1,x:0,y:0,panning:false,lastX:0,lastY:0,sid:null};
 let _pinch=null;
 const _CROP_SIZE=320;
-function canUploadPhotoFor(s){return isOwner()||isProfessor()||isCoach();}
+function canUploadPhotoFor(s){
+  if(isOwner()||isProfessor()||isCoach())return true;
+  if(s&&S.profile&&s._parentUserId===S.profile.id)return true;
+  return false;
+}
 
 const SHARE_APP_URL='https://mybjj-app.com';
 function appShareUrl(){return (location.hostname==='mybjj-app.com'||location.hostname==='www.mybjj-app.com')?location.origin:SHARE_APP_URL;}
@@ -1954,7 +2078,7 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active').order('name'),
-      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url,user_id'),
+      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,nickname'),
       c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
@@ -1969,7 +2093,7 @@ async function hydrateData(){
       touched=true;
     }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
     if(st.data&&st.data.length){
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,email:r.email||null,hasGi:r.has_gi,name:r.full_name,nickname:r.nickname||null,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
