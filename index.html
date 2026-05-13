@@ -476,12 +476,9 @@ function pbBelt(v,mx,currentBelt,prog){const p=Math.min(Math.round(v/mx*100),100
 function ytId(u){if(!u||typeof u!=='string')return null;const m=u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);return m?m[1]:null;}
 function escAttr(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 function urlDisplay(u){try{return new URL(u).hostname.replace(/^www\./,'');}catch(_){return u||'';}}
-function rVC(url,title,desc){
+function rVC(url,title){
   if(!url)return '';
-  const display=urlDisplay(url);
-  const titleHtml=title?'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+title+'</div>':'';
-  const subHtml='<div style="font-size:11px;color:var(--text3);margin-top:'+(title?'2px':'0')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+display+'</div>';
-  return '<a href="'+escAttr(url)+'" target="_blank" rel="noopener" style="display:block;margin-top:6px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);text-decoration:none;color:inherit">'+titleHtml+subHtml+'</a>';
+  return inlineLinkHtml(url,title||'Open link');
 }
 function rAtts(all,cid){
   if(!all.length)return '';const exp=!!S.expanded[cid];const P=3;const rest=all.length-P;
@@ -1002,19 +999,9 @@ function rSchedule(){
   function techRow(tech,idx,cat){
     const tv=typeof tech==='object'?tech:{t:tech,video:''};
     const hasVideo=!!(tv.video);
-    // Admin: always show link icon (faint if no video, blue if has video)
-    // Student: no icon unless video exists
-    let actionEl='';
-    if(isA){
-      actionEl='<button onclick="editTechVideo2('+w.week+',\''+cat+'\','+idx+')" title="Add video link" style="background:none;border:none;cursor:pointer;padding:3px;flex-shrink:0;opacity:'+(hasVideo?'1':'0.3')+';color:'+(hasVideo?'#1A5DAD':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>';
-    } else if(hasVideo){
-      // Student: small play button if video exists
-      actionEl='<button onclick="window.open(\''+tv.video+'\',\'_blank\')" style="background:#1A5DAD20;border:none;cursor:pointer;padding:3px 6px;border-radius:4px;flex-shrink:0;color:#1A5DAD"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
-    }
-    return '<div style="margin-bottom:7px">'
-      +'<div style="background:var(--bg);border-radius:7px;padding:9px 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border)'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'">'
-      +'<div style="flex:1;font-size:12px;color:var(--text);line-height:1.35">'+tv.t+'</div>'+actionEl
-      +'</div>'+(hasVideo?'<div style="margin-left:12px">'+rVC(tv.video,tv.t,'')+'</div>':'')+'</div>';
+    const inlineLink=hasVideo?inlineLinkHtml(tv.video,'Open '+(tv.t||'video')):'';
+    const editBtn=isA?'<button onclick="editTechVideo2('+w.week+',\''+cat+'\','+idx+')" title="Edit video link" style="background:none;border:none;cursor:pointer;padding:3px;flex-shrink:0;opacity:'+(hasVideo?'1':'0.4')+';color:'+(hasVideo?'#1A5DAD':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
+    return '<div style="margin-bottom:7px"><div style="background:var(--bg);border-radius:7px;padding:9px 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border)'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'"><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35">'+tv.t+inlineLink+'</div>'+editBtn+'</div></div>';
   }
 
   let bodyHtml='';
@@ -1043,7 +1030,7 @@ function rSchedule(){
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
       +'<div><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Stand Up</div>'+suRows+'</div>'
       +'<div><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Ground</div>'+grRows+'</div>'
-      +'</div>'+(w.video&&!w.standUp?.some(t=>(t.video||t)===w.video)?rVC(w.video,w.theme||'Week '+w.week+' video',''):'')+'</div>'
+      +'</div></div>'
       +(S.editWeek===S.sweek?rWEditor(w):'');
   }
   const evEditor=(S.editEv||S.addEv)?rEEdit():'';
@@ -1078,7 +1065,7 @@ function rEvents(isA){
     const btnBase='flex:1;border-radius:10px;padding:10px 8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer;border:1.5px solid;transition:all .15s;text-align:center';
     const compBtn=showComp?'<button onclick="toggleEv(\''+e.id+'\',\'competing\')" style="'+btnBase+';background:'+(iComp?'#1A5DAD':'transparent')+';color:'+(iComp?'#fff':'#1A5DAD')+';border-color:#1A5DAD">'+(iComp?'\u2713 '+compLbl:compLbl)+'</button>':'';
     const suppBtn=showSupp?'<button onclick="toggleEv(\''+e.id+'\',\'supporting\')" style="'+btnBase+';background:'+(iSupp?'#0f766e20':'transparent')+';color:'+(iSupp?'#0f766e':'var(--text3)')+';border-color:'+(iSupp?'#0f766e':'var(--border)')+'">'+suppLbl+(iSupp?' \u2713':'')+'</button>':'';
-    const linkHtml=e.link?('<div class="lcard" style="margin-bottom:12px" onclick="window.open(\''+e.link+'\',\'_blank\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><div style="font-size:12px;color:var(--text2)">Register / more info</div></div>'):'';
+    const linkInline=e.link?inlineLinkHtml(e.link,'Register / more info'):'';
     const editBtn=isA?('<button onclick="openEditEv(\''+e.id+'\')" style="background:none;border:none;color:var(--text3);font-size:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.5px;padding:0">EDIT</button>'):'';
     const shareEvBtn=shareBtnHtml('shareEvent(\''+e.id+'\')');
     const topActions='<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+(editBtn||'')+shareEvBtn+'</div>';
@@ -1088,11 +1075,10 @@ function rEvents(isA){
     return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">'
       +'<div style="flex:1"><div style="margin-bottom:5px;display:flex;align-items:center;gap:8px"><span style="background:'+typeCol+'20;color:'+typeCol+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+typeLbl+'</span></div>'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;color:var(--text);line-height:1.1">'+e.title+'</div>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;color:var(--text);line-height:1.1">'+e.title+linkInline+'</div>'
       +'<div style="font-size:12px;color:var(--text3);margin-top:3px">'+e.date+'</div></div>'
       +topActions+'</div>'
       +(e.desc?'<div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.5">'+e.desc+'</div>':'')
-      +linkHtml
       +((showComp||showSupp)?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:'+(showComp&&showSupp?'1fr 1fr':'1fr')+';gap:12px">'+compRow+suppRow+'</div>':'')
       +'<div style="display:flex;gap:8px">'+compBtn+suppBtn+'</div>'
       +'</div>';
@@ -1126,7 +1112,25 @@ function rWEditor(w){
     const on=(w.programs||[]).includes(p);const c=progCols[p];
     return '<div onclick="toggleProg('+w.week+',\''+p+'\')" style="cursor:pointer;padding:5px 9px;border-radius:6px;border:1.5px solid '+(on?c:'var(--border)')+';background:'+(on?c+'20':'var(--bg)')+';display:inline-flex;align-items:center;gap:5px;margin-right:5px;margin-bottom:5px"><div style="width:8px;height:8px;border-radius:50%;background:'+(on?c:'var(--border)')+'"></div><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:'+(on?c:'var(--text3)')+'">'+p+'</span></div>';
   }).join('');
-  function techFields(list,cat){return(list||[]).map((t,i)=>{const tv=typeof t==='object'?t:{t:t,video:''};return '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:6px;border:1px solid var(--border)"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><input value="'+tv.t+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'t\',this.value)" placeholder="Technique name" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:12px;color:var(--text)"/><button onclick="removeTech('+w.week+',\''+cat+'\','+i+')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px">×</button></div><input value="'+(tv.video||'')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'video\',this.value)" placeholder="Video URL (YouTube or Instagram)..." style="width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:11px;color:var(--text3)"/></div>';}).join('');}
+  function techFields(list,cat){
+    const arr=list||[];
+    return arr.map((t,i)=>{
+      const tv=typeof t==='object'?t:{t:t,video:''};
+      const isLast=i===arr.length-1;
+      const handle='<span draggable="true" ondragstart="_dragTechStart(event,'+w.week+',\''+cat+'\','+i+')" ondragend="_dragTechEnd()" title="Drag to reorder" style="cursor:grab;color:var(--text3);flex-shrink:0;display:inline-flex;align-items:center;padding:2px 2px;user-select:none;touch-action:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>';
+      const upBtn=i===0?'':'<button onclick="bumpTech('+w.week+',\''+cat+'\','+i+',-1)" title="Move up" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:3px 4px;flex-shrink:0;display:inline-flex;align-items:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg></button>';
+      const downBtn=isLast?'':'<button onclick="bumpTech('+w.week+',\''+cat+'\','+i+',1)" title="Move down" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:3px 4px;flex-shrink:0;display:inline-flex;align-items:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>';
+      return '<div ondragover="_dragTechOver(event,'+w.week+',\''+cat+'\')" ondrop="_dragTechDrop(event,'+w.week+',\''+cat+'\','+i+')" style="background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:6px;border:1px solid var(--border)">'
+        +'<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">'
+        +handle
+        +'<input value="'+(tv.t||'').replace(/"/g,'&quot;')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'t\',this.value)" placeholder="Technique name" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:12px;color:var(--text);min-width:0"/>'
+        +upBtn+downBtn
+        +'<button onclick="removeTech('+w.week+',\''+cat+'\','+i+')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0">×</button>'
+        +'</div>'
+        +'<input value="'+(tv.video||'').replace(/"/g,'&quot;')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'video\',this.value)" placeholder="Video URL (YouTube or Instagram)..." style="width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:11px;color:var(--text3)"/>'
+        +'</div>';
+    }).join('');
+  }
   return '<div class="cov" style="align-items:flex-end"><div class="csheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;margin-bottom:14px">Edit Week '+w.week+'</div>'
     +'<div class="slbl">Theme</div><div class="ef" style="margin-bottom:12px"><div class="erow"><input id="we-theme" value="'+w.theme+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/></div></div>'
@@ -1495,6 +1499,8 @@ const SHARE_APP_URL='https://mybjj-app.com';
 function appShareUrl(){return (location.hostname==='mybjj-app.com'||location.hostname==='www.mybjj-app.com')?location.origin:SHARE_APP_URL;}
 function shareWhatsApp(text){window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener');}
 const SHARE_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+const LINK_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+function inlineLinkHtml(url,title){if(!url)return '';return '<a href="'+escAttr(url)+'" target="_blank" rel="noopener" title="'+(title||'Open link').replace(/"/g,'&quot;')+'" style="display:inline-flex;align-items:center;margin-left:6px;color:#1A5DAD;vertical-align:-2px;text-decoration:none">'+LINK_ICON+'</a>';}
 function shareBtnHtml(onclickAttr){return '<button onclick="'+onclickAttr+'" title="Share" style="background:none;border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:#1A5DAD;cursor:pointer;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;display:inline-flex;align-items:center;gap:5px">'+SHARE_ICON+'Share</button>';}
 function sharePromoText(p,s){
   const prog=(s&&s.prog)||'adult';
@@ -2218,6 +2224,25 @@ function cancelDel(){S.cdel=null;render();}
 function editW(w){S.editWeek=w;render();}
 function closeWE(){S.editWeek=false;render();}
 function updateTech(week,cat,idx,field,val){const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;if(typeof w[cat][idx]==='string')w[cat][idx]={t:w[cat][idx],video:''};w[cat][idx][field]=val;}
+let _dragTech=null;
+function _dragTechStart(ev,week,cat,idx){_dragTech={week,cat,idx};try{ev.dataTransfer.setData('text/plain',cat+':'+idx);ev.dataTransfer.effectAllowed='move';}catch(_){}}
+function _dragTechOver(ev,week,cat){if(!_dragTech||_dragTech.week!==week||_dragTech.cat!==cat)return;ev.preventDefault();try{ev.dataTransfer.dropEffect='move';}catch(_){}}
+function _dragTechDrop(ev,week,cat,idx){if(!_dragTech||_dragTech.week!==week||_dragTech.cat!==cat){_dragTech=null;return;}ev.preventDefault();const from=_dragTech.idx;_dragTech=null;if(from===idx)return;moveTech(week,cat,from,idx);}
+function _dragTechEnd(){_dragTech=null;}
+function moveTech(week,cat,fromIdx,toIdx){
+  const w=SCHED.find(x=>x.week===week);if(!w)return;
+  const list=w[cat];if(!list||fromIdx<0||fromIdx>=list.length||toIdx<0||toIdx>=list.length)return;
+  if(fromIdx===toIdx)return;
+  const item=list.splice(fromIdx,1)[0];
+  list.splice(toIdx,0,item);
+  render();
+}
+function bumpTech(week,cat,idx,dir){
+  const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;
+  const newIdx=idx+dir;
+  if(newIdx<0||newIdx>=w[cat].length)return;
+  moveTech(week,cat,idx,newIdx);
+}
 function addTech(week,cat){const w=SCHED.find(x=>x.week===week);if(!w){return;}if(!w[cat])w[cat]=[];w[cat].push({t:'New technique',video:''});render();}
 function removeTech(week,cat,idx){const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;w[cat].splice(idx,1);render();}
 function toggleProg(week,prog){const w=SCHED.find(x=>x.week===week);if(!w)return;if(!w.programs)w.programs=[];const i=w.programs.indexOf(prog);if(i>=0)w.programs.splice(i,1);else w.programs.push(prog);render();}
@@ -2272,7 +2297,7 @@ function editTechVideo(week,techIdx){
   else tech.video=url;
   render();
 }
-function saveW(week){const w=SCHED.find(x=>x.week===week);if(!w)return;w.theme=document.getElementById('we-theme')?.value||w.theme;w.notes=document.getElementById('we-notes')?.value||'';w.video=document.getElementById('we-vid')?.value||'';S.editWeek=false;render();if(w._dbId)withSb(c=>c.from('programme_weeks').update({theme:w.theme,notes:w.notes}).eq('id',w._dbId),'update programme week');}
+function saveW(week){const w=SCHED.find(x=>x.week===week);if(!w)return;w.theme=document.getElementById('we-theme')?.value||w.theme;w.notes=document.getElementById('we-notes')?.value||'';w.video=document.getElementById('we-vid')?.value||'';S.editWeek=false;render();if(w._dbId)withSb(c=>c.from('programme_weeks').update({theme:w.theme,notes:w.notes,stand_up:w.standUp||[],ground:w.ground||[]}).eq('id',w._dbId),'update programme week');}
 
 function setRQ(v){S.rq=v;render();}
 function setRF2(el){S[el.dataset.key]=el.value;render();}
