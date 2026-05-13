@@ -1338,8 +1338,13 @@ async function onAuthed(){
     const{data,error}=await c.rpc('claim_profile');
     if(error){console.warn('[mybjj] claim_profile',error.message);S.authState='unauthenticated';S.authMsg=friendlyAuthError(error);render();return;}
     S.profile=data;
-    if(data.status==='approved'){S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';}
-    else if(data.status==='rejected') S.authState='rejected';
+    if(data.status==='approved'){
+      S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';
+      render();
+      hydrateData();
+      return;
+    }
+    if(data.status==='rejected') S.authState='rejected';
     else S.authState='pending';
     render();
   }catch(e){console.warn('[mybjj] onAuthed',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
@@ -1349,6 +1354,53 @@ function meFromProfile(p){
   const base=p.role==='owner'?AME:(p.role==='admin'||p.role==='instructor')?INSE_FELIPE:SME;
   const r=p.role==='owner'?'owner':(p.role==='admin'||p.role==='instructor')?'admin':'student';
   return Object.assign({},base,{id:p.id,name:p.full_name||p.email,role:r,email:p.email});
+}
+
+async function hydrateData(){
+  const c=initSupabase(); if(!c) return;
+  let touched=false;
+  try{
+    const res=await Promise.allSettled([
+      c.from('units').select('id,legacy_id,name,country,city,address,active').order('name'),
+      c.from('students').select('id,legacy_id,full_name,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id'),
+      c.from('staff').select('id,legacy_id,full_name,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id'),
+      c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
+      c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
+      c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
+    ]);
+    const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
+    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5);
+    const uMap={};
+    if(u.data&&u.data.length){
+      u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
+      UNITS=u.data.map(r=>({id:r.legacy_id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active}));
+      touched=true;
+    }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
+    if(st.data&&st.data.length){
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[]}));
+      touched=true;
+    }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
+    if(sf.data&&sf.data.length){
+      STAFF=sf.data.map(r=>({id:r.legacy_id,name:r.full_name,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
+      touched=true;
+    }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
+    if(pm.data&&pm.data.length){
+      PROMOTION_LOG=pm.data.map(r=>({id:r.legacy_id,studentId:r.student&&r.student.legacy_id,studentName:r.student_name,fromBelt:r.from_belt,fromDeg:r.from_deg,toBelt:r.to_belt,toDeg:r.to_deg,isNewBelt:r.is_new_belt,date:r.date,promotedBy:r.promoted_by_name,unit:uMap[r.unit_id]||null}));
+      touched=true;
+    }else if(pm.error)console.warn('[mybjj] hydrate promotions:',pm.error);
+    if(ev.data&&ev.data.length){
+      EVENTS=ev.data.map(r=>({id:r.legacy_id,title:r.title,date:r.date_text||r.date,type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]}));
+      touched=true;
+    }else if(ev.error)console.warn('[mybjj] hydrate events:',ev.error);
+    if(pw.data&&pw.data.length){
+      SCHED=pw.data.map(r=>({week:r.week_index,theme:r.theme,color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
+      touched=true;
+    }else if(pw.error)console.warn('[mybjj] hydrate programme_weeks:',pw.error);
+    if(touched){console.log('[mybjj] hydrated from Supabase');render();}
+    else console.warn('[mybjj] hydration returned no rows — keeping local fallback');
+  }catch(e){
+    console.warn('[mybjj] hydration failed — keeping local fallback:',e);
+  }
 }
 
 async function signInGoogle(){
