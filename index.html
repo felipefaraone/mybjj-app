@@ -1951,7 +1951,7 @@ async function saveEditStaff(sid){
 
 async function resendStaffInvite(sid){
   const s=STAFF.find(x=>x.id===sid);if(!s||!s.email)return;
-  if(!confirm('Send a fresh magic-link invite to '+s.email+'?'))return;
+  if(!confirm('Send a fresh sign-in link to '+s.email+'?'))return;
   const cli=initSupabase();if(!cli)return showSaveToast2('Connection issue','error');
   const{error}=await cli.auth.signInWithOtp({email:s.email,options:{emailRedirectTo:location.origin+location.pathname}});
   if(error){console.warn('[mybjj] resend invite:',error);showSaveToast2(friendlyAuthError(error),'error');return;}
@@ -2344,7 +2344,7 @@ function rAuth(){
   const MAIL=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
   const form=sent
     ? `<div class="amsg" style="text-align:center;padding:14px 12px">${S.authMsg||'We sent you a sign-in link. Check your inbox to continue.'}</div><div style="height:10px"></div><button class="bout" onclick="S.authState='unauthenticated';S.authMsg='';render()">Use another method</button>`
-    : `<button class="bmain gbtn" onclick="signInGoogle()" ${busy}><span class="glogo">${GICON}</span>Continue with Google</button><div class="adiv"><span>or</span></div><div class="fg"><div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email address" value="${S.authEmail||''}" oninput="S.authEmail=this.value"/></div></div><button class="bout" onclick="signInMagic()" ${busy}>Continue with email</button><div class="cav">We’ll send you a magic link — no password needed.</div>${msg}`;
+    : `<button class="bmain gbtn" onclick="signInGoogle()" ${busy}><span class="glogo">${GICON}</span>Continue with Google</button><div class="adiv"><span>or</span></div><div class="fg"><div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email address" value="${S.authEmail||''}" oninput="S.authEmail=this.value"/></div></div><button class="bout" onclick="signInMagic()" ${busy}>Continue with email</button><div class="cav">We’ll email you a sign-in link — no password needed.</div>${msg}`;
   const dev=IS_DEV?`<div class="dsec"><div class="dlbl">Localhost dev shortcuts</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${demoCards()}</div></div>`:'';
   return `<div class="lw">${authHero()}<div class="lbody"><div class="inv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Access is by invitation only. Your instructor creates your account and sends you a login link.</span></div>${form}${dev}</div></div>`;
 }
