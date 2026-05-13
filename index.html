@@ -391,7 +391,7 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false};
 S.ci['2026-03-31_06:00']=true;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -748,7 +748,7 @@ function rStuProf(){
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${s.name}</div></div><div class="sbody">
     <div class="card" style="padding:16px">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-        ${av(s.initials,b.bg,b.fg,52)}
+        ${avStu(s,52)}
         <div style="flex:1;min-width:0">
           <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">${s.name}</div>
           <div style="margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${bb(s.belt,s.deg||0,s.prog)}${giTag}</div>
@@ -774,7 +774,8 @@ function rStuProf(){
         ${elig.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${elig.reason}</span></div>`:''}
       </div>
     </div>
-    ${canEditClassCounts()?`<button class="bout" style="margin-top:12px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
+    ${(isOwner()||isProfessor()||isCoach())?`<button class="bout" style="margin-top:12px;padding:10px" onclick="triggerPhotoUpload('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${s.photoUrl?'Replace photo':'Upload photo'}</button>`:''}
+    ${canEditClassCounts()?`<button class="bout" style="margin-top:8px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
     ${rPromoPanel(s)}
     <div class="slbl">Journey</div>
     <div class="card" style="padding:12px 16px">${rTL(s.journey)}</div>
@@ -1126,11 +1127,15 @@ function rWEditor(w){
 
 function rAdmin(){
   const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const cls=getDC(sd);
-  const isOwner=S.me.role==='owner';const effAtab=(isOwner&&S.atab==='today')?'roster':S.atab;return `${effAtab==='today'?rDayStrip():''}<div style="height:16px"></div><div class="stabs">${isOwner?'':'<button class="stab '+(effAtab==='today'?'active':'')+'" onclick="setAtab(\'today\')">Presence</button>'}<button class="stab ${effAtab==='roster'?'active':''}" onclick="setAtab('roster')">Roster</button><button class="stab ${effAtab==='manage'?'active':''}" onclick="setAtab('manage')">Classes</button>${isOwner?'<button class="stab '+(effAtab==="staff"?"active":"")+'" onclick="setAtab(\'staff\')">Staff</button>':''}</div>${effAtab==='today'?rAToday(cls,sd):effAtab==='roster'?rARoster():effAtab==='staff'?rStaff():rManage()}${S.cdel?rCDel():''}${(S.editCls!==null&&S.editCls!==undefined)||S.addCls?rCEdit():''}${S.editJny?rJnyEditor():''}<div style="height:16px"></div>`;}
+  const isOwner=S.me.role==='owner';const effAtab=(isOwner&&S.atab==='today')?'roster':S.atab;
+  const showPhotos=canEditClassCounts();
+  const pendingCount=(S.photoQueue||[]).length;
+  const photosTab=showPhotos?'<button class="stab '+(effAtab==='photos'?'active':'')+'" onclick="setAtab(\'photos\')">Photos'+(pendingCount?' <span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;background:var(--red);color:#fff;border-radius:9px;font-size:10px;font-weight:700;margin-left:4px;vertical-align:1px">'+pendingCount+'</span>':'')+'</button>':'';
+  return `${effAtab==='today'?rDayStrip():''}<div style="height:16px"></div><div class="stabs">${isOwner?'':'<button class="stab '+(effAtab==='today'?'active':'')+'" onclick="setAtab(\'today\')">Presence</button>'}<button class="stab ${effAtab==='roster'?'active':''}" onclick="setAtab('roster')">Roster</button><button class="stab ${effAtab==='manage'?'active':''}" onclick="setAtab('manage')">Classes</button>${isOwner?'<button class="stab '+(effAtab==="staff"?"active":"")+'" onclick="setAtab(\'staff\')">Staff</button>':''}${photosTab}</div>${effAtab==='today'?rAToday(cls,sd):effAtab==='roster'?rARoster():effAtab==='staff'?rStaff():effAtab==='photos'?rPhotoQueue():rManage()}${S.cdel?rCDel():''}${(S.editCls!==null&&S.editCls!==undefined)||S.addCls?rCEdit():''}${S.editJny?rJnyEditor():''}<div style="height:16px"></div>`;}
 
 function rAToday(cls,sd){
   const au=UNITS.filter(u=>u.active);
-  return `${cls.length===0?`<div class="card" style="text-align:center;padding:24px"><div style="font-size:13px;color:var(--text3)">No classes on this day.</div></div>`:cls.map(c=>{const att=gatt(c.time);const all=[...att,...(S.ci[c.id]?[SME.id]:[])];const cf=all.filter(sid=>!!S.pconf[c.id+'_'+sid]).length;return `<div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--text)">${c.time}</div>${ct(c.type)}<div style="font-size:12px;color:var(--text2);margin-left:auto">${cf}/${all.length} confirmed</div></div>${all.map(sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return '';const k=c.id+'_'+sid;const isC=!!S.pconf[k];const isA=!!S.pabs[k];const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0" class="divider"><div style="display:flex;align-items:center;gap:10px">${av(s.initials,b.bg,b.fg,34)}<div><div style="font-size:14px;color:var(--text);font-weight:500">${s.name}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px"><button class="bsm ${isC?'bpre':''}" onclick="markP('${c.id}','${sid}')">Present</button><button class="bsm ${isA?'babs':''}" onclick="markA('${c.id}','${sid}')">Absent</button></div></div>`;}).join('')}</div>`;}).join('')}`;}
+  return `${cls.length===0?`<div class="card" style="text-align:center;padding:24px"><div style="font-size:13px;color:var(--text3)">No classes on this day.</div></div>`:cls.map(c=>{const att=gatt(c.time);const all=[...att,...(S.ci[c.id]?[SME.id]:[])];const cf=all.filter(sid=>!!S.pconf[c.id+'_'+sid]).length;return `<div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--text)">${c.time}</div>${ct(c.type)}<div style="font-size:12px;color:var(--text2);margin-left:auto">${cf}/${all.length} confirmed</div></div>${all.map(sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return '';const k=c.id+'_'+sid;const isC=!!S.pconf[k];const isA=!!S.pabs[k];const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0" class="divider"><div style="display:flex;align-items:center;gap:10px">${avStu(s,34)}<div><div style="font-size:14px;color:var(--text);font-weight:500">${s.name}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px"><button class="bsm ${isC?'bpre':''}" onclick="markP('${c.id}','${sid}')">Present</button><button class="bsm ${isA?'babs':''}" onclick="markA('${c.id}','${sid}')">Absent</button></div></div>`;}).join('')}</div>`;}).join('')}`;}
 
 
 function rRecentPromos(){
@@ -1145,7 +1150,7 @@ function rRecentPromos(){
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[p.toBelt]||BA.white;
     const dateStr=new Date(p.date).toLocaleDateString('en-AU',{day:'numeric',month:'short'});
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">'
-      +av(s.initials,b.bg,b.fg,34)
+      +avStu(s,34)
       +'<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+p.promotedBy+' · '+dateStr+'</div></div>'
       +'<div style="text-align:right">'
@@ -1230,7 +1235,7 @@ function rARoster(){
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     return '<div class="card" style="cursor:pointer;position:relative" onclick="viewStu(this.dataset.sid)" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
-      +'<div style="display:flex;align-items:center;gap:10px">'+av(s.initials,b.bg,b.fg,34)
+      +'<div style="display:flex;align-items:center;gap:10px">'+avStu(s,34)
       +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+(isElig?'<span title="Eligible for promotion" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-text)"></span>':'')+s.name+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div></div></div>'
       +bb(s.belt,s.deg||0,s.prog)+'</div>'
@@ -1275,7 +1280,7 @@ function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'
 
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Admin',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const vt=isA?TABS:TABS.filter(t=>t.id!=='admin');if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const vt=isA?TABS:TABS.filter(t=>t.id!=='admin');if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -1440,13 +1445,168 @@ function friendlyMutationError(err){
   return 'Something went wrong. Please try again.';
 }
 
+function photoSrc(path){return path?(SUPABASE_URL+'/storage/v1/object/public/avatars/'+path):'';}
+function avStu(s,size,roleIcon){
+  size=size||38;
+  if(s&&s.photoUrl){return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';}
+  const bmap=s&&s.prog==='kids'?BK:BA;const b=bmap[s&&s.belt]||BA.white;
+  return av(s?s.initials:'?',b.bg,b.fg,size,roleIcon);
+}
+
+let _crop={img:null,scale:1,x:0,y:0,panning:false,lastX:0,lastY:0,sid:null};
+const _CROP_SIZE=320;
+
+function triggerPhotoUpload(sid){
+  let inp=document.getElementById('photo-input');
+  if(!inp){inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.id='photo-input';inp.style.display='none';document.body.appendChild(inp);}
+  _crop.sid=sid;
+  inp.onchange=(e)=>{const f=e.target.files&&e.target.files[0];if(f)_cropStart(f);inp.value='';};
+  inp.click();
+}
+function _cropStart(file){
+  if(!file.type||file.type.indexOf('image/')!==0){showSaveToast2('Please choose an image file.','error');return;}
+  if(file.size>10*1024*1024){showSaveToast2('Image too large (max 10MB).','error');return;}
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const im=new Image();
+    im.onload=()=>{
+      _crop.img=im;
+      const w=im.naturalWidth,h=im.naturalHeight;
+      const minDim=Math.min(w,h);
+      _crop.scale=_CROP_SIZE/minDim;
+      _crop.x=(_CROP_SIZE-w*_crop.scale)/2;
+      _crop.y=(_CROP_SIZE-h*_crop.scale)/2;
+      S.cropOpen=true;render();
+      requestAnimationFrame(_cropDraw);
+    };
+    im.onerror=()=>showSaveToast2("Couldn't load image.",'error');
+    im.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function _cropDraw(){
+  const cv=document.getElementById('crop-canvas');
+  if(!cv||!_crop.img)return;
+  const ctx=cv.getContext('2d');
+  ctx.fillStyle='#000';ctx.fillRect(0,0,_CROP_SIZE,_CROP_SIZE);
+  ctx.drawImage(_crop.img,_crop.x,_crop.y,_crop.img.naturalWidth*_crop.scale,_crop.img.naturalHeight*_crop.scale);
+}
+function _cropPoint(ev){if(ev.touches&&ev.touches[0])return{x:ev.touches[0].clientX,y:ev.touches[0].clientY};return{x:ev.clientX,y:ev.clientY};}
+function _cropPanStart(ev){_crop.panning=true;const p=_cropPoint(ev);_crop.lastX=p.x;_crop.lastY=p.y;ev.preventDefault();}
+function _cropPanMove(ev){if(!_crop.panning)return;const p=_cropPoint(ev);_crop.x+=p.x-_crop.lastX;_crop.y+=p.y-_crop.lastY;_crop.lastX=p.x;_crop.lastY=p.y;_cropDraw();ev.preventDefault();}
+function _cropPanEnd(){_crop.panning=false;}
+function _cropZoom(ev){
+  ev.preventDefault();
+  const delta=ev.deltaY>0?0.9:1.1;
+  const newScale=Math.max(0.3,Math.min(5,_crop.scale*delta));
+  const cx=_CROP_SIZE/2,cy=_CROP_SIZE/2;
+  _crop.x=cx-(cx-_crop.x)*(newScale/_crop.scale);
+  _crop.y=cy-(cy-_crop.y)*(newScale/_crop.scale);
+  _crop.scale=newScale;_cropDraw();
+}
+function closeCrop(){S.cropOpen=false;_crop.img=null;_crop.sid=null;render();}
+function rCropModal(){
+  if(!S.cropOpen)return '';
+  return `<div class="cov" onclick="closeCrop()" style="align-items:center;z-index:200"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 auto;padding:22px">
+<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:4px">Crop photo</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:14px">Drag to position. Scroll or pinch to zoom.</div>
+<div style="display:flex;justify-content:center;margin-bottom:14px">
+<canvas id="crop-canvas" width="${_CROP_SIZE}" height="${_CROP_SIZE}" style="border-radius:50%;background:#000;cursor:move;touch-action:none;max-width:100%" onmousedown="_cropPanStart(event)" onmousemove="_cropPanMove(event)" onmouseup="_cropPanEnd()" onmouseleave="_cropPanEnd()" ontouchstart="_cropPanStart(event)" ontouchmove="_cropPanMove(event)" ontouchend="_cropPanEnd()" onwheel="_cropZoom(event)"></canvas>
+</div>
+<div style="display:flex;gap:10px">
+<button class="bout" style="flex:1" onclick="closeCrop()">Cancel</button>
+<button class="bmain" style="flex:1" onclick="uploadCroppedPhoto()">Upload</button>
+</div>
+</div></div>`;
+}
+
+async function uploadCroppedPhoto(){
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const sid=_crop.sid;const s=STUDENTS.find(x=>x.id===sid);
+  if(!s||!s._dbId){showSaveToast2('Student not found.','error');return;}
+  const out=document.createElement('canvas');out.width=512;out.height=512;
+  const ctx=out.getContext('2d');
+  const sx=-_crop.x/_crop.scale,sy=-_crop.y/_crop.scale,sw=_CROP_SIZE/_crop.scale;
+  ctx.drawImage(_crop.img,sx,sy,sw,sw,0,0,512,512);
+  const blob=await new Promise(res=>out.toBlob(res,'image/jpeg',0.85));
+  try{
+    const pend=await cli.from('photo_approvals').select('id,photo_url').eq('student_id',s._dbId).eq('status','pending');
+    if(pend&&pend.data&&pend.data.length){
+      for(const row of pend.data){
+        if(row.photo_url){try{await cli.storage.from('avatars').remove([row.photo_url]);}catch(_){}}
+        try{await cli.from('photo_approvals').delete().eq('id',row.id);}catch(_){}
+      }
+    }
+  }catch(e){console.warn('[mybjj] photo cleanup',e);}
+  const path=s.id+'/'+Date.now()+'.jpg';
+  const up=await cli.storage.from('avatars').upload(path,blob,{contentType:'image/jpeg'});
+  if(up.error){console.warn('[mybjj] upload photo fail:',up.error);showSaveToast2(friendlyMutationError(up.error),'error');return;}
+  console.log('[mybjj] upload photo OK');
+  const ins=await cli.from('photo_approvals').insert({student_id:s._dbId,user_id:S.profile&&S.profile.id,photo_url:path,status:'pending'});
+  if(ins.error){console.warn('[mybjj] photo approval insert fail:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
+  console.log('[mybjj] photo approval pending OK');
+  S.cropOpen=false;_crop.img=null;_crop.sid=null;
+  showSaveToast2("Photo submitted for approval. You'll see it on the profile once approved.");
+  render();
+  if(canEditClassCounts())loadPhotoQueue();
+}
+
+async function loadPhotoQueue(){
+  const cli=initSupabase();if(!cli)return;
+  S.photoQueueLoading=true;render();
+  try{
+    const r=await cli.from('photo_approvals').select('id,photo_url,submitted_at,student_id,user_id,student:students(legacy_id,full_name,initials,belt,prog)').eq('status','pending').order('submitted_at',{ascending:true});
+    if(r&&r.error){console.warn('[mybjj] photo queue:',r.error);S.photoQueue=[];}
+    else{S.photoQueue=(r&&r.data)||[];}
+  }catch(e){console.warn('[mybjj] photo queue exception:',e);S.photoQueue=[];}
+  S.photoQueueLoading=false;render();
+}
+async function approvePhoto(id){
+  const cli=initSupabase();if(!cli)return;
+  const row=(S.photoQueue||[]).find(r=>r.id===id);if(!row)return;
+  S.photoQueue=(S.photoQueue||[]).filter(r=>r.id!==id);render();
+  const r=await cli.from('photo_approvals').update({status:'approved',approved_by_id:S.profile&&S.profile.id,approved_at:new Date().toISOString()}).eq('id',id);
+  if(r&&r.error){console.warn('[mybjj] photo approval fail:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');loadPhotoQueue();return;}
+  console.log('[mybjj] photo approval OK');
+  if(row.student_id){
+    const upd=await cli.from('students').update({photo_url:row.photo_url}).eq('id',row.student_id);
+    if(upd&&upd.error)console.warn('[mybjj] student photo_url update:',upd.error);
+    const legacy=row.student&&row.student.legacy_id;
+    const s=STUDENTS.find(x=>x.id===legacy);
+    if(s){s.photoUrl=row.photo_url;render();}
+  }
+  showSaveToast2('Photo approved.');
+}
+async function rejectPhoto(id){
+  const reason=prompt('Reason (optional):','')||'';
+  const cli=initSupabase();if(!cli)return;
+  S.photoQueue=(S.photoQueue||[]).filter(r=>r.id!==id);render();
+  const r=await cli.rpc('reject_photo',{p_id:id,p_reason:reason||null});
+  if(r&&r.error){console.warn('[mybjj] photo rejected fail:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');loadPhotoQueue();return;}
+  console.log('[mybjj] photo rejected OK');
+  showSaveToast2('Photo rejected.');
+}
+function rPhotoQueue(){
+  if(!canEditClassCounts())return '<div style="padding:24px;text-align:center;color:var(--text3)">Not authorised.</div>';
+  if(S.photoQueueLoading&&!S.photoQueue)return '<div style="padding:24px;text-align:center;color:var(--text3)">Loading…</div>';
+  const q=S.photoQueue||[];
+  if(!q.length)return '<div style="padding:32px;text-align:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg><div style="margin-top:8px;color:var(--text3);font-size:14px">No pending photos.</div></div>';
+  return q.map(r=>{
+    const name=(r.student&&r.student.full_name)||'(unknown)';
+    const src=photoSrc(r.photo_url);
+    const date=new Date(r.submitted_at).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
+    return '<div class="card" style="display:flex;gap:12px;align-items:center"><img src="'+src+'" alt="'+name.replace(/"/g,'&quot;')+'" style="width:64px;height:64px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#eee"/><div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Submitted '+date+'</div></div><div style="display:flex;flex-direction:column;gap:6px"><button onclick="approvePhoto(\''+r.id+'\')" style="background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:8px;padding:6px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer">Approve</button><button onclick="rejectPhoto(\''+r.id+'\')" style="background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);border-radius:8px;padding:6px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer">Reject</button></div></div>';
+  }).join('');
+}
+
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
   let touched=false;
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active').order('name'),
-      c.from('students').select('id,legacy_id,full_name,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id'),
+      c.from('students').select('id,legacy_id,full_name,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url'),
       c.from('staff').select('id,legacy_id,full_name,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
@@ -1461,7 +1621,7 @@ async function hydrateData(){
       touched=true;
     }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
     if(st.data&&st.data.length){
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[]}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
@@ -1480,7 +1640,7 @@ async function hydrateData(){
       SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,theme:r.theme,color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
       touched=true;
     }else if(pw.error)console.warn('[mybjj] hydrate programme_weeks:',pw.error);
-    if(touched){console.log('[mybjj] hydrated from Supabase');render();}
+    if(touched){console.log('[mybjj] hydrated from Supabase');render();if(canEditClassCounts())loadPhotoQueue();}
     else console.warn('[mybjj] hydration returned no rows — keeping local fallback');
   }catch(e){
     console.warn('[mybjj] hydration failed — keeping local fallback:',e);
@@ -1549,7 +1709,7 @@ function pickUnit(u){S.unit=u;S.unitOpen=false;render();}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
 function doCI(id){S.ci[id]=true;render();}
 function undoCI(id){delete S.ci[id];render();}
-function setAtab(t){S.atab=t;render();}
+function setAtab(t){S.atab=t;render();if(t==='photos'&&canEditClassCounts())loadPhotoQueue();}
 function setSweek(w){S.sweek=w;S.editWeek=false;render();}
 function setPtab(t){S.ptab=t;render();}
 function setRseg(s){S.rseg=s;render();}
