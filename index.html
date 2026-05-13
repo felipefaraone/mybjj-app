@@ -391,7 +391,7 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null};
 S.ci['2026-03-31_06:00']=true;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -1256,17 +1256,22 @@ function rARoster(){
   return regLine+seg+filterHtml+rows+emptyMsg;
 }
 function rStaff(){
-  return '<div style="margin-bottom:8px"><div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:14px">Instructors and their belt progression, tracked by the head instructor.</div></div>'
-  +STAFF.map(s=>{
+  const ownerView=isOwner();
+  const active=STAFF.filter(s=>s._active!==false);
+  const header='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px"><div style="font-size:13px;color:var(--text2);line-height:1.5;flex:1">Instructors and their belt progression.</div>'+(ownerView?'<button class="bblue" style="padding:8px 14px;font-size:13px;flex-shrink:0;display:inline-flex;align-items:center;gap:4px" onclick="openAddStaff()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add staff</button>':'')+'</div>';
+  const rows=active.map(s=>{
     const b=BA[s.belt]||BA.white;
-    const isOwn=s.id===S.me.id;
-    const nextD=s.deg+1;const maxD=s.belt==='black'?6:4;const isMax=s.deg>=maxD;
-    return '<div class="card" style="cursor:pointer" onclick="viewStaffMember(this.dataset.sid)" data-sid="'+s.id+'""><div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'+av(s.initials,b.bg,b.fg,38,s.role)+'<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:var(--text)">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:1px">'+UNITS.find(u=>u.id===s.unit)?.name+' · '+instructorTitle(s.belt,s.deg||0,s.role)+'</div></div>'+bb(s.belt,s.deg||0,'adult')+'</div>'
-    +(isMax?'<div style="font-size:12px;color:var(--text2)">Highest degree — no further tracking needed.</div>':'<div style="font-size:12px;color:var(--text2);margin-bottom:6px">'+b.label+' '+(s.deg===0?'':s.deg+' deg')+(isMax?'':' → '+nextD+' deg or promotion')+' &nbsp;·&nbsp; verified by Prof. Mario</div>'+pb(s.deg,(s.belt==="black"?6:4),'#111827'))
-    +(s.feedback&&s.feedback.length?'<div style="font-size:11px;color:var(--text3);margin-top:8px;border-top:1px solid var(--border);padding-top:8px">Last note: '+s.feedback[0].date+'</div>':'')
-    +'<div style="font-size:11px;color:var(--blue);margin-top:8px;font-family:Barlow Condensed,sans-serif;font-weight:600">Tap to view full journey →</div></div>';
-  }).join('')
-  +'<button class="badd" style="margin-top:4px" onclick="openSub(\'addstaff\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add instructor</button>';
+    const showEdit=canEditStaffRow(s);
+    const showRemove=canRemoveStaffRow(s);
+    const roleLbl=s.role==='owner'?'Owner':'Professor';
+    const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
+    const degLbl=s.deg>0?' · '+s.deg+(s.deg===1?'st':s.deg===2?'nd':s.deg===3?'rd':'th')+' degree':'';
+    const editBtn=showEdit?'<button onclick="event.stopPropagation();openEditStaff(\''+s.id+'\')" title="Edit" style="background:none;border:1px solid var(--border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
+    const remBtn=showRemove?'<button onclick="event.stopPropagation();openRemoveStaff(\''+s.id+'\')" title="Remove" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>':'';
+    const actions=(showEdit||showRemove)?'<div style="display:flex;gap:6px;flex-shrink:0">'+editBtn+remBtn+'</div>':'';
+    return '<div class="card" style="cursor:pointer" onclick="viewStaffMember(this.dataset.sid)" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px">'+av(s.initials,b.bg,b.fg,38,s.role)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text)">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+roleLbl+' · '+b.label+degLbl+' · '+unitName+'</div></div>'+actions+'</div></div>';
+  }).join('');
+  return header+rows;
 }
 function viewStaffMember(id){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;render();}
 function openStaffFb(sid){S.addFb='staff:'+sid;render();}
@@ -1279,7 +1284,7 @@ function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'
 
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Admin',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const vt=isA?TABS:TABS.filter(t=>t.id!=='admin');if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const vt=isA?TABS:TABS.filter(t=>t.id!=='admin');if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -1457,6 +1462,209 @@ let _pinch=null;
 const _CROP_SIZE=320;
 function canUploadPhotoFor(s){return isOwner()||isProfessor()||isCoach();}
 
+function isStaffSelf(s){
+  if(!s)return false;
+  if(s._userId&&S.profile&&S.profile.id===s._userId)return true;
+  if(S.me&&S.me.name===s.name)return true;
+  return false;
+}
+function canEditStaffRow(s){return isOwner()||isStaffSelf(s);}
+function canRemoveStaffRow(s){return isOwner()&&!isStaffSelf(s);}
+function staffInitialsAuto(fullName){
+  const parts=(fullName||'').trim().split(/\s+/).filter(Boolean);
+  if(parts.length===0)return '';
+  if(parts.length===1)return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+}
+function avStaff(s,size){
+  size=size||38;
+  const b=BA[s.belt]||BA.white;
+  return av(s.initials,b.bg,b.fg,size,s.role);
+}
+
+function openAddStaff(){if(!isOwner())return;S.addStaff=true;render();setTimeout(()=>{const el=document.getElementById('as-fname');if(el)el.focus();},50);}
+function closeAddStaff(){S.addStaff=false;render();}
+function asAutoInitials(){
+  const fname=document.getElementById('as-fname');
+  const init=document.getElementById('as-initials');
+  if(!fname||!init)return;
+  if(init.dataset.touched==='1')return;
+  init.value=staffInitialsAuto(fname.value);
+}
+function asInitialsTouched(){const init=document.getElementById('as-initials');if(init)init.dataset.touched='1';}
+async function saveAddStaff(){
+  const fname=(document.getElementById('as-fname')?.value||'').trim();
+  const email=(document.getElementById('as-email')?.value||'').trim().toLowerCase();
+  const belt=document.getElementById('as-belt')?.value||'black';
+  const degree=parseInt(document.getElementById('as-degree')?.value||'0',10);
+  const unitLegacy=document.getElementById('as-unit')?.value||'';
+  const initials=(document.getElementById('as-initials')?.value||'').trim()||staffInitialsAuto(fname);
+  const err=document.getElementById('as-err'),errTxt=document.getElementById('as-err-txt');
+  const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}};
+  if(!fname)return showErr('Full name is required.');
+  if(!/^\S+@\S+\.\S+$/.test(email))return showErr('Please enter a valid email address.');
+  if(!unitLegacy)return showErr('Please select a unit.');
+  if(!Number.isInteger(degree)||degree<0||degree>6)return showErr('Degree must be 0–6.');
+  const cli=initSupabase();
+  if(!cli)return showErr('Connection issue. Please try again.');
+  const btn=event&&event.target;if(btn)btn.disabled=true;
+  const r=await cli.rpc('add_staff_member',{p_full_name:fname,p_email:email,p_belt:belt,p_degree:degree,p_unit_legacy_id:unitLegacy,p_initials:initials});
+  if(btn)btn.disabled=false;
+  if(r&&r.error){console.warn('[mybjj] add staff:',r.error);showErr(friendlyMutationError(r.error));return;}
+  console.log('[mybjj] add staff OK');
+  if(r&&r.data){
+    const u=UNITS.find(x=>x.id===unitLegacy);
+    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:'admin',roleTitle:r.data.role_title||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],feedback:[]});
+  }
+  S.addStaff=false;render();
+  showSaveToast2("Staff member added. They'll get access on next sign-in with "+email+".");
+}
+
+function openEditStaff(sid){const s=STAFF.find(x=>x.id===sid);if(!s)return;if(!canEditStaffRow(s))return;S.editStaff=sid;render();}
+function closeEditStaff(){S.editStaff=null;render();}
+async function saveEditStaff(sid){
+  const s=STAFF.find(x=>x.id===sid);if(!s)return;
+  const fname=(document.getElementById('es-fullname')?.value||'').trim();
+  const initials=(document.getElementById('es-initials')?.value||'').trim();
+  const journeyTxt=document.getElementById('es-journey')?.value||'[]';
+  const err=document.getElementById('es-err'),errTxt=document.getElementById('es-err-txt');
+  const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}};
+  if(!fname)return showErr('Full name is required.');
+  let journey;
+  try{journey=JSON.parse(journeyTxt);}catch(_){return showErr('Invalid JSON format in Journey field.');}
+  if(!Array.isArray(journey))return showErr('Journey must be a JSON array.');
+  const payload={full_name:fname,initials,journey};
+  const ownerEdit=isOwner();
+  let willChangeRole=false;
+  if(ownerEdit){
+    const belt=document.getElementById('es-belt')?.value;
+    const degree=parseInt(document.getElementById('es-degree')?.value||'',10);
+    const unitLegacy=document.getElementById('es-unit')?.value;
+    const roleSel=document.getElementById('es-role')?.value;
+    if(belt)payload.belt=belt;
+    if(Number.isInteger(degree))payload.degree=degree;
+    if(unitLegacy)payload.unit_legacy_id=unitLegacy;
+    if(roleSel){
+      const currentlyOwner=(s.role==='owner');
+      const willBeOwner=(roleSel==='owner');
+      if(currentlyOwner!==willBeOwner){
+        willChangeRole=true;
+        const msg=willBeOwner?'Promoting to Owner gives full admin rights. Continue?':'Demoting from Owner to Professor will reduce their access. Continue?';
+        if(!confirm(msg))return;
+        payload.role=willBeOwner?'owner':'admin';
+        payload.role_title=willBeOwner?'Head Professor':'Professor';
+      }
+    }
+    // Optimistic local
+    s.name=fname;s.initials=initials;s.journey=journey;
+    if(belt)s.belt=belt;
+    if(Number.isInteger(degree))s.deg=degree;
+    if(unitLegacy)s.unit=unitLegacy;
+    if(willChangeRole){s.role=payload.role;s.roleTitle=payload.role_title;}
+  }else{
+    s.name=fname;s.initials=initials;s.journey=journey;
+  }
+  S.editStaff=null;render();
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const fn=ownerEdit?'edit_staff_admin':'edit_staff_self';
+  const r=await cli.rpc(fn,{p_legacy_id:sid,p_payload:payload});
+  if(r&&r.error){console.warn('[mybjj] edit staff:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');return;}
+  console.log('[mybjj] edit staff OK');
+  showSaveToast2('Staff profile updated.');
+}
+
+function openRemoveStaff(sid){const s=STAFF.find(x=>x.id===sid);if(!s)return;if(!canRemoveStaffRow(s))return;S.removeStaffConfirm={legacyId:sid,name:s.name};render();}
+function closeRemoveStaff(){S.removeStaffConfirm=null;render();}
+async function executeRemoveStaff(){
+  if(!S.removeStaffConfirm)return;
+  const{legacyId,name}=S.removeStaffConfirm;
+  const s=STAFF.find(x=>x.id===legacyId);
+  if(s)s._active=false;
+  S.removeStaffConfirm=null;render();
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');if(s){s._active=true;render();}return;}
+  const r=await cli.rpc('remove_staff',{p_legacy_id:legacyId});
+  if(r&&r.error){console.warn('[mybjj] remove staff:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');if(s){s._active=true;render();}return;}
+  console.log('[mybjj] remove staff OK');
+  showSaveToast2('Removed '+name+' from staff.');
+}
+
+function rAddStaffModal(){
+  if(!S.addStaff)return '';
+  const activeUnits=UNITS.filter(u=>u.active);
+  const curUnit=UNITS.find(u=>u.name===S.unit);
+  const unitOpts=activeUnits.map(u=>'<option value="'+u.id+'" '+(curUnit&&u.id===curUnit.id?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
+  return `<div class="cov" onclick="closeAddStaff()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<button onclick="closeAddStaff()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:4px;padding-right:40px">Add staff member</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:14px">New professor. They'll get access on first sign-in with this email.</div>
+<div class="ef" style="margin-bottom:0">
+<div class="erow"><div class="elbl">Full name</div><input class="einput" id="as-fname" placeholder="e.g. Maria Silva" oninput="asAutoInitials()"/></div>
+<div class="erow"><div class="elbl">Email</div><input class="einput" id="as-email" type="email" placeholder="maria@example.com" autocapitalize="none" autocorrect="off"/></div>
+<div class="erow"><div class="elbl">Role</div><div class="einput" style="display:flex;align-items:center;color:var(--text2);background:var(--input-bg)">Professor</div></div>
+<div class="erow"><div class="elbl">Belt</div><select class="esel" id="as-belt"><option value="black" selected>Black</option><option value="brown">Brown</option><option value="purple">Purple</option><option value="blue">Blue</option><option value="white">White</option></select></div>
+<div class="erow"><div class="elbl">Degree</div><select class="esel" id="as-degree">${[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'">'+i+'</option>').join('')}</select></div>
+<div class="erow"><div class="elbl">Unit</div><select class="esel" id="as-unit">${unitOpts}</select></div>
+<div class="erow"><div class="elbl">Initials</div><input class="einput" id="as-initials" maxlength="3" placeholder="MS" oninput="asInitialsTouched()"/></div>
+</div>
+<div id="as-err" class="inv" style="display:none;margin-top:12px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="as-err-txt"></span></div>
+<div style="display:flex;gap:10px;margin-top:16px">
+<button class="bout" style="flex:1;min-height:44px" onclick="closeAddStaff()">Cancel</button>
+<button class="bmain" style="flex:1;min-height:44px" onclick="saveAddStaff()">Add</button>
+</div>
+</div></div>`;
+}
+
+function rEditStaffModal(){
+  if(!S.editStaff)return '';
+  const s=STAFF.find(x=>x.id===S.editStaff);if(!s)return '';
+  const ownerEdit=isOwner();
+  const activeUnits=UNITS.filter(u=>u.active);
+  const beltOpts=['black','brown','purple','blue','white'].map(b=>'<option value="'+b+'" '+(s.belt===b?'selected':'')+'>'+b.charAt(0).toUpperCase()+b.slice(1)+'</option>').join('');
+  const degOpts=[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'" '+(s.deg===i?'selected':'')+'>'+i+'</option>').join('');
+  const unitOpts=activeUnits.map(u=>'<option value="'+u.id+'" '+(s.unit===u.id?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
+  const isMe=isStaffSelf(s);
+  const journeyJson=JSON.stringify(s.journey||[],null,2).replace(/</g,'&lt;');
+  const adminFields=ownerEdit?`
+<div class="erow"><div class="elbl">Belt</div><select class="esel" id="es-belt">${beltOpts}</select></div>
+<div class="erow"><div class="elbl">Degree</div><select class="esel" id="es-degree">${degOpts}</select></div>
+<div class="erow"><div class="elbl">Unit</div><select class="esel" id="es-unit">${unitOpts}</select></div>
+<div class="erow"><div class="elbl">Role</div><select class="esel" id="es-role"><option value="professor" ${s.role!=='owner'?'selected':''}>Professor</option><option value="owner" ${s.role==='owner'?'selected':''}>Owner</option></select></div>`:'';
+  const selfOnlyNote=!ownerEdit?`<div class="inv" style="margin-bottom:12px;margin-top:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>You can update your name, initials and journey. Belt, degree and role changes are owner-only.</span></div>`:'';
+  return `<div class="cov" onclick="closeEditStaff()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
+<button onclick="closeEditStaff()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:4px;padding-right:40px">Edit staff${isMe?' — you':''}</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:14px">${s.name}</div>
+${selfOnlyNote}
+<div class="ef" style="margin-bottom:0">
+<div class="erow"><div class="elbl">Full name</div><input class="einput" id="es-fullname" value="${(s.name||'').replace(/"/g,'&quot;')}"/></div>
+<div class="erow"><div class="elbl">Initials</div><input class="einput" id="es-initials" maxlength="3" value="${(s.initials||'').replace(/"/g,'&quot;')}"/></div>
+${adminFields}
+</div>
+<div style="margin-top:14px"><div class="elbl" style="margin-bottom:6px">Journey (JSON)</div><textarea id="es-journey" style="width:100%;min-height:160px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:11px;line-height:1.4;background:var(--input-bg);color:var(--text);resize:vertical">${journeyJson}</textarea><div style="font-size:11px;color:var(--text3);margin-top:4px">Advanced — leave as-is unless you know what you're editing.</div></div>
+<div id="es-err" class="inv" style="display:none;margin-top:12px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="es-err-txt"></span></div>
+<div style="display:flex;gap:10px;margin-top:16px">
+<button class="bout" style="flex:1;min-height:44px" onclick="closeEditStaff()">Cancel</button>
+<button class="bmain" style="flex:1;min-height:44px" onclick="saveEditStaff('${s.id}')">Save</button>
+</div>
+</div></div>`;
+}
+
+function rRemoveStaffConfirm(){
+  if(!S.removeStaffConfirm)return '';
+  const{name}=S.removeStaffConfirm;
+  return `<div class="cov" onclick="closeRemoveStaff()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:340px;width:100%;margin:0 auto;padding:24px;text-align:center">
+<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="1.5" style="margin-bottom:12px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;margin-bottom:8px">Remove ${name}?</div>
+<div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">They will lose access to the app on next sign-in. Their historical promotions and feedback remain intact.</div>
+<div style="display:flex;gap:10px">
+<button class="bout" style="flex:1;min-height:44px" onclick="closeRemoveStaff()">Cancel</button>
+<button style="flex:1;background:#DC2626;color:#fff;border:none;border-radius:12px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer;min-height:44px" onclick="executeRemoveStaff()">Remove</button>
+</div>
+</div></div>`;
+}
+
 function triggerPhotoUpload(sid){
   let inp=document.getElementById('photo-input');
   if(!inp){inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.id='photo-input';inp.style.display='none';document.body.appendChild(inp);}
@@ -1621,7 +1829,7 @@ async function hydrateData(){
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active').order('name'),
       c.from('students').select('id,legacy_id,full_name,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url'),
-      c.from('staff').select('id,legacy_id,full_name,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id'),
+      c.from('staff').select('id,legacy_id,full_name,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
@@ -1639,7 +1847,7 @@ async function hydrateData(){
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
-      STAFF=sf.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,name:r.full_name,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
+      STAFF=sf.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:r.full_name,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
     if(pm.data&&pm.data.length){
