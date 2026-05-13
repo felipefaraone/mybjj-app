@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>myBJJ · Neutral Bay</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1A5DAD">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="myBJJ">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -480,9 +487,12 @@ function rAtts(all,cid){
   if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="achip" style="background:${r.me?'#1A5DAD':r.b.bg}20;border:1px solid ${r.me?'#1A5DAD':r.b.bg}40"><div class="acav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'#1A5DAD':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
   return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="aav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div>`;}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span>${all.length>P?`<span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">See all</span>`:''}</div></div>`;
 }
-function rTL(journey){
+function rTL(journey,shareSid){
   return `<div class="tl"><div class="tlline"></div>${(journey||[]).map((m,i)=>{
     const bl=BA[m.belt]||BA.white;const isFut=!m.done;const isCur=!!m.current;const isTr=!!m.xfer;
+    const lbl=(m.label||'').toLowerCase();
+    const isPromo=m.done&&!isTr&&(lbl.indexOf('belt')!==-1||lbl.indexOf('stripe')!==-1);
+    const shareHtml=(shareSid&&isPromo)?`<div style="margin-top:6px">${shareBtnHtml("shareJourneyEntry('"+shareSid+"',"+i+")")}</div>`:'';
     return `<div class="tli"><div class="tldot" style="background:${isFut?'var(--bg)':isTr?'var(--amber-bg)':bl.bg};color:${isFut?'var(--text3)':isTr?'var(--amber-text)':bl.fg};border:2px solid ${isFut?'var(--border2)':isTr?'var(--amber-border)':isCur?'#1A5DAD':bl.bg}${isCur?';box-shadow:0 0 0 3px var(--blue-tint)':''}">
       ${isTr?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`:isFut?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>`:isCur?`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><circle cx="12" cy="12" r="4" fill="${bl.fg}"/></svg>`:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`}
     </div><div class="tlb" ${i===(journey||[]).length-1?'style="padding-bottom:4px"':''}>
@@ -491,6 +501,7 @@ function rTL(journey){
       ${m.classes!==null?`<div class="tlc">${m.classes} classes</div>`:''}
       ${isCur?'<div class="tlhere"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px;margin-right:2px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>You are here</div>':''}
       ${isTr?`<div class="tlxfer">Transferred from ${m.prev||'previous academy'}</div>`:''}
+      ${shareHtml}
     </div></div>`;}).join('')}</div>`;
 }
 
@@ -777,7 +788,7 @@ function rStuProf(){
     ${canEditClassCounts()?`<button class="bout" style="margin-top:12px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
     ${rPromoPanel(s)}
     <div class="slbl">Journey</div>
-    <div class="card" style="padding:12px 16px">${rTL(s.journey)}</div>
+    <div class="card" style="padding:12px 16px">${rTL(s.journey,s.id)}</div>
     <div class="slbl">Instructor feedback <button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:'Barlow',sans-serif;margin-left:8px" onclick="openFb('${s.id}')">+ Add note</button></div>
     ${S.addFb===s.id?`<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Coaching notes for ${s.name.split(' ')[0]}..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveFb('${s.id}')">Save</button></div></div>`:''}
     ${(s.feedback||[]).length===0&&S.addFb!==s.id?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback notes yet.</div>`:''}
@@ -1065,6 +1076,8 @@ function rEvents(isA){
     const suppBtn=showSupp?'<button onclick="toggleEv(\''+e.id+'\',\'supporting\')" style="'+btnBase+';background:'+(iSupp?'#0f766e20':'transparent')+';color:'+(iSupp?'#0f766e':'var(--text3)')+';border-color:'+(iSupp?'#0f766e':'var(--border)')+'">'+suppLbl+(iSupp?' \u2713':'')+'</button>':'';
     const linkHtml=e.link?('<div class="lcard" style="margin-bottom:12px" onclick="window.open(\''+e.link+'\',\'_blank\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><div style="font-size:12px;color:var(--text2)">Register / more info</div></div>'):'';
     const editBtn=isA?('<button onclick="openEditEv(\''+e.id+'\')" style="background:none;border:none;color:var(--text3);font-size:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.5px;padding:0">EDIT</button>'):'';
+    const shareEvBtn=shareBtnHtml('shareEvent(\''+e.id+'\')');
+    const topActions='<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+(editBtn||'')+shareEvBtn+'</div>';
     // Attendance section
     const compRow=showComp?'<div style="margin-bottom:8px"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:#1A5DAD;margin-bottom:5px">COMPETING · '+competing.length+'</div>'+(competing.length?'<div style="display:flex">'+evStack(competing)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>':'';
     const suppRow=showSupp?'<div><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);margin-bottom:5px">SUPPORTING · '+supporting.length+'</div>'+(supporting.length?'<div style="display:flex">'+evStack(supporting)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>':'';
@@ -1073,7 +1086,7 @@ function rEvents(isA){
       +'<div style="flex:1"><div style="margin-bottom:5px;display:flex;align-items:center;gap:8px"><span style="background:'+typeCol+'20;color:'+typeCol+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+typeLbl+'</span></div>'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;color:var(--text);line-height:1.1">'+e.title+'</div>'
       +'<div style="font-size:12px;color:var(--text3);margin-top:3px">'+e.date+'</div></div>'
-      +editBtn+'</div>'
+      +topActions+'</div>'
       +(e.desc?'<div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.5">'+e.desc+'</div>':'')
       +linkHtml
       +((showComp||showSupp)?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:'+(showComp&&showSupp?'1fr 1fr':'1fr')+';gap:12px">'+compRow+suppRow+'</div>':'')
@@ -1150,12 +1163,13 @@ function rRecentPromos(){
     const dateStr=new Date(p.date).toLocaleDateString('en-AU',{day:'numeric',month:'short'});
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">'
       +avStu(s,34)
-      +'<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+p.promotedBy+' · '+dateStr+'</div></div>'
-      +'<div style="text-align:right">'
+      +'<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px">'
       +(p.isNewBelt
-        ?(bb(p.fromBelt,p.fromDeg,s.prog)+'<span style="font-size:16px;color:var(--text3);margin:0 4px">→</span>'+bb(p.toBelt,0,s.prog))
-        :('<div style="font-size:13px;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-weight:700">+1 stripe</div><div style="margin-top:3px">'+bb(p.toBelt,p.toDeg,s.prog)+'</div>'))
+        ?('<div>'+bb(p.fromBelt,p.fromDeg,s.prog)+'<span style="font-size:16px;color:var(--text3);margin:0 4px">→</span>'+bb(p.toBelt,0,s.prog)+'</div>')
+        :('<div><div style="font-size:13px;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-weight:700">+1 stripe</div><div style="margin-top:3px">'+bb(p.toBelt,p.toDeg,s.prog)+'</div></div>'))
+      +shareBtnHtml('event.stopPropagation();sharePromo(\''+p.id+'\')')
       +'</div></div>';
   }).join('');
   return '<div class="slbl" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
@@ -1472,6 +1486,45 @@ let _crop={img:null,scale:1,x:0,y:0,panning:false,lastX:0,lastY:0,sid:null};
 let _pinch=null;
 const _CROP_SIZE=320;
 function canUploadPhotoFor(s){return isOwner()||isProfessor()||isCoach();}
+
+const SHARE_APP_URL='https://mybjj-app.com';
+function appShareUrl(){return (location.hostname==='mybjj-app.com'||location.hostname==='www.mybjj-app.com')?location.origin:SHARE_APP_URL;}
+function shareWhatsApp(text){window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener');}
+const WA_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>';
+function shareBtnHtml(onclickAttr){return '<button onclick="'+onclickAttr+'" title="Share on WhatsApp" style="background:none;border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:#1A5DAD;cursor:pointer;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;display:inline-flex;align-items:center;gap:5px">'+WA_ICON+'Share</button>';}
+function sharePromoText(p,s){
+  const prog=(s&&s.prog)||'adult';
+  const bmap=prog==='kids'?BK:BA;
+  const beltLbl=((bmap[p.toBelt]||BA.white).label||'').toLowerCase();
+  const unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
+  const emoji=prog==='kids'?'🌟':'🥋';
+  if(p.isNewBelt) return emoji+' Congratulations to '+p.studentName+' who just received their '+beltLbl+' belt at myBJJ '+unit+'! Hard work pays off. '+appShareUrl();
+  return '⚪ '+p.studentName+' just earned a new stripe on their '+beltLbl+' belt at myBJJ '+unit+'! '+appShareUrl();
+}
+function sharePromo(legacyId){
+  const p=PROMOTION_LOG.find(x=>x.id===legacyId);if(!p)return;
+  const s=STUDENTS.find(x=>x.id===p.studentId);
+  shareWhatsApp(sharePromoText(p,s));
+}
+function shareJourneyEntry(sid,idx){
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.journey||!s.journey[idx])return;
+  const j=s.journey[idx];
+  const isStripe=(j.label||'').toLowerCase().indexOf('stripe')!==-1;
+  shareWhatsApp(sharePromoText({studentName:s.name,toBelt:j.belt,unit:s.unit,isNewBelt:!isStripe},s));
+}
+function shareEventText(e){
+  const desc=(e.desc||'').trim();
+  const m=desc.match(/^[^.!?]+[.!?]/);
+  const briefDesc=m?m[0].trim():'';
+  const parts=['📅 myBJJ event:', e.title+' on '+(e.date||'TBC')+'.'];
+  if(briefDesc) parts.push(briefDesc);
+  parts.push(appShareUrl());
+  return parts.join(' ');
+}
+function shareEvent(legacyId){
+  const e=EVENTS.find(x=>x.id===legacyId);if(!e)return;
+  shareWhatsApp(shareEventText(e));
+}
 
 function isStaffSelf(s){
   if(!s)return false;
@@ -2171,6 +2224,11 @@ function setRF(k,v){S[k]=v;render();}
 function fmt(n,role){if(role==='admin'||role==='owner')return n;var p=n.trim().split(' ');if(p.length<2)return p[0];return p[0]+' '+p[p.length-1][0]+'.';}
 
 render();bootAuth();
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js').then(()=>console.log('[mybjj] SW registered')).catch(err=>console.warn('[mybjj] SW reg failed:',err));
+  });
+}
 </script>
 </body>
 </html>
