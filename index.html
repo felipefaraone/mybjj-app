@@ -627,14 +627,14 @@ function revertPromo(id){
   if(!confirm('Revert promotion for '+s.name+'? This will restore their previous belt/stripe.'))return;
   s.belt=p.fromBelt;s.deg=p.fromDeg;s.grade=0;s.giGrade=0;
   PROMOTION_LOG.splice(idx,1);
-  // Remove last journey entry added by this promotion
   if(s.journey&&s.journey.length){
     s.journey.pop();
-    // Restore current flag to new last done entry
     const prev=s.journey.slice().reverse().find(j=>j.done);
     if(prev)prev.current=true;
   }
   render();
+  withSb(c=>c.from('promotions').delete().eq('legacy_id',p.id),'delete promotion');
+  if(s._dbId)withSb(c=>c.from('students').update({belt:s.belt,degree:s.deg,grade:0,gi_grade:0,journey:s.journey||[]}).eq('id',s._dbId),'revert student');
 }
 
 function doPromote(id, isBeltPromotion){
@@ -645,6 +645,7 @@ function doPromote(id, isBeltPromotion){
   const ORDER_K=['white','grey','yellow','orange','green'];
   const ORDER=s.prog==='kids'?ORDER_K:ORDER_A;
 
+  let newPromo=null;
   if(isBeltPromotion){
     const curIdx=ORDER.indexOf(s.belt);
     if(curIdx>=ORDER.length-1){alert('Already at maximum belt.');return;}
@@ -653,14 +654,13 @@ function doPromote(id, isBeltPromotion){
     if(!chk.ok){alert('Not authorized: '+chk.reason);return;}
     const fromBelt=s.belt;const fromDeg=s.deg;
     s.belt=nextBelt;s.deg=0;s.grade=0;s.giGrade=0;
-    // Log it
-    PROMOTION_LOG.unshift({
+    newPromo={
       id:'pl'+Date.now(),studentId:s.id,studentName:s.name,
       fromBelt,fromDeg,toBelt:nextBelt,toDeg:0,isNewBelt:true,
       date:new Date().toISOString().slice(0,10),
       promotedBy:me.name,unit:s.unit||'nb'
-    });
-    // Add to journey
+    };
+    PROMOTION_LOG.unshift(newPromo);
     if(!s.journey)s.journey=[];
     const bl=s.prog==='kids'?BK:BA;
     const nb=bl[nextBelt]||BA.white;
@@ -674,19 +674,33 @@ function doPromote(id, isBeltPromotion){
     if(!chk.ok){alert('Not authorized: '+chk.reason);return;}
     const fromDeg=s.deg;
     s.deg+=1;s.grade=0;s.giGrade=0;
-    PROMOTION_LOG.unshift({
+    newPromo={
       id:'pl'+Date.now(),studentId:s.id,studentName:s.name,
       fromBelt:s.belt,fromDeg,toBelt:s.belt,toDeg:s.deg,isNewBelt:false,
       date:new Date().toISOString().slice(0,10),
       promotedBy:me.name,unit:s.unit||'nb'
-    });
-    // Update journey current milestone
+    };
+    PROMOTION_LOG.unshift(newPromo);
     if(s.journey){
       s.journey.forEach(j=>{if(j.current)j.current=false;});
       s.journey.push({belt:s.belt,label:s.belt.charAt(0).toUpperCase()+s.belt.slice(1)+' — '+s.deg+(s.deg===1?' st':(s.deg===2?' nd':(s.deg===3?' rd':' th')))+' stripe',date:new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'}),classes:s.total,done:true,current:true});
     }
   }
   render();
+  if(s._dbId){
+    const unit=UNITS.find(u=>u.id===newPromo.unit);
+    withSb(c=>c.from('promotions').insert({
+      legacy_id:newPromo.id,student_id:s._dbId,
+      from_belt:newPromo.fromBelt,to_belt:newPromo.toBelt,
+      from_deg:newPromo.fromDeg,to_deg:newPromo.toDeg,
+      type:newPromo.isNewBelt?'belt':'stripe',is_new_belt:newPromo.isNewBelt,
+      date:newPromo.date,student_name:newPromo.studentName,
+      promoted_by_name:newPromo.promotedBy,unit_id:unit&&unit._dbId
+    }),'insert promotion');
+    withSb(c=>c.from('students').update({
+      belt:s.belt,degree:s.deg,grade:s.grade,gi_grade:s.giGrade,journey:s.journey||[]
+    }).eq('id',s._dbId),'update student after promotion');
+  }
 }
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
@@ -1249,9 +1263,15 @@ function sendInvite(){
     if(!fromAcad){showSaveToast2('Missing: previous academy','error');return;}
   }
   const label=status==='transfer'?'Transfer from '+(document.getElementById('add-from')?.value||'another academy'):status==='returning'?'Returning student':'New student';
-  if(confirm('Send invite to '+fname+' '+lname+' ('+email+')?\n\nStatus: '+label)){
-    showSaveToast2('Invite sent to '+fname+' '+lname);closeSub();
-  }
+  if(!confirm('Send invite to '+fname+' '+lname+' ('+email+')?\n\nStatus: '+label))return;
+  const isKids=S._addProg==='kids';
+  const parentEmailInput=isKids?inputs[inputs.length-1]:null;
+  const parentEmail=parentEmailInput?parentEmailInput.value.trim():'';
+  const inviteEmail=(isKids&&parentEmail)?parentEmail:email;
+  const inviteRole=isKids?'parent':'student';
+  const unitDbId=meUnitDbId();
+  withSb(c=>c.from('whitelist').upsert({email:inviteEmail.toLowerCase(),role:inviteRole,unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'}),'whitelist invite');
+  showSaveToast2('Invite sent to '+fname+' '+lname);closeSub();
 }
 function showSaveToast2(msg,type){const t=document.createElement('div');const isErr=type==='error';t.innerHTML=(isErr?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>')+msg;t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(isErr?'#DC2626':'#1A5DAD')+';color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s;white-space:nowrap';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},2200);}
 
@@ -1356,6 +1376,18 @@ function meFromProfile(p){
   return Object.assign({},base,{id:p.id,name:p.full_name||p.email,role:r,email:p.email});
 }
 
+async function withSb(builder,label){
+  if(!sb) return;
+  try{
+    const r=await builder(sb);
+    if(r&&r.error){console.warn('[mybjj] '+label+':',r.error.message);return r;}
+    if(r)console.log('[mybjj] '+label+' OK');
+    return r;
+  }catch(e){console.warn('[mybjj] '+label+' exception:',e);}
+}
+function meStaffDbId(){const s=STAFF.find(x=>x.name===(S.me&&S.me.name));return s&&s._dbId;}
+function meUnitDbId(){const cur=UNITS.find(u=>u.name===S.unit);return cur&&cur._dbId;}
+
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
   let touched=false;
@@ -1373,27 +1405,27 @@ async function hydrateData(){
     const uMap={};
     if(u.data&&u.data.length){
       u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
-      UNITS=u.data.map(r=>({id:r.legacy_id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active}));
+      UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active}));
       touched=true;
     }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
     if(st.data&&st.data.length){
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[]}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[]}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
-      STAFF=sf.data.map(r=>({id:r.legacy_id,name:r.full_name,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
+      STAFF=sf.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.full_name,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[]}));
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
     if(pm.data&&pm.data.length){
-      PROMOTION_LOG=pm.data.map(r=>({id:r.legacy_id,studentId:r.student&&r.student.legacy_id,studentName:r.student_name,fromBelt:r.from_belt,fromDeg:r.from_deg,toBelt:r.to_belt,toDeg:r.to_deg,isNewBelt:r.is_new_belt,date:r.date,promotedBy:r.promoted_by_name,unit:uMap[r.unit_id]||null}));
+      PROMOTION_LOG=pm.data.map(r=>({id:r.legacy_id,_dbId:r.id,studentId:r.student&&r.student.legacy_id,studentName:r.student_name,fromBelt:r.from_belt,fromDeg:r.from_deg,toBelt:r.to_belt,toDeg:r.to_deg,isNewBelt:r.is_new_belt,date:r.date,promotedBy:r.promoted_by_name,unit:uMap[r.unit_id]||null}));
       touched=true;
     }else if(pm.error)console.warn('[mybjj] hydrate promotions:',pm.error);
     if(ev.data&&ev.data.length){
-      EVENTS=ev.data.map(r=>({id:r.legacy_id,title:r.title,date:r.date_text||r.date,type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]}));
+      EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]}));
       touched=true;
     }else if(ev.error)console.warn('[mybjj] hydrate events:',ev.error);
     if(pw.data&&pw.data.length){
-      SCHED=pw.data.map(r=>({week:r.week_index,theme:r.theme,color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
+      SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,theme:r.theme,color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
       touched=true;
     }else if(pw.error)console.warn('[mybjj] hydrate programme_weeks:',pw.error);
     if(touched){console.log('[mybjj] hydrated from Supabase');render();}
@@ -1474,14 +1506,14 @@ function toggleExp(id){S.expanded[id]=!S.expanded[id];render();}
 function togNotif(k){S.notif[k]=!S.notif[k];render();}
 function setNAud(k){S.naud=k;render();}
 function sendN(){S.nsent=true;render();}
-function markP(cid,sid){const k=cid+'_'+sid;S.pconf[k]=!S.pconf[k];if(S.pconf[k])delete S.pabs[k];render();}
-function markA(cid,sid){const k=cid+'_'+sid;S.pabs[k]=!S.pabs[k];if(S.pabs[k])delete S.pconf[k];render();}
+function markP(cid,sid){const k=cid+'_'+sid;S.pconf[k]=!S.pconf[k];if(S.pconf[k])delete S.pabs[k];render();const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;if(S.pconf[k]){const today=new Date().toISOString().slice(0,10);withSb(c=>c.from('attendance').insert({student_id:s._dbId,class_legacy_id:cid,confirmed_by_instructor_id:meStaffDbId(),attended_at:new Date().toISOString(),gi:true}),'mark present');}else{withSb(c=>c.from('attendance').delete().eq('student_id',s._dbId).eq('class_legacy_id',cid).gte('attended_at',new Date().toISOString().slice(0,10)),'unmark present');}}
+function markA(cid,sid){const k=cid+'_'+sid;S.pabs[k]=!S.pabs[k];if(S.pabs[k])delete S.pconf[k];render();const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;if(S.pabs[k])withSb(c=>c.from('attendance').delete().eq('student_id',s._dbId).eq('class_legacy_id',cid).gte('attended_at',new Date().toISOString().slice(0,10)),'mark absent (delete attendance)');}
 function openInbox(){S.inboxOpen=true;S.panelOpen=false;render();}
 function closeInbox(){S.inboxOpen=false;render();}
 function markRead(id){const n=NOTIFS.find(x=>x.id===id);if(n)n.read=true;render();}
 function markAllRead(){NOTIFS.forEach(n=>n.read=true);render();}
 function delNotif(id){NOTIFS=NOTIFS.filter(x=>x.id!==id);render();}
-function togUA(id){const u=UNITS.find(x=>x.id===id);if(u)u.active=!u.active;render();}
+function togUA(id){const u=UNITS.find(x=>x.id===id);if(!u)return;u.active=!u.active;render();if(u._dbId)withSb(c=>c.from('units').update({active:u.active}).eq('id',u._dbId),'toggle unit active');}
 function addUnit(){
   const n=(document.getElementById('nu-name')?.value||'').trim();
   const c=(document.getElementById('nu-city')?.value||'').trim();
@@ -1492,8 +1524,11 @@ function addUnit(){
     if(!n)missing.push('name');if(!c)missing.push('city');if(!co)missing.push('country');
     showSaveToast2('Missing: '+missing.join(', '),'error');return;
   }
-  UNITS.push({id:'u'+Date.now(),name:n,city:c,country:co,active:true,address:addr||c});
+  const legacy='u'+Date.now();
+  const newUnit={id:legacy,name:n,city:c,country:co,active:true,address:addr||c};
+  UNITS.push(newUnit);
   showSaveToast2(n+' unit added');render();
+  withSb(async(cli)=>{const r=await cli.from('units').insert({legacy_id:legacy,name:n,city:c,country:co,address:addr||c,active:true}).select('id').single();if(r&&r.data&&r.data.id)newUnit._dbId=r.data.id;return r;},'insert unit');
 }
 function saveEditUnit(id){
   var u=UNITS.find(function(x){return x.id===id;});if(!u)return;
@@ -1504,10 +1539,12 @@ function saveEditUnit(id){
   if(!n||!c){showSaveToast2('Name and city are required','error');return;}
   u.name=n;u.city=c;u.country=co;u.address=addr||c;
   S._editUnit=null;showSaveToast2(n+' updated');render();
+  if(u._dbId)withSb(cli=>cli.from('units').update({name:n,city:c,country:co,address:addr||c}).eq('id',u._dbId),'update unit');
 }
 function toggleUnitActive(id,val){
   var u=UNITS.find(function(x){return x.id===id;});if(!u)return;
   u.active=val;render();
+  if(u._dbId)withSb(c=>c.from('units').update({active:val}).eq('id',u._dbId),'toggle unit active');
 }
 function confirmDeleteUnit(id,name){
   S._deleteConfirm={id:id,name:name,step:1};render();
@@ -1520,9 +1557,11 @@ function executeDeleteUnit(){
   var stuCount=STUDENTS.filter(function(s){return s.unit===id;}).length;
   if(stuCount>0){showSaveToast2('Cannot delete: '+stuCount+' students assigned','error');S._deleteConfirm=null;render();return;}
   var idx=UNITS.findIndex(function(u){return u.id===id;});
+  var dbId=idx>=0?UNITS[idx]._dbId:null;
   if(idx>=0)UNITS.splice(idx,1);
   S._deleteConfirm=null;S._editUnit=null;
   showSaveToast2(name+' deleted');render();
+  if(dbId)withSb(cli=>cli.from('units').delete().eq('id',dbId),'delete unit');
 }
 function rDeleteUnitConfirm(){
   var d=S._deleteConfirm;if(!d)return '';
@@ -1540,7 +1579,7 @@ function rDeleteUnitConfirm(){
 
 function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;render();}
 function openFb(sid){S.addFb=sid;render();}
-function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];s.feedback.unshift({ins:'Prof. Mario',date:'Apr 2026',text:txt});S.addFb=null;render();}
+function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});s.feedback.unshift({ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
 function addJny(sid){S.editJny={sid,idx:null,isNew:true};render();}
 function getJnyTarget(sid){
   if(sid.startsWith('staff:')){const id=sid.replace('staff:','');const s=STAFF.find(x=>x.id===id);return s;}
@@ -1614,7 +1653,7 @@ function editTechVideo(week,techIdx){
   else tech.video=url;
   render();
 }
-function saveW(week){const w=SCHED.find(x=>x.week===week);if(!w)return;w.theme=document.getElementById('we-theme')?.value||w.theme;w.notes=document.getElementById('we-notes')?.value||'';w.video=document.getElementById('we-vid')?.value||'';S.editWeek=false;render();}
+function saveW(week){const w=SCHED.find(x=>x.week===week);if(!w)return;w.theme=document.getElementById('we-theme')?.value||w.theme;w.notes=document.getElementById('we-notes')?.value||'';w.video=document.getElementById('we-vid')?.value||'';S.editWeek=false;render();if(w._dbId)withSb(c=>c.from('programme_weeks').update({theme:w.theme,notes:w.notes}).eq('id',w._dbId),'update programme week');}
 
 function setRQ(v){S.rq=v;render();}
 function setRF2(el){S[el.dataset.key]=el.value;render();}
