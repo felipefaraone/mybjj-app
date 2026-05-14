@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>myBJJ · Neutral Bay</title>
+<style>
+  /* Splash. Inline + system-font only so it paints on the very first
+     frame, before fonts / Supabase CDN / the app bundle finish loading. */
+  #mybjj-splash{position:fixed;inset:0;z-index:9999;background:#1A5DAD;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#fff;transition:opacity .3s ease}
+  #mybjj-splash img{width:112px;height:112px;border-radius:50%;animation:mybjj-splash-pulse 2s ease-in-out infinite;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+  #mybjj-splash .mybjj-splash-name{font-family:Impact,"Arial Black",sans-serif;font-size:28px;letter-spacing:2px;margin-top:6px}
+  #mybjj-splash .mybjj-splash-tag{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.65)}
+  #mybjj-splash .mybjj-splash-fallback{display:none;margin-top:18px;max-width:280px;text-align:center;font-size:14px;line-height:1.5;color:rgba(255,255,255,.92)}
+  #mybjj-splash.mybjj-splash-fail .mybjj-splash-fallback{display:block}
+  #mybjj-splash.mybjj-splash-fail img{animation:none;opacity:.55}
+  #mybjj-splash .mybjj-splash-refresh{margin-top:12px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:10px;padding:8px 20px;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:1px;cursor:pointer}
+  @keyframes mybjj-splash-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  @keyframes mybjj-app-fadein{from{opacity:0}to{opacity:1}}
+  body.mybjj-splash-gone #app{animation:mybjj-app-fadein .2s ease-out}
+</style>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#1A5DAD">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -177,6 +192,24 @@ html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}bod
 </style>
 </head>
 <body>
+<div id="mybjj-splash">
+  <img src="/icon-192.png" alt="myBJJ"/>
+  <div class="mybjj-splash-name">myBJJ</div>
+  <div class="mybjj-splash-tag">Brazilian Jiu-Jitsu Team</div>
+  <div class="mybjj-splash-fallback">
+    Couldn’t load. Please refresh.
+    <div><button class="mybjj-splash-refresh" onclick="location.reload()">Refresh</button></div>
+  </div>
+</div>
+<script>
+  // 10s fallback — if hideSplash() never fires (CDN down, JS error,
+  // network black hole), surface a refresh prompt inside the splash so
+  // the user isn't stuck staring at the pulsing logo forever.
+  window.__mybjjSplashFallback=setTimeout(function(){
+    var s=document.getElementById('mybjj-splash');
+    if(s)s.classList.add('mybjj-splash-fail');
+  },10000);
+</script>
 <div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -1637,16 +1670,32 @@ function rPromoAlert(){
   var moreText=ready.length>5?'<div onclick="S.tab=\'admin\';S.atab=\'roster\';S.rfNear=true;render()" style="font-size:11px;color:#1A5DAD;text-align:center;padding-top:4px;cursor:pointer;font-weight:600">+'+(ready.length-5)+' more in Roster →</div>':'';
   return '<div class="card" style="border-color:var(--amber-border);background:var(--amber-bg);margin-top:12px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text)"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--amber-text)">'+ready.length+' student'+(ready.length>1?'s':'')+' ready for evaluation</div></div><button onclick="S.evalDismissed=true;render()" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--amber-text);opacity:.6;line-height:1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>'+items+moreText+'</div>';
 }
+let _splashGone=false;
+function hideSplash(){
+  if(_splashGone)return;
+  _splashGone=true;
+  if(window.__mybjjSplashFallback){clearTimeout(window.__mybjjSplashFallback);window.__mybjjSplashFallback=null;}
+  const s=document.getElementById('mybjj-splash');
+  if(!s)return;
+  s.style.opacity='0';
+  setTimeout(()=>{s.remove();document.body.classList.add('mybjj-splash-gone');},300);
+}
+
 function render(){
   const app=document.getElementById('app');
   if(S.loggedIn){
     app.innerHTML=rApp();
     requestAnimationFrame(()=>{const el=document.getElementById('dp-'+dk(S.selDay||TODAY));if(el){const strip=el.closest('.dstrip');if(strip){const target=el.offsetLeft-(strip.offsetWidth/2)+(el.offsetWidth/2);strip.scrollTo({left:target,behavior:'smooth'});}}});
+    hideSplash();
     return;
   }
-  if(S.authState==='pending'||S.authState==='rejected'){app.innerHTML=rPending();return;}
+  if(S.authState==='pending'||S.authState==='rejected'){app.innerHTML=rPending();hideSplash();return;}
+  // Still resolving auth — leave the splash up; the in-app "checking"
+  // placeholder is what users would see otherwise, and that's an
+  // anti-climactic transition from the splash.
   if(S.authState==='checking'){app.innerHTML='<div class="awrap"><div class="abrand"><div class="abrandhead">myBJJ</div><div class="abrandsub">Neutral Bay pilot</div></div></div>';return;}
   app.innerHTML=rAuth();
+  hideSplash();
 }
 
 function doLogin(r){if(r==='owner'){S.me=AME;S.atab='roster';}else if(r==='instructor_jonathan')S.me=INSE_JOHN;else if(r==='admin')S.me=INSE_FELIPE;else S.me=SME;S.loggedIn=true;S.tab=(r==='admin'||r==='owner'||r==='instructor_jonathan')?'admin':'class';render();}
