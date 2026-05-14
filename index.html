@@ -682,7 +682,7 @@ function rTL(journey,shareSid){
 
 function rInbox(){const ur=NOTIFS.filter(n=>!n.read).length;const IBACK=`<button class="sback" onclick="closeInbox()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:#1A5DAD;font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?`<div style="padding:40px;text-align:center;color:var(--text3)">No notifications</div>`:NOTIFS.map(n=>`<div class="nitem ${n.read?'':'unr'}" onclick="markRead('${n.id}')"><div class="ndot ${n.read?'rd':''}"></div><div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${n.title}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${n.body}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${n.time}</div></div><button class="ndel" onclick="event.stopPropagation();delNotif('${n.id}')">×</button></div>`).join('')}</div></div>`;}
 
-function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48)}<div class="pname">${m.name}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
+function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${m.name}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
 
 function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'kidpeer':rKidPeer};return(ss[S.sub]||(() =>''))();}
 function rPEdit(){
@@ -1660,80 +1660,128 @@ function rMembers(){
   const validBelts=segment==='kids'?beltsKids:beltsAdult;
   let beltFilter=S.membersBelt||'all';
   if(beltFilter!=='all'&&!validBelts.includes(beltFilter)){beltFilter='all';S.membersBelt='all';}
-  let list=STUDENTS.filter(s=>s._active!==false&&s.unit===curUnit&&s.prog===(segment==='kids'?'kids':'adult'));
+  const typeFilter=S.membersType||'all'; // all | students | instructors
+  // Build the combined Students + Instructors list. Students filtered
+  // by adult/kids segment; instructors only on adult segment (the
+  // staff teaching the kids program are the same humans, no point
+  // double-listing them under Kids).
+  const students=STUDENTS.filter(s=>s._active!==false&&s.unit===curUnit&&s.prog===(segment==='kids'?'kids':'adult')).map(s=>({...s,_kind:'student'}));
+  const instructors=segment==='adult'?STAFF.filter(st=>st._active!==false&&st.unit===curUnit).map(st=>({...st,_kind:'instructor'})):[];
+  let list=[];
+  if(typeFilter==='students')list=students;
+  else if(typeFilter==='instructors')list=instructors;
+  else list=[...instructors,...students]; // instructors surface first when "All"
   if(beltFilter!=='all')list=list.filter(s=>s.belt===beltFilter);
-  list=list.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  // Stable sort: keep instructor section together at top in "All" mode,
+  // alphabetical within each section.
+  list=list.slice().sort((a,b)=>{
+    if(a._kind!==b._kind)return a._kind==='instructor'?-1:1;
+    return (a.name||'').localeCompare(b.name||'');
+  });
   const segAdultBtn='<div class="rseg '+(segment==='adult'?'active':'')+'" onclick="setMembersSegment(\'adult\')">Adults</div>';
   const segKidsBtn=canSeeKids?'<div class="rseg '+(segment==='kids'?'active':'')+'" onclick="setMembersSegment(\'kids\')">Kids</div>':'';
   const segHtml='<div class="rsw">'+segAdultBtn+segKidsBtn+'</div>';
   const chipBase='border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
-  const chip=(value,label)=>{
+  const beltChip=(value,label)=>{
     const sel=beltFilter===value;
     return '<button onclick="setMembersBelt(\''+value+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'#1A5DAD':'var(--border)')+';color:'+(sel?'#1A5DAD':'var(--text3)')+'">'+label+'</button>';
   };
-  const chips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;min-width:0">'+chip('all','All')+validBelts.map(b=>chip(b,b.charAt(0).toUpperCase()+b.slice(1))).join('')+'</div>';
+  const typeChip=(value,label)=>{
+    const sel=typeFilter===value;
+    return '<button onclick="setMembersType(\''+value+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'#1A5DAD':'var(--border)')+';color:'+(sel?'#1A5DAD':'var(--text3)')+'">'+label+'</button>';
+  };
+  const typeChips=segment==='adult'?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+typeChip('all','All')+typeChip('students','Students')+typeChip('instructors','Instructors')+'</div>':'';
+  const beltChips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;min-width:0">'+beltChip('all','All belts')+validBelts.map(b=>beltChip(b,b.charAt(0).toUpperCase()+b.slice(1))).join('')+'</div>';
   const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · '+list.length+'</div>';
-  if(!list.length)return '<div style="height:16px"></div>'+headline+segHtml+chips+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
-  const rows=list.map(s=>{
-    return '<div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden">'
-      +avStu(s,40)
+  if(!list.length)return '<div style="height:16px"></div>'+headline+segHtml+typeChips+beltChips+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
+  const rows=list.map(m=>{
+    const isInstr=m._kind==='instructor';
+    const av=isInstr?avStaff(m,40):avStu(m,40);
+    const tapHandler=isInstr?"viewStaff('"+m.id+"')":"viewStu('"+m.id+"')";
+    const subline=isInstr
+      ?(instructorTitle(m.belt||'white',m.deg||0,m.role)+(m.nickname?' · '+m.nickname:''))
+      :(m.nickname||'');
+    const badge=isInstr?'<span style="display:inline-block;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;color:#1A5DAD;background:var(--blue-tint);border:1px solid var(--blue-mid);letter-spacing:.5px;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:1px">INSTRUCTOR</span>':'';
+    return '<div class="card" onclick="'+tapHandler+'" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
+      +av
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div>'
-      +(s.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.nickname+'</div>':'')
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.name+badge+'</div>'
+      +(subline?'<div style="font-size:11px;color:var(--text3);'+(isInstr?'':'font-style:italic;')+'margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+subline+'</div>':'')
       +'</div>'
-      +'<div style="flex-shrink:0">'+bb(s.belt,s.deg||0,s.prog)+'</div>'
+      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog)+'</div>'
       +'</div>';
   }).join('');
-  return '<div style="height:16px"></div>'+headline+segHtml+chips+rows;
+  return '<div style="height:16px"></div>'+headline+segHtml+typeChips+beltChips+rows;
 }
 function setMembersBelt(b){S.membersBelt=b;render();}
 function setMembersSegment(seg){S.membersSegment=seg;S.membersBelt='all';render();}
+function setMembersType(t){S.membersType=t;render();}
+function viewStaff(id){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;render();}
 
-// rParentMembers — parent's Members tab. Shows kids only, scoped to
-// the unit(s) where their child trains. Adults are excluded (privacy
-// boundary). Own children excluded too (they live in Progress, not
-// Members). Tap → minimal kid peer view (rKidPeer) with no contact
-// info, no journey detail, no parent fields.
+// rParentMembers — parent's Members tab. Shows other kids in the
+// child's unit (excluding own children, no adults — privacy boundary)
+// PLUS the instructors who teach there so the parent can see who's
+// coaching their kid. Tap on a kid → minimal kid peer view (rKidPeer);
+// tap on an instructor → standard staff profile.
 function rParentMembers(){
   const myKids=parentChildren();
   if(!myKids.length){
     return '<div style="height:16px"></div><div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--text2);line-height:1.5">No linked children yet. Members will appear once your child is added by the academy.</div></div>';
   }
-  // Scope to whatever units the parent's kids train in. Usually one
-  // unit; supports edge cases (sibling pair across two units).
   const myKidIds=new Set(myKids.map(k=>k.id));
   const myUnits=new Set(myKids.map(k=>k.unit).filter(Boolean));
-  let list=STUDENTS.filter(s=>s._active!==false&&s.prog==='kids'&&!myKidIds.has(s.id)&&myUnits.has(s.unit));
+  const kids=STUDENTS.filter(s=>s._active!==false&&s.prog==='kids'&&!myKidIds.has(s.id)&&myUnits.has(s.unit)).map(s=>({...s,_kind:'student'}));
+  const instructors=STAFF.filter(st=>st._active!==false&&myUnits.has(st.unit)).map(st=>({...st,_kind:'instructor'}));
+  const typeFilter=S.membersType||'all';
+  let list=typeFilter==='instructors'?instructors:typeFilter==='students'?kids:[...instructors,...kids];
   const beltsKids=['white','grey','yellow','orange','green'];
   let beltFilter=S.membersBelt||'all';
-  if(beltFilter!=='all'&&!beltsKids.includes(beltFilter)){beltFilter='all';S.membersBelt='all';}
-  if(beltFilter!=='all')list=list.filter(s=>s.belt===beltFilter);
-  list=list.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  if(beltFilter!=='all'&&!beltsKids.includes(beltFilter)&&typeFilter!=='instructors'){beltFilter='all';S.membersBelt='all';}
+  if(beltFilter!=='all'&&typeFilter!=='instructors')list=list.filter(s=>s._kind==='instructor'||s.belt===beltFilter);
+  list=list.slice().sort((a,b)=>{
+    if(a._kind!==b._kind)return a._kind==='instructor'?-1:1;
+    return (a.name||'').localeCompare(b.name||'');
+  });
   const chipBase='border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
-  const chip=(value,label)=>{
+  const beltChip=(value,label)=>{
     const sel=beltFilter===value;
     return '<button onclick="setMembersBelt(\''+value+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'#1A5DAD':'var(--border)')+';color:'+(sel?'#1A5DAD':'var(--text3)')+'">'+label+'</button>';
   };
-  const chips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+chip('all','All')+beltsKids.map(b=>chip(b,b.charAt(0).toUpperCase()+b.slice(1))).join('')+'</div>';
+  const typeChip=(value,label)=>{
+    const sel=typeFilter===value;
+    return '<button onclick="setMembersType(\''+value+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'#1A5DAD':'var(--border)')+';color:'+(sel?'#1A5DAD':'var(--text3)')+'">'+label+'</button>';
+  };
+  const typeChips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+typeChip('all','All')+typeChip('students','Kids')+typeChip('instructors','Instructors')+'</div>';
+  const beltChips=typeFilter==='instructors'?'':'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+beltChip('all','All belts')+beltsKids.map(b=>beltChip(b,b.charAt(0).toUpperCase()+b.slice(1))).join('')+'</div>';
   const unitsLabel=Array.from(myUnits).map(u=>(UNITS.find(x=>x.id===u)||{}).name).filter(Boolean).join(', ');
-  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Other kids at '+(unitsLabel||S.unit)+' · '+list.length+'</div>';
+  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">At '+(unitsLabel||S.unit)+' · '+list.length+'</div>';
   if(!list.length){
-    return '<div style="height:16px"></div>'+headline+chips+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No other kids match this filter.</div>';
+    return '<div style="height:16px"></div>'+headline+typeChips+beltChips+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
   }
-  const rows=list.map(s=>{
-    // Privacy: first name + optional nickname only — last names hidden
-    // from peer parents per the kids-privacy boundary in the spec.
-    const first=(s.name||'').split(' ')[0]||'';
-    return '<div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer" onclick="openKidPeer(\''+s.id+'\')">'
-      +avStu(s,40)
+  const rows=list.map(m=>{
+    const isInstr=m._kind==='instructor';
+    if(isInstr){
+      return '<div class="card" onclick="viewStaff(\''+m.id+'\')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
+        +avStaff(m,40)
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.name+'<span style="display:inline-block;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;color:#1A5DAD;background:var(--blue-tint);border:1px solid var(--blue-mid);letter-spacing:.5px;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:1px">INSTRUCTOR</span></div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+instructorTitle(m.belt||'white',m.deg||0,m.role)+'</div>'
+        +'</div>'
+        +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult')+'</div>'
+        +'</div>';
+    }
+    // Kid peer row — privacy-first (first name + nickname only).
+    const first=(m.name||'').split(' ')[0]||'';
+    return '<div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer" onclick="openKidPeer(\''+m.id+'\')">'
+      +avStu(m,40)
       +'<div style="flex:1;min-width:0">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+first+'</div>'
-      +(s.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.nickname+'</div>':'')
+      +(m.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.nickname+'</div>':'')
       +'</div>'
-      +'<div style="flex-shrink:0">'+bb(s.belt,s.deg||0,s.prog)+'</div>'
+      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,m.prog)+'</div>'
       +'</div>';
   }).join('');
-  return '<div style="height:16px"></div>'+headline+chips+rows;
+  return '<div style="height:16px"></div>'+headline+typeChips+beltChips+rows;
 }
 
 // Minimal peer view for parents tapping another kid. No last name,
@@ -2609,8 +2657,17 @@ function meFromProfile(p){
   }
   return Object.assign({},base,{id:p.id,name:p.full_name||p.email,role:r,email:p.email,initials:(p.full_name||p.email||'?').slice(0,2).toUpperCase(),photoUrl:p.photo_url||null});
 }
-function avMe(size){
+// avMe — own avatar with the small blue camera badge. `mode` controls
+// what tapping the avatar does:
+//   'upload' (default): fire the photo-upload picker directly. Use
+//                       inside Edit profile (rPEdit) — the user is
+//                       already on the edit screen.
+//   'opensub'         : open Edit profile sub-panel instead. Use from
+//                       the side-panel header so the affordance routes
+//                       to the single canonical photo-edit location.
+function avMe(size,mode){
   size=size||48;
+  mode=mode||'upload';
   const m=S.me||{};
   const b=BA[m.belt]||BA.white;
   // Prefer the linked staff row's photo (the canonical subject) over
@@ -2621,7 +2678,9 @@ function avMe(size){
   const inner=photoUrl
     ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
     : av(m.initials,b.bg,b.fg,size,m.role);
-  return '<div onclick="triggerPhotoUpload(\'self\')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">'+inner+badge+'</div>';
+  const handler=mode==='opensub'?"openSub('pedit')":"triggerPhotoUpload('self')";
+  const title=mode==='opensub'?'Edit profile':'Change photo';
+  return '<div onclick="'+handler+'" title="'+title+'" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">'+inner+badge+'</div>';
 }
 function avStaff(s,size){
   size=size||38;
@@ -3057,6 +3116,38 @@ async function saveEditStaff(sid){
         payload.role_title=willBeOwner?'Head Professor':'Professor';
       }
     }
+    // Fix 4 — belt / degree change appends a journey milestone so the
+    // staff timeline reflects reality. Promotion → positive entry
+    // (belt promotion or new stripe); downgrade → "Correction" entry so
+    // the audit trail is intact.
+    const beltChanged=belt&&belt!==s.belt;
+    const degChanged=Number.isInteger(degree)&&degree!==(s.deg||0);
+    if(beltChanged||degChanged){
+      const newBelt=beltChanged?belt:s.belt;
+      const newDeg=degChanged?degree:(s.deg||0);
+      const oldBelt=s.belt;
+      const oldDeg=s.deg||0;
+      const BELTS=['white','blue','purple','brown','black'];
+      const oldIdx=BELTS.indexOf(oldBelt);
+      const newIdx=BELTS.indexOf(newBelt);
+      const isDowngrade=(newIdx<oldIdx)||(!beltChanged&&newDeg<oldDeg);
+      const today=new Date().toISOString().slice(0,10);
+      const actor=S.me?((S.me.belt==='black'?'Prof. ':'')+(S.me.name||'').split(' ')[0]):'staff';
+      let label;
+      if(isDowngrade){
+        label='Correction by '+actor+(beltChanged?' — '+newBelt.charAt(0).toUpperCase()+newBelt.slice(1)+' belt':' — '+newDeg+'-stripe '+newBelt);
+      } else if(beltChanged){
+        label=newBelt.charAt(0).toUpperCase()+newBelt.slice(1)+' belt promotion';
+      } else {
+        const ord=newDeg===1?'1st':newDeg===2?'2nd':newDeg===3?'3rd':newDeg+'th';
+        label=ord+' degree';
+      }
+      const milestone={label,date:today,done:true,belt:newBelt,classes:null,current:true};
+      const newJourney=(s.journey||[]).map(m=>Object.assign({},m,{current:false}));
+      newJourney.push(milestone);
+      payload.journey=newJourney;
+      s.journey=newJourney;
+    }
     // Optimistic local
     s.name=fname;s.initials=initials;
     if(belt)s.belt=belt;
@@ -3153,12 +3244,18 @@ function rEditStaffModal(){
   const degOpts=[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'" '+(s.deg===i?'selected':'')+'>'+i+'</option>').join('');
   const unitOpts=activeUnits.map(u=>'<option value="'+u.id+'" '+(s.unit===u.id?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
   const isMe=isStaffSelf(s);
-  const adminFields=ownerEdit?`
-<div class="erow"><div class="elbl">Email</div><input class="einput" id="es-email" type="email" autocapitalize="none" autocorrect="off" value="${(s.email||'').replace(/"/g,'&quot;')}"/></div>
+  // Email is read-only for everyone in V1; changing it has to go
+  // through the email-confirmation flow which isn't built yet.
+  // Visible to both self and owner so the staff knows which address
+  // their login is tied to.
+  const emailField=`
+<div class="erow"><div class="elbl">Email</div><input class="einput" type="email" value="${(s.email||'—').replace(/"/g,'&quot;')}" disabled style="color:var(--text2);background:var(--bg);cursor:not-allowed"/></div>
+<div style="font-size:11px;color:var(--text3);padding:4px 14px 8px;line-height:1.4">Login email. <a href="#" onclick="event.preventDefault();showSaveToast2('Change-email flow coming soon.');" style="color:#1A5DAD">Change email</a></div>`;
+  const adminFields=ownerEdit?`${emailField}
 <div class="erow"><div class="elbl">Belt</div><select class="esel" id="es-belt">${beltOpts}</select></div>
 <div class="erow"><div class="elbl">Degree</div><select class="esel" id="es-degree">${degOpts}</select></div>
 <div class="erow"><div class="elbl">Unit</div><select class="esel" id="es-unit">${unitOpts}</select></div>
-<div class="erow"><div class="elbl">Role</div><select class="esel" id="es-role"><option value="professor" ${s.role!=='owner'?'selected':''}>Professor</option><option value="owner" ${s.role==='owner'?'selected':''}>Owner</option></select></div>`:'';
+<div class="erow"><div class="elbl">Role</div><select class="esel" id="es-role"><option value="professor" ${s.role!=='owner'?'selected':''}>Professor</option><option value="owner" ${s.role==='owner'?'selected':''}>Owner</option></select></div>`:emailField;
   const selfOnlyNote=!ownerEdit?`<div class="inv" style="margin-bottom:12px;margin-top:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>You can update your name, initials and journey. Belt, degree and role changes are owner-only.</span></div>`:'';
   return `<div class="cov" onclick="closeEditStaff()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
 <button onclick="closeEditStaff()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -3605,7 +3702,10 @@ async function signInGoogle(){
   const c=initSupabase(); if(!c){S.authMsg=friendlyAuthError('network');render();return;}
   S.authBusy=true;S.authMsg='';render();
   try{
-    const{error}=await c.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
+    // prompt=select_account forces Google's account picker every
+    // time, so a parent + kid sharing a device can switch accounts
+    // without first signing out of Google itself.
+    const{error}=await c.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:'select_account'}}});
     if(error){console.warn('[mybjj] google',error);S.authMsg=friendlyAuthError(error);}
   }catch(e){console.warn('[mybjj] google',e);S.authMsg=friendlyAuthError(e);}
   S.authBusy=false;render();
@@ -4280,6 +4380,8 @@ function rEditStu(){
 <div class="ef">
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" value="${esc(first)}"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" value="${esc(last)}"/></div>
+${isKids?'':`<div class="erow"><div class="elbl">Email</div><input class="einput" type="email" value="${esc(s.email||'—')}" disabled style="color:var(--text2);background:var(--bg);cursor:not-allowed"/></div>
+<div style="font-size:11px;color:var(--text3);padding:4px 14px 8px;line-height:1.4">Login email. <a href="#" onclick="event.preventDefault();showSaveToast2('Change-email flow coming soon.');" style="color:#1A5DAD">Change email</a></div>`}
 <div class="erow"><div class="elbl">Nickname</div><input class="einput" id="es-nick" maxlength="40" placeholder="Optional" value="${esc(s.nickname||'')}"/></div>
 <div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(s.dob||'')}"/></div>
 <div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(s.phone||'')}"/></div>
