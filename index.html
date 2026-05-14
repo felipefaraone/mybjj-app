@@ -3039,17 +3039,18 @@ async function signInMagic(){
   S.authBusy=false;render();
 }
 
-// Phase 9 — password sign-in. Primary "Sign in" branches on whether
-// the password field is filled: if empty we fall through to magic-link
-// (preserves the existing flow for users who never set a password).
+// Phase 9 — password sign-in. The magic-link path is now triggered by
+// the explicit "Sign in with email link" button below, not by leaving
+// the password field empty (the implicit fallback was confusing).
 async function signInWithEmail(){
   const c=initSupabase(); if(!c){S.authMsg=friendlyAuthError('network');render();return;}
   const email=(S.authEmail||'').trim().toLowerCase();
   const pwd=(document.getElementById('auth-pwd')||{}).value||'';
   if(!email||!/^\S+@\S+\.\S+$/.test(email)){S.authMsg='Please enter a valid email address.';render();return;}
   if(!pwd){
-    // No password supplied → magic link, matches old behaviour.
-    return signInMagic();
+    S.authMsg='Enter your password, or use the email link option below.';
+    render();
+    return;
   }
   S.authBusy=true;S.authMsg='';render();
   try{
@@ -3064,6 +3065,15 @@ async function signInWithEmail(){
     }
   }catch(e){console.warn('[mybjj] password',e);S.authMsg=friendlyAuthError(e);}
   S.authBusy=false;render();
+}
+
+// "Sign in with email link" button — explicit trigger for the magic-link
+// path. Clears the password field as a small UX nicety so the visible
+// state matches the flow the user just picked.
+function useEmailLink(){
+  const p=document.getElementById('auth-pwd');
+  if(p)p.value='';
+  signInMagic();
 }
 
 // Forgot-password — sends a recovery email that drops the user back into
@@ -3192,15 +3202,15 @@ function rAuth(){
     : `<button class="bmain gbtn" onclick="signInGoogle()" ${busy}><span class="glogo">${GICON}</span>Continue with Google</button>
 <div class="adiv"><span>or</span></div>
 <div class="fg">
-<div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email address" value="${S.authEmail||''}" oninput="S.authEmail=this.value" onkeydown="if(event.key==='Enter'){const p=document.getElementById('auth-pwd');if(p)p.focus();}"/></div>
-<div class="lf" style="border-top:1px solid var(--border);border-bottom:none"><div class="li">${LOCK}</div><input id="auth-pwd" class="linput" type="password" autocomplete="current-password" placeholder="Password (optional)" onkeydown="if(event.key==='Enter')signInWithEmail()"/></div>
+<div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email" value="${S.authEmail||''}" oninput="S.authEmail=this.value" onkeydown="if(event.key==='Enter'){const p=document.getElementById('auth-pwd');if(p)p.focus();}"/></div>
+<div class="lf" style="border-top:1px solid var(--border);border-bottom:none"><div class="li">${LOCK}</div><input id="auth-pwd" class="linput" type="password" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')signInWithEmail()"/></div>
 </div>
-<button class="bmain" onclick="signInWithEmail()" ${busy} style="background:#1A5DAD;color:#fff;width:100%;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;border:none;border-radius:12px;cursor:pointer;margin-bottom:10px">Sign in</button>
-<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-<button onclick="forgotPassword()" style="background:none;border:none;color:#1A5DAD;font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:4px 0">Forgot password?</button>
-<button onclick="signInMagic()" style="background:none;border:none;color:#1A5DAD;font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:4px 0">Use sign-in link instead</button>
-</div>
-<div class="cav">Leave the password field empty to receive a one-time sign-in link by email.</div>${msg}`;
+${msg}
+<button class="bmain" onclick="signInWithEmail()" ${busy} style="background:#1A5DAD;color:#fff;width:100%;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;border:none;border-radius:12px;cursor:pointer;margin-top:14px;margin-bottom:10px">Sign in</button>
+<div style="text-align:center;margin-bottom:8px"><button onclick="forgotPassword()" style="background:none;border:none;color:var(--text2);font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:6px 8px;text-decoration:underline">Forgot password?</button></div>
+<div style="height:1px;background:var(--border);margin:24px 0 18px"></div>
+<div style="text-align:center;font-size:13px;color:var(--text3);margin-bottom:10px">Don’t have a password yet?</div>
+<button class="bout" onclick="useEmailLink()" ${busy} style="width:100%;margin-bottom:0">Sign in with email link</button>`;
   const dev=IS_DEV?`<div class="dsec"><div class="dlbl">Localhost dev shortcuts</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${demoCards()}</div></div>`:'';
   return `<div class="lw">${authHero()}<div class="lbody"><div class="inv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Access is by invitation only. Your instructor creates your account and sends you a login link.</span></div>${form}${dev}</div></div>`;
 }
