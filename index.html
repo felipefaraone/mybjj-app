@@ -124,6 +124,9 @@ html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}bod
 .stabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
 .stab{flex:1;min-width:72px;padding:8px 4px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;cursor:pointer;background:var(--card);color:var(--text2);white-space:nowrap;text-align:center}.stab.active{background:#1A5DAD;color:#fff;border-color:#1A5DAD}
 .bblue{width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
+.admin-action-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#1A5DAD;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.admin-action-btn:hover{background:var(--blue-tint);border-color:var(--blue-mid)}
+.admin-action-btn:active{background:var(--blue-tint);transform:scale(.98)}
 .bpend{width:100%;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;text-align:center;line-height:1.3}
 .bconf{width:100%;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:default;display:flex;align-items:center;justify-content:center;gap:6px}
 .bsm{background:var(--input-bg);color:var(--text2);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer}
@@ -822,10 +825,10 @@ function rStuProf(){
 
   // Section 4 — Details
   const emailVal=s.email
-    ?(s.email+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:600">JOINED</span>':''))
+    ?(s.email+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null;
   const parentEmailVal=!isKids?'':(s.parentEmail
-    ?(s.parentEmail+(s._parentUserId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:600">JOINED</span>':''))
+    ?(s.parentEmail+(s._parentUserId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null);
   const joinedDate=((s.journey||[]).find(m=>m.done)||{}).date||null;
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
@@ -887,8 +890,10 @@ ${canAdmin?rAdminActionRow(s):''}
   ${noGiOnly?'<div style="margin-top:8px;font-size:11px;color:var(--amber-text)">No-Gi only — Gi training required for IBJJF promotion.</div>':''}
 </div>
 
-<!-- Promote panel (admin) -->
-${canAdmin?'<div id="promo-anchor">'+rPromoPanel(s)+'</div>':''}
+<!-- (Promote panel removed — the Promote button in Admin Actions opens
+     a modal that contains the same info + actions, so the inline panel
+     was redundant and visually clashed with the new design.) -->
+
 
 <!-- Section 3: Journey -->
 ${rJnySection(s)}
@@ -896,10 +901,10 @@ ${rJnySection(s)}
 <!-- Section 4: Details -->
 ${details}
 
-<!-- Instructor feedback -->
-<div class="slbl" style="margin-top:18px" id="fb-anchor">Instructor feedback ${canAdmin?`<button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:'Barlow',sans-serif;margin-left:8px" onclick="openFb('${s.id}')">+ Add note</button>`:''}</div>
-${S.addFb===s.id?`<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Coaching notes for ${s.name.split(' ')[0]}..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveFb('${s.id}')">Save</button></div></div>`:''}
-${(s.feedback||[]).length===0&&S.addFb!==s.id?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback notes yet.</div>`:''}
+<!-- Instructor feedback (history; new notes are added via the Feedback
+     modal in the Admin Actions row at the top of the profile) -->
+<div class="slbl" style="margin-top:18px">Instructor feedback</div>
+${(s.feedback||[]).length===0?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback notes yet.</div>`:''}
 ${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">${f.date}</div>${canDeleteFeedback(f)?`<button onclick="deleteFeedback('${s.id}',${i})" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color='var(--red-text)'" onmouseout="this.style.color='var(--text3)'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`:''}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}
 
 <!-- Section 5: More (stubs) -->
@@ -960,6 +965,128 @@ function rJnySection(s){
       +'<button class="bblue" style="flex:1;padding:12px'+(dirty?'':';opacity:.5;pointer-events:none')+'" onclick="saveJnyEdit()">Save changes</button>'
     +'</div>'
     +'<div style="margin-top:8px;font-size:11px;color:var(--text3);line-height:1.45">Editing journey doesn’t change the student’s current belt or grade. Use Promote / Demote for that.</div>';
+}
+
+// Feedback modal (Phase 8 v2). Replaces the inline + Add note input that
+// used to live under the Feedback section heading. Coach note, internal,
+// not sent to the student.
+function openFbModal(sid){
+  if(!canEditClassCounts())return;
+  S.fbModalFor=sid;
+  render();
+  setTimeout(()=>{const el=document.getElementById('fb-modal-input');if(el)el.focus();},20);
+}
+function closeFbModal(){S.fbModalFor=null;render();}
+
+function rFeedbackModal(){
+  if(!S.fbModalFor)return '';
+  const s=STUDENTS.find(x=>x.id===S.fbModalFor);if(!s)return '';
+  return `<div class="cov" onclick="closeFbModal()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px">
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">Note on ${s.name.split(' ')[0]}</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.4">Internal coaching note. Not visible to the student or parent.</div>
+<textarea id="fb-modal-input" placeholder="What did they work on today? Any technique to revisit?" style="width:100%;min-height:120px;padding:12px;border:1px solid var(--border);border-radius:10px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;resize:vertical"></textarea>
+<div style="display:flex;gap:10px;margin-top:14px">
+<button class="bsm" style="flex:1;padding:11px;border-radius:10px;font-size:14px" onclick="closeFbModal()">Cancel</button>
+<button class="bblue" style="flex:1;padding:11px" onclick="saveFbModal('${s.id}')">Save</button>
+</div>
+</div></div>`;
+}
+
+async function saveFbModal(sid){
+  const txt=((document.getElementById('fb-modal-input')||{}).value||'').trim();
+  if(!txt){closeFbModal();return;}
+  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
+  if(!s.feedback)s.feedback=[];
+  const insName=(S.me&&S.me.name)||'Instructor';
+  const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});
+  const fbId=newId();
+  s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});
+  S.fbModalFor=null;
+  render();
+  if(s._dbId){
+    withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');
+    withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');
+  }
+  showSaveToast2('Note saved.');
+}
+
+// Promote modal (Phase 8 v2). Replaces the inline rPromoPanel buttons —
+// the panel was a confusing second action surface alongside the new
+// Admin Actions row at the top of the profile.
+function openPromoteModal(sid){
+  if(!canEditClassCounts())return;
+  S.promoteFor=sid;
+  render();
+}
+function closePromoteModal(){S.promoteFor=null;render();}
+function promoteFromModal(sid,isBeltPromo){
+  closePromoteModal();
+  doPromote(sid,isBeltPromo);
+}
+function revertFromModal(sid){
+  closePromoteModal();
+  revertPromo(sid);
+}
+
+function rPromoteModal(){
+  if(!S.promoteFor)return '';
+  const s=STUDENTS.find(x=>x.id===S.promoteFor);if(!s)return '';
+  const me=S.me;
+  const instrBelt=me.belt||'white';const instrDeg=me.deg||0;
+  const ORDER_A=['white','blue','purple','brown','black'];
+  const ORDER_K=['white','grey','yellow','orange','green'];
+  const ORDER=s.prog==='kids'?ORDER_K:ORDER_A;
+  const curIdx=ORDER.indexOf(s.belt);
+  const nextBelt=curIdx<ORDER.length-1?ORDER[curIdx+1]:null;
+  const maxDeg=(s.belt==='black')?6:4;
+  const canAddStripe=s.deg<maxDeg;
+  const stripeChk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false);
+  const beltChk=nextBelt?canPromote(instrBelt,instrDeg,nextBelt,0,true):{ok:false,reason:'Already at maximum belt.'};
+  const elig=studentEligibility(s);
+  const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
+  const isBlack=s.belt==='black';
+  const lastPromo=PROMOTION_LOG.find(p=>p.studentId===s.id);
+
+  // Eligibility hint line — green when grade hit threshold, neutral otherwise.
+  const eligLine=elig.reason
+    ?'<div style="margin-bottom:14px;padding:8px 12px;border-radius:8px;background:'+(elig.eligible?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(elig.eligible?'var(--green-border)':'var(--border)')+';font-size:12px;color:'+(elig.eligible?'var(--green-text)':'var(--text2)')+'">'+(elig.eligible?'✓ ':'')+elig.reason+'</div>'
+    :'';
+
+  const rowBtn=(label,sub,disabled,reason,onclick)=>'<button '+(disabled?'':('onclick="'+onclick+'"'))+' style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;cursor:'+(disabled?'default':'pointer')+';margin-bottom:8px;text-align:left'+(disabled?';opacity:.55':'')+'">'
+    +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text)">'+label+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+sub+'</div></div>'
+    +(disabled
+      ?(reason?'<div style="font-size:11px;color:var(--red-text);text-align:right;max-width:160px;margin-left:10px">'+reason+'</div>':'')
+      :'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5" style="flex-shrink:0;margin-left:10px"><polyline points="9 18 15 12 9 6"/></svg>')
+    +'</button>';
+
+  const stripeRow=isBlack
+    ?''
+    :(canAddStripe
+      ?rowBtn('+ Add stripe',beltLabel(s.belt)+' belt, '+(s.deg+1)+'-stripe',!stripeChk.ok,stripeChk.reason,'promoteFromModal(\''+s.id+'\',false)')
+      :'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:12px;font-size:13px;color:var(--amber-text);margin-bottom:8px;text-align:center">4 stripes reached — promote to '+beltLabel(nextBelt||'next')+' belt next.</div>');
+
+  const beltRow=(isBlack||!nextBelt)
+    ?''
+    :rowBtn('Promote to '+beltLabel(nextBelt),beltLabel(s.belt)+(s.deg?' ('+s.deg+'-stripe)':'')+' → '+beltLabel(nextBelt),!beltChk.ok,beltChk.reason,'promoteFromModal(\''+s.id+'\',true)');
+
+  const blackBeltMsg=isBlack
+    ?'<div style="background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;margin-bottom:8px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px">Black belt — by time only</div><div style="font-size:12px;color:var(--text3);line-height:1.4">Black-belt stripes are awarded by years of teaching, not class count. Use the journey editor to record manually.</div></div>'
+    :'';
+
+  const revertRow=lastPromo
+    ?'<button onclick="revertFromModal(\''+s.id+'\')" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px;background:none;border:1px solid var(--red-border);border-radius:10px;cursor:pointer;color:var(--red-text);margin-top:12px;text-align:left"><div style="font-size:13px;font-family:Barlow Condensed,sans-serif;font-weight:700">Revert last promotion</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M4 9h12a4 4 0 0 1 0 8h-1"/></svg></button>'
+    :'';
+
+  return `<div class="cov" onclick="closePromoteModal()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px">
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px">Promote ${s.name.split(' ')[0]}</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:14px">Currently ${beltLabel(s.belt)}${s.deg?', '+s.deg+'-stripe':''}</div>
+${eligLine}
+${blackBeltMsg}
+${stripeRow}
+${beltRow}
+${revertRow}
+<button class="bsm" style="width:100%;padding:11px;border-radius:10px;font-size:14px;margin-top:14px" onclick="closePromoteModal()">Cancel</button>
+</div></div>`;
 }
 
 function rJnyEditor(){
@@ -1625,7 +1752,7 @@ function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'
 
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Admin',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;if(t.id==='community')return !isP;return true;});if(!isA&&S.tab==='admin')S.tab='class';if(isP&&S.tab==='community')S.tab='progress';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;if(t.id==='community')return !isP;return true;});if(!isA&&S.tab==='admin')S.tab='class';if(isP&&S.tab==='community')S.tab='progress';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rPromoteModal()}${rFeedbackModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -1963,16 +2090,16 @@ function inviteStatusRow(target,kind){
     label=isParent?'Parent joined':'Joined';
     bg='var(--green-bg)';fg='var(--green-text)';
   } else if(email){
-    label=isParent?'Parent invited':'Invited';
+    label=isParent?'Parent awaiting':'Awaiting';
     bg='var(--input-bg)';fg='var(--text2)';
     if(canAct){
-      action='<button onclick="event.stopPropagation();resend'+fnSuffix+'(\''+target.id+'\')" style="'+btnStyle+'">Resend invite</button>';
+      action='<button onclick="event.stopPropagation();resend'+fnSuffix+'(\''+target.id+'\')" style="'+btnStyle+'">Send invite</button>';
     }
   } else {
     label=isParent?'No parent email':'No email';
     bg='var(--red-bg)';fg='var(--red-text)';
     if(canAct){
-      action='<button onclick="event.stopPropagation();addEmailInline(\''+target.id+'\',\''+kind+'\')" style="'+btnStyle+'">Add email</button>';
+      action='<button onclick="event.stopPropagation();openEmailEditor(\''+target.id+'\',\''+kind+'\')" style="'+btnStyle+'">Add email</button>';
     }
   }
   return '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">'
@@ -2001,23 +2128,55 @@ async function resendParentInvite(sid){
   await confirmAndDispatchInvite(s.parentEmail);
 }
 
-// addEmailInline — prompt for missing email, save it (students.email /
-// students.parent_email / staff.email via set_staff_email RPC), upsert
-// whitelist, then offer to fire the magic link immediately.
-async function addEmailInline(sid,kind){
+// Email-edit modal (Phase 8 v2). Replaces the old window.prompt flow with
+// an explicit Save only / Save & invite split so admin can stage an email
+// without auto-dispatching a magic link.
+function openEmailEditor(sid,kind){
+  if(!canEditClassCounts()&&!isOwner())return;
+  S.emailEdit={sid,kind};
+  render();
+  setTimeout(()=>{const el=document.getElementById('em-input');if(el){el.focus();el.select&&el.select();}},20);
+}
+function closeEmailEditor(){S.emailEdit=null;render();}
+
+function rEmailEditModal(){
+  if(!S.emailEdit)return '';
+  const{sid,kind}=S.emailEdit;
+  const isStaff=kind==='staff';
+  const isParent=kind==='kidParent';
+  const target=isStaff?STAFF.find(x=>x.id===sid):STUDENTS.find(x=>x.id===sid);
+  if(!target)return '';
+  const subject=isParent?('parent of '+target.name):target.name;
+  const current=(isParent?target.parentEmail:target.email)||'';
+  const valAttr=current.replace(/"/g,'&quot;');
+  return `<div class="cov" onclick="closeEmailEditor()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px">
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">${current?'Edit email':'Add email'}</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:14px">for ${subject}</div>
+<input id="em-input" class="einput" type="email" autocomplete="email" placeholder="email@example.com" value="${valAttr}" style="width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:10px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;margin-bottom:14px"/>
+<div style="display:flex;flex-direction:column;gap:8px">
+  <button class="bblue" style="padding:11px" onclick="saveEmailEditor(true)">Save & send invite</button>
+  <button class="bsm" style="padding:11px;border-radius:10px;font-size:14px" onclick="saveEmailEditor(false)">Save only</button>
+  <button class="bsm" style="padding:11px;border-radius:10px;font-size:14px;border:none;color:var(--text3)" onclick="closeEmailEditor()">Cancel</button>
+</div>
+<div style="margin-top:10px;font-size:11px;color:var(--text3);line-height:1.5">“Save only” stores the email and whitelists it but doesn’t dispatch anything. They can sign in anytime by entering this email at mybjj-app.com.</div>
+</div></div>`;
+}
+
+async function saveEmailEditor(dispatch){
+  if(!S.emailEdit)return;
+  const{sid,kind}=S.emailEdit;
   const cli=initSupabase();if(!cli)return showSaveToast2('Connection issue','error');
   const isStaff=kind==='staff';
   const isParent=kind==='kidParent';
   const target=isStaff?STAFF.find(x=>x.id===sid):STUDENTS.find(x=>x.id===sid);
   if(!target)return;
-  const label=isParent?('parent of '+target.name):target.name;
-  const current=(isParent?target.parentEmail:target.email)||'';
-  const raw=prompt('Email address for '+label+':',current);
-  if(!raw)return;
+  const raw=(document.getElementById('em-input')||{}).value||'';
   const email=raw.trim().toLowerCase();
+  if(!email)return showSaveToast2('Please enter an email address.','error');
   if(!/^\S+@\S+\.\S+$/.test(email))return showSaveToast2('Please enter a valid email address.','error');
   const unit=UNITS.find(u=>u.id===target.unit);
   const unitDbId=unit&&unit._dbId;
+
   if(isStaff){
     const r=await cli.rpc('set_staff_email',{p_legacy_id:target.id,p_email:email});
     if(r&&r.error){console.warn('[mybjj] set_staff_email:',r.error);return showSaveToast2(friendlyMutationError(r.error),'error');}
@@ -2026,20 +2185,23 @@ async function addEmailInline(sid,kind){
     const r=await cli.from('students').update({parent_email:email}).eq('legacy_id',target.id);
     if(r&&r.error){console.warn('[mybjj] save parent_email:',r.error);return showSaveToast2(friendlyMutationError(r.error),'error');}
     target.parentEmail=email;
-    await cli.from('whitelist').upsert({email,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
+    const w=await cli.from('whitelist').upsert({email,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
+    if(w&&w.error){console.warn('[mybjj] parent whitelist:',w.error);return showSaveToast2(friendlyMutationError(w.error),'error');}
   } else {
     const r=await cli.from('students').update({email}).eq('legacy_id',target.id);
     if(r&&r.error){console.warn('[mybjj] save student email:',r.error);return showSaveToast2(friendlyMutationError(r.error),'error');}
     target.email=email;
-    await cli.from('whitelist').upsert({email,role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
+    const w=await cli.from('whitelist').upsert({email,role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
+    if(w&&w.error){console.warn('[mybjj] student whitelist:',w.error);return showSaveToast2(friendlyMutationError(w.error),'error');}
   }
-  showSaveToast2('Email saved.');
-  render();
-  if(confirm('Send sign-in link to '+email+' now?')){
-    const sr=await sendMagicLink(email);
-    if(sr.ok)showSaveToast2('Sign-in link sent.');
-    else showSaveToast2(friendlyMutationError(sr.error),'error');
+  closeEmailEditor();
+  if(!dispatch){
+    showSaveToast2('Email saved.');
+    return;
   }
+  const sr=await sendMagicLink(email);
+  if(sr.ok)showSaveToast2('Sign-in link sent to '+email+'.');
+  else showSaveToast2(friendlyMutationError(sr.error),'error');
 }
 
 // Phase 8 — admin-driven magic-link dispatch. Posts to the send-magic-link
@@ -2727,7 +2889,7 @@ function setTab(t){S.tab=t;render();}
 function openPanel(){S.panelOpen=true;S.sub=null;S.inboxOpen=false;render();}
 function closePanel(){S.panelOpen=false;S.unitOpen=false;S.sub=null;render();}
 function openSub(s){S.sub=s;S.nsent=false;S.addFb=null;render();}
-function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;render();}
+function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;render();}
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
 function pickUnit(u){S.unit=u;S.unitOpen=false;render();}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
@@ -2813,7 +2975,7 @@ function rDeleteUnitConfirm(){
     +'</div></div></div>';
 }
 
-function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;render();}
+function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;render();}
 function openFb(sid){S.addFb=sid;render();}
 function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
 function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
@@ -2894,17 +3056,21 @@ ${giField}
 function closeStudentProfile(){
   S.viewStu=null;S.sub=null;S.panelOpen=false;
   S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;
+  S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;
   render();
 }
 
 // Compact "Joined / Invited / Not invited" chip used in the profile header.
 // Section 4 still uses inviteStatusRow which includes the action button —
 // the header just wants the status pill.
+// Three-state chip. We don't actually track whether a magic link was
+// dispatched, so the middle state is "Awaiting" (sign-in pending) rather
+// than the misleading "Invited" — that one implied an email was sent.
 function inviteChip(userId,email,isParent){
   let label,bg,fg;
   if(userId){label=isParent?'Parent joined':'Joined';bg='var(--green-bg)';fg='var(--green-text)';}
-  else if(email){label=isParent?'Parent invited':'Invited';bg='var(--input-bg)';fg='var(--text2)';}
-  else{label=isParent?'No parent email':'Not invited';bg='var(--red-bg)';fg='var(--red-text)';}
+  else if(email){label=isParent?'Parent awaiting':'Awaiting';bg='var(--input-bg)';fg='var(--text2)';}
+  else{label=isParent?'No parent email':'No email';bg='var(--red-bg)';fg='var(--red-text)';}
   return '<span style="background:'+bg+';color:'+fg+';font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:4px;white-space:nowrap">'+label+'</span>';
 }
 
@@ -2927,7 +3093,7 @@ function rEmailActions(s,kind){
   const isParent=kind==='kidParent';
   const email=isParent?s.parentEmail:s.email;
   const userId=isParent?s._parentUserId:s._userId;
-  const editFn='addEmailInline(\''+s.id+'\',\''+kind+'\')';
+  const editFn='openEmailEditor(\''+s.id+'\',\''+kind+'\')';
   const resendFn=(isParent?'resendParentInvite':'resendStudentInvite')+'(\''+s.id+'\')';
   const btnBase='flex-shrink:0;padding:4px 10px;font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:none;color:var(--text2)';
   const primaryBase='flex-shrink:0;padding:4px 10px;font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;border-radius:6px;cursor:pointer;border:1px solid var(--blue-mid);background:var(--blue-tint);color:#1A5DAD';
@@ -2939,14 +3105,13 @@ function rEmailActions(s,kind){
 // Section 1 admin-action row. [Promote] and [Feedback] scroll to their
 // sections below; [+ Class count] opens the existing modal overlay.
 function rAdminActionRow(s){
-  const btn='flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#1A5DAD;cursor:pointer';
   const iPromote='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>';
   const iCount='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
   const iFb='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   return '<div style="display:flex;gap:8px;margin-top:12px">'
-    +'<button style="'+btn+'" onclick="scrollProfileAnchor(\'promo-anchor\')">'+iPromote+'Promote</button>'
-    +'<button style="'+btn+'" onclick="openEditCounts(\''+s.id+'\')">'+iCount+'+ Class count</button>'
-    +'<button style="'+btn+'" onclick="openFb(\''+s.id+'\');scrollProfileAnchor(\'fb-anchor\')">'+iFb+'Feedback</button>'
+    +'<button class="admin-action-btn" onclick="openPromoteModal(\''+s.id+'\')">'+iPromote+'Promote</button>'
+    +'<button class="admin-action-btn" onclick="openEditCounts(\''+s.id+'\')">'+iCount+'+ Class count</button>'
+    +'<button class="admin-action-btn" onclick="openFbModal(\''+s.id+'\')">'+iFb+'Feedback</button>'
     +'</div>';
 }
 
