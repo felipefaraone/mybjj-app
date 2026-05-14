@@ -626,20 +626,39 @@ function rAtts(all,cid){
 }
 
 // Staff variant of rAtts — shown when an admin / owner / instructor
-// expands a class card. Each row has inline Present / Absent buttons
-// that flip the attendance.status server-side via markP / markA.
+// expands a class card. Each row has status-aware buttons: 'going'
+// shows Present / Absent; 'present' shows Mark Absent / Undo; 'absent'
+// shows Mark Present / Undo. Buttons disappear after class_end + 60min
+// (isClassLocked) — the row becomes read-only history.
 function rAttsStaff(rows,cid){
-  const going=rows.filter(r=>r.status==='going'||r.status==='present');
-  if(!going.length)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:12px;color:var(--text3)">No check-ins yet</span></div></div>`;
+  const visible=rows.filter(r=>r.status==='going'||r.status==='present'||r.status==='absent');
+  if(!visible.length)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:12px;color:var(--text3)">No check-ins yet</span></div></div>`;
   const exp=!!S.expanded[cid];
-  const cf=going.filter(r=>r.status==='present').length;
-  const header=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf}/${going.length} confirmed</span><span class="aexp" onclick="toggleExp('${cid}')">${exp?'Show less':'Confirm attendance'}</span></div>`;
+  const cf=visible.filter(r=>r.status==='present').length;
+  const going=visible.filter(r=>r.status==='going'||r.status==='present').length;
+  const locked=isClassLocked(cid);
+  const lockTag=locked?'<span style="font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:8px">LOCKED</span>':'';
+  const header=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf}/${going} confirmed${lockTag}</span><span class="aexp" onclick="toggleExp('${cid}')">${exp?'Show less':'Confirm attendance'}</span></div>`;
   if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}</div>`;
-  return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}${going.map(r=>{
+  const btnFor=(r,s)=>{
+    if(locked){
+      const lbl=r.status==='present'?'Present':r.status==='absent'?'Absent':'Going';
+      const tone=r.status==='present'?'var(--green-text)':r.status==='absent'?'var(--red-text)':'var(--text3)';
+      return `<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;color:${tone};letter-spacing:.5px">${lbl.toUpperCase()}</div>`;
+    }
+    if(r.status==='present')return `<button class="bsm" onclick="markA('${cid}','${s.id}')">Mark Absent</button><button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
+    if(r.status==='absent') return `<button class="bsm" onclick="markP('${cid}','${s.id}')">Mark Present</button><button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
+    return `<button class="bsm bpre" onclick="markP('${cid}','${s.id}')">Present</button><button class="bsm" onclick="markA('${cid}','${s.id}')">Absent</button>`;
+  };
+  const statusPill=r=>{
+    if(r.status==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">PRESENT</span>';
+    if(r.status==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px;margin-left:6px">ABSENT</span>';
+    return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;margin-left:6px">GOING</span>';
+  };
+  return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId);if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
-    const isC=r.status==='present';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1" onclick="viewStu('${s.id}')">${avStu(s,34)}<div><div style="font-size:14px;color:var(--text);font-weight:500">${s.name}${s.nickname?` <span style="font-style:italic;color:var(--text3);font-weight:400">· ${s.nickname}</span>`:''}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0"><button class="bsm ${isC?'bpre':''}" onclick="markP('${cid}','${s.id}')">${isC?'✓':'Present'}</button><button class="bsm" onclick="markA('${cid}','${s.id}')">Absent</button></div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">${s.name}${s.nickname?` <span style="font-style:italic;color:var(--text3);font-weight:400;margin-left:4px">· ${s.nickname}</span>`:''}${statusPill(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
 }
 function rTL(journey,shareSid){
@@ -1028,6 +1047,7 @@ ${canAdmin?rAdminActionRow(s):''}
   ${pct==null?'':pbBelt(elig.percent,100,s.belt,s.prog)}
   ${elig.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${elig.reason}</span></div>`:''}
   ${noGiOnly?'<div style="margin-top:8px;font-size:11px;color:var(--amber-text)">No-Gi only — Gi training required for IBJJF promotion.</div>':''}
+  ${canAdmin?rReconcileBadge(s):''}
 </div>
 
 <!-- (Promote panel removed — the Promote button in Admin Actions opens
@@ -1040,6 +1060,9 @@ ${rJnySection(s)}
 
 <!-- Section 4: Details -->
 ${details}
+
+<!-- Section 4.5: Attendance log (transparency + verification trail) -->
+${rAttHistory(s,canAdmin)}
 
 <!-- Instructor feedback (history; new notes are added via the Feedback
      modal in the Admin Actions row at the top of the profile) -->
@@ -1105,6 +1128,75 @@ function rJnySection(s){
       +'<button class="bblue" style="flex:1;padding:12px'+(dirty?'':';opacity:.5;pointer-events:none')+'" onclick="saveJnyEdit()">Save changes</button>'
     +'</div>'
     +'<div style="margin-top:8px;font-size:11px;color:var(--text3);line-height:1.45">Editing journey doesn’t change the student’s current belt or grade. Use Promote / Demote for that.</div>';
+}
+
+// Attendance history block on rStuProf. Renders the last ~20 rows for
+// this student from the in-memory ATTENDANCE window (±21d). Each row
+// shows the date / time / class type / status pill, and — for present
+// or absent rows — a "Confirmed by Prof. X on <date>" trail when we
+// can resolve the confirming staff via their user_id. Visible to all
+// roles who can see the profile.
+function rAttHistory(s,canAdminView){
+  if(!s||!s._dbId)return '';
+  const rows=ATTENDANCE
+    .filter(a=>a.studentDbId===s._dbId&&(a.status==='present'||a.status==='absent'||a.status==='going'))
+    .sort((a,b)=>(b.classDate+'_'+b.classTime).localeCompare(a.classDate+'_'+a.classTime))
+    .slice(0,20);
+  if(!rows.length){
+    return '<div class="slbl" style="margin-top:18px">Attendance log</div>'
+      +'<div class="card" style="padding:14px;text-align:center;font-size:12px;color:var(--text3)">No attendance recorded in the last 21 days.</div>';
+  }
+  const staffNameByUid=uid=>{
+    if(!uid)return null;
+    const sf=STAFF.find(x=>x._userId===uid);
+    if(!sf)return null;
+    return instructorTitle(sf.belt||'white',sf.deg||0,sf.role)+' '+(sf.name||'').split(' ')[0];
+  };
+  const pill=st=>{
+    if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
+    if(st==='absent') return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
+    return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
+  };
+  return '<div class="slbl" style="margin-top:18px">Attendance log</div>'
+    +'<div class="card" style="padding:2px 14px">'
+    +rows.map((r,i)=>{
+      const last=i===rows.length-1;
+      const ins=staffNameByUid(r.confirmedBy);
+      const when=r.confirmedAt?new Date(r.confirmedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):null;
+      let trail='';
+      if(r.status==='present'&&ins)trail='Confirmed by '+ins+(when?' on '+when:'');
+      else if(r.status==='absent'&&ins)trail='Marked absent by '+ins+(when?' on '+when:'');
+      else if(r.status==='going')trail='Awaiting confirmation';
+      const ctLabel=r.classType||'class';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
+        +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:500">'+r.classDate+' · '+r.classTime+' <span style="font-size:11px;color:var(--text3);font-weight:400">· '+ctLabel+'</span></div>'
+        +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+trail+'</div>':'')
+        +'</div>'
+        +pill(r.status)
+      +'</div>';
+    }).join('')
+    +'</div>';
+}
+
+// Cache reconcile badge — admin / professor only. Compares the cached
+// students.total against the count of 'present' rows in ATTENDANCE for
+// this student. Same number means the cache is correct; mismatch
+// triggers a manual recompute_student_stats call so the next render
+// reflects reality. Belt-and-suspenders behind the DB trigger.
+function rReconcileBadge(s){
+  if(!s||!s._dbId)return '';
+  const presentCount=ATTENDANCE.filter(a=>a.studentDbId===s._dbId&&a.status==='present').length;
+  // The cached total is global (all-time); ATTENDANCE only holds a
+  // recent window. So we only flag mismatch when present-rows > cached
+  // total (cache is provably stale). Equal or fewer is consistent
+  // with truncation.
+  const mismatch=presentCount>(s.total||0);
+  if(!mismatch){
+    return '<div style="margin-top:8px;font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;letter-spacing:.5px;text-align:center">Cache OK · '+(s.total||0)+' total / '+presentCount+' confirmed in last 21d</div>';
+  }
+  // Fire-and-forget recompute. The badge will refresh on the next render.
+  refreshStudentStats(s._dbId);
+  return '<div style="margin-top:8px;padding:6px 10px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;font-size:11px;color:var(--amber-text);text-align:center">Cache mismatch detected, refreshing…</div>';
 }
 
 // Feedback modal (Phase 8 v2). Replaces the inline + Add note input that
@@ -3123,7 +3215,7 @@ async function hydrateData(){
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
-      c.from('attendance').select('id,student_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at').gte('class_date',dk(new Date(Date.now()-7*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
+      c.from('attendance').select('id,student_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
     ]);
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
     const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6);
@@ -3587,6 +3679,10 @@ async function doCI(id){
     render();return;
   }
   if(r&&r.data)local._dbId=r.data.id;
+  // 'going' rows don't change cached counts (only 'present' does), but
+  // calling refreshStudentStats here keeps the local row in lock-step
+  // with whatever the trigger decided — safer than assuming.
+  await refreshStudentStats(stu._dbId);
 }
 
 // Undo — DELETE the attendance row for the signed-in user's student row.
@@ -3604,8 +3700,11 @@ async function undoCI(id){
     ATTENDANCE.push(removed);
     console.warn('[mybjj] undo check-in failed:',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');
-    render();
+    render();return;
   }
+  // If the staff had already confirmed this row, deleting it should
+  // decrement total — pull the fresh counts.
+  await refreshStudentStats(stu._dbId);
 }
 function setAtab(t){S.atab=t;render();if(t==='photos'&&canEditClassCounts())loadPhotoQueue();}
 function setSweek(w){S.sweek=w;S.editWeek=false;render();}
@@ -3631,32 +3730,98 @@ async function togNotif(k){
 }
 function setNAud(k){S.naud=k;render();}
 function sendN(){S.nsent=true;render();}
-// markP / markA — staff toggles per attendee inside the expanded class
-// card. Both operate on existing attendance rows (the student must have
-// checked in for a row to exist). markP flips status='present';
-// markA flips to 'absent'. The DB UPDATE policy gates this to staff.
-async function markP(cid,sid){
+// classMinutesAfterEnd: how many minutes past the class end-time we are.
+// Used to lock attendance edits 60min after a class ends. Returns null
+// for any class not on today's date (future/past days are always
+// editable for now — only "today, an hour after the bell" locks).
+function classMinutesAfterEnd(cid){
+  const c=_parseCID(cid);if(!c)return null;
+  if(c.date!==dk(TODAY))return null;
+  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const [h,m]=String(c.time||'00:00').split(':').map(Number);
+  const startMin=(h||0)*60+(m||0);
+  const endMin=startMin+(t.dur||60);
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Australia/Sydney',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
+  const ch=+(parts.find(p=>p.type==='hour')||{}).value||0;
+  const cm=+(parts.find(p=>p.type==='minute')||{}).value||0;
+  return (ch*60+cm)-endMin;
+}
+function isClassLocked(cid){
+  const c=_parseCID(cid);if(!c)return false;
+  // Days other than today are always editable. Today, lock 60min after
+  // the class ends (staff have a clear cut-off; matches the spec).
+  const mins=classMinutesAfterEnd(cid);
+  if(mins===null)return false;
+  return mins>60;
+}
+
+// Refresh cached counts on the local STUDENTS row after an attendance
+// mutation. The DB trigger has already recomputed; we just pull the
+// fresh values so the in-memory view matches without a full hydrate.
+async function refreshStudentStats(dbId){
+  if(!dbId)return;
+  const cli=initSupabase();if(!cli)return;
+  // Belt-and-suspenders: explicitly call the RPC too. The trigger
+  // should have already fired, but a manual call ensures the row is
+  // updated even if a future code-path bypasses the trigger.
+  try{await cli.rpc('recompute_student_stats',{p_student_id:dbId});}catch(_){}
+  const r=await cli.from('students').select('total,gi_classes,nogi_classes,grade,gi_grade').eq('id',dbId).single();
+  if(r&&r.data){
+    const s=STUDENTS.find(x=>x._dbId===dbId);
+    if(s){s.total=r.data.total||0;s.giTotal=r.data.gi_classes||0;s.grade=r.data.grade||0;s.giGrade=r.data.gi_grade||0;}
+  }
+}
+
+// markP / markA / markG — staff toggles per attendee. Operate on the
+// attendance row keyed by student_id+date+time (created by doCI or
+// inserted on first mark). After the DB UPDATE, refreshStudentStats
+// pulls the new cached counts so the roster + profile views see the
+// change immediately. Locked once we're more than an hour past the
+// class end-time (isClassLocked).
+async function _setAttStatus(cid,sid,newStatus){
   const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
-  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
-  if(!row){showSaveToast2('No check-in to confirm.','error');return;}
-  const prev=row.status;row.status='present';row.confirmedBy=S.profile&&S.profile.id;row.confirmedAt=new Date().toISOString();
+  if(isClassLocked(cid)){showSaveToast2('Class locked — attendance can no longer be changed.','error');return;}
+  let row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const unit=UNITS.find(u=>u.id===s.unit);
+  const confirmed=newStatus==='going'?null:(S.profile&&S.profile.id);
+  const confirmedAt=newStatus==='going'?null:new Date().toISOString();
+  const cli=initSupabase();
+  if(!row){
+    // No existing row — staff is recording attendance for a student
+    // who didn't self-check-in. INSERT a fresh row at the target
+    // status, the trigger will recompute.
+    const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classDate:c.date,classTime:c.time,classType:t.type||null,status:newStatus,confirmedBy:confirmed,confirmedAt};
+    ATTENDANCE.push(local);
+    render();
+    if(!cli)return;
+    const r=await cli.from('attendance').insert({student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt}).select('id').single();
+    if(r&&r.error){
+      const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
+      console.warn('[mybjj] insert attendance ('+newStatus+'):',r.error);
+      showSaveToast2(friendlyMutationError(r.error),'error');render();return;
+    }
+    if(r&&r.data)local._dbId=r.data.id;
+    showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
+    await refreshStudentStats(s._dbId);render();return;
+  }
+  const prev=row.status;
+  row.status=newStatus;row.confirmedBy=confirmed;row.confirmedAt=confirmedAt;
   render();
-  const cli=initSupabase();if(!cli||String(row._dbId).startsWith('local-'))return;
-  const r=await cli.from('attendance').update({status:'present',confirmed_by:S.profile&&S.profile.id,confirmed_at:new Date().toISOString()}).eq('id',row._dbId);
-  if(r&&r.error){row.status=prev;console.warn('[mybjj] mark present:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');render();}
+  if(!cli||String(row._dbId).startsWith('local-'))return;
+  const r=await cli.from('attendance').update({status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt}).eq('id',row._dbId);
+  if(r&&r.error){
+    row.status=prev;
+    console.warn('[mybjj] update attendance ('+newStatus+'):',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');render();return;
+  }
+  showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
+  await refreshStudentStats(s._dbId);render();
 }
-async function markA(cid,sid){
-  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
-  const c=_parseCID(cid);if(!c)return;
-  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
-  if(!row)return;
-  const prev=row.status;row.status='absent';
-  render();
-  const cli=initSupabase();if(!cli||String(row._dbId).startsWith('local-'))return;
-  const r=await cli.from('attendance').update({status:'absent'}).eq('id',row._dbId);
-  if(r&&r.error){row.status=prev;console.warn('[mybjj] mark absent:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');render();}
-}
+function markP(cid,sid){return _setAttStatus(cid,sid,'present');}
+function markA(cid,sid){return _setAttStatus(cid,sid,'absent');}
+function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
 function openInbox(){S.inboxOpen=true;S.panelOpen=false;render();}
 function closeInbox(){S.inboxOpen=false;render();}
 function markRead(id){const n=NOTIFS.find(x=>x.id===id);if(n)n.read=true;render();}
