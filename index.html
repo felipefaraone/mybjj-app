@@ -1473,6 +1473,25 @@ function evStack(ids){
     return '<div title="'+s.name+'" style="width:26px;height:26px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:9px;border:2px solid var(--card);margin-left:'+(gi>0?'-7px':'0')+'">'+s.initials+'</div>';
   }).join('')+(ids.length>5?'<div style="width:26px;height:26px;border-radius:50%;background:var(--bg);color:var(--text2);display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;border:2px solid var(--card);margin-left:-7px">+'+(ids.length-5)+'</div>':'');
 }
+
+// Admin-only named attendee list for events. Each row: avatar + name +
+// nickname; tapping a student row opens their profile.
+function evNamedList(ids){
+  const all=[...STUDENTS,...STAFF];
+  if(!ids||!ids.length)return '';
+  return '<div style="display:flex;flex-direction:column;gap:2px">'+ids.map(id=>{
+    const s=all.find(x=>x.id===id);
+    if(!s)return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text3)">'+id+' (not found)</div>';
+    const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+    const isStudent=STUDENTS.indexOf(s)!==-1;
+    const onclick=isStudent?'onclick="viewStu(\''+s.id+'\')"':'';
+    const cursor=isStudent?';cursor:pointer':'';
+    const avatar='<div style="width:24px;height:24px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:9px;flex-shrink:0">'+s.initials+'</div>';
+    const nick=s.nickname?' <span style="color:var(--text3);font-style:italic">· '+s.nickname+'</span>':'';
+    return '<div '+onclick+' style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:var(--text)'+cursor+'">'+avatar+'<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+nick+'</div></div>';
+  }).join('')+'</div>';
+}
+
 function rEvents(isA){
   const me=S.me.id;
   const curUnit=UNITS.find(u=>u.name===S.unit);
@@ -1497,9 +1516,11 @@ function rEvents(isA){
     const editBtn=isA?('<button onclick="openEditEv(\''+e.id+'\')" style="background:none;border:none;color:var(--text3);font-size:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.5px;padding:0">EDIT</button>'):'';
     const shareEvBtn=shareBtnHtml('shareEvent(\''+e.id+'\')');
     const topActions='<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+(editBtn||'')+shareEvBtn+'</div>';
-    // Attendance section
-    const compRow=showComp?'<div style="margin-bottom:8px"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:#1A5DAD;margin-bottom:5px">COMPETING · '+competing.length+'</div>'+(competing.length?'<div style="display:flex">'+evStack(competing)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>':'';
-    const suppRow=showSupp?'<div><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);margin-bottom:5px">SUPPORTING · '+supporting.length+'</div>'+(supporting.length?'<div style="display:flex">'+evStack(supporting)+'</div>':'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>':'';
+    // Attendance section. Admins get a full named list (tap → student
+    // profile); everyone else sees the compact initials stack.
+    const attendeesView=(ids)=>isA?evNamedList(ids):'<div style="display:flex">'+evStack(ids)+'</div>';
+    const compRow=showComp?'<div style="margin-bottom:8px"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:#1A5DAD;margin-bottom:5px">COMPETING · '+competing.length+'</div>'+(competing.length?attendeesView(competing):'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>':'';
+    const suppRow=showSupp?'<div><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);margin-bottom:5px">SUPPORTING · '+supporting.length+'</div>'+(supporting.length?attendeesView(supporting):'<div style="font-size:11px;color:var(--text3)">No one yet</div>')+'</div>':'';
     return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">'
       +'<div style="flex:1"><div style="margin-bottom:5px;display:flex;align-items:center;gap:8px"><span style="background:'+typeCol+'20;color:'+typeCol+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+typeLbl+'</span></div>'
@@ -2671,13 +2692,21 @@ async function uploadCroppedPhoto(){
   if(sid==='self'){
     if(!S.profile||!S.profile.id){showSaveToast2('Not signed in.','error');return;}
     const linkedStaff=STAFF.find(x=>x._userId===S.profile.id);
-    const pathPrefix=linkedStaff?('staff/'+linkedStaff.id):('self/'+S.profile.id);
+    // For students uploading their own photo we need student_id on the
+    // approval row so approvePhoto can route to public.students.photo_url
+    // instead of falling through to the user-subject branch.
+    const linkedStudent=linkedStaff?null:STUDENTS.find(x=>x._userId===S.profile.id);
+    const pathPrefix=linkedStaff
+      ?('staff/'+linkedStaff.id)
+      :linkedStudent?('student/'+linkedStudent.id):('self/'+S.profile.id);
     const path=pathPrefix+'/'+Date.now()+'.jpg';
-    // Clean up any prior pending row for the same subject (same rules as
-    // the student flow — only one pending per subject at a time).
+    // Clean up any prior pending row for the same subject (one pending
+    // per subject at a time).
     try{
       let q=cli.from('photo_approvals').select('id,photo_url').eq('user_id',S.profile.id).eq('status','pending');
-      q=linkedStaff?q.eq('staff_id',linkedStaff._dbId):q.is('staff_id',null).is('student_id',null);
+      if(linkedStaff)q=q.eq('staff_id',linkedStaff._dbId);
+      else if(linkedStudent)q=q.eq('student_id',linkedStudent._dbId);
+      else q=q.is('staff_id',null).is('student_id',null);
       const pend=await q;
       if(pend&&pend.data&&pend.data.length){
         for(const row of pend.data){
@@ -2689,7 +2718,13 @@ async function uploadCroppedPhoto(){
     const up=await cli.storage.from('avatars').upload(path,blob,{contentType:'image/jpeg'});
     if(up.error){console.warn('[mybjj] upload self photo fail:',up.error);showSaveToast2(friendlyMutationError(up.error),'error');return;}
     console.log('[mybjj] upload self photo OK');
-    const ins=await cli.from('photo_approvals').insert({user_id:S.profile.id,student_id:null,staff_id:linkedStaff?linkedStaff._dbId:null,photo_url:path,status:'pending'});
+    const ins=await cli.from('photo_approvals').insert({
+      user_id:S.profile.id,
+      student_id:linkedStudent?linkedStudent._dbId:null,
+      staff_id:linkedStaff?linkedStaff._dbId:null,
+      photo_url:path,
+      status:'pending',
+    });
     if(ins&&ins.error){console.warn('[mybjj] self photo approval insert fail:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
     console.log('[mybjj] self photo approval pending OK');
     S.cropOpen=false;_crop.img=null;_crop.sid=null;
