@@ -7,8 +7,11 @@
 --   Bug 1. Empty journey looks broken. When claim_profile links the
 --          authenticated user to a public.students row (via email match) and
 --          that row's journey is null or [], the timeline view has nothing
---          to render. We now seed a single "Started training" milestone
+--          to render. We now seed a single "Joined myBJJ app" milestone
 --          using the row's current belt and the current month.
+--          (Phase-8 follow-up — original label "Started training" was
+--          misleading because most pilot students had been training for
+--          years before the app existed.)
 --
 --   Bug 2. Members tab empty for the student. The students_select RLS
 --          policy (02_rls.sql) already permits a student to read peer
@@ -65,7 +68,7 @@ begin
   update public.students
      set journey = jsonb_build_array(
        jsonb_build_object(
-         'label',   'Started training',
+         'label',   'Joined myBJJ app',
          'date',    v_month,
          'classes', 0,
          'done',    true,
