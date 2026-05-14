@@ -4070,28 +4070,73 @@ ${sentReset
   // tied to a known field id. New id per render is the simplest
   // belt-and-suspenders defence.
   const curName='sp-curr-'+Math.random().toString(36).slice(2,8);
+  const fieldErrStyle='font-size:12px;color:var(--red-text);padding:4px 14px 0;text-align:right;line-height:1.4';
   const currentRow=needCurrent
-    ? `<div class="erow"><div class="elbl">Current</div><input id="sp-current" name="${curName}" class="einput" type="password" autocomplete="off" data-form-type="other" data-lpignore="true" spellcheck="false" placeholder="Your current password"/></div>`
+    ? `<div class="erow"><div class="elbl">Current</div><input id="sp-current" name="${curName}" class="einput" type="password" autocomplete="off" data-form-type="other" data-lpignore="true" spellcheck="false" placeholder="Your current password" oninput="clearPwdFieldErr('current')"/></div>
+<div id="sp-err-current" style="display:none;${fieldErrStyle}"></div>`
     : '';
   const forgotRow=showForgot
     ? `<div style="margin-top:12px;padding:10px 12px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;font-size:12px;color:var(--amber-text);line-height:1.5">Forgot it? <a href="#" onclick="event.preventDefault();requestPasswordReset();" style="color:var(--amber-text);font-weight:700;text-decoration:underline">Send a reset link</a> and use it to choose a new password.</div>`
     : '';
+  const submitLbl=recovery?'Save & sign in':(hasPwd?'Update password':'Save password');
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${title}</div></div><div class="sbody">
 <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${intro}</div>
+<div id="sp-banner" style="display:none;margin-bottom:12px"></div>
 <div class="ef">
 ${currentRow}
-<div class="erow"><div class="elbl">New password</div><input id="sp-new" class="einput" type="password" autocomplete="new-password" placeholder="At least 8 characters" oninput="updatePwdStrength()"/></div>
-<div class="erow"><div class="elbl">Confirm</div><input id="sp-confirm" class="einput" type="password" autocomplete="new-password" placeholder="Re-enter the password"/></div>
+<div class="erow"><div class="elbl">New password</div><input id="sp-new" class="einput" type="password" autocomplete="new-password" placeholder="At least 8 characters" oninput="updatePwdStrength();clearPwdFieldErr('new')"/></div>
+<div id="sp-err-new" style="display:none;${fieldErrStyle}"></div>
+<div class="erow"><div class="elbl">Confirm</div><input id="sp-confirm" class="einput" type="password" autocomplete="new-password" placeholder="Re-enter the password" oninput="clearPwdFieldErr('confirm')"/></div>
+<div id="sp-err-confirm" style="display:none;${fieldErrStyle}"></div>
 </div>
 <div id="sp-strength" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px"></div>
-<div id="sp-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="sp-err-txt"></span></div>
 ${forgotRow}
 <div style="display:flex;gap:10px;margin-top:18px">
-  ${recovery?'':'<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Cancel</button>'}
-  <button class="bblue" style="flex:1;padding:12px" onclick="saveSetPassword()">${recovery?'Save & sign in':(hasPwd?'Update password':'Save password')}</button>
+  ${recovery?'':'<button id="sp-cancel" class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Cancel</button>'}
+  <button id="sp-submit" class="bblue" data-orig-label="${submitLbl}" style="flex:1;padding:12px" onclick="saveSetPassword()">${submitLbl}</button>
 </div>
 <div style="height:24px"></div></div></div>`;
 }
+
+// Per-field + banner error helpers for rSetPwd.
+function _spShowField(id,msg){
+  const el=document.getElementById('sp-err-'+id);
+  if(el){el.textContent=msg;el.style.display='block';}
+  const input=document.getElementById(id==='current'?'sp-current':id==='new'?'sp-new':'sp-confirm');
+  if(input)input.focus();
+}
+function clearPwdFieldErr(id){
+  const el=document.getElementById('sp-err-'+id);
+  if(el){el.textContent='';el.style.display='none';}
+}
+function _spClearAll(){
+  ['current','new','confirm'].forEach(clearPwdFieldErr);
+  const b=document.getElementById('sp-banner');
+  if(b){b.innerHTML='';b.style.display='none';}
+}
+function _spBanner(kind,msg,actionLabel,actionFn){
+  const b=document.getElementById('sp-banner');if(!b)return;
+  const bg=kind==='error'?'var(--red-bg)':'var(--green-bg)';
+  const fg=kind==='error'?'var(--red-text)':'var(--green-text)';
+  const bd=kind==='error'?'var(--red-border)':'var(--green-border)';
+  const action=actionFn?`<button onclick="${actionFn}" style="background:none;border:1px solid ${fg};color:${fg};border-radius:6px;padding:5px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">${actionLabel}</button>`:'';
+  b.innerHTML='<div style="padding:10px 12px;background:'+bg+';border:1px solid '+bd+';border-radius:8px;display:flex;align-items:center;gap:10px;font-size:13px;color:'+fg+';line-height:1.4"><span style="flex:1">'+msg+'</span>'+action+'</div>';
+  b.style.display='block';
+}
+function _spSetBusy(busy){
+  const btn=document.getElementById('sp-submit');
+  if(btn){
+    btn.disabled=!!busy;
+    btn.style.opacity=busy?'.7':'';
+    btn.style.cursor=busy?'not-allowed':'';
+    btn.textContent=busy?'Updating…':(btn.dataset.origLabel||'Save');
+  }
+  ['sp-current','sp-new','sp-confirm'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.readOnly=!!busy;
+  });
+}
+function _spReauthExpired(){logout();}
 
 // In-app password reset trigger. Used by:
 //   - First-time set flow (user has no password yet)
@@ -4138,62 +4183,93 @@ async function saveSetPassword(){
   const cf=(document.getElementById('sp-confirm')||{}).value||'';
   const curEl=document.getElementById('sp-current');
   const cp=curEl?(curEl.value||''):'';
-  const err=document.getElementById('sp-err');
-  const errTxt=document.getElementById('sp-err-txt');
-  const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}};
-  if(err)err.style.display='none';
   const recovery=!!S.passwordRecovery;
   const hasPwd=!!(S.profile&&S.profile.has_password);
   const needCurrent=hasPwd&&!recovery;
-  if(needCurrent&&!cp)return showErr('Enter your current password.');
-  if(np.length<8)return showErr('Password must be at least 8 characters.');
-  if(np!==cf)  return showErr('Passwords don’t match.');
-  if(needCurrent&&cp===np)return showErr('New password must be different from current.');
-  const cli=initSupabase();if(!cli)return showErr('Connection issue. Try again.');
-  // Re-auth with the current password first when the project has
-  // "Require current password when updating" enabled. signInWithPassword
-  // returns a fresh session on success; on failure the existing
-  // session is preserved.
-  if(needCurrent){
-    const email=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
-    if(!email)return showErr('Couldn’t verify current password — email missing.');
-    const reauth=await cli.auth.signInWithPassword({email,password:cp});
-    if(reauth&&reauth.error){
-      console.warn('[mybjj] reauth for password change:',reauth.error);
-      S.pwdReauthAttempts=(S.pwdReauthAttempts||0)+1;
-      const msg=(reauth.error.message||'').toLowerCase();
-      const friendly=(msg.includes('invalid')||msg.includes('credentials'))
-        ?'Current password is incorrect.'
-        :(reauth.error.message||'Couldn’t verify current password.');
-      // Re-render so the "Forgot it?" link surfaces after 3 misses.
-      if(S.pwdReauthAttempts>=3){render();}
-      // Re-render lost the inline error since DOM was rebuilt — refresh it.
-      requestAnimationFrame(()=>{
-        const e2=document.getElementById('sp-err');
-        const t2=document.getElementById('sp-err-txt');
-        if(e2&&t2){t2.textContent=friendly;e2.style.display='flex';}
-      });
+  // Clear any prior errors before validating again.
+  _spClearAll();
+  // Validation — first failing field wins (focus lands on it).
+  if(needCurrent&&!cp)   return _spShowField('current','Enter your current password');
+  if(!np)                return _spShowField('new','Enter a new password');
+  if(np.length<8)        return _spShowField('new','Password must be at least 8 characters');
+  if(!cf)                return _spShowField('confirm','Confirm your new password');
+  if(np!==cf)            return _spShowField('confirm','Passwords don’t match');
+  if(needCurrent&&cp===np)return _spShowField('new','New password must be different from current');
+  const cli=initSupabase();
+  if(!cli)return _spBanner('error','Connection issue. Check your internet and try again.');
+  _spSetBusy(true);
+  try{
+    // Re-auth with the current password when "Require current
+    // password when updating" is enabled in the Auth project.
+    // signInWithPassword returns a fresh session on success; on
+    // failure the existing session stays valid (no logout side
+    // effect). Recovery flows skip this branch entirely — the
+    // recovery token is proof on the server side.
+    if(needCurrent){
+      const email=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
+      if(!email){
+        _spBanner('error','Your session is missing an email. Sign in again to continue.','Sign in again','_spReauthExpired()');
+        return;
+      }
+      console.log('[mybjj] reauth attempt for',email);
+      const reauth=await cli.auth.signInWithPassword({email,password:cp});
+      console.log('[mybjj] reauth result:',reauth&&reauth.error?'failed':'success');
+      if(reauth&&reauth.error){
+        console.warn('[mybjj] reauth for password change:',reauth.error);
+        S.pwdReauthAttempts=(S.pwdReauthAttempts||0)+1;
+        const msg=(reauth.error.message||'').toLowerCase();
+        const friendly=(msg.includes('invalid')||msg.includes('credentials'))
+          ?'Current password is incorrect'
+          :(reauth.error.message||'Couldn’t verify current password');
+        if(S.pwdReauthAttempts>=3){
+          // Re-render so the "Forgot it?" link surfaces. The render
+          // rebuilds the DOM and clears the inline error, so we
+          // re-show it after the next paint.
+          render();
+          requestAnimationFrame(()=>{_spShowField('current',friendly);});
+          return;
+        }
+        _spShowField('current',friendly);
+        return;
+      }
+    }
+    console.log('[mybjj] updateUser({password})');
+    const{error}=await cli.auth.updateUser({password:np});
+    if(error){
+      console.warn('[mybjj] set password:',error);
+      const status=error.status||0;
+      const msg=(error.message||'').toLowerCase();
+      // Map server errors per the spec.
+      if(status===422||msg.includes('weak')||msg.includes('leaked')||msg.includes('pwned')){
+        _spShowField('new','This password isn’t strong enough. Try a longer one with mixed characters.');
+        return;
+      }
+      if(status===401||msg.includes('jwt')||msg.includes('expired')||msg.includes('not authenticated')){
+        _spBanner('error','Your session expired. Please sign in again.','Sign in again','_spReauthExpired()');
+        return;
+      }
+      _spBanner('error','Couldn’t update password. Check your connection and try again.');
       return;
     }
+    const wasRecovery=recovery;
+    S.passwordRecovery=false;
+    S.pwdReauthAttempts=0;
+    S.pwdResetSent=false;
+    // Tell Postgres the user has a password now so future RPC calls
+    // route them correctly through the two-step login. Best-effort —
+    // the actual auth secret was already saved by updateUser above.
+    try{await cli.rpc('mark_password_set');}catch(e){console.warn('[mybjj] mark_password_set',e);}
+    if(S.profile)S.profile.has_password=true;
+    showSaveToast2(wasRecovery?'Password set — you’re signed in.':(hasPwd?'Password updated':'Password saved'));
+    // Slight delay so the user catches the success toast before the
+    // panel slides away.
+    setTimeout(()=>{S.sub=null;render();},500);
+  }catch(e){
+    console.warn('[mybjj] saveSetPassword threw:',e);
+    _spBanner('error','Couldn’t update password. Check your connection and try again.');
+  }finally{
+    _spSetBusy(false);
   }
-  const{error}=await cli.auth.updateUser({password:np});
-  if(error){
-    console.warn('[mybjj] set password:',error);
-    showErr(error.message||'Couldn’t update password. Try again.');
-    return;
-  }
-  const wasRecovery=recovery;
-  S.passwordRecovery=false;
-  S.pwdReauthAttempts=0;
-  S.pwdResetSent=false;
-  // Tell Postgres the user has a password now so future RPC calls
-  // route them correctly through the two-step login. Best-effort —
-  // the actual auth secret was already saved by updateUser above.
-  try{await cli.rpc('mark_password_set');}catch(e){console.warn('[mybjj] mark_password_set',e);}
-  if(S.profile)S.profile.has_password=true;
-  S.sub=null;
-  showSaveToast2(wasRecovery?'Password set — you’re signed in.':(hasPwd?'Password updated.':'Password saved.'));
-  render();
 }
 
 // Post-magic-link first-time prompt. Returns the HTML for an inline
