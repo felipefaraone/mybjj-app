@@ -4212,7 +4212,14 @@ async function saveSetPassword(){
   const cp=curEl?(curEl.value||''):'';
   const recovery=!!S.passwordRecovery;
   const hasPwd=!!(S.profile&&S.profile.has_password);
-  const needCurrent=hasPwd&&!recovery;
+  // DOM IS GROUND TRUTH.
+  // The Current input only renders when we believed at render time
+  // that the user had a password. If it's in the DOM, we MUST reauth
+  // before updateUser — even if S.profile.has_password somehow flipped
+  // to false between render and save. This guard is the single
+  // source of truth and supersedes any client state.
+  const needCurrent=!recovery&&!!curEl;
+  console.log('[mybjj] decision: needCurrent=',needCurrent,'hasPwd=',hasPwd,'recovery=',recovery,'curFieldInDOM=',!!curEl,'curLen=',cp.length);
   console.log('[mybjj] saveSetPassword start',{needCurrent,recovery,hasPwd,curLen:cp.length,newLen:np.length,cfLen:cf.length,profileEmail:S.profile&&S.profile.email});
   // Clear any prior errors before re-validating.
   _spClearAll();
@@ -4234,6 +4241,7 @@ async function saveSetPassword(){
     // Re-auth with the current password first when the Auth project
     // has "Require current password when updating" enabled. The
     // recovery flow skips this — its session is already proof.
+    let reauthCompleted=!needCurrent; // recovery flow doesn't reauth → considered complete
     if(needCurrent){
       const email=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
       if(!email){
@@ -4259,8 +4267,18 @@ async function saveSetPassword(){
         _spBanner('error',friendly,action&&action.label,action&&action.fn);
         return;
       }
+      reauthCompleted=true;
+      console.log('[mybjj] reauth confirmed before updateUser');
     }
-    console.log('[mybjj] updateUser({password}) request');
+    // Defense-in-depth: refuse to call updateUser if we ever land here
+    // without having completed the reauth step. If this fires, the
+    // bug is in the control flow above — never in the server.
+    if(needCurrent&&!reauthCompleted){
+      console.error('[mybjj] CRITICAL: needCurrent=true but reauth was not completed — refusing to call updateUser');
+      _spBanner('error','Internal error: re-authentication did not run. Refresh the page and try again.');
+      return;
+    }
+    console.log('[mybjj] updateUser({password}) request — reauthCompleted=',reauthCompleted);
     const{error}=await cli.auth.updateUser({password:np});
     if(error){
       console.warn('[mybjj] updateUser error:',error);
