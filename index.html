@@ -578,9 +578,9 @@ function rTL(journey,shareSid){
 
 function rInbox(){const ur=NOTIFS.filter(n=>!n.read).length;const IBACK=`<button class="sback" onclick="closeInbox()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:#1A5DAD;font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?`<div style="padding:40px;text-align:center;color:var(--text3)">No notifications</div>`:NOTIFS.map(n=>`<div class="nitem ${n.read?'':'unr'}" onclick="markRead('${n.id}')"><div class="ndot ${n.read?'rd':''}"></div><div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${n.title}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${n.body}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${n.time}</div></div><button class="ndel" onclick="event.stopPropagation();delNotif('${n.id}')">×</button></div>`).join('')}</div></div>`;}
 
-function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48)}<div class="pname">${m.name}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="manualRefresh()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></div><div class="pilbl">Refresh</div><div style="font-size:11px;color:var(--text3)">Pull down on the main view too</div></div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()">Sign out</button></div>`;}
+function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48)}<div class="pname">${m.name}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="pitem" onclick="manualRefresh()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></div><div class="pilbl">Refresh</div><div style="font-size:11px;color:var(--text3)">Pull down on the main view too</div></div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()">Sign out</button></div>`;}
 
-function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff};return(ss[S.sub]||(() =>''))();}
+function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd};return(ss[S.sub]||(() =>''))();}
 function rPEdit(){
   var me=S.me;
   var stu=STUDENTS.find(function(x){return x.id===me.id;})||STAFF.find(function(x){return x.name===me.name;})||me;
@@ -1800,7 +1800,7 @@ function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'
 
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Admin',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;if(t.id==='community')return !isP;return true;});if(!isA&&S.tab==='admin')S.tab='class';if(isP&&S.tab==='community')S.tab='progress';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rPromoteModal()}${rFeedbackModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;if(t.id==='community')return !isP;return true;});if(!isA&&S.tab==='admin')S.tab='class';if(isP&&S.tab==='community')S.tab='progress';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rPromoteModal()}${rFeedbackModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')&&S.tab!=='admin'?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -1974,8 +1974,17 @@ async function bootAuth(){
     if(session) await onAuthed(); else {S.authState='unauthenticated';render();}
   }catch(e){console.warn('[mybjj] bootAuth',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
   c.auth.onAuthStateChange((ev)=>{
-    if(ev==='SIGNED_IN') onAuthed();
-    else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';render();}
+    if(ev==='PASSWORD_RECOVERY'){
+      // User just clicked a reset-password email. They have a session
+      // but we want them to choose a new password before doing
+      // anything else. Stash a flag; once onAuthed runs and S.loggedIn
+      // is true, the side panel opens straight on the "Set password"
+      // sub-panel.
+      S.passwordRecovery=true;
+      onAuthed();
+    }
+    else if(ev==='SIGNED_IN') onAuthed();
+    else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;render();}
   });
 }
 
@@ -1988,6 +1997,10 @@ async function onAuthed(){
     if(data.status==='approved'){
       S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';
       if(S.me.role==='parent')S.tab='progress';
+      // If the user arrived via a reset-password link, jump straight
+      // into the Set Password sub-panel so they finish the recovery
+      // before doing anything else.
+      if(S.passwordRecovery){S.panelOpen=true;S.sub='setpwd';}
       render();
       hydrateData();
       return;
@@ -2998,6 +3011,139 @@ async function signInMagic(){
   S.authBusy=false;render();
 }
 
+// Phase 9 — password sign-in. Primary "Sign in" branches on whether
+// the password field is filled: if empty we fall through to magic-link
+// (preserves the existing flow for users who never set a password).
+async function signInWithEmail(){
+  const c=initSupabase(); if(!c){S.authMsg=friendlyAuthError('network');render();return;}
+  const email=(S.authEmail||'').trim().toLowerCase();
+  const pwd=(document.getElementById('auth-pwd')||{}).value||'';
+  if(!email||!/^\S+@\S+\.\S+$/.test(email)){S.authMsg='Please enter a valid email address.';render();return;}
+  if(!pwd){
+    // No password supplied → magic link, matches old behaviour.
+    return signInMagic();
+  }
+  S.authBusy=true;S.authMsg='';render();
+  try{
+    const{error}=await c.auth.signInWithPassword({email,password:pwd});
+    if(error){
+      console.warn('[mybjj] password sign-in:',error.message);
+      const m=(error.message||'').toLowerCase();
+      // Vague on purpose — don't reveal whether the email exists.
+      if(m.includes('invalid login credentials')||m.includes('invalid')) S.authMsg='Incorrect email or password.';
+      else if(m.includes('rate limit')) S.authMsg='Too many attempts. Try again in a minute.';
+      else S.authMsg=friendlyAuthError(error);
+    }
+  }catch(e){console.warn('[mybjj] password',e);S.authMsg=friendlyAuthError(e);}
+  S.authBusy=false;render();
+}
+
+// Forgot-password — sends a recovery email that drops the user back into
+// the app with a recovery session. bootAuth's onAuthStateChange handler
+// catches PASSWORD_RECOVERY and routes to the reset form.
+async function forgotPassword(){
+  const c=initSupabase(); if(!c){S.authMsg=friendlyAuthError('network');render();return;}
+  const email=(S.authEmail||'').trim().toLowerCase()
+    || (prompt('Enter the email on your account:')||'').trim().toLowerCase();
+  if(!email||!/^\S+@\S+\.\S+$/.test(email)){S.authMsg='Please enter a valid email address.';render();return;}
+  S.authBusy=true;S.authMsg='';render();
+  try{
+    const{error}=await c.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+    if(error){console.warn('[mybjj] forgot password:',error);S.authMsg=friendlyAuthError(error);}
+    else{
+      S.authEmail=email;
+      S.authState='magic-sent';
+      S.authMsg='Password reset link sent to '+email+'. Open it on this device to set a new password.';
+    }
+  }catch(e){console.warn('[mybjj] forgot password',e);S.authMsg=friendlyAuthError(e);}
+  S.authBusy=false;render();
+}
+
+// Set-password sub-panel — used for first-time setup, "Change password"
+// in the side panel, and the post-recovery flow.
+function rSetPwd(){
+  const recovery=!!S.passwordRecovery;
+  const hasPwd=!!(S.profile&&S.profile.has_password); // not actually returned by Supabase; treat as "unknown"
+  const title=recovery?'Set new password':(S.profile&&S.profile.has_password?'Change password':'Set a password');
+  const intro=recovery
+    ? 'Choose a new password to finish resetting your account.'
+    : 'Adds a faster sign-in option alongside the email link. Magic-link and Google still work either way.';
+  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${title}</div></div><div class="sbody">
+<div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${intro}</div>
+<div class="ef">
+<div class="erow"><div class="elbl">New password</div><input id="sp-new" class="einput" type="password" autocomplete="new-password" placeholder="At least 8 characters" oninput="updatePwdStrength()"/></div>
+<div class="erow"><div class="elbl">Confirm</div><input id="sp-confirm" class="einput" type="password" autocomplete="new-password" placeholder="Re-enter the password"/></div>
+</div>
+<div id="sp-strength" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px"></div>
+<div id="sp-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="sp-err-txt"></span></div>
+<div style="display:flex;gap:10px;margin-top:18px">
+  ${recovery?'':'<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Cancel</button>'}
+  <button class="bblue" style="flex:1;padding:12px" onclick="saveSetPassword()">${recovery?'Save & sign in':'Save password'}</button>
+</div>
+<div style="height:24px"></div></div></div>`;
+}
+
+function updatePwdStrength(){
+  const v=(document.getElementById('sp-new')||{}).value||'';
+  const el=document.getElementById('sp-strength');
+  if(!el)return;
+  if(!v){el.textContent='';el.style.color='var(--text3)';return;}
+  let score=0;
+  if(v.length>=8)score++;
+  if(v.length>=12)score++;
+  if(/[A-Z]/.test(v)&&/[a-z]/.test(v))score++;
+  if(/\d/.test(v))score++;
+  if(/[^A-Za-z0-9]/.test(v))score++;
+  const labels=['Too short','Weak','Okay','Good','Strong','Strong'];
+  const colors=['var(--red-text)','var(--red-text)','var(--amber-text)','var(--green-text)','var(--green-text)','var(--green-text)'];
+  el.textContent='Strength: '+labels[score];
+  el.style.color=colors[score];
+}
+
+async function saveSetPassword(){
+  const np=(document.getElementById('sp-new')||{}).value||'';
+  const cf=(document.getElementById('sp-confirm')||{}).value||'';
+  const err=document.getElementById('sp-err');
+  const errTxt=document.getElementById('sp-err-txt');
+  const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}};
+  if(err)err.style.display='none';
+  if(np.length<8)return showErr('Password must be at least 8 characters.');
+  if(np!==cf)  return showErr('Passwords don’t match.');
+  const cli=initSupabase();if(!cli)return showErr('Connection issue. Try again.');
+  const{error}=await cli.auth.updateUser({password:np});
+  if(error){
+    console.warn('[mybjj] set password:',error);
+    showErr(error.message||'Could not save the password.');
+    return;
+  }
+  const wasRecovery=!!S.passwordRecovery;
+  S.passwordRecovery=false;
+  try{localStorage.setItem('mybjj.pwdPrompt.done','1');}catch(_){}
+  S.sub=null;
+  showSaveToast2(wasRecovery?'Password set — you’re signed in.':'Password saved.');
+  render();
+}
+
+// Post-magic-link first-time prompt. Returns the HTML for an inline
+// banner shown at the top of the Class tab when the user has signed in
+// via magic link and hasn't yet decided about setting a password.
+function rPasswordSuggest(){
+  if(!S.loggedIn)return '';
+  if(S.passwordRecovery)return '';
+  let dismissed=false;
+  try{dismissed=!!localStorage.getItem('mybjj.pwdPrompt.done');}catch(_){}
+  if(dismissed)return '';
+  return '<div style="background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px">'
+    +'<div style="flex:1;font-size:13px;color:var(--text);line-height:1.4">Set a password for faster sign-in next time? <span style="color:var(--text3)">Optional — sign-in links still work.</span></div>'
+    +'<button onclick="openSub(\'setpwd\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">Set up</button>'
+    +'<button onclick="dismissPwdPrompt()" title="Dismiss" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;display:flex;align-items:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+    +'</div>';
+}
+function dismissPwdPrompt(){
+  try{localStorage.setItem('mybjj.pwdPrompt.done','1');}catch(_){}
+  render();
+}
+
 function authHero(){
   return `<div class="lhero" style="padding-top:36px;padding-bottom:32px"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:120px;height:120px;object-fit:contain;border-radius:50%;position:relative;z-index:1"/><div class="lsub" style="margin-top:8px">myBrazilian Jiu-Jitsu Team</div><div style="margin-top:16px"><div style="display:inline-flex;align-items:center;gap:18px;color:rgba(255,255,255,0.65)"><a href="https://mybjj.com.au/" target="_blank" rel="noopener" style="color:rgba(255,255,255,0.65);text-decoration:none;display:flex;align-items:center;transition:color .15s" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.65)'"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></a><a href="https://www.instagram.com/mybjj/" target="_blank" rel="noopener" style="color:rgba(255,255,255,0.65);text-decoration:none;display:flex;align-items:center;transition:color .15s" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.65)'"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></a><a href="https://www.facebook.com/mybjjteam" target="_blank" rel="noopener" style="color:rgba(255,255,255,0.65);text-decoration:none;display:flex;align-items:center;transition:color .15s" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.65)'"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg></a></div></div></div>`;
 }
@@ -3012,9 +3158,21 @@ function rAuth(){
   const msg=S.authMsg&&!sent?`<div class="inv" style="margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${S.authMsg}</span></div>`:'';
   const GICON=`<svg width="14" height="14" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>`;
   const MAIL=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
+  const LOCK=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
   const form=sent
     ? `<div class="amsg" style="text-align:center;padding:14px 12px">${S.authMsg||'We sent you a sign-in link. Check your inbox to continue.'}</div><div style="height:10px"></div><button class="bout" onclick="S.authState='unauthenticated';S.authMsg='';render()">Use another method</button>`
-    : `<button class="bmain gbtn" onclick="signInGoogle()" ${busy}><span class="glogo">${GICON}</span>Continue with Google</button><div class="adiv"><span>or</span></div><div class="fg"><div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email address" value="${S.authEmail||''}" oninput="S.authEmail=this.value"/></div></div><button class="bout" onclick="signInMagic()" ${busy}>Continue with email</button><div class="cav">We’ll email you a sign-in link — no password needed.</div>${msg}`;
+    : `<button class="bmain gbtn" onclick="signInGoogle()" ${busy}><span class="glogo">${GICON}</span>Continue with Google</button>
+<div class="adiv"><span>or</span></div>
+<div class="fg">
+<div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email address" value="${S.authEmail||''}" oninput="S.authEmail=this.value" onkeydown="if(event.key==='Enter'){const p=document.getElementById('auth-pwd');if(p)p.focus();}"/></div>
+<div class="lf" style="border-top:1px solid var(--border);border-bottom:none"><div class="li">${LOCK}</div><input id="auth-pwd" class="linput" type="password" autocomplete="current-password" placeholder="Password (optional)" onkeydown="if(event.key==='Enter')signInWithEmail()"/></div>
+</div>
+<button class="bmain" onclick="signInWithEmail()" ${busy} style="background:#1A5DAD;color:#fff;width:100%;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;border:none;border-radius:12px;cursor:pointer;margin-bottom:10px">Sign in</button>
+<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+<button onclick="forgotPassword()" style="background:none;border:none;color:#1A5DAD;font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:4px 0">Forgot password?</button>
+<button onclick="signInMagic()" style="background:none;border:none;color:#1A5DAD;font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:4px 0">Use sign-in link instead</button>
+</div>
+<div class="cav">Leave the password field empty to receive a one-time sign-in link by email.</div>${msg}`;
   const dev=IS_DEV?`<div class="dsec"><div class="dlbl">Localhost dev shortcuts</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${demoCards()}</div></div>`:'';
   return `<div class="lw">${authHero()}<div class="lbody"><div class="inv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Access is by invitation only. Your instructor creates your account and sends you a login link.</span></div>${form}${dev}</div></div>`;
 }
