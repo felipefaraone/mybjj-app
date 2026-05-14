@@ -1293,8 +1293,11 @@ function rRecentPromos(){
     +'</div>';
 }
 
-function rARoster(){
-  const isOwner=S.me.role==='owner';
+// rARosterListInner is the part of the Roster that depends on S.rq —
+// extracted so the search input's oninput handler can replace just
+// the results DOM without re-rendering the input itself (which would
+// drop focus and eat keystrokes in flight).
+function rARosterListInner(){
   const q=(S.rq||'').toLowerCase();
   const curU=UNITS.find(u=>u.name===S.unit);const rfUnit=curU?curU.id:'all';
   const rfBelt=S.rfBelt||'all';
@@ -1317,36 +1320,7 @@ function rARoster(){
     if(rankA!==rankB)return rankA-rankB;
     return a.name.localeCompare(b.name);
   });
-  const activeUnits=UNITS.filter(u=>u.active);
-  const beltMap=S.rseg==='adult'?BA:BK;
-  const beltOpts=Object.keys(beltMap);
-
-  // Build filter dropdowns using DOM-safe approach
-  let unitOpts='<option value="all">All units</option>';
-  activeUnits.forEach(u=>{unitOpts+='<option value="'+u.id+'"'+(rfUnit===u.id?' selected':'')+'>'+u.name+', '+u.country+'</option>';});
-
-  let beltOptHtml='<option value="all">Select belt</option>';
-  beltOpts.forEach(k=>{beltOptHtml+='<option value="'+k+'"'+(rfBelt===k?' selected':'')+'>'+beltMap[k].label+'</option>';});
-
-  const clearBtn=S.rq?'<button onclick="setRQ(String())" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1">×</button>':'';
-
   const hasFilter=rfBelt!=='all'||rfNear||rfEligible||!!q;
-
-  const chipBase='border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
-  const filterHtml=
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
-    +'<div style="display:flex;align-items:center;flex:1;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 12px">'
-    +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-    +'<input value="'+(S.rq||'')+'" oninput="setRQ(this.value)" placeholder="Search students..." style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text)"/>'
-    +clearBtn
-    +'</div>'
-    +'</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'
-    +'<select onchange="setRF2(this)" data-key="rfBelt" style="'+chipBase+';background:'+(rfBelt!=='all'?'#1A5DAD15':'transparent')+';border-color:'+(rfBelt!=='all'?'#1A5DAD':'var(--border)')+';color:'+(rfBelt!=='all'?'#1A5DAD':'var(--text3)')+';outline:none;appearance:none;-webkit-appearance:none;padding-right:20px">'+beltOptHtml+'</select>'
-    +'<button onclick="toggleRFNear()" style="'+chipBase+';background:'+(rfNear?'#1A5DAD15':'transparent')+';border-color:'+(rfNear?'#1A5DAD':'var(--border)')+';color:'+(rfNear?'#1A5DAD':'var(--text3)')+'">Near grad'+(rfNear?' ✕':'')+'</button>'
-    +(canEditClassCounts()?'<button onclick="toggleRFEligible()" style="'+chipBase+';background:'+(rfEligible?'var(--green-bg)':'transparent')+';border-color:'+(rfEligible?'var(--green-text)':'var(--border)')+';color:'+(rfEligible?'var(--green-text)':'var(--text3)')+'">Eligible only'+(rfEligible?' ✕':'')+'</button>':'')
-    +'</div>';
-
   const rows=!hasFilter?'':list.map(s=>{
     const bmap=s.prog==='kids'?BK:BA;
     const b=bmap[s.belt]||BA.white;
@@ -1381,14 +1355,47 @@ function rARoster(){
       +(canEditClassCounts()?'<button onclick="event.stopPropagation();openEditCounts(\''+s.id+'\')" title="Edit class counts" style="position:absolute;top:10px;right:10px;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;cursor:pointer;color:var(--text2);display:flex;align-items:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')
       +'</div>';
   }).join('');
-
   const emptyMsg=!hasFilter
     ?'<div style="padding:40px 16px;text-align:center"><div style="font-size:13px;color:var(--text3);line-height:1.6">Select a belt, toggle Near grad,<br>or search to view students.</div></div>'
     :list.length===0?'<div style="padding:32px;text-align:center;color:var(--text3);font-size:14px">No students match these filters.</div>':'';
+  return rows+emptyMsg;
+}
+
+function rARoster(){
+  const rfBelt=S.rfBelt||'all';
+  const rfNear=!!S.rfNear;
+  const rfEligible=!!S.rfEligible&&canEditClassCounts();
+  const allAdults=STUDENTS.filter(s=>s.prog==='adult');
+  const allKids=STUDENTS.filter(s=>s.prog==='kids');
+  const beltMap=S.rseg==='adult'?BA:BK;
+  const beltOpts=Object.keys(beltMap);
+
+  let beltOptHtml='<option value="all">Select belt</option>';
+  beltOpts.forEach(k=>{beltOptHtml+='<option value="'+k+'"'+(rfBelt===k?' selected':'')+'>'+beltMap[k].label+'</option>';});
+
+  // Clear button stays in DOM permanently; setRQ toggles display so the
+  // input never gets re-created mid-keystroke.
+  const clearBtn='<button id="rq-clear" onclick="setRQ(String())" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;'+(S.rq?'':'display:none')+'">×</button>';
+
+  const chipBase='border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
+  const filterHtml=
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
+    +'<div style="display:flex;align-items:center;flex:1;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 12px">'
+    +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+    +'<input id="rq-input" value="'+(S.rq||'').replace(/"/g,'&quot;')+'" oninput="setRQ(this.value)" placeholder="Search students..." style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text)"/>'
+    +clearBtn
+    +'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'
+    +'<select onchange="setRF2(this)" data-key="rfBelt" style="'+chipBase+';background:'+(rfBelt!=='all'?'#1A5DAD15':'transparent')+';border-color:'+(rfBelt!=='all'?'#1A5DAD':'var(--border)')+';color:'+(rfBelt!=='all'?'#1A5DAD':'var(--text3)')+';outline:none;appearance:none;-webkit-appearance:none;padding-right:20px">'+beltOptHtml+'</select>'
+    +'<button onclick="toggleRFNear()" style="'+chipBase+';background:'+(rfNear?'#1A5DAD15':'transparent')+';border-color:'+(rfNear?'#1A5DAD':'var(--border)')+';color:'+(rfNear?'#1A5DAD':'var(--text3)')+'">Near grad'+(rfNear?' ✕':'')+'</button>'
+    +(canEditClassCounts()?'<button onclick="toggleRFEligible()" style="'+chipBase+';background:'+(rfEligible?'var(--green-bg)':'transparent')+';border-color:'+(rfEligible?'var(--green-text)':'var(--border)')+';color:'+(rfEligible?'var(--green-text)':'var(--text3)')+'">Eligible only'+(rfEligible?' ✕':'')+'</button>':'')
+    +'</div>';
+
   const totalReg=allAdults.length+allKids.length;
   const regLine='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">'+totalReg+' registered students</div>';
   const seg='<div class="rsw">'+'<div class="rseg '+(S.rseg==="adult"?"active":"")+'" onclick="S.rseg=String.fromCharCode(97,100,117,108,116);render()">Adults ('+allAdults.length+')</div>'+'<div class="rseg '+(S.rseg==="kids"?"active":"")+'" onclick="S.rseg=String.fromCharCode(107,105,100,115);render()">Kids ('+allKids.length+')</div></div>';
-  return regLine+seg+filterHtml+rows+emptyMsg;
+  return regLine+seg+filterHtml+'<div id="roster-results">'+rARosterListInner()+'</div>';
 }
 function rStaff(){
   const ownerView=isOwner();
@@ -2757,7 +2764,19 @@ function editTechVideo(week,techIdx){
 }
 function saveW(week){const w=SCHED.find(x=>x.week===week);if(!w)return;w.theme=document.getElementById('we-theme')?.value||w.theme;w.notes=document.getElementById('we-notes')?.value||'';w.video=document.getElementById('we-vid')?.value||'';S.editWeek=false;render();if(w._dbId)withSb(c=>c.from('programme_weeks').update({theme:w.theme,notes:w.notes,stand_up:w.standUp||[],ground:w.ground||[]}).eq('id',w._dbId),'update programme week');}
 
-function setRQ(v){S.rq=v;render();}
+function setRQ(v){
+  S.rq=v;
+  // Refresh just the results so the input keeps focus while typing.
+  // If the Roster isn't mounted (e.g. user is on another tab), fall
+  // back to a full render so state stays in sync for the next mount.
+  const results=document.getElementById('roster-results');
+  if(!results){render();return;}
+  results.innerHTML=rARosterListInner();
+  const input=document.getElementById('rq-input');
+  if(input&&input.value!==v)input.value=v;
+  const clear=document.getElementById('rq-clear');
+  if(clear)clear.style.display=v?'':'none';
+}
 function setRF2(el){S[el.dataset.key]=el.value;render();}
 function toggleRFNear(){S.rfNear=!S.rfNear;render();}
 function toggleRFEligible(){S.rfEligible=!S.rfEligible;render();}
