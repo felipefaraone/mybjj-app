@@ -1,8 +1,9 @@
-const CACHE = 'mybjj-v4';
+const CACHE = 'mybjj-v5';
 const STATIC = [
   '/', '/index.html', '/manifest.json',
   '/icon-192.png', '/icon-512.png',
   '/icon-192-maskable.png', '/icon-512-maskable.png',
+  '/og-image.png',
   '/splash-750x1334.png', '/splash-1125x2436.png', '/splash-1170x2532.png',
   '/splash-1284x2778.png', '/splash-1290x2796.png',
   '/splash-1536x2048.png', '/splash-2048x2732.png',
