@@ -11,11 +11,14 @@ admin flow (Add Student, Add Staff, or parent-email upsert).
    `public.users` row.
 2. Requires `role IN ('owner', 'admin', 'instructor')`.
 3. Confirms the target email exists in `public.whitelist`.
-4. Calls `auth.admin.generateLink({type: 'magiclink', email, options: {redirectTo}})`.
-5. If the email is brand-new in `auth.users`, falls back to
-   `auth.admin.inviteUserByEmail(email)` so first-time invites still work.
+4. Calls `auth.signInWithOtp({email, options:{emailRedirectTo, shouldCreateUser:true}})`
+   on an anon-key client. This goes through GoTrue's standard email
+   pipeline so SMTP (Resend) actually fires; `shouldCreateUser:true`
+   covers first-time invitees in the same call.
 
-Either path sends a clickable email via the project's configured SMTP (Resend).
+Why not `auth.admin.generateLink`: that method only returns the URL,
+it does NOT send the email. We hit this with v1 of the function — it
+returned `{ok:true}` but Resend logged nothing.
 
 ### Why `--no-verify-jwt`
 

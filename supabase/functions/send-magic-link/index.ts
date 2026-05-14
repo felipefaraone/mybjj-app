@@ -29,6 +29,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const DEFAULT_REDIRECT = "https://mybjj-app.com";
 
 const corsHeaders = {
@@ -53,8 +54,8 @@ Deno.serve(async (req) => {
     return json({ error: "Method not allowed" }, 405);
   }
 
-  if (!SUPABASE_URL || !SERVICE_ROLE) {
-    console.error("send-magic-link: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  if (!SUPABASE_URL || !SERVICE_ROLE || !ANON_KEY) {
+    console.error("send-magic-link: missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY");
     return json({ error: "Server not configured" }, 500);
   }
 
@@ -117,34 +118,26 @@ Deno.serve(async (req) => {
     return json({ error: "Email not in whitelist" }, 400);
   }
 
-  // 4. Dispatch. Try magiclink first (uses the project's Magic Link email
-  //    template). If the user has never signed in before, generateLink
-  //    returns "User not found" — fall back to inviteUserByEmail which
-  //    creates the auth.users row and sends the invite template.
-  const linkRes = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-    options: { redirectTo },
+  // 4. Dispatch via the standard signInWithOtp path. auth.admin.generateLink
+  //    only returns a URL — it does NOT trigger the SMTP send pipeline, so
+  //    Resend was logging nothing. signInWithOtp does go through SMTP and
+  //    uses the project's Magic Link email template. shouldCreateUser:true
+  //    handles both first-time and existing addresses in one call.
+  //
+  //    This call must use the anon-key client (not the service-role one) —
+  //    GoTrue routes signInWithOtp differently for service-role callers.
+  const anonClient = createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
-
-  if (linkRes.error) {
-    const msg = (linkRes.error.message ?? "").toLowerCase();
-    if (/not.*found|no.*user/.test(msg)) {
-      const inv = await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
-      if (inv.error) {
-        const m2 = (inv.error.message ?? "").toLowerCase();
-        if (/rate/.test(m2)) return json({ error: "Rate limit exceeded" }, 429);
-        console.warn("send-magic-link: invite fallback failed", inv.error);
-        return json({ error: inv.error.message }, 500);
-      }
-      console.log(`send-magic-link: invited new user ${email} by ${callerId}`);
-      return json({ ok: true });
-    }
-    if (/rate/.test(msg)) {
-      return json({ error: "Rate limit exceeded" }, 429);
-    }
-    console.warn("send-magic-link: generateLink failed", linkRes.error);
-    return json({ error: linkRes.error.message }, 500);
+  const { error: otpErr } = await anonClient.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
+  });
+  if (otpErr) {
+    const msg = (otpErr.message ?? "").toLowerCase();
+    if (/rate/.test(msg)) return json({ error: "Rate limit exceeded" }, 429);
+    console.warn("send-magic-link: signInWithOtp failed", otpErr);
+    return json({ error: otpErr.message }, 500);
   }
 
   console.log(`send-magic-link: sent to ${email} by ${callerId}`);
