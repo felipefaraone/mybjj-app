@@ -1229,33 +1229,44 @@ function rMonthPromos(){
   return `<div style="background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 14px;margin-bottom:12px"><div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5DAD;margin-bottom:6px">🥋 Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
 }
 function rClass(){
-  const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;let cls=getDC(sd);const isT=sk===dk(TODAY);const hol=isHol(sd);const me=S.me;
-  // Check-in window: only show today's classes that are currently
-  // open for check-in (from 30 min before start until 1 h after end).
-  // Future days stay informational (show all). Past days never
-  // surface — bdays() only returns today + the next 6.
-  if(isT){
-    const _nowSyd=new Date(new Date().toLocaleString('en-AU',{timeZone:'Australia/Sydney'}));
-    const _nowMin=_nowSyd.getHours()*60+_nowSyd.getMinutes();
-    cls=cls.filter(c=>{
-      const [ch,cm]=c.time.split(':').map(Number);
-      const startMin=ch*60+cm;
-      const endMin=startMin+(c.dur||60);
-      return _nowMin>=startMin-30 && _nowMin<=endMin+60;
-    });
-  }
+  const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const cls=getDC(sd);const isT=sk===dk(TODAY);const hol=isHol(sd);const me=S.me;
+  // Current Sydney-local minute-of-day via Intl.DateTimeFormat. The
+  // previous implementation built a Date from toLocaleString('en-AU')
+  // which returns DD/MM/YYYY — new Date() then parsed it as Invalid
+  // and every comparison fell to NaN.
+  const _now=(()=>{
+    if(!isT)return null;
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Australia/Sydney',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
+    const h=+(parts.find(p=>p.type==='hour')||{}).value||0;
+    const m=+(parts.find(p=>p.type==='minute')||{}).value||0;
+    return h*60+m;
+  })();
+  const _fmtHHMM=(mins)=>{
+    const hh=Math.floor(((mins%1440)+1440)%1440/60);
+    const mm=((mins%60)+60)%60;
+    return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  };
   return `${rDayStrip()}${rMonthPromos()}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div></div>
   ${hol?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${HN[sk]||'Public Holiday'}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Academy closed · No classes scheduled today</div></div></div>`
   :cls.length===0?`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`
   :cls.map(c=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];const isIn=!!S.ci[c.id];const isCf=!!S.pconf[c.id+'_'+me.id];const att=isT?gatt(c.time):[];const all=[...att,...(isIn&&!att.includes(me.id)?[me.id]:[])];
     const isStudentAdmin=me.role==='admin'&&!!STUDENTS.find(x=>x.id===me.id);
-    const _nowSyd=new Date(new Date().toLocaleString('en-AU',{timeZone:'Australia/Sydney'}));const _nowMin=_nowSyd.getHours()*60+_nowSyd.getMinutes();const [_ch,_cm]=c.time.split(':').map(Number);const isEnded=isT&&(_nowMin>_ch*60+_cm+c.dur);
+    // Per-row window check (today only). Check-in opens 30 min before
+    // start and stays open until 60 min after end. Outside that window
+    // the row still renders — we just swap the action button for an
+    // "Opens at HH:MM" or "Class ended" status.
+    const [_ch,_cm]=c.time.split(':').map(Number);
+    const startMin=_ch*60+_cm;
+    const endMin=startMin+(c.dur||60);
+    const isPreopen=isT&&_now!=null&&_now<startMin-30;
+    const isEnded=isT&&_now!=null&&_now>endMin+60;
     let cc='card';let btn='';
     if(me.role==='admin'&&!isStudentAdmin){btn=`<div style="font-size:11px;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700">${all.length} going</div>`;}
     else if(isCf){cc='card stc';btn=`<button class="bconf"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Present</button>`;}
     else if(isIn){cc='card stp';btn=`<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;}
     else if(isEnded){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;}
+    else if(isPreopen){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);cursor:default;width:100%;line-height:1.2"><div>Opens at</div><div style="font-size:14px;color:var(--text2);margin-top:2px">${_fmtHHMM(startMin-30)}</div></button>`;}
     else{btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
     return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${c.time}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud} · ${all.length} going</div></div><div style="flex-shrink:0;padding-top:4px;min-width:96px">${btn}</div></div>${rAtts(all,c.id)}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
