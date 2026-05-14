@@ -1417,13 +1417,26 @@ function setMembersSegment(seg){S.membersSegment=seg;S.membersBelt='all';render(
 function rProgress(){
   if(isParent())return rParentChildView();
   var s=S.me;
+  // The signed-in user's linked students row, if any. Owners and
+  // professors often train as students in their own academy, in which
+  // case this is the row that carries their "Joined myBJJ app" /
+  // belt-promotion journey. Preferred over staff.journey (which is the
+  // instructor career timeline, not personal training) whenever it
+  // exists.
+  var myStu=(S.profile&&STUDENTS.find(function(x){return x._userId===S.profile.id;}))||null;
   if(s.role==='admin'||s.role==='owner'){
-    var staff=STAFF.find(function(x){return x.name===s.name;})||null;
+    var staff=STAFF.find(function(x){return x._userId&&S.profile&&x._userId===S.profile.id;})
+             ||STAFF.find(function(x){return x.name===s.name;})
+             ||null;
     var b=BA[s.belt]||BA.white;
     var isOwner=s.role==='owner';
     if(staff){
-      // Instructor with STAFF record — show rank, journey, techniques
-      var sJourney=staff.journey||[];
+      // Instructor with STAFF record — show rank, journey, techniques.
+      // If they also have a student row (training in their own academy),
+      // surface that row's journey here so personal milestones like
+      // "Joined myBJJ app" or stripe promotions land where the user
+      // looks for them.
+      var sJourney=(myStu&&myStu.journey&&myStu.journey.length?myStu.journey:staff.journey)||[];
       var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,'adult')+(isOwner?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>')+'</div>';
       var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney)+'</div>';
       var techsTab=rTechniquesLog(s);
