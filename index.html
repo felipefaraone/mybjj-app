@@ -811,27 +811,84 @@ function rMUnits(){
   var ccOptions=["AU","NZ","JP","KR","US"].map(function(c){return '<option value="'+c+'">'+CC[c]+'</option>';}).join("");
   return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Manage Units</div></div><div class="sbody">'+(S._deleteConfirm?rDeleteUnitConfirm():'')+sections+'<div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><select class="einput" id="nu-country" style="background:var(--card)">'+ccOptions+'</select></div><div class="erow"><div class="elbl">Address</div><input class="einput" id="nu-addr" placeholder="e.g. 120 Military Rd"/></div></div><button class="bblue" onclick="addUnit()">Add unit</button><div style="height:24px"></div></div></div>';
 }
+// rStaffProf — layout mirrors rStuProf (header / stats / journey /
+// details / feedback / more) so students + instructors feel like
+// pages from the same family. Journey is editable by owner; admin
+// edits (belt / role / unit) still go through rEditStaffModal.
 function rStaffProf(){
   const s=STAFF.find(x=>x.id===S.viewStaff);if(!s)return '';
-  const b=BA[s.belt]||BA.white;const isOwner=S.me.role==='owner';
+  const ownerView=isOwner();
+  const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
   const fbKey='staff:'+s.id;
-  let html='<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">'+s.name+'</div></div><div class="sbody">';
-  html+='<div class="card" style="display:flex;align-items:center;gap:12px">'+av(s.initials,b.bg,b.fg,48)+'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px">'+s.name+'</div>'+(s.nickname?'<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:2px">'+s.nickname+'</div>':'')+'<div style="margin-top:4px">'+bb(s.belt,s.deg||0,'adult')+'</div><div style="font-size:12px;color:var(--text2);margin-top:4px">'+instructorTitle(s.belt,s.deg||0,s.role)+' · '+(UNITS.find(u=>u.id===s.unit)||{name:''}).name+'</div></div></div>';
-  html+='<div class="slbl">Belt journey</div>';
-  html+='<div class="card" style="padding:12px 16px">'+rTL(s.journey||[])+'</div>';
-  if(isOwner){
-    html+='<div class="slbl">Head instructor notes &nbsp;<button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:Barlow,sans-serif" onclick="openStaffFb(\''+s.id+'\')">+ Add note</button></div>';
-    if(S.addFb===fbKey){
-      html+='<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Notes for '+s.name.split(' ')[0]+'..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveStaffFb(\''+s.id+'\')">Save</button></div></div>';
-    }
-    if(s.feedback&&s.feedback.length){
-      html+=s.feedback.map(f=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('');
-    } else if(S.addFb!==fbKey){
-      html+='<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No notes yet.</div>';
-    }
-  }
-  html+='<div style="height:24px"></div></div></div>';
-  return html;
+  const sidKey='staff:'+s.id;
+  const photo=avStaff(s,52);
+  const roleChip='<span style="background:var(--blue-tint);color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+instructorTitle(s.belt,s.deg||0,s.role).toUpperCase()+'</span>';
+  const isActive=s._active!==false;
+  // Section 4 — Details. Same shape as rStuProf so the eye lands in
+  // the same spots when switching between profiles.
+  const emailVal=s.email
+    ?(s.email+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
+    :null;
+  const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
+    +rDetailRow('Email',emailVal,'')
+    +rDetailRow('Unit',unitName,'')
+    +rDetailRow('Role',s.roleTitle||instructorTitle(s.belt,s.deg||0,s.role),'')
+    +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:'+(isActive?'var(--green-text)':'var(--amber-text)')+';font-weight:600">'+(isActive?'Active':'Inactive')+'</div></div>'
+    +'</div>';
+
+  // Section 1 — Admin actions row. Mirrors the rStuProf row layout but
+  // wires the staff-modal entry points (Edit profile / Remove). Edit
+  // is open to self too; Remove is owner-only.
+  const adminRow=(ownerView||isStaffSelf(s))?(
+    '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'
+    +'<button class="bsm" onclick="openEditStaff(\''+s.id+'\')" style="flex:1;min-width:120px;padding:10px 12px;font-size:13px">Edit profile</button>'
+    +(ownerView?'<button class="bsm" onclick="openRemoveStaff(\''+s.id+'\')" style="flex:1;min-width:120px;padding:10px 12px;font-size:13px;color:var(--red-text)">Remove staff</button>':'')
+    +'</div>'
+  ):'';
+
+  // Section 5 — More (kept for parity with rStuProf; intentionally
+  // sparse for now because most of the actions live in Section 1).
+  const bottomActions=ownerView?'<div class="slbl" style="margin-top:20px;color:var(--text3)">More</div>'
+    +'<div style="display:flex;flex-direction:column;gap:8px">'
+    +'<button class="bsm" onclick="openEditStaff(\''+s.id+'\')" style="text-align:left;padding:11px 14px;font-size:13px">Edit profile</button>'
+    +(ownerView?'<button class="bsm" onclick="openRemoveStaff(\''+s.id+'\')" style="text-align:left;padding:11px 14px;font-size:13px;color:var(--red-text)">Remove staff</button>':'')
+    +'</div>':'';
+
+  return '<div class="sub open">'
+    +'<div class="shdr"><button class="sback" onclick="closeSub()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+s.name+'</div></div>'
+    +'<div class="sbody">'
+    // Header
+    +'<div class="card" style="padding:16px">'
+      +'<div style="display:flex;align-items:flex-start;gap:14px">'
+        +photo
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+s.name+'</div>'
+          +(s.nickname?'<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:2px">'+s.nickname+'</div>':'')
+          +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,'adult')+roleChip+'</div>'
+          +'<div style="margin-top:5px;font-size:11px;color:var(--text3)">'+unitName+'</div>'
+        +'</div>'
+      +'</div>'
+      +adminRow
+    +'</div>'
+    // Section 3 — Journey (editable for owner via rJnySection with staff: sidKey)
+    +'<div style="margin-top:12px">'+rJnySection(s,sidKey)+'</div>'
+    // Section 4 — Details
+    +details
+    // Section 5 — Head-instructor notes (owner only)
+    +(ownerView?(
+      '<div class="slbl" style="margin-top:18px;display:flex;align-items:center;justify-content:space-between"><span>Head instructor notes</span>'
+      +'<button onclick="openStaffFb(\''+s.id+'\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer">+ Add note</button>'
+      +'</div>'
+      +(S.addFb===fbKey?'<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Notes for '+s.name.split(' ')[0]+'..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveStaffFb(\''+s.id+'\')">Save</button></div></div>':'')
+      +((s.feedback&&s.feedback.length)
+        ?s.feedback.map(f=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('')
+        :(S.addFb!==fbKey?'<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No notes yet.</div>':'')
+      )
+    ):'')
+    +bottomActions
+    +(S.editJny?rJnyEditor():'')
+    +'<div style="height:24px"></div>'
+    +'</div></div>';
 }
 
 function rAddStaff(){
@@ -1102,17 +1159,21 @@ ${S.editJny?rJnyEditor():''}
 </div></div>`;
 }
 
-// rJnySection renders the Journey block inside rStuProf — read-only
-// timeline by default, switching to an editable row list while
-// S.jnyEditFor matches this student. Owner / professor only (coaches
-// and non-staff don't see the toggle).
-function rJnySection(s){
+// rJnySection renders the Journey block inside rStuProf / rStaffProf.
+// `sidKey` is what S.jnyEditFor / addJny / editJnyMilestone use to
+// resolve the target back via getJnyTarget(sidKey):
+//   - for students: just the legacy id, e.g. 'fwb'
+//   - for staff:    'staff:<legacy_id>', e.g. 'staff:mario'
+// Owner-only edit affordance for staff; owner/professor for students
+// (matches the existing canEditClassCounts gate).
+function rJnySection(s,sidKey){
+  sidKey=sidKey||s.id;
   const canEdit=canEditClassCounts();
-  const isEditing=!!(canEdit&&S.jnyEditFor===s.id);
+  const isEditing=!!(canEdit&&S.jnyEditFor===sidKey);
   const dirty=isEditing&&jnyHasChanges(s);
   if(!isEditing){
     const editBtn=canEdit
-      ? '<button onclick="openJnyEdit(\''+s.id+'\')" title="Edit journey" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer">Edit</button>'
+      ? '<button onclick="openJnyEdit(\''+sidKey+'\')" title="Edit journey" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer">Edit</button>'
       : '';
     return '<div class="slbl" style="display:flex;align-items:center;justify-content:space-between"><span>Journey</span>'+editBtn+'</div>'
       +'<div class="card" style="padding:12px 16px">'+rTL(s.journey,s.id)+'</div>';
@@ -1130,8 +1191,8 @@ function rJnySection(s){
     if(isCur)subParts.push('current');
     if(isFut)subParts.push('pending');
     const sub=subParts.join(' · ');
-    const editIcon='<button onclick="editJnyMilestone(\''+s.id+'\','+i+')" title="Edit" style="background:none;border:1px solid var(--border);border-radius:6px;width:30px;height:30px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
-    const delIcon='<button onclick="delJnyMilestone(\''+s.id+'\','+i+')" title="Delete" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:30px;height:30px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>';
+    const editIcon='<button onclick="editJnyMilestone(\''+sidKey+'\','+i+')" title="Edit" style="background:none;border:1px solid var(--border);border-radius:6px;width:30px;height:30px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
+    const delIcon='<button onclick="delJnyMilestone(\''+sidKey+'\','+i+')" title="Delete" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:30px;height:30px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>';
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);opacity:'+(isFut?'.55':'1')+'">'
       +beltDot
       +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis">'+(m.label||'—')+'</div>'
@@ -1141,7 +1202,7 @@ function rJnySection(s){
       +editIcon+delIcon
     +'</div>';
   }).join(''):'<div style="padding:18px 0;text-align:center;color:var(--text3);font-size:13px">No milestones yet.</div>';
-  const addBtn='<div style="padding:12px 0;text-align:center"><button onclick="addJny(\''+s.id+'\')" style="background:none;border:1px dashed var(--border2);border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer">+ Add milestone</button></div>';
+  const addBtn='<div style="padding:12px 0;text-align:center"><button onclick="addJny(\''+sidKey+'\')" style="background:none;border:1px dashed var(--border2);border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer">+ Add milestone</button></div>';
   const status=dirty
     ? '<span style="color:var(--amber-text);font-weight:700">Unsaved changes</span>'
     : '<span style="color:var(--text3)">No changes yet</span>';
@@ -4549,35 +4610,42 @@ async function deleteStudent(sid){
 function addJny(sid){S.editJny={sid,idx:null,isNew:true};render();}
 
 // Journey edit-mode handlers. Edits accumulate on the in-memory STUDENTS
-// row; only saveJnyEdit flushes the full journey array to the DB.
+// or STAFF row (resolved via getJnyTarget); only saveJnyEdit flushes
+// the full journey array to the DB. The `sid` argument is the same
+// sidKey rJnySection passes — either the student legacy id or
+// 'staff:<legacy_id>'.
 function openJnyEdit(sid){
   if(!canEditClassCounts())return;
-  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
+  const s=getJnyTarget(sid);if(!s)return;
   S.jnyEditFor=sid;
   S.jnySnapshot=JSON.parse(JSON.stringify(s.journey||[]));
   render();
 }
 function cancelJnyEdit(){
   if(!S.jnyEditFor)return;
-  const s=STUDENTS.find(x=>x.id===S.jnyEditFor);
+  const s=getJnyTarget(S.jnyEditFor);
   if(s&&S.jnySnapshot)s.journey=S.jnySnapshot;
   S.jnyEditFor=null;S.jnySnapshot=null;
   render();
 }
 async function saveJnyEdit(){
   if(!S.jnyEditFor)return;
-  const s=STUDENTS.find(x=>x.id===S.jnyEditFor);if(!s)return;
+  const sid=S.jnyEditFor;
+  const isStaff=sid.startsWith('staff:');
+  const s=getJnyTarget(sid);if(!s)return;
   if(!jnyHasChanges(s)){S.jnyEditFor=null;S.jnySnapshot=null;render();return;}
   if(!s._dbId){
-    // No DB row (local-only / not-yet-persisted student) — accept changes.
     S.jnyEditFor=null;S.jnySnapshot=null;
     showSaveToast2('Journey updated.');render();return;
   }
   const snapshot=S.jnySnapshot;
   S.jnyEditFor=null;S.jnySnapshot=null;render();
-  const r=await withSb(c=>c.from('students').update({journey:s.journey}).eq('id',s._dbId),'update journey');
+  // Students go straight through `students.journey`; staff write
+  // through edit_staff_admin so the owner-only RLS check applies.
+  const r=isStaff
+    ? await withSb(c=>c.rpc('edit_staff_admin',{p_legacy_id:s.id,p_payload:{journey:s.journey}}),'update staff journey')
+    : await withSb(c=>c.from('students').update({journey:s.journey}).eq('id',s._dbId),'update journey');
   if(r&&r.error){
-    // Roll the in-memory edits back so the UI matches what the DB has.
     s.journey=snapshot;
     showSaveToast2(friendlyMutationError(r.error),'error');
     render();return;
@@ -4590,12 +4658,12 @@ function jnyHasChanges(s){
 }
 function editJnyMilestone(sid,idx){
   if(!canEditClassCounts())return;
-  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.journey||!s.journey[idx])return;
+  const s=getJnyTarget(sid);if(!s||!s.journey||!s.journey[idx])return;
   S.editJny={sid,idx,isNew:false};render();
 }
 function delJnyMilestone(sid,idx){
   if(!canEditClassCounts())return;
-  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.journey||!s.journey[idx])return;
+  const s=getJnyTarget(sid);if(!s||!s.journey||!s.journey[idx])return;
   const m=s.journey[idx];
   const lbl=m.label||m.date||'this milestone';
   if(!confirm('Delete this milestone?\n"'+lbl+'"\n\nThis can\'t be undone.'))return;
