@@ -804,55 +804,111 @@ function doPromote(id, isBeltPromotion){
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
   const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
-  const gg=s.prog==='kids'?GGK:GGA;const goal=gg[s.belt]||40;
   const elig=studentEligibility(s);
   const pct=elig.percent==null?null:elig.percent;
   const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
-  const lbl=nxlbl(s.belt,s.deg,s.prog);
   const isReady=elig.eligible;
+  const isKids=s.prog==='kids';
+  const canAdmin=canEditClassCounts(); // owner + professor (excludes coach)
+  const ownerView=isOwner();
+  const giSince=Math.max(s.giGrade||0,0);
+  const noGiSince=Math.max((s.grade||0)-giSince,0);
+  const noGiOnly=s.hasGi===false;
   const giTag=(s.hasGi!==false&&s.giTotal>0)
     ?'<span style="display:inline-flex;align-items:center;gap:3px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;color:var(--green-text);letter-spacing:.5px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>GI</span>'
     :'<span style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">NO-GI ONLY</span>';
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${s.name}</div></div><div class="sbody">
-    <div class="card" style="padding:16px">
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-        ${canUploadPhotoFor(s)?`<div onclick="triggerPhotoUpload('${s.id}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">${avStu(s,52)}<div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div>`:avStu(s,52)}
-        <div style="flex:1;min-width:0">
-          <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">${s.name}</div>
-          ${s.nickname?`<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:2px">${s.nickname}</div>`:''}
-          <div style="margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${bb(s.belt,s.deg||0,s.prog)}${giTag}</div>
-          <div style="margin-top:5px;font-size:11px;color:var(--text3)">${unitName} · ${s.prog}</div>
-        </div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:12px">
-        <div style="display:flex;gap:0;margin-bottom:10px">
-          <div style="flex:1;text-align:center;border-right:1px solid var(--border)">
-            <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${s.total}</div>
-            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div>
-          </div>
-          <div style="flex:1;text-align:center;border-right:1px solid var(--border)">
-            <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${s.giGrade}</div>
-            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi classes</div>
-          </div>
-          <div style="flex:1;text-align:center">
-            <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div>
-            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div>
-          </div>
-        </div>
-        ${pct==null?'':pbBelt(elig.percent,100,s.belt,s.prog)}
-        ${elig.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${elig.reason}</span></div>`:''}
-        ${(()=>{ if(s.belt==='black') return ''; const giSince=Math.max(s.giGrade||0,0); const noGiSince=Math.max((s.grade||0)-giSince,0); const noGiOnly=s.hasGi===false; return `<div style="margin-top:10px;display:flex;gap:14px;font-size:12px;color:var(--text2)"><span><strong style="color:var(--text)">Gi:</strong> ${giSince} class${giSince===1?'':'es'}</span><span><strong style="color:var(--text)">No-Gi:</strong> ${noGiSince} class${noGiSince===1?'':'es'}</span></div>${noGiOnly?'<div style="margin-top:6px;font-size:11px;color:var(--amber-text)">No-Gi only — Gi training required for IBJJF promotion.</div>':''}`; })()}
-      </div>
+  const progChip='<span style="background:'+(isKids?'var(--amber-bg)':'var(--blue-tint)')+';color:'+(isKids?'var(--amber-text)':'#1A5DAD')+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+(isKids?'KIDS':'ADULT')+'</span>';
+  const headerBadge=inviteChip(s._userId,s.email,false);
+
+  // Section 4 — Details
+  const emailVal=s.email
+    ?(s.email+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:600">JOINED</span>':''))
+    :null;
+  const parentEmailVal=!isKids?'':(s.parentEmail
+    ?(s.parentEmail+(s._parentUserId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:600">JOINED</span>':''))
+    :null);
+  const joinedDate=((s.journey||[]).find(m=>m.done)||{}).date||null;
+  const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
+    +rDetailRow('Email',emailVal,canAdmin?rEmailActions(s,'student'):'')
+    +(isKids?rDetailRow('Parent',s.parentName,''):'')
+    +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
+    +(isKids?rDetailRow('Parent email',parentEmailVal,canAdmin?rEmailActions(s,'kidParent'):''):'')
+    +rDetailRow('Unit',unitName,'')
+    +rDetailRow('Joined',joinedDate,'')
+    +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:var(--green-text);font-weight:600">Active</div></div>'
+    +'</div>';
+
+  // Section 5 — More (stubbed; spec calls for these but the backends
+  // don't exist yet — toast on click rather than half-wire).
+  const bottomActions=canAdmin
+    ?'<div class="slbl" style="margin-top:20px;color:var(--text3)">More</div>'
+      +'<div style="display:flex;flex-direction:column;gap:8px">'
+      +'<button class="bsm" onclick="editFullProfileStub()" style="text-align:left;padding:11px 14px;font-size:13px">Edit full profile <span style="color:var(--text3);font-size:11px;margin-left:4px">— coming soon</span></button>'
+      +'<button class="bsm" onclick="markStudentInactiveStub()" style="text-align:left;padding:11px 14px;font-size:13px;color:var(--amber-text)">Mark as inactive <span style="color:var(--text3);font-size:11px;margin-left:4px">— coming soon</span></button>'
+      +(ownerView?'<button class="bsm" onclick="deleteStudentStub()" style="text-align:left;padding:11px 14px;font-size:13px;color:var(--red-text)">Delete student <span style="color:var(--text3);font-size:11px;margin-left:4px">— coming soon</span></button>':'')
+      +'</div>'
+    :'';
+
+  const photoBlock=canUploadPhotoFor(s)
+    ?`<div onclick="triggerPhotoUpload('${s.id}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">${avStu(s,52)}<div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div>`
+    :avStu(s,52);
+
+  return `<div class="sub open">
+<div class="shdr"><button class="sback" onclick="closeStudentProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Roster</button><div class="stitle">${s.name}</div></div>
+<div class="sbody">
+
+<!-- Header -->
+<div class="card" style="padding:16px">
+  <div style="display:flex;align-items:flex-start;gap:14px;position:relative">
+    ${photoBlock}
+    <div style="flex:1;min-width:0;padding-right:96px">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">${s.name}</div>
+      ${s.nickname?`<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:2px">${s.nickname}</div>`:''}
+      <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${bb(s.belt,s.deg||0,s.prog)}${progChip}${giTag}</div>
+      <div style="margin-top:5px;font-size:11px;color:var(--text3)">${unitName}</div>
     </div>
-    ${canEditClassCounts()?`<button class="bout" style="margin-top:12px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
-    ${rPromoPanel(s)}
-    ${rJnySection(s)}
-    <div class="slbl">Instructor feedback <button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:'Barlow',sans-serif;margin-left:8px" onclick="openFb('${s.id}')">+ Add note</button></div>
-    ${S.addFb===s.id?`<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Coaching notes for ${s.name.split(' ')[0]}..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveFb('${s.id}')">Save</button></div></div>`:''}
-    ${(s.feedback||[]).length===0&&S.addFb!==s.id?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback notes yet.</div>`:''}
-    ${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">${f.date}</div>${canDeleteFeedback(f)?`<button onclick="deleteFeedback('${s.id}',${i})" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color='var(--red-text)'" onmouseout="this.style.color='var(--text3)'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`:''}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}
-    ${S.editJny?rJnyEditor():''}
-    <div style="height:24px"></div></div></div>`;}
+    <div style="position:absolute;top:0;right:0">${headerBadge}</div>
+  </div>
+</div>
+
+<!-- Section 1: Admin actions (owner/professor) -->
+${canAdmin?rAdminActionRow(s):''}
+
+<!-- Section 2: Stats -->
+<div class="card" style="padding:16px;margin-top:12px">
+  <div style="display:flex;gap:0;margin-bottom:10px">
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${s.total}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${giSince}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${noGiSince}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>
+    <div style="flex:1;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div></div>
+  </div>
+  ${pct==null?'':pbBelt(elig.percent,100,s.belt,s.prog)}
+  ${elig.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${elig.reason}</span></div>`:''}
+  ${noGiOnly?'<div style="margin-top:8px;font-size:11px;color:var(--amber-text)">No-Gi only — Gi training required for IBJJF promotion.</div>':''}
+</div>
+
+<!-- Promote panel (admin) -->
+${canAdmin?'<div id="promo-anchor">'+rPromoPanel(s)+'</div>':''}
+
+<!-- Section 3: Journey -->
+${rJnySection(s)}
+
+<!-- Section 4: Details -->
+${details}
+
+<!-- Instructor feedback -->
+<div class="slbl" style="margin-top:18px" id="fb-anchor">Instructor feedback ${canAdmin?`<button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:'Barlow',sans-serif;margin-left:8px" onclick="openFb('${s.id}')">+ Add note</button>`:''}</div>
+${S.addFb===s.id?`<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Coaching notes for ${s.name.split(' ')[0]}..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveFb('${s.id}')">Save</button></div></div>`:''}
+${(s.feedback||[]).length===0&&S.addFb!==s.id?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback notes yet.</div>`:''}
+${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">${f.date}</div>${canDeleteFeedback(f)?`<button onclick="deleteFeedback('${s.id}',${i})" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color='var(--red-text)'" onmouseout="this.style.color='var(--text3)'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`:''}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}
+
+<!-- Section 5: More (stubs) -->
+${bottomActions}
+
+${S.editJny?rJnyEditor():''}
+<div style="height:24px"></div>
+</div></div>`;
+}
 
 // rJnySection renders the Journey block inside rStuProf — read-only
 // timeline by default, switching to an editable row list while
@@ -1955,7 +2011,8 @@ async function addEmailInline(sid,kind){
   const target=isStaff?STAFF.find(x=>x.id===sid):STUDENTS.find(x=>x.id===sid);
   if(!target)return;
   const label=isParent?('parent of '+target.name):target.name;
-  const raw=prompt('Email address for '+label+':');
+  const current=(isParent?target.parentEmail:target.email)||'';
+  const raw=prompt('Email address for '+label+':',current);
   if(!raw)return;
   const email=raw.trim().toLowerCase();
   if(!/^\S+@\S+\.\S+$/.test(email))return showSaveToast2('Please enter a valid email address.','error');
@@ -2826,6 +2883,88 @@ ${giField}
 </div>
 </div></div>`;
 }
+// ---------------------------------------------------------------------------
+// Student profile helpers (rStuProf restructure)
+// ---------------------------------------------------------------------------
+
+// closeStudentProfile is the Back action from rStuProf. Unlike the global
+// closeSub it also drops the side-panel itself, so the user lands on the
+// underlying Admin → Roster instead of the admin's own profile menu (which
+// was the visible-but-wrong landing for the original BACK button).
+function closeStudentProfile(){
+  S.viewStu=null;S.sub=null;S.panelOpen=false;
+  S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;
+  render();
+}
+
+// Compact "Joined / Invited / Not invited" chip used in the profile header.
+// Section 4 still uses inviteStatusRow which includes the action button —
+// the header just wants the status pill.
+function inviteChip(userId,email,isParent){
+  let label,bg,fg;
+  if(userId){label=isParent?'Parent joined':'Joined';bg='var(--green-bg)';fg='var(--green-text)';}
+  else if(email){label=isParent?'Parent invited':'Invited';bg='var(--input-bg)';fg='var(--text2)';}
+  else{label=isParent?'No parent email':'Not invited';bg='var(--red-bg)';fg='var(--red-text)';}
+  return '<span style="background:'+bg+';color:'+fg+';font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:4px;white-space:nowrap">'+label+'</span>';
+}
+
+// A single row inside Section 4's Details card. Value falls back to a muted
+// "Not set" when missing. actions is a trailing HTML chunk (buttons).
+function rDetailRow(label,value,actions){
+  const v=(value!=null&&value!=='')?value:'<span style="color:var(--text3)">Not set</span>';
+  return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">'
+    +'<div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">'+label+'</div>'
+    +'<div style="flex:1;min-width:0;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis">'+v+'</div>'
+    +(actions||'')
+    +'</div>';
+}
+
+// Right-side action buttons on the Email / Parent email rows. Three states:
+//   - no email → [Add email]
+//   - email but not joined → [Edit] + [Resend invite]
+//   - joined → [Edit]
+function rEmailActions(s,kind){
+  const isParent=kind==='kidParent';
+  const email=isParent?s.parentEmail:s.email;
+  const userId=isParent?s._parentUserId:s._userId;
+  const editFn='addEmailInline(\''+s.id+'\',\''+kind+'\')';
+  const resendFn=(isParent?'resendParentInvite':'resendStudentInvite')+'(\''+s.id+'\')';
+  const btnBase='flex-shrink:0;padding:4px 10px;font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:none;color:var(--text2)';
+  const primaryBase='flex-shrink:0;padding:4px 10px;font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;border-radius:6px;cursor:pointer;border:1px solid var(--blue-mid);background:var(--blue-tint);color:#1A5DAD';
+  if(!email)return '<button style="'+primaryBase+'" onclick="'+editFn+'">Add email</button>';
+  if(!userId)return '<button style="'+btnBase+';margin-right:6px" onclick="'+editFn+'">Edit</button><button style="'+primaryBase+'" onclick="'+resendFn+'">Resend</button>';
+  return '<button style="'+btnBase+'" onclick="'+editFn+'">Edit</button>';
+}
+
+// Section 1 admin-action row. [Promote] and [Feedback] scroll to their
+// sections below; [+ Class count] opens the existing modal overlay.
+function rAdminActionRow(s){
+  const btn='flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#1A5DAD;cursor:pointer';
+  const iPromote='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>';
+  const iCount='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+  const iFb='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  return '<div style="display:flex;gap:8px;margin-top:12px">'
+    +'<button style="'+btn+'" onclick="scrollProfileAnchor(\'promo-anchor\')">'+iPromote+'Promote</button>'
+    +'<button style="'+btn+'" onclick="openEditCounts(\''+s.id+'\')">'+iCount+'+ Class count</button>'
+    +'<button style="'+btn+'" onclick="openFb(\''+s.id+'\');scrollProfileAnchor(\'fb-anchor\')">'+iFb+'Feedback</button>'
+    +'</div>';
+}
+
+function scrollProfileAnchor(id){
+  const el=document.getElementById(id);
+  if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// Section 5 stubs. None of these have backends today:
+//   - students table has no `active` column (no Mark inactive)
+//   - no full-profile edit form (phone / DOB / etc aren't even stored)
+//   - no delete RPC
+// They render so the layout matches the spec, but on click they toast
+// "coming soon" instead of half-implementing.
+function editFullProfileStub(){showSaveToast2('Full profile editor coming soon.');}
+function markStudentInactiveStub(){showSaveToast2('Mark-inactive coming soon — needs a students.active column.');}
+function deleteStudentStub(){showSaveToast2('Delete student coming soon — needs a delete RPC.');}
+
 function addJny(sid){S.editJny={sid,idx:null,isNew:true};render();}
 
 // Journey edit-mode handlers. Edits accumulate on the in-memory STUDENTS
