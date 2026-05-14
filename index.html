@@ -803,8 +803,7 @@ function rStuProf(){
     </div>
     ${canEditClassCounts()?`<button class="bout" style="margin-top:12px;padding:10px" onclick="openEditCounts('${s.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:6px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit class counts</button>`:''}
     ${rPromoPanel(s)}
-    <div class="slbl">Journey</div>
-    <div class="card" style="padding:12px 16px">${rTL(s.journey,s.id)}</div>
+    ${rJnySection(s)}
     <div class="slbl">Instructor feedback <button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:'Barlow',sans-serif;margin-left:8px" onclick="openFb('${s.id}')">+ Add note</button></div>
     ${S.addFb===s.id?`<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Coaching notes for ${s.name.split(' ')[0]}..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveFb('${s.id}')">Save</button></div></div>`:''}
     ${(s.feedback||[]).length===0&&S.addFb!==s.id?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback notes yet.</div>`:''}
@@ -812,9 +811,108 @@ function rStuProf(){
     ${S.editJny?rJnyEditor():''}
     <div style="height:24px"></div></div></div>`;}
 
+// rJnySection renders the Journey block inside rStuProf — read-only
+// timeline by default, switching to an editable row list while
+// S.jnyEditFor matches this student. Owner / professor only (coaches
+// and non-staff don't see the toggle).
+function rJnySection(s){
+  const canEdit=canEditClassCounts();
+  const isEditing=!!(canEdit&&S.jnyEditFor===s.id);
+  const dirty=isEditing&&jnyHasChanges(s);
+  if(!isEditing){
+    const editBtn=canEdit
+      ? '<button onclick="openJnyEdit(\''+s.id+'\')" title="Edit journey" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer">Edit</button>'
+      : '';
+    return '<div class="slbl" style="display:flex;align-items:center;justify-content:space-between"><span>Journey</span>'+editBtn+'</div>'
+      +'<div class="card" style="padding:12px 16px">'+rTL(s.journey,s.id)+'</div>';
+  }
+  // Editing mode — replace timeline with a row list per milestone.
+  const j=s.journey||[];
+  const rows=j.length?j.map((m,i)=>{
+    const isFut=!m.done;
+    const isCur=!!m.current;
+    const bl=BA[m.belt]||BK[m.belt]||BA.white;
+    const beltDot='<div style="width:26px;height:26px;border-radius:50%;background:'+bl.bg+';color:'+bl.fg+';display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;flex-shrink:0">'+((m.belt||'·').charAt(0).toUpperCase())+'</div>';
+    const subParts=[];
+    if(m.date)subParts.push(m.date);
+    if(m.classes!=null)subParts.push(m.classes+' classes');
+    if(isCur)subParts.push('current');
+    if(isFut)subParts.push('pending');
+    const sub=subParts.join(' · ');
+    const editIcon='<button onclick="editJnyMilestone(\''+s.id+'\','+i+')" title="Edit" style="background:none;border:1px solid var(--border);border-radius:6px;width:30px;height:30px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
+    const delIcon='<button onclick="delJnyMilestone(\''+s.id+'\','+i+')" title="Delete" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:30px;height:30px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);opacity:'+(isFut?'.55':'1')+'">'
+      +beltDot
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis">'+(m.label||'—')+'</div>'
+      +(sub?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+sub+'</div>':'')
+      +(m.notes?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px;overflow:hidden;text-overflow:ellipsis">'+m.notes+'</div>':'')
+      +'</div>'
+      +editIcon+delIcon
+    +'</div>';
+  }).join(''):'<div style="padding:18px 0;text-align:center;color:var(--text3);font-size:13px">No milestones yet.</div>';
+  const addBtn='<div style="padding:12px 0;text-align:center"><button onclick="addJny(\''+s.id+'\')" style="background:none;border:1px dashed var(--border2);border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer">+ Add milestone</button></div>';
+  const status=dirty
+    ? '<span style="color:var(--amber-text);font-weight:700">Unsaved changes</span>'
+    : '<span style="color:var(--text3)">No changes yet</span>';
+  return '<div class="slbl" style="display:flex;align-items:center;justify-content:space-between"><span>Journey · editing</span>'+status+'</div>'
+    +'<div class="card" style="padding:6px 14px">'+rows+addBtn+'</div>'
+    +'<div style="display:flex;gap:10px;margin-top:10px">'
+      +'<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="cancelJnyEdit()">Cancel</button>'
+      +'<button class="bblue" style="flex:1;padding:12px'+(dirty?'':';opacity:.5;pointer-events:none')+'" onclick="saveJnyEdit()">Save changes</button>'
+    +'</div>'
+    +'<div style="margin-top:8px;font-size:11px;color:var(--text3);line-height:1.45">Editing journey doesn’t change the student’s current belt or grade. Use Promote / Demote for that.</div>';
+}
+
 function rJnyEditor(){
-  const{sid,idx,isNew}=S.editJny;const s=getJnyTarget(sid);if(!s)return '';const m=isNew?{label:'',date:'',classes:'',belt:'white',xfer:false}:s.journey[idx];
-  return `<div class="cov" onclick="" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-height:80vh;overflow-y:auto;margin:0 16px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:16px">${isNew?'Add milestone':'Edit milestone'}</div><div class="ef" style="margin-bottom:12px"><div class="erow"><div class="elbl">Description</div><input class="einput" id="jm-lbl" value="${m.label||''}" placeholder="e.g. Blue belt"/></div><div class="erow"><div class="elbl">Date</div><input class="einput" id="jm-date" value="${m.date||''}" placeholder="e.g. Mar 2024"/></div><div class="erow"><div class="elbl">Classes</div><input class="einput" id="jm-cls" type="number" value="${m.classes!==null&&m.classes!==undefined?m.classes:''}" placeholder="Total classes"/></div><div class="erow"><div class="elbl">Belt</div><select class="esel" id="jm-belt">${Object.keys(BA).map(k=>`<option value="${k}" ${k===(m.belt||'white')?'selected':''}>${BA[k].label}</option>`).join('')}</select></div></div><div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;margin-bottom:12px"><div style="font-size:14px;color:var(--text)">Transfer milestone</div><button class="toggle ${m.xfer?'on':''}" id="jm-xfer" onclick="this.classList.toggle('on')"></button></div><div style="display:flex;gap:10px"><button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeJny()">Cancel</button><button class="bblue" style="flex:1;padding:12px" onclick="saveJny()">Save</button></div></div></div>`;}
+  const{sid,idx,isNew}=S.editJny;const s=getJnyTarget(sid);if(!s)return '';
+  const m=isNew?{label:'',date:'',classes:'',belt:'white',xfer:false,type:'',notes:''}:(s.journey[idx]||{});
+  const types=[
+    {v:'belt',  l:'Belt promotion'},
+    {v:'stripe',l:'Stripe promotion'},
+    {v:'xfer',  l:'Transfer from another academy'},
+    {v:'return',l:'Returning after time away'},
+    {v:'comp',  l:'Competition / Achievement'},
+    {v:'custom',l:'Custom'},
+  ];
+  const beltKeys=Array.from(new Set([...Object.keys(BA),...Object.keys(BK)]));
+  const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
+  const inferredType=m.type||(m.xfer?'xfer':'');
+  const esc=(v)=>String(v==null?'':v).replace(/"/g,'&quot;');
+  return `<div class="cov" style="align-items:center;z-index:300"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-height:88vh;overflow-y:auto;margin:0 16px;max-width:420px">
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:6px">${isNew?'Add milestone':'Edit milestone'}</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.4">Editing journey doesn’t change the student’s current belt or grade. Use Promote / Demote for that.</div>
+<div class="ef" style="margin-bottom:12px">
+<div class="erow"><div class="elbl">Type</div><select class="esel" id="jm-type" onchange="jnyTypeChange()"><option value="">—</option>${types.map(t=>`<option value="${t.v}" ${t.v===inferredType?'selected':''}>${t.l}</option>`).join('')}</select></div>
+<div class="erow"><div class="elbl">Date</div><input class="einput" id="jm-date" value="${esc(m.date)}" placeholder="e.g. Jun 2023"/></div>
+<div class="erow"><div class="elbl">Belt</div><select class="esel" id="jm-belt" onchange="jnyTypeChange()">${beltKeys.map(k=>`<option value="${k}" ${k===(m.belt||'white')?'selected':''}>${beltLabel(k)}</option>`).join('')}</select></div>
+<div class="erow"><div class="elbl">Label</div><input class="einput" id="jm-lbl" value="${esc(m.label)}" placeholder="e.g. Blue belt"/></div>
+<div class="erow"><div class="elbl">Classes</div><input class="einput" id="jm-cls" type="number" min="0" value="${m.classes!=null?m.classes:''}" placeholder="Optional"/></div>
+<div class="erow"><div class="elbl">Notes</div><input class="einput" id="jm-notes" value="${esc(m.notes)}" placeholder="Optional"/></div>
+</div>
+<div style="display:flex;gap:10px">
+<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeJny()">Cancel</button>
+<button class="bblue" style="flex:1;padding:12px" onclick="saveJny()">Save</button>
+</div>
+</div></div>`;
+}
+
+// Auto-suggest the Label when the admin picks a Type or changes the Belt
+// inside the milestone modal. Only writes the suggestion if the Label
+// field is empty so user-edited text is never clobbered.
+function jnyTypeChange(){
+  const labelEl=document.getElementById('jm-lbl');
+  if(!labelEl||labelEl.value.trim())return;
+  const t=(document.getElementById('jm-type')||{}).value||'';
+  const b=(document.getElementById('jm-belt')||{}).value||'';
+  const bl=(BA[b]||BK[b]||{label:b}).label||'';
+  let suggested='';
+  if(t==='belt')        suggested=bl+' belt';
+  else if(t==='stripe') suggested=bl+' — stripe';
+  else if(t==='xfer')   suggested='Transferred from …';
+  else if(t==='return') suggested='Returning student';
+  else if(t==='comp')   suggested='Competition: ';
+  if(suggested)labelEl.value=suggested;
+}
 
 function rDayStrip(){const days=bdays();const sk=dk(S.selDay||TODAY);return `<div class="dstrip-w"><div class="dstrip">${days.map(d=>{const k=dk(d);const isT=k===dk(TODAY);const isSel=k===sk;const hol=isHol(d);const hasCls=getDC(d).length>0&&!hol;let cls='dp '+(isSel?'active':hol?'hol':hasCls?'hc':'nc');return `<div class="${cls}" id="dp-${k}" onclick="${hol||(!hasCls&&!isSel)?'':'selDay(\''+k+'\')'}"><div class="dpn">${isT?'Today':DS[d.getDay()]}</div><div class="dpd">${d.getDate()}</div>${hol?'<div style="font-family:Barlow Condensed,sans-serif;font-size:7px;font-weight:700;color:var(--amber);letter-spacing:.5px;margin-top:1px">HOL</div>':hasCls?'<div class="dpdot"></div>':'<div style="height:5px"></div>'}</div>`;}).join('')}</div></div>`;}
 
@@ -2513,7 +2611,7 @@ function setTab(t){S.tab=t;render();}
 function openPanel(){S.panelOpen=true;S.sub=null;S.inboxOpen=false;render();}
 function closePanel(){S.panelOpen=false;S.unitOpen=false;S.sub=null;render();}
 function openSub(s){S.sub=s;S.nsent=false;S.addFb=null;render();}
-function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;render();}
+function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;render();}
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
 function pickUnit(u){S.unit=u;S.unitOpen=false;render();}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
@@ -2599,7 +2697,7 @@ function rDeleteUnitConfirm(){
     +'</div></div></div>';
 }
 
-function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;render();}
+function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;render();}
 function openFb(sid){S.addFb=sid;render();}
 function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
 function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
@@ -2670,12 +2768,99 @@ ${giField}
 </div></div>`;
 }
 function addJny(sid){S.editJny={sid,idx:null,isNew:true};render();}
+
+// Journey edit-mode handlers. Edits accumulate on the in-memory STUDENTS
+// row; only saveJnyEdit flushes the full journey array to the DB.
+function openJnyEdit(sid){
+  if(!canEditClassCounts())return;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
+  S.jnyEditFor=sid;
+  S.jnySnapshot=JSON.parse(JSON.stringify(s.journey||[]));
+  render();
+}
+function cancelJnyEdit(){
+  if(!S.jnyEditFor)return;
+  const s=STUDENTS.find(x=>x.id===S.jnyEditFor);
+  if(s&&S.jnySnapshot)s.journey=S.jnySnapshot;
+  S.jnyEditFor=null;S.jnySnapshot=null;
+  render();
+}
+async function saveJnyEdit(){
+  if(!S.jnyEditFor)return;
+  const s=STUDENTS.find(x=>x.id===S.jnyEditFor);if(!s)return;
+  if(!jnyHasChanges(s)){S.jnyEditFor=null;S.jnySnapshot=null;render();return;}
+  if(!s._dbId){
+    // No DB row (local-only / not-yet-persisted student) — accept changes.
+    S.jnyEditFor=null;S.jnySnapshot=null;
+    showSaveToast2('Journey updated.');render();return;
+  }
+  const snapshot=S.jnySnapshot;
+  S.jnyEditFor=null;S.jnySnapshot=null;render();
+  const r=await withSb(c=>c.from('students').update({journey:s.journey}).eq('id',s._dbId),'update journey');
+  if(r&&r.error){
+    // Roll the in-memory edits back so the UI matches what the DB has.
+    s.journey=snapshot;
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    render();return;
+  }
+  showSaveToast2('Journey saved.');
+}
+function jnyHasChanges(s){
+  if(!s||!S.jnySnapshot)return false;
+  return JSON.stringify(s.journey||[])!==JSON.stringify(S.jnySnapshot);
+}
+function editJnyMilestone(sid,idx){
+  if(!canEditClassCounts())return;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.journey||!s.journey[idx])return;
+  S.editJny={sid,idx,isNew:false};render();
+}
+function delJnyMilestone(sid,idx){
+  if(!canEditClassCounts())return;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.journey||!s.journey[idx])return;
+  const m=s.journey[idx];
+  const lbl=m.label||m.date||'this milestone';
+  if(!confirm('Delete this milestone?\n"'+lbl+'"\n\nThis can\'t be undone.'))return;
+  s.journey.splice(idx,1);
+  render();
+}
 function getJnyTarget(sid){
   if(sid.startsWith('staff:')){const id=sid.replace('staff:','');const s=STAFF.find(x=>x.id===id);return s;}
   return STUDENTS.find(x=>x.id===sid);
 }
 function closeJny(){S.editJny=null;render();}
-function saveJny(){if(!S.editJny)return;const{sid,idx,isNew}=S.editJny;const s=getJnyTarget(sid);if(!s)return;const lbl=document.getElementById('jm-lbl')?.value||'';const date=document.getElementById('jm-date')?.value||'';const clsv=document.getElementById('jm-cls')?.value;const belt=document.getElementById('jm-belt')?.value||'white';const xfer=document.getElementById('jm-xfer')?.classList.contains('on')||false;const nm={label:lbl,date,classes:clsv?parseInt(clsv):null,belt,done:true,xfer};if(isNew){if(!s.journey)s.journey=[];const fi=s.journey.findIndex(m=>!m.done);fi>=0?s.journey.splice(fi,0,nm):s.journey.push(nm);}else{s.journey[idx]={...s.journey[idx],...nm};}S.editJny=null;render();}
+function saveJny(){
+  if(!S.editJny)return;
+  const{sid,idx,isNew}=S.editJny;
+  const s=getJnyTarget(sid);if(!s)return;
+  const type=(document.getElementById('jm-type')||{}).value||'';
+  const date=((document.getElementById('jm-date')||{}).value||'').trim();
+  const belt=(document.getElementById('jm-belt')||{}).value||'white';
+  const label=((document.getElementById('jm-lbl')||{}).value||'').trim();
+  const clsv=(document.getElementById('jm-cls')||{}).value;
+  const notes=((document.getElementById('jm-notes')||{}).value||'').trim();
+  if(!date)return showSaveToast2('Date is required','error');
+  if(!label)return showSaveToast2('Label is required','error');
+  const entry={
+    label,date,belt,done:true,
+    classes:clsv!==''&&clsv!=null?parseInt(clsv,10):null,
+    xfer:type==='xfer',
+    type:type||null,
+    notes:notes||null,
+  };
+  if(isNew){
+    if(!s.journey)s.journey=[];
+    // Insert before the first not-done (pending future) milestone so the
+    // "next promotion" placeholder stays at the end.
+    const fi=s.journey.findIndex(m=>!m.done);
+    if(fi>=0)s.journey.splice(fi,0,entry);
+    else s.journey.push(entry);
+  } else {
+    // Preserve current/done flags so the timeline keeps rendering correctly.
+    s.journey[idx]={...s.journey[idx],...entry};
+  }
+  S.editJny=null;
+  render();
+}
 function openAddCls(dow){S.addCls=true;S.editCls=null;S.editDow=dow;S._cet=null;S._cea=null;render();}
 function openEditCls(cid,dow){const c=(TT[dow]||[]).find(x=>x.id===cid);if(!c)return;S.editCls={...c};S.editDow=dow;S.addCls=false;S._cet=c.type;S._cea=c.aud;render();}
 function closeCEdit(){S.editCls=null;S.addCls=false;S._cet=null;S._cea=null;render();}
