@@ -4026,20 +4026,55 @@ async function forgotPassword(){
 function rSetPwd(){
   const recovery=!!S.passwordRecovery;
   const hasPwd=!!(S.profile&&S.profile.has_password);
-  // The "Require current password" Auth setting rejects updateUser when
-  // a password already exists, so we need to re-auth with the current
-  // password before updating. Recovery flows arrive on a recovery-typed
-  // session that bypasses the requirement — Supabase Auth treats the
-  // recovery token as proof.
+  // Supabase Auth's "Require current password when updating" rejects
+  // any updateUser({password}) call that doesn't first re-auth with
+  // the existing password. Three distinct flows:
+  //
+  //   recovery=true            → user came in via a reset link.
+  //                              Recovery session bypasses the
+  //                              requirement server-side; show form
+  //                              with no Current row.
+  //   hasPwd=true, !recovery   → "Change password". Need Current row
+  //                              + re-auth via signInWithPassword
+  //                              before updateUser.
+  //   hasPwd=false, !recovery  → "Set a password" first-time. Can NOT
+  //                              use updateUser at all (no current
+  //                              password to re-auth with). Send a
+  //                              reset email; the user clicks the
+  //                              link, returns with recovery=true,
+  //                              completes via the first branch.
+  const sentReset=!!S.pwdResetSent;
+  if(!hasPwd&&!recovery){
+    const userEmail=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
+    return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Set a password</div></div><div class="sbody">
+${sentReset
+  ?`<div style="background:var(--green-bg);border:1px solid var(--green-border);border-radius:10px;padding:14px 16px;margin-bottom:14px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:var(--green-text);margin-bottom:4px">Setup link sent</div><div style="font-size:12px;color:var(--green-text);line-height:1.5">Open the email we just sent to <strong>${userEmail||'your address'}</strong> and click the link on this device to choose your password.</div></div><button class="bsm" style="width:100%;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Done</button>`
+  :`<div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">For your first password we'll email you a one-time setup link. Open the link on this device, then choose your password.</div>
+<div class="ef" style="margin-bottom:14px"><div class="erow"><div class="elbl">Email</div><div style="flex:1;text-align:right;font-size:14px;color:var(--text2)">${userEmail||'—'}</div></div></div>
+<div id="sp-err" class="inv" style="display:none;margin-top:0;margin-bottom:14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="sp-err-txt"></span></div>
+<div style="display:flex;gap:10px;margin-top:8px">
+  <button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Cancel</button>
+  <button class="bblue" style="flex:1;padding:12px" onclick="requestPasswordReset()">Email me the setup link</button>
+</div>`}
+<div style="height:24px"></div></div></div>`;
+  }
   const needCurrent=hasPwd&&!recovery;
+  const attempts=S.pwdReauthAttempts||0;
+  const showForgot=attempts>=3;
   const title=recovery?'Set new password':(hasPwd?'Change password':'Set a password');
   const intro=recovery
     ? 'Choose a new password to finish resetting your account.'
-    : (hasPwd
-        ? 'Enter your current password, then choose a new one.'
-        : 'Adds a faster sign-in option alongside the email link. Magic-link and Google still work either way.');
+    : 'Enter your current password, then choose a new one.';
+  // Random suffix on the field id/name discourages browser autofill —
+  // Chrome on macOS ignores autocomplete="off" on password inputs
+  // tied to a known field id. New id per render is the simplest
+  // belt-and-suspenders defence.
+  const curName='sp-curr-'+Math.random().toString(36).slice(2,8);
   const currentRow=needCurrent
-    ? '<div class="erow"><div class="elbl">Current</div><input id="sp-current" class="einput" type="password" autocomplete="current-password" placeholder="Your current password"/></div>'
+    ? `<div class="erow"><div class="elbl">Current</div><input id="sp-current" name="${curName}" class="einput" type="password" autocomplete="off" data-form-type="other" data-lpignore="true" spellcheck="false" placeholder="Your current password"/></div>`
+    : '';
+  const forgotRow=showForgot
+    ? `<div style="margin-top:12px;padding:10px 12px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;font-size:12px;color:var(--amber-text);line-height:1.5">Forgot it? <a href="#" onclick="event.preventDefault();requestPasswordReset();" style="color:var(--amber-text);font-weight:700;text-decoration:underline">Send a reset link</a> and use it to choose a new password.</div>`
     : '';
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${title}</div></div><div class="sbody">
 <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${intro}</div>
@@ -4050,11 +4085,35 @@ ${currentRow}
 </div>
 <div id="sp-strength" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px"></div>
 <div id="sp-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="sp-err-txt"></span></div>
+${forgotRow}
 <div style="display:flex;gap:10px;margin-top:18px">
   ${recovery?'':'<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Cancel</button>'}
   <button class="bblue" style="flex:1;padding:12px" onclick="saveSetPassword()">${recovery?'Save & sign in':(hasPwd?'Update password':'Save password')}</button>
 </div>
 <div style="height:24px"></div></div></div>`;
+}
+
+// In-app password reset trigger. Used by:
+//   - First-time set flow (user has no password yet)
+//   - "Forgot it?" link shown after 3 failed reauth attempts
+// Reads S.profile.email so the signed-in user never sees a prompt
+// dialog. Sets S.pwdResetSent so rSetPwd renders the confirmation
+// state — the user closes the modal, clicks the email link, and
+// the existing PASSWORD_RECOVERY handler routes them back into the
+// recovery branch of rSetPwd.
+async function requestPasswordReset(){
+  const email=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
+  const errEl=document.getElementById('sp-err');
+  const errTxt=document.getElementById('sp-err-txt');
+  const showErr=(m)=>{if(errEl&&errTxt){errTxt.textContent=m;errEl.style.display='flex';}else showSaveToast2(m,'error');};
+  if(!email)return showErr('Couldn’t find your email — try signing out and back in.');
+  const cli=initSupabase();if(!cli)return showErr('Connection issue. Try again.');
+  if(errEl)errEl.style.display='none';
+  const{error}=await cli.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  if(error){console.warn('[mybjj] in-app password reset:',error);return showErr(friendlyAuthError(error));}
+  S.pwdResetSent=true;
+  S.pwdReauthAttempts=0;
+  render();
 }
 
 function updatePwdStrength(){
@@ -4092,19 +4151,29 @@ async function saveSetPassword(){
   if(needCurrent&&cp===np)return showErr('New password must be different from current.');
   const cli=initSupabase();if(!cli)return showErr('Connection issue. Try again.');
   // Re-auth with the current password first when the project has
-  // "Require current password when updating" enabled — Supabase Auth
-  // otherwise rejects updateUser with that exact error. Re-auth on
-  // the same session works because signInWithPassword issues a fresh
-  // grant on success; no state to clean up on failure.
+  // "Require current password when updating" enabled. signInWithPassword
+  // returns a fresh session on success; on failure the existing
+  // session is preserved.
   if(needCurrent){
     const email=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
     if(!email)return showErr('Couldn’t verify current password — email missing.');
     const reauth=await cli.auth.signInWithPassword({email,password:cp});
     if(reauth&&reauth.error){
       console.warn('[mybjj] reauth for password change:',reauth.error);
+      S.pwdReauthAttempts=(S.pwdReauthAttempts||0)+1;
       const msg=(reauth.error.message||'').toLowerCase();
-      if(msg.includes('invalid')||msg.includes('credentials')) return showErr('Current password is incorrect.');
-      return showErr(reauth.error.message||'Couldn’t verify current password.');
+      const friendly=(msg.includes('invalid')||msg.includes('credentials'))
+        ?'Current password is incorrect.'
+        :(reauth.error.message||'Couldn’t verify current password.');
+      // Re-render so the "Forgot it?" link surfaces after 3 misses.
+      if(S.pwdReauthAttempts>=3){render();}
+      // Re-render lost the inline error since DOM was rebuilt — refresh it.
+      requestAnimationFrame(()=>{
+        const e2=document.getElementById('sp-err');
+        const t2=document.getElementById('sp-err-txt');
+        if(e2&&t2){t2.textContent=friendly;e2.style.display='flex';}
+      });
+      return;
     }
   }
   const{error}=await cli.auth.updateUser({password:np});
@@ -4115,6 +4184,8 @@ async function saveSetPassword(){
   }
   const wasRecovery=recovery;
   S.passwordRecovery=false;
+  S.pwdReauthAttempts=0;
+  S.pwdResetSent=false;
   // Tell Postgres the user has a password now so future RPC calls
   // route them correctly through the two-step login. Best-effort —
   // the actual auth secret was already saved by updateUser above.
@@ -4229,8 +4300,24 @@ function rPending(){
 function setTab(t){S.tab=t;render();}
 function openPanel(){S.panelOpen=true;S.sub=null;S.inboxOpen=false;render();}
 function closePanel(){S.panelOpen=false;S.unitOpen=false;S.sub=null;render();}
-function openSub(s){S.sub=s;S.nsent=false;S.addFb=null;render();}
-function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;render();}
+function openSub(s){
+  S.sub=s;S.nsent=false;S.addFb=null;
+  // Reset password-modal state every time it opens so a previous
+  // session's failed-attempt counter or "reset sent" banner doesn't
+  // bleed into the new visit.
+  if(s==='setpwd'){S.pwdReauthAttempts=0;S.pwdResetSent=false;}
+  render();
+  // Defensive autofill clear — Chrome / Safari often inject a stale
+  // saved password into the Current field on mount despite all the
+  // anti-autofill attributes. Wipe it on next paint and again after
+  // a tick (browsers fill async).
+  if(s==='setpwd'){
+    const clear=()=>{const el=document.getElementById('sp-current');if(el)el.value='';};
+    requestAnimationFrame(clear);
+    setTimeout(clear,250);
+  }
+}
+function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;S.pwdReauthAttempts=0;S.pwdResetSent=false;render();}
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
 function pickUnit(u){S.unit=u;S.unitOpen=false;render();}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
