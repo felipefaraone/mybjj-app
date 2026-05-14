@@ -251,6 +251,7 @@ html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}bod
 </script>
 <div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/pulltorefreshjs@0.1.22/dist/index.umd.min.js" defer></script>
 <script>
 const SUPABASE_URL='https://dcilltzgegqsrgatskhz.supabase.co';
 const SUPABASE_ANON_KEY='sb_publishable_EdatFnl6MfCgyd7tv7wHRw_Z5msKQTC';
@@ -577,7 +578,7 @@ function rTL(journey,shareSid){
 
 function rInbox(){const ur=NOTIFS.filter(n=>!n.read).length;const IBACK=`<button class="sback" onclick="closeInbox()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:#1A5DAD;font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?`<div style="padding:40px;text-align:center;color:var(--text3)">No notifications</div>`:NOTIFS.map(n=>`<div class="nitem ${n.read?'':'unr'}" onclick="markRead('${n.id}')"><div class="ndot ${n.read?'rd':''}"></div><div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${n.title}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${n.body}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${n.time}</div></div><button class="ndel" onclick="event.stopPropagation();delNotif('${n.id}')">×</button></div>`).join('')}</div></div>`;}
 
-function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48)}<div class="pname">${m.name}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()">Sign out</button></div>`;}
+function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48)}<div class="pname">${m.name}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="manualRefresh()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></div><div class="pilbl">Refresh</div><div style="font-size:11px;color:var(--text3)">Pull down on the main view too</div></div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()">Sign out</button></div>`;}
 
 function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff};return(ss[S.sub]||(() =>''))();}
 function rPEdit(){
@@ -1927,6 +1928,7 @@ function render(){
     app.innerHTML=rApp();
     requestAnimationFrame(()=>{const el=document.getElementById('dp-'+dk(S.selDay||TODAY));if(el){const strip=el.closest('.dstrip');if(strip){const target=el.offsetLeft-(strip.offsetWidth/2)+(el.offsetWidth/2);strip.scrollTo({left:target,behavior:'smooth'});}}});
     hideSplash();
+    initPullToRefresh();
     return;
   }
   if(S.authState==='pending'||S.authState==='rejected'){app.innerHTML=rPending();hideSplash();return;}
@@ -2894,6 +2896,85 @@ async function hydrateData(){
   }
 }
 
+// Pull-to-refresh: re-sync profile (status / role / unit_id) and all the
+// data tables the in-memory views read from. Idempotent — multiple calls
+// in flight just race the writes, last one wins.
+let _refreshInFlight = false;
+async function refreshAppState(){
+  if(_refreshInFlight)return;
+  _refreshInFlight = true;
+  try{
+    const cli = initSupabase();
+    if(!cli||!S.loggedIn){return;}
+    // Profile first — handles the "admin demoted me / status changed" case.
+    try{
+      const{data,error} = await cli.rpc('claim_profile');
+      if(!error && data){
+        S.profile = data;
+        if(data.status === 'approved'){
+          S.me = meFromProfile(data);
+        } else {
+          S.me = null; S.loggedIn = false;
+          S.authState = data.status === 'rejected' ? 'rejected' : 'pending';
+          render();
+          return;
+        }
+      }
+    }catch(e){console.warn('[mybjj] refresh profile',e);}
+    await hydrateData();
+    if(canEditClassCounts()){
+      try{ await loadPhotoQueue(); }catch(_){}
+    }
+    render();
+  } finally {
+    _refreshInFlight = false;
+  }
+}
+
+// Manual refresh fired from the side-panel menu item. Shows a toast so
+// the user gets feedback even without the pull-to-refresh spinner.
+async function manualRefresh(){
+  closePanel();
+  showSaveToast2('Refreshing…');
+  await refreshAppState();
+  showSaveToast2('Up to date.');
+}
+
+// Wire pull-to-refresh onto the scrolling .content element. The library
+// injects its own spinner above the scroll surface. Guarded so it only
+// initialises once and waits for both the CDN script and the .content
+// element to be available.
+function initPullToRefresh(){
+  if(window._ptrInited)return;
+  if(typeof PullToRefresh === 'undefined')return;
+  if(!document.querySelector('.content'))return;
+  window._ptrInited = true;
+  PullToRefresh.init({
+    mainElement: '.content',
+    triggerElement: '.content',
+    instructionsPullToRefresh: 'Pull down to refresh',
+    instructionsReleaseToRefresh: 'Release to refresh',
+    instructionsRefreshing: 'Refreshing…',
+    iconArrow: '↓',
+    iconRefreshing: '⟳',
+    onRefresh: refreshAppState,
+    // Suppress while a modal / sub-panel is open — pulling inside an
+    // edit modal would otherwise refresh state mid-edit.
+    shouldPullToRefresh: function(){
+      const c = document.querySelector('.content');
+      if(!c) return false;
+      if(c.scrollTop > 0) return false;
+      if(S.cropOpen || S.editJny || S.editCounts) return false;
+      if(S.emailEdit || S.promoteFor || S.fbModalFor) return false;
+      if(S.editStaff || S.addStaff || S.removeStaffConfirm) return false;
+      if(S.editCls!=null || S.addCls) return false;
+      if(S.editEv || S.addEv) return false;
+      if(S.sub) return false;
+      return true;
+    },
+  });
+}
+
 async function signInGoogle(){
   const c=initSupabase(); if(!c){S.authMsg=friendlyAuthError('network');render();return;}
   S.authBusy=true;S.authMsg='';render();
@@ -3393,6 +3474,12 @@ function setRF(k,v){S[k]=v;render();}
 function fmt(n,role){if(role==='admin'||role==='owner')return n;var p=n.trim().split(' ');if(p.length<2)return p[0];return p[0]+' '+p[p.length-1][0]+'.';}
 
 render();bootAuth();
+// PullToRefresh CDN script is `defer`red, so it may finish loading
+// after the first render() call. render() retries init on every
+// invocation (idempotent), but if the user just sits on the screen
+// without triggering re-renders, this load listener ensures the
+// library wires itself up as soon as it's available.
+window.addEventListener('load',()=>{initPullToRefresh();});
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('/sw.js').then(()=>console.log('[mybjj] SW registered')).catch(err=>console.warn('[mybjj] SW reg failed:',err));
