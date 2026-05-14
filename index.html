@@ -4099,28 +4099,55 @@ ${forgotRow}
 }
 
 // Per-field + banner error helpers for rSetPwd.
+//
+// Field errors render under the relevant input and auto-clear on
+// the next keystroke in that input (oninput → clearPwdFieldErr).
+// This works for VALIDATION errors (user is correcting their own
+// typing) but is hostile to SERVER errors — focusing the Current
+// field after a failed reauth triggers Chrome / Safari autofill,
+// which fires oninput synthetically and wipes the message before
+// the user can read it. That's the "red flash" the user reported.
+//
+// Server errors therefore go through _spBanner (persistent, not
+// tied to any input, dismissed only by an X close button or the
+// next click on Update).
 function _spShowField(id,msg){
   const el=document.getElementById('sp-err-'+id);
   if(el){el.textContent=msg;el.style.display='block';}
+  console.log('[mybjj] field error displayed:',id,msg,'at',new Date().toISOString());
   const input=document.getElementById(id==='current'?'sp-current':id==='new'?'sp-new':'sp-confirm');
   if(input)input.focus();
 }
 function clearPwdFieldErr(id){
   const el=document.getElementById('sp-err-'+id);
-  if(el){el.textContent='';el.style.display='none';}
+  if(el&&el.style.display!=='none'){
+    console.log('[mybjj] field error cleared:',id,'at',new Date().toISOString());
+    el.textContent='';el.style.display='none';
+  }
 }
 function _spClearAll(){
   ['current','new','confirm'].forEach(clearPwdFieldErr);
+  closePwdBanner();
+}
+function closePwdBanner(){
   const b=document.getElementById('sp-banner');
-  if(b){b.innerHTML='';b.style.display='none';}
+  if(b&&b.style.display!=='none'){
+    b.innerHTML='';b.style.display='none';
+    console.log('[mybjj] banner dismissed at',new Date().toISOString());
+  }
 }
 function _spBanner(kind,msg,actionLabel,actionFn){
   const b=document.getElementById('sp-banner');if(!b)return;
+  console.log('[mybjj] banner displayed:',kind,msg,'at',new Date().toISOString());
   const bg=kind==='error'?'var(--red-bg)':'var(--green-bg)';
   const fg=kind==='error'?'var(--red-text)':'var(--green-text)';
   const bd=kind==='error'?'var(--red-border)':'var(--green-border)';
   const action=actionFn?`<button onclick="${actionFn}" style="background:none;border:1px solid ${fg};color:${fg};border-radius:6px;padding:5px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">${actionLabel}</button>`:'';
-  b.innerHTML='<div style="padding:10px 12px;background:'+bg+';border:1px solid '+bd+';border-radius:8px;display:flex;align-items:center;gap:10px;font-size:13px;color:'+fg+';line-height:1.4"><span style="flex:1">'+msg+'</span>'+action+'</div>';
+  const closeX=`<button onclick="closePwdBanner()" aria-label="Dismiss" style="background:none;border:none;color:${fg};cursor:pointer;padding:4px;display:flex;align-items:center;flex-shrink:0;opacity:.7"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+  const icon=kind==='error'
+    ?`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
+    :`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2.5" stroke-linecap="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
+  b.innerHTML='<div role="alert" aria-live="polite" style="padding:10px 12px;background:'+bg+';border:1px solid '+bd+';border-radius:8px;display:flex;align-items:center;gap:10px;font-size:13px;color:'+fg+';line-height:1.4">'+icon+'<span style="flex:1">'+msg+'</span>'+action+closeX+'</div>';
   b.style.display='block';
 }
 function _spSetBusy(busy){
@@ -4186,25 +4213,27 @@ async function saveSetPassword(){
   const recovery=!!S.passwordRecovery;
   const hasPwd=!!(S.profile&&S.profile.has_password);
   const needCurrent=hasPwd&&!recovery;
-  // Clear any prior errors before validating again.
+  console.log('[mybjj] saveSetPassword start',{needCurrent,recovery,hasPwd,curLen:cp.length,newLen:np.length,cfLen:cf.length,profileEmail:S.profile&&S.profile.email});
+  // Clear any prior errors before re-validating.
   _spClearAll();
   // Validation — first failing field wins (focus lands on it).
-  if(needCurrent&&!cp)   return _spShowField('current','Enter your current password');
-  if(!np)                return _spShowField('new','Enter a new password');
-  if(np.length<8)        return _spShowField('new','Password must be at least 8 characters');
-  if(!cf)                return _spShowField('confirm','Confirm your new password');
-  if(np!==cf)            return _spShowField('confirm','Passwords don’t match');
-  if(needCurrent&&cp===np)return _spShowField('new','New password must be different from current');
+  if(needCurrent&&!cp){console.log('[mybjj] validation result: fail (current empty)');return _spShowField('current','Enter your current password');}
+  if(!np)             {console.log('[mybjj] validation result: fail (new empty)');return _spShowField('new','Enter a new password');}
+  if(np.length<8)     {console.log('[mybjj] validation result: fail (new<8)');return _spShowField('new','Password must be at least 8 characters');}
+  if(!cf)             {console.log('[mybjj] validation result: fail (confirm empty)');return _spShowField('confirm','Confirm your new password');}
+  if(np!==cf)         {console.log('[mybjj] validation result: fail (mismatch)');return _spShowField('confirm','Passwords don’t match');}
+  if(needCurrent&&cp===np){console.log('[mybjj] validation result: fail (same as current)');return _spShowField('new','New password must be different from current');}
+  console.log('[mybjj] validation result: ok');
   const cli=initSupabase();
-  if(!cli)return _spBanner('error','Connection issue. Check your internet and try again.');
+  if(!cli){
+    _spBanner('error','Connection issue. Check your internet and try again.');
+    return;
+  }
   _spSetBusy(true);
   try{
-    // Re-auth with the current password when "Require current
-    // password when updating" is enabled in the Auth project.
-    // signInWithPassword returns a fresh session on success; on
-    // failure the existing session stays valid (no logout side
-    // effect). Recovery flows skip this branch entirely — the
-    // recovery token is proof on the server side.
+    // Re-auth with the current password first when the Auth project
+    // has "Require current password when updating" enabled. The
+    // recovery flow skips this — its session is already proof.
     if(needCurrent){
       const email=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
       if(!email){
@@ -4213,33 +4242,33 @@ async function saveSetPassword(){
       }
       console.log('[mybjj] reauth attempt for',email);
       const reauth=await cli.auth.signInWithPassword({email,password:cp});
-      console.log('[mybjj] reauth result:',reauth&&reauth.error?'failed':'success');
-      if(reauth&&reauth.error){
-        console.warn('[mybjj] reauth for password change:',reauth.error);
+      const reauthOK=!(reauth&&reauth.error);
+      console.log('[mybjj] reauth result:',reauthOK?'success':'failed',reauth&&reauth.error?reauth.error.message:'');
+      if(!reauthOK){
         S.pwdReauthAttempts=(S.pwdReauthAttempts||0)+1;
         const msg=(reauth.error.message||'').toLowerCase();
         const friendly=(msg.includes('invalid')||msg.includes('credentials'))
-          ?'Current password is incorrect'
-          :(reauth.error.message||'Couldn’t verify current password');
-        if(S.pwdReauthAttempts>=3){
-          // Re-render so the "Forgot it?" link surfaces. The render
-          // rebuilds the DOM and clears the inline error, so we
-          // re-show it after the next paint.
-          render();
-          requestAnimationFrame(()=>{_spShowField('current',friendly);});
-          return;
-        }
-        _spShowField('current',friendly);
+          ?'Current password is incorrect.'
+          :(reauth.error.message||'Couldn’t verify current password.');
+        // Persistent banner — survives autofill re-triggering oninput
+        // on the Current field. After 3 misses, include a one-tap
+        // "Send reset link" action that fires the recovery email.
+        const action=S.pwdReauthAttempts>=3
+          ?{label:'Send reset link',fn:'requestPasswordReset()'}
+          :null;
+        _spBanner('error',friendly,action&&action.label,action&&action.fn);
         return;
       }
     }
-    console.log('[mybjj] updateUser({password})');
+    console.log('[mybjj] updateUser({password}) request');
     const{error}=await cli.auth.updateUser({password:np});
     if(error){
-      console.warn('[mybjj] set password:',error);
+      console.warn('[mybjj] updateUser error:',error);
       const status=error.status||0;
       const msg=(error.message||'').toLowerCase();
-      // Map server errors per the spec.
+      // Spec error mapping. New-password rejections stay on the
+      // field; session / network / unknown failures use the banner
+      // so they can't be wiped by an unrelated autofill event.
       if(status===422||msg.includes('weak')||msg.includes('leaked')||msg.includes('pwned')){
         _spShowField('new','This password isn’t strong enough. Try a longer one with mixed characters.');
         return;
@@ -4248,9 +4277,17 @@ async function saveSetPassword(){
         _spBanner('error','Your session expired. Please sign in again.','Sign in again','_spReauthExpired()');
         return;
       }
+      // The "current password required" string only appears if the
+      // reauth above was somehow skipped — surface it loudly so the
+      // user (and DevTools) sees it persistently.
+      if(msg.includes('current password required')){
+        _spBanner('error','Re-authentication needed. Type your current password and try again.');
+        return;
+      }
       _spBanner('error','Couldn’t update password. Check your connection and try again.');
       return;
     }
+    console.log('[mybjj] updateUser success');
     const wasRecovery=recovery;
     S.passwordRecovery=false;
     S.pwdReauthAttempts=0;
