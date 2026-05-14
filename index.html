@@ -4025,14 +4025,26 @@ async function forgotPassword(){
 // in the side panel, and the post-recovery flow.
 function rSetPwd(){
   const recovery=!!S.passwordRecovery;
-  const hasPwd=!!(S.profile&&S.profile.has_password); // not actually returned by Supabase; treat as "unknown"
-  const title=recovery?'Set new password':(S.profile&&S.profile.has_password?'Change password':'Set a password');
+  const hasPwd=!!(S.profile&&S.profile.has_password);
+  // The "Require current password" Auth setting rejects updateUser when
+  // a password already exists, so we need to re-auth with the current
+  // password before updating. Recovery flows arrive on a recovery-typed
+  // session that bypasses the requirement — Supabase Auth treats the
+  // recovery token as proof.
+  const needCurrent=hasPwd&&!recovery;
+  const title=recovery?'Set new password':(hasPwd?'Change password':'Set a password');
   const intro=recovery
     ? 'Choose a new password to finish resetting your account.'
-    : 'Adds a faster sign-in option alongside the email link. Magic-link and Google still work either way.';
+    : (hasPwd
+        ? 'Enter your current password, then choose a new one.'
+        : 'Adds a faster sign-in option alongside the email link. Magic-link and Google still work either way.');
+  const currentRow=needCurrent
+    ? '<div class="erow"><div class="elbl">Current</div><input id="sp-current" class="einput" type="password" autocomplete="current-password" placeholder="Your current password"/></div>'
+    : '';
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${title}</div></div><div class="sbody">
 <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${intro}</div>
 <div class="ef">
+${currentRow}
 <div class="erow"><div class="elbl">New password</div><input id="sp-new" class="einput" type="password" autocomplete="new-password" placeholder="At least 8 characters" oninput="updatePwdStrength()"/></div>
 <div class="erow"><div class="elbl">Confirm</div><input id="sp-confirm" class="einput" type="password" autocomplete="new-password" placeholder="Re-enter the password"/></div>
 </div>
@@ -4040,7 +4052,7 @@ function rSetPwd(){
 <div id="sp-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="sp-err-txt"></span></div>
 <div style="display:flex;gap:10px;margin-top:18px">
   ${recovery?'':'<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Cancel</button>'}
-  <button class="bblue" style="flex:1;padding:12px" onclick="saveSetPassword()">${recovery?'Save & sign in':'Save password'}</button>
+  <button class="bblue" style="flex:1;padding:12px" onclick="saveSetPassword()">${recovery?'Save & sign in':(hasPwd?'Update password':'Save password')}</button>
 </div>
 <div style="height:24px"></div></div></div>`;
 }
@@ -4065,20 +4077,43 @@ function updatePwdStrength(){
 async function saveSetPassword(){
   const np=(document.getElementById('sp-new')||{}).value||'';
   const cf=(document.getElementById('sp-confirm')||{}).value||'';
+  const curEl=document.getElementById('sp-current');
+  const cp=curEl?(curEl.value||''):'';
   const err=document.getElementById('sp-err');
   const errTxt=document.getElementById('sp-err-txt');
   const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}};
   if(err)err.style.display='none';
+  const recovery=!!S.passwordRecovery;
+  const hasPwd=!!(S.profile&&S.profile.has_password);
+  const needCurrent=hasPwd&&!recovery;
+  if(needCurrent&&!cp)return showErr('Enter your current password.');
   if(np.length<8)return showErr('Password must be at least 8 characters.');
   if(np!==cf)  return showErr('Passwords don’t match.');
+  if(needCurrent&&cp===np)return showErr('New password must be different from current.');
   const cli=initSupabase();if(!cli)return showErr('Connection issue. Try again.');
+  // Re-auth with the current password first when the project has
+  // "Require current password when updating" enabled — Supabase Auth
+  // otherwise rejects updateUser with that exact error. Re-auth on
+  // the same session works because signInWithPassword issues a fresh
+  // grant on success; no state to clean up on failure.
+  if(needCurrent){
+    const email=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
+    if(!email)return showErr('Couldn’t verify current password — email missing.');
+    const reauth=await cli.auth.signInWithPassword({email,password:cp});
+    if(reauth&&reauth.error){
+      console.warn('[mybjj] reauth for password change:',reauth.error);
+      const msg=(reauth.error.message||'').toLowerCase();
+      if(msg.includes('invalid')||msg.includes('credentials')) return showErr('Current password is incorrect.');
+      return showErr(reauth.error.message||'Couldn’t verify current password.');
+    }
+  }
   const{error}=await cli.auth.updateUser({password:np});
   if(error){
     console.warn('[mybjj] set password:',error);
-    showErr(error.message||'Could not save the password.');
+    showErr(error.message||'Couldn’t update password. Try again.');
     return;
   }
-  const wasRecovery=!!S.passwordRecovery;
+  const wasRecovery=recovery;
   S.passwordRecovery=false;
   // Tell Postgres the user has a password now so future RPC calls
   // route them correctly through the two-step login. Best-effort —
@@ -4086,7 +4121,7 @@ async function saveSetPassword(){
   try{await cli.rpc('mark_password_set');}catch(e){console.warn('[mybjj] mark_password_set',e);}
   if(S.profile)S.profile.has_password=true;
   S.sub=null;
-  showSaveToast2(wasRecovery?'Password set — you’re signed in.':'Password saved.');
+  showSaveToast2(wasRecovery?'Password set — you’re signed in.':(hasPwd?'Password updated.':'Password saved.'));
   render();
 }
 
