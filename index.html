@@ -181,6 +181,15 @@ html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}bod
 .admin-action-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#1A5DAD;cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .admin-action-btn:hover{background:var(--blue-tint);border-color:var(--blue-mid)}
 .admin-action-btn:active{background:var(--blue-tint);transform:scale(.98)}
+/* Pull-to-refresh indicator — themed to blend with the app, not the
+   library's vanilla black-on-white box. */
+.ptr--ptr{background:var(--bg);color:var(--text2);font-family:'Barlow Condensed',sans-serif}
+.ptr--box{font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text2)}
+.ptr--text{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.5px;color:var(--text2)}
+.ptr--icon{color:var(--text2);font-size:0;display:flex;align-items:center;justify-content:center}
+.ptr--icon svg{display:block}
+@keyframes mybjj-ptr-spin{to{transform:rotate(360deg)}}
+.mybjj-ptr-spinner{animation:mybjj-ptr-spin 1.2s linear infinite;transform-origin:50% 50%}
 .bpend{width:100%;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;text-align:center;line-height:1.3}
 .bconf{width:100%;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:default;display:flex;align-items:center;justify-content:center;gap:6px}
 .bsm{background:var(--input-bg);color:var(--text2);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer}
@@ -2942,15 +2951,17 @@ async function hydrateData(){
 // in flight just race the writes, last one wins.
 let _refreshInFlight = false;
 async function refreshAppState(){
-  if(_refreshInFlight)return;
+  if(_refreshInFlight)return true;
   _refreshInFlight = true;
+  let ok = true;
   try{
     const cli = initSupabase();
-    if(!cli||!S.loggedIn){return;}
+    if(!cli||!S.loggedIn){return false;}
     // Profile first — handles the "admin demoted me / status changed" case.
     try{
       const{data,error} = await cli.rpc('claim_profile');
-      if(!error && data){
+      if(error){ok=false;console.warn('[mybjj] refresh profile',error.message);}
+      else if(data){
         S.profile = data;
         if(data.status === 'approved'){
           S.me = meFromProfile(data);
@@ -2958,27 +2969,29 @@ async function refreshAppState(){
           S.me = null; S.loggedIn = false;
           S.authState = data.status === 'rejected' ? 'rejected' : 'pending';
           render();
-          return;
+          return true; // status flip isn't a refresh failure, it's a legit state change
         }
       }
-    }catch(e){console.warn('[mybjj] refresh profile',e);}
-    await hydrateData();
+    }catch(e){ok=false;console.warn('[mybjj] refresh profile',e);}
+    try{
+      await hydrateData();
+    }catch(e){ok=false;console.warn('[mybjj] refresh hydrate',e);}
     if(canEditClassCounts()){
-      try{ await loadPhotoQueue(); }catch(_){}
+      try{ await loadPhotoQueue(); }catch(e){ok=false;console.warn('[mybjj] refresh photo queue',e);}
     }
     render();
+    return ok;
   } finally {
     _refreshInFlight = false;
   }
 }
 
-// Manual refresh fired from the side-panel menu item. Shows a toast so
-// the user gets feedback even without the pull-to-refresh spinner.
+// Manual refresh fired from the side-panel menu item.
 async function manualRefresh(){
   closePanel();
-  showSaveToast2('Refreshing…');
-  await refreshAppState();
-  showSaveToast2('Up to date.');
+  const ok = await refreshAppState();
+  if(ok) showSaveToast2('Updated');
+  else showSaveToast2("Couldn't refresh. Try again.",'error');
 }
 
 // Wire pull-to-refresh onto the scrolling .content element. The library
@@ -2990,15 +3003,30 @@ function initPullToRefresh(){
   if(typeof PullToRefresh === 'undefined')return;
   if(!document.querySelector('.content'))return;
   window._ptrInited = true;
+  // Two SVGs the library swaps between: clean down-arrow during pull,
+  // spinner during refresh. The .mybjj-ptr-spinner class carries the
+  // rotation animation (defined in the head <style>).
+  const PTR_ARROW = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>';
+  const PTR_SPIN  = '<svg class="mybjj-ptr-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg>';
   PullToRefresh.init({
     mainElement: '.content',
     triggerElement: '.content',
-    instructionsPullToRefresh: 'Pull down to refresh',
+    distThreshold: 80,
+    distMax: 120,
+    distReload: 60,
+    // Empty pull-instruction so we don't fight the icon fade-in for
+    // attention; library still shows "Release to refresh" once the
+    // user passes the threshold and "Refreshing…" while we're working.
+    instructionsPullToRefresh: '',
     instructionsReleaseToRefresh: 'Release to refresh',
     instructionsRefreshing: 'Refreshing…',
-    iconArrow: '↓',
-    iconRefreshing: '⟳',
-    onRefresh: refreshAppState,
+    iconArrow: PTR_ARROW,
+    iconRefreshing: PTR_SPIN,
+    onRefresh: async function(){
+      const ok = await refreshAppState();
+      if(ok) showSaveToast2('Updated');
+      else showSaveToast2("Couldn't refresh. Try again.",'error');
+    },
     // Suppress while a modal / sub-panel is open — pulling inside an
     // edit modal would otherwise refresh state mid-edit.
     shouldPullToRefresh: function(){
