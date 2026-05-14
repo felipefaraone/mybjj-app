@@ -510,15 +510,44 @@ const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,i
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'today',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all'};
-S.ci['2026-03-31_06:00']=true;
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all'};
+// ATTENDANCE — rows hydrated from public.attendance for today (and any
+// other day the user navigates to via the day strip). Each row has the
+// DB id, the student row's _dbId, the class date/time, and a status of
+// 'going' | 'present' | 'absent'.
+let ATTENDANCE=[];
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function isHol(d){return PH.has(dk(d));}
-function getDC(d){if(isHol(d))return [];return(TT[d.getDay()]||[]).map(c=>({...c,id:dk(d)+'_'+c.time+'_'+c.id}));}
+function getDC(d){if(isHol(d))return [];return(TT[d.getDay()]||[]).map(c=>({...c,date:dk(d),id:dk(d)+'_'+c.time+'_'+c.id}));}
 function bdays(){const a=[];for(let i=0;i<7;i++){const d=new Date(TODAY);d.setDate(TODAY.getDate()+i);a.push(d);}return a;}
 function fd(d){return `${DS[d.getDay()]}, ${d.getDate()} ${MS[d.getMonth()]}`;}
-function gatt(t){const p={'06:00':['jam','eri'],'07:30':['lia'],'08:30':['jam'],'09:30':['jam','eri'],'10:00':['lia'],'10:30':['lia'],'12:00':['jam'],'16:00':['lia'],'17:00':['lia'],'18:00':['jam'],'18:30':['eri']};return p[t]||['jam'];}
+// gattFor: list of student legacy_ids checked in to a class (date + time).
+// Replaces the old hard-coded gatt(time) lookup table. Filters to
+// status in ('going','present') so 'absent' rows don't surface as
+// peers in the social-signal view.
+function gattFor(date,time){
+  if(!date||!time)return [];
+  const rows=ATTENDANCE.filter(a=>a.classDate===date&&a.classTime===time&&a.status!=='absent');
+  return rows.map(a=>{
+    const s=STUDENTS.find(x=>x._dbId===a.studentDbId);
+    return s?s.id:null;
+  }).filter(Boolean);
+}
+function attendanceFor(date,time){
+  if(!date||!time)return [];
+  return ATTENDANCE.filter(a=>a.classDate===date&&a.classTime===time);
+}
+function myStudentRow(){
+  if(!S.profile||!S.profile.id)return null;
+  // For parents, the relevant student row is whichever child they're
+  // currently viewing (parentSelectedChild). For everyone else, the
+  // row linked by user_id is the one used.
+  if(S.me&&S.me.role==='parent'&&typeof parentSelectedChild==='function'){
+    return parentSelectedChild()||null;
+  }
+  return STUDENTS.find(x=>x._userId===S.profile.id)||null;
+}
 function nxlbl(belt,deg){return deg>=(MAXD[belt]||4)?'Next promotion':'Next degree';}
 
 function studentEligibility(s){
@@ -592,8 +621,26 @@ function rVC(url,title){
 function rAtts(all,cid){
   if(!all.length)return '';const exp=!!S.expanded[cid];const P=3;const rest=all.length-P;
   const ms=sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return null;const m=s.prog==='kids'?BK:BA;const b=m[s.belt]||BA.white;return{s,b,me:sid===S.me.id};};
-  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';const nickPart=r.s.nickname?` <span style="font-style:italic;font-weight:400;opacity:.8">· ${r.s.nickname}</span>`:'';return `<div class="achip" style="background:${r.me?'#1A5DAD':r.b.bg}20;border:1px solid ${r.me?'#1A5DAD':r.b.bg}40"><div class="acav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'#1A5DAD':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${nickPart}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
-  return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="aav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div>`;}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span>${all.length>P?`<span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">See all</span>`:''}</div></div>`;
+  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';const nickPart=r.s.nickname?` <span style="font-style:italic;font-weight:400;opacity:.8">· ${r.s.nickname}</span>`:'';return `<div class="achip" onclick="viewStu('${sid}')" style="cursor:pointer;background:${r.me?'#1A5DAD':r.b.bg}20;border:1px solid ${r.me?'#1A5DAD':r.b.bg}40"><div class="acav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'#1A5DAD':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${nickPart}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
+  return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="aav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div>`;}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">${all.length>P?'See all':'Show all'}</span></div></div>`;
+}
+
+// Staff variant of rAtts — shown when an admin / owner / instructor
+// expands a class card. Each row has inline Present / Absent buttons
+// that flip the attendance.status server-side via markP / markA.
+function rAttsStaff(rows,cid){
+  const going=rows.filter(r=>r.status==='going'||r.status==='present');
+  if(!going.length)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:12px;color:var(--text3)">No check-ins yet</span></div></div>`;
+  const exp=!!S.expanded[cid];
+  const cf=going.filter(r=>r.status==='present').length;
+  const header=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf}/${going.length} confirmed</span><span class="aexp" onclick="toggleExp('${cid}')">${exp?'Show less':'Confirm attendance'}</span></div>`;
+  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}</div>`;
+  return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}${going.map(r=>{
+    const s=STUDENTS.find(x=>x._dbId===r.studentDbId);if(!s)return '';
+    const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+    const isC=r.status==='present';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1" onclick="viewStu('${s.id}')">${avStu(s,34)}<div><div style="font-size:14px;color:var(--text);font-weight:500">${s.name}${s.nickname?` <span style="font-style:italic;color:var(--text3);font-weight:400">· ${s.nickname}</span>`:''}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0"><button class="bsm ${isC?'bpre':''}" onclick="markP('${cid}','${s.id}')">${isC?'✓':'Present'}</button><button class="bsm" onclick="markA('${cid}','${s.id}')">Absent</button></div></div>`;
+  }).join('')}</div>`;
 }
 function rTL(journey,shareSid){
   return `<div class="tl"><div class="tlline"></div>${(journey||[]).map((m,i)=>{
@@ -623,8 +670,14 @@ function rPEdit(){
   var me=S.me;
   var stu=STUDENTS.find(function(x){return x.id===me.id;})||STAFF.find(function(x){return x.name===me.name;})||me;
   var beltInfo=bb(stu.belt||me.belt,stu.deg||me.deg||0,stu.prog||'adult');
-  var fn=(me.name||'').split(' ')[0]||'';
-  var ln=(me.name||'').split(' ').slice(1).join(' ')||'';
+  var rawName=(me.name||'');
+  var needsLast=/\bNeedsLastName\b/i.test(rawName);
+  // Bug 8 — strip the placeholder from the input so the user types
+  // their real last name into an empty field instead of editing the
+  // word "NeedsLastName".
+  var cleanName=rawName.replace(/\s*\bNeedsLastName\b\s*/ig,' ').trim();
+  var fn=cleanName.split(' ')[0]||'';
+  var ln=needsLast?'':(cleanName.split(' ').slice(1).join(' ')||'');
   var isParentRole=me.role==='parent';
   var nickSubject=null;
   if(isParentRole){
@@ -642,18 +695,35 @@ function rPEdit(){
     ? ('How <strong>'+(nickSubjectFirst||'your child')+'</strong> appears to other members')
     : 'How you want to appear to other members';
   var nickValueAttr=currentNickname.replace(/"/g,'&quot;');
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Edit Profile</div></div><div class="sbody"><div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg><span style="font-size:12px;color:var(--amber-text);font-weight:500">Editing mode \u2014 changes are saved when you tap Save</span></div><div class="ef"><div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px;border-bottom:1px solid var(--border)">${avMe(72)}${beltInfo}<div style="font-size:11px;color:var(--text3)">Tap your photo to change it</div></div><div class="erow"><div class="elbl">First name</div><input class="einput" value="${fn}"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" value="${ln}"/></div><div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date" value="1986-09-15"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" value="+61 412 345 678"/></div><div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" type="number" value="79"/></div><div class="erow"><div class="elbl">Height (cm)</div><input class="einput" type="number" value="178"/></div></div><div class="slbl" style="margin-top:8px">Nickname (optional)</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">${nickHelper}</div><div class="ef"><div class="erow"><div class="elbl">Nickname</div><input id="pe-nickname" class="einput" maxlength="40" placeholder="e.g. The Half Guard Prince" value="${nickValueAttr}"/></div></div><div class="slbl" style="margin-top:8px">Emergency contact</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" value="Monica Faraone"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" value="+61 411 222 333"/></div></div><div style="height:16px"></div><button onclick="savePEdit()" class="bblue" style="margin-bottom:24px">Save changes</button></div></div>`;
+  var nudge=needsLast?'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span style="font-size:12px;color:var(--amber-text);font-weight:500;line-height:1.4">Please add your last name so other members can find you.</span></div>':'';
+  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Edit Profile</div></div><div class="sbody">${nudge}<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg><span style="font-size:12px;color:var(--amber-text);font-weight:500">Editing mode \u2014 changes are saved when you tap Save</span></div><div class="ef"><div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px;border-bottom:1px solid var(--border)">${avMe(72)}${beltInfo}<div style="font-size:11px;color:var(--text3)">Tap your photo to change it</div></div><div class="erow"><div class="elbl">First name</div><input class="einput" value="${fn}"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" value="${ln}"/></div><div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date" value="1986-09-15"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" value="+61 412 345 678"/></div><div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" type="number" value="79"/></div><div class="erow"><div class="elbl">Height (cm)</div><input class="einput" type="number" value="178"/></div></div><div class="slbl" style="margin-top:8px">Nickname (optional)</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">${nickHelper}</div><div class="ef"><div class="erow"><div class="elbl">Nickname</div><input id="pe-nickname" class="einput" maxlength="40" placeholder="e.g. The Half Guard Prince" value="${nickValueAttr}"/></div></div><div class="slbl" style="margin-top:8px">Emergency contact</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" value="Monica Faraone"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" value="+61 411 222 333"/></div></div><div style="height:16px"></div><button onclick="savePEdit()" class="bblue" style="margin-bottom:24px">Save changes</button></div></div>`;
 }
 
 function rNPrefs(){const ps=[{k:'classReminder',t:'Class reminder',s:'2 hours before a confirmed class'},{k:'cancellations',t:'Cancellations',s:'When a class you checked into is cancelled'},{k:'promotions',t:'Promotions & stripes',s:'When your belt or degree changes'},{k:'announcements',t:'Announcements',s:'General messages from the team'},{k:'curriculum',t:'New curriculum',s:'When the weekly schedule is updated'}];return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Notifications</div></div><div class="sbody"><div class="card" style="padding:0;overflow:hidden">${ps.map(p=>`<div class="togrow"><div class="toginfo"><div class="togtitle">${p.t}</div><div class="togsub">${p.s}</div></div><button class="toggle ${S.notif[p.k]?'on':''}" onclick="togNotif('${p.k}')"></button></div>`).join('')}</div><div style="height:24px"></div></div></div>`;}
-function rANotify(){const grps=[{lbl:'Everyone',opts:[{k:'all',l:'All students'},{k:'adults',l:'Adults only'},{k:'kids',l:'Kids only'}]},{lbl:'By belt',opts:[{k:'white',l:'White belt'},{k:'blue',l:'Blue belt'},{k:'purple',l:'Purple belt'},{k:'grey',l:'Grey (kids)'},{k:'yellow',l:'Yellow (kids)'}]},{lbl:'By context',opts:[{k:'checkedin',l:"Today's check-ins"},{k:'nearpromo',l:'Near promotion (85%+)'},{k:'specific',l:'Specific student'}]}];return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Send notification</div></div><div class="sbody">${grps.map(g=>`<div class="slbl">${g.lbl}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${g.opts.map(a=>`<div class="achip2 ${S.naud===a.k?'on':''}" onclick="setNAud('${a.k}')">${a.l}</div>`).join('')}</div>`).join('')}${S.naud==='specific'?`<div class="slbl">Select student</div><div class="ef" style="margin-bottom:16px">${STUDENTS.map(s=>`<div class="erow" style="cursor:pointer"><div style="font-size:14px;color:var(--text);flex:1">${s.name}</div></div>`).join('')}</div>`:''}<div class="slbl">Message</div><div class="ef"><div class="erow"><div class="elbl">Title</div><input class="einput" placeholder="e.g. Class cancelled"/></div><textarea class="fbta" style="border-top:1px solid var(--border)" placeholder="Write your message..."></textarea></div><button class="bblue" style="margin-bottom:12px" onclick="sendN()">Send notification</button>${S.nsent?`<div style="background:var(--green-bg);border:1px solid var(--green-border);border-radius:10px;padding:14px;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--green-text)">Sent · Push + in-app delivery</div></div>`:''}<div style="height:24px"></div></div></div>`;}
+function rANotify(){
+  // Bug 5 — the "By belt" chips must match the Everyone segment.
+  // Adults belt chips when Adults selected, Kids when Kids, both when
+  // All. Selecting Adults/Kids/All resets the belt chip to its segment
+  // root so we never end up with e.g. naud='kids' but a white/blue
+  // belt chip still highlighted from a prior session.
+  const adultBelts=[{k:'belt_white_adult',l:'White belt'},{k:'belt_blue_adult',l:'Blue belt'},{k:'belt_purple_adult',l:'Purple belt'},{k:'belt_brown_adult',l:'Brown belt'},{k:'belt_black_adult',l:'Black belt'}];
+  const kidsBelts=[{k:'belt_white_kids',l:'White (kids)'},{k:'belt_grey_kids',l:'Grey'},{k:'belt_yellow_kids',l:'Yellow'},{k:'belt_orange_kids',l:'Orange'},{k:'belt_green_kids',l:'Green'}];
+  const segIsKids=S.naud==='kids'||(S.naud||'').startsWith('belt_')&&S.naud.endsWith('_kids');
+  const segIsAdults=S.naud==='adults'||(S.naud||'').startsWith('belt_')&&S.naud.endsWith('_adult');
+  const beltOpts=segIsKids?kidsBelts:segIsAdults?adultBelts:[...adultBelts,...kidsBelts];
+  const grps=[
+    {lbl:'Everyone',opts:[{k:'all',l:'All students'},{k:'adults',l:'Adults only'},{k:'kids',l:'Kids only'}]},
+    {lbl:'By belt',opts:beltOpts},
+    {lbl:'By context',opts:[{k:'checkedin',l:"Today's check-ins"},{k:'nearpromo',l:'Near promotion (85%+)'},{k:'specific',l:'Specific student'}]}
+  ];
+  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Send notification</div></div><div class="sbody">${grps.map(g=>`<div class="slbl">${g.lbl}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${g.opts.map(a=>`<div class="achip2 ${S.naud===a.k?'on':''}" onclick="setNAud('${a.k}')">${a.l}</div>`).join('')}</div>`).join('')}${S.naud==='specific'?`<div class="slbl">Select student</div><div class="ef" style="margin-bottom:16px">${STUDENTS.map(s=>`<div class="erow" style="cursor:pointer"><div style="font-size:14px;color:var(--text);flex:1">${s.name}</div></div>`).join('')}</div>`:''}<div class="slbl">Message</div><div class="ef"><div class="erow"><div class="elbl">Title</div><input class="einput" placeholder="e.g. Class cancelled"/></div><textarea class="fbta" style="border-top:1px solid var(--border)" placeholder="Write your message..."></textarea></div><button class="bblue" style="margin-bottom:12px" onclick="sendN()">Send notification</button>${S.nsent?`<div style="background:var(--green-bg);border:1px solid var(--green-border);border-radius:10px;padding:14px;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--green-text)">Sent · Push + in-app delivery</div></div>`:''}<div style="height:24px"></div></div></div>`;}
 function rAddStu(){
   var isKids=S._addProg==='kids';
   var isTransfer=S._addTransfer||'new';
   var beltOpts=isKids?['White','Grey','Yellow','Orange','Green']:['White','Blue','Purple','Brown','Black'];
   var phoneCC=S._addCC||'+61';
   var ccOptions=[{c:'+61',l:'AU +61'},{c:'+64',l:'NZ +64'},{c:'+81',l:'JP +81'},{c:'+82',l:'KR +82'},{c:'+1',l:'US +1'},{c:'+44',l:'UK +44'},{c:'+55',l:'BR +55'}];
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="email@example.com"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select onchange="S._addCC=this.value" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" placeholder="4xx xxx xxx" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date"/></div></div><div class="slbl" style="margin-top:8px">Program & rank</div><div class="ef"><div class="erow"><div class="elbl">Program</div><div class="seg"><button class="segb ${isKids?'':'on'}" onclick="S._addProg='adult';render()">Adults</button><button class="segb ${isKids?'on':''}" onclick="S._addProg='kids';render()">Kids</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">${UNITS.filter(u=>u.active).map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel">${beltOpts.map(b=>`<option>${b}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Degree</div><select class="esel"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child\\u2019s progress.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" placeholder="Parent or guardian full name"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" placeholder="4xx xxx xxx" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="parent@email.com"/></div></div>`:''}<div class="slbl" style="margin-top:8px">Background</div><div class="ef"><div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb ${isTransfer==='new'?'on':''}" onclick="S._addTransfer='new';render()">New</button><button class="segb ${isTransfer==='transfer'?'on':''}" onclick="S._addTransfer='transfer';render()">Transfer</button><button class="segb ${isTransfer==='returning'?'on':''}" onclick="S._addTransfer='returning';render()">Returning</button></div></div>${isTransfer==='transfer'?`<div class="erow"><div class="elbl">From</div><input class="einput" id="add-from" placeholder="Previous academy name"/></div><div class="erow"><div class="elbl">Since</div><input class="einput" id="add-since" type="date"/></div>`:''}${isTransfer==='returning'?`<div class="erow"><div class="elbl">Left on</div><input class="einput" id="add-left" type="date"/></div><div class="erow"><div class="elbl">Reason</div><select class="esel" id="add-reason"><option>Travel</option><option>Injury</option><option>Personal</option><option>Financial</option><option>Other</option></select></div>`:''}</div>${isTransfer==='transfer'?'<div class="gnote" style="margin-top:4px">Set belt and degree above to match their current rank. Journey will start with a transfer milestone. Head instructor must validate the belt.</div>':''}${isTransfer==='returning'?'<div class="gnote" style="margin-top:4px">Returning student. Their previous data will be preserved and a return milestone will be added to their journey.</div>':''}<div style="height:16px"></div><div style="display:flex;gap:10px;margin-bottom:24px"><button onclick="sendInvite(true)" class="bblue" style="flex:1">Save & invite</button><button onclick="sendInvite(false)" class="bout" style="flex:1">Save only</button></div></div></div>`;
+  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="email@example.com"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select onchange="S._addCC=this.value" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" placeholder="4xx xxx xxx" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date"/></div></div><div class="slbl" style="margin-top:8px">Program & rank</div><div class="ef"><div class="erow"><div class="elbl">Program</div><div class="seg"><button class="segb ${isKids?'':'on'}" onclick="S._addProg='adult';render()">Adults</button><button class="segb ${isKids?'on':''}" onclick="S._addProg='kids';render()">Kids</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">${UNITS.filter(u=>u.active).map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel">${beltOpts.map(b=>`<option>${b}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Degree</div><select class="esel"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child\\u2019s progress.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" placeholder="Parent or guardian full name"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" placeholder="4xx xxx xxx" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="parent@email.com"/></div></div>`:''}<div class="slbl" style="margin-top:8px">Background</div><div class="ef"><div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb ${isTransfer==='new'?'on':''}" onclick="S._addTransfer='new';render()">New</button><button class="segb ${isTransfer==='transfer'?'on':''}" onclick="S._addTransfer='transfer';render()">Transfer</button><button class="segb ${isTransfer==='returning'?'on':''}" onclick="S._addTransfer='returning';render()">Returning</button></div></div>${isTransfer==='transfer'?`<div class="erow"><div class="elbl">From</div><input class="einput" id="add-from" placeholder="Previous academy name"/></div><div class="erow"><div class="elbl">Since</div><input class="einput" id="add-since" type="date"/></div>`:''}${isTransfer==='returning'?`<div class="erow"><div class="elbl">Left on</div><input class="einput" id="add-left" type="date"/></div><div class="erow"><div class="elbl">Reason</div><select class="esel" id="add-reason"><option>Travel</option><option>Injury</option><option>Personal</option><option>Financial</option><option>Other</option></select></div>`:''}</div>${isTransfer==='transfer'?'<div class="gnote" style="margin-top:4px">Set belt and degree above to match their current rank. Journey will start with a transfer milestone. Head instructor must validate the belt.</div>':''}${isTransfer==='returning'?'<div class="gnote" style="margin-top:4px">Returning student. Their previous data will be preserved and a return milestone will be added to their journey.</div>':''}<div style="height:16px"></div><div style="display:flex;gap:10px;margin-bottom:24px"><button onclick="sendInvite(true)" class="bblue" style="flex:1;padding:12px;font-size:15px">Save & invite</button><button onclick="sendInvite(false)" class="bout" style="flex:1;padding:12px;font-size:15px;border-width:1px;margin-bottom:0">Save only</button></div></div></div>`;
 }
 
 function rMUnits(){
@@ -1256,13 +1326,19 @@ function rClass(){
   ${hol?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${HN[sk]||'Public Holiday'}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Academy closed · No classes scheduled today</div></div></div>`
   :cls.length===0?`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`
   :cls.map(c=>{
-    const t=CT.find(x=>x.id===c.type)||CT[0];const isIn=!!S.ci[c.id];const isCf=!!S.pconf[c.id+'_'+me.id];const att=isT?gatt(c.time):[];const all=[...att,...(isIn&&!att.includes(me.id)?[me.id]:[])];
+    const t=CT.find(x=>x.id===c.type)||CT[0];
+    const rows=attendanceFor(c.date,c.time);
+    const myStu=myStudentRow();
+    const myRow=myStu?rows.find(r=>r.studentDbId===myStu._dbId):null;
+    const isIn=!!myRow&&(myRow.status==='going'||myRow.status==='present');
+    const isCf=!!myRow&&myRow.status==='present';
+    const all=rows.filter(r=>r.status==='going'||r.status==='present').map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId);return s?s.id:null;}).filter(Boolean);
     // Owners and instructors are also staff viewers — they should see the
     // "N going" indicator, not a check-in button. Previously this was
     // gated on me.role==='admin' only, so owner-role users fell through
     // to the check-in path and saw confusing "Opens at HH:MM" tiles on
     // every class.
-    const isStudentAdmin=me.role==='admin'&&!!((S.profile&&STUDENTS.find(x=>x._userId===S.profile.id))||STUDENTS.find(x=>x.id===me.id));
+    const isStudentAdmin=me.role==='admin'&&!!myStu;
     const isStaffViewer=(me.role==='admin'||me.role==='owner')&&!isStudentAdmin;
     // Per-row window check (today only). Check-in opens 30 min before
     // start and stays open until 60 min after end. Outside that window
@@ -1280,7 +1356,8 @@ function rClass(){
     else if(isEnded){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;}
     else if(isPreopen){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);cursor:default;width:100%;line-height:1.2"><div>Opens at</div><div style="font-size:14px;color:var(--text2);margin-top:2px">${_fmtHHMM(startMin-30)}</div></button>`;}
     else{btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${c.time}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud} · ${all.length} going</div></div><div style="flex-shrink:0;padding-top:4px;min-width:96px">${btn}</div></div>${rAtts(all,c.id)}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
+    const attBlock=isStaffViewer?rAttsStaff(rows,c.id):rAtts(all,c.id);
+    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${c.time}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud} · ${all.length} going</div></div><div style="flex-shrink:0;padding-top:4px;min-width:96px">${btn}</div></div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
 
 
@@ -1730,16 +1807,17 @@ function rWEditor(w){
 }
 
 function rAdmin(){
-  const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const cls=getDC(sd);
-  const isOwner=S.me.role==='owner';const effAtab=(isOwner&&S.atab==='today')?'roster':S.atab;
+  // Bug 2 — the "Presence" tab is gone. Staff now confirm attendance
+  // inline on the Classes tab (rAttsStaff), so admin defaults to the
+  // roster view for all roles.
+  const isOwner=S.me.role==='owner';
+  const validAtabs={roster:1,manage:1,staff:1,photos:1};
+  let effAtab=validAtabs[S.atab]?S.atab:'roster';
+  if(effAtab==='staff'&&!isOwner)effAtab='roster';
   const showPhotos=canEditClassCounts();
   const pendingCount=(S.photoQueue||[]).length;
   const photosTab=showPhotos?'<button class="stab '+(effAtab==='photos'?'active':'')+'" onclick="setAtab(\'photos\')">Photos'+(pendingCount?' <span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;background:var(--red);color:#fff;border-radius:9px;font-size:10px;font-weight:700;margin-left:4px;vertical-align:1px">'+pendingCount+'</span>':'')+'</button>':'';
-  return `${effAtab==='today'?rDayStrip():''}<div style="height:16px"></div><div class="stabs">${isOwner?'':'<button class="stab '+(effAtab==='today'?'active':'')+'" onclick="setAtab(\'today\')">Presence</button>'}<button class="stab ${effAtab==='roster'?'active':''}" onclick="setAtab('roster')">Roster</button><button class="stab ${effAtab==='manage'?'active':''}" onclick="setAtab('manage')">Classes</button>${isOwner?'<button class="stab '+(effAtab==="staff"?"active":"")+'" onclick="setAtab(\'staff\')">Staff</button>':''}${photosTab}</div>${effAtab==='today'?rAToday(cls,sd):effAtab==='roster'?rARoster():effAtab==='staff'?rStaff():effAtab==='photos'?rPhotoQueue():rManage()}${S.cdel?rCDel():''}${(S.editCls!==null&&S.editCls!==undefined)||S.addCls?rCEdit():''}${S.editJny?rJnyEditor():''}<div style="height:16px"></div>`;}
-
-function rAToday(cls,sd){
-  const au=UNITS.filter(u=>u.active);
-  return `${cls.length===0?`<div class="card" style="text-align:center;padding:24px"><div style="font-size:13px;color:var(--text3)">No classes on this day.</div></div>`:cls.map(c=>{const att=gatt(c.time);const all=[...att,...(S.ci[c.id]?[SME.id]:[])];const cf=all.filter(sid=>!!S.pconf[c.id+'_'+sid]).length;return `<div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--text)">${c.time}</div>${ct(c.type)}<div style="font-size:12px;color:var(--text2);margin-left:auto">${cf}/${all.length} confirmed</div></div>${all.map(sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return '';const k=c.id+'_'+sid;const isC=!!S.pconf[k];const isA=!!S.pabs[k];const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0" class="divider"><div style="display:flex;align-items:center;gap:10px">${avStu(s,34)}<div><div style="font-size:14px;color:var(--text);font-weight:500">${s.name}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px"><button class="bsm ${isC?'bpre':''}" onclick="markP('${c.id}','${sid}')">Present</button><button class="bsm ${isA?'babs':''}" onclick="markA('${c.id}','${sid}')">Absent</button></div></div>`;}).join('')}</div>`;}).join('')}`;}
+  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${effAtab==='roster'?'active':''}" onclick="setAtab('roster')">Roster</button><button class="stab ${effAtab==='manage'?'active':''}" onclick="setAtab('manage')">Classes</button>${isOwner?'<button class="stab '+(effAtab==="staff"?"active":"")+'" onclick="setAtab(\'staff\')">Staff</button>':''}${photosTab}</div>${effAtab==='roster'?rARoster():effAtab==='staff'?rStaff():effAtab==='photos'?rPhotoQueue():rManage()}${S.cdel?rCDel():''}${(S.editCls!==null&&S.editCls!==undefined)||S.addCls?rCEdit():''}${S.editJny?rJnyEditor():''}<div style="height:16px"></div>`;}
 
 
 function rRecentPromos(){
@@ -1954,6 +2032,22 @@ async function sendInvite(dispatch){
   const fullName=(fname+' '+lname).trim();
   const cli=initSupabase();
   if(!cli)return showSaveToast2('Connection issue','error');
+  // Bug 7 — Background section. For transfer/returning we seed the
+  // student's journey with the appropriate milestone so it shows in
+  // their timeline on day one. The same seed_student_journey_if_empty
+  // pass that runs on first sign-in will also add the "Joined myBJJ
+  // app" milestone — so we deliberately stop short of that here.
+  const initialJourney=[];
+  if(status==='transfer'){
+    const fromAcad=(document.getElementById('add-from')&&document.getElementById('add-from').value||'').trim();
+    const sinceVal=document.getElementById('add-since')&&document.getElementById('add-since').value||null;
+    initialJourney.push({label:'Transferred to myBJJ',date:sinceVal||new Date().toISOString().slice(0,10),done:true,xfer:true,prev:fromAcad||null,classes:null,belt:null});
+  } else if(status==='returning'){
+    const leftVal=document.getElementById('add-left')&&document.getElementById('add-left').value||null;
+    const reason=document.getElementById('add-reason')&&document.getElementById('add-reason').value||null;
+    if(leftVal)initialJourney.push({label:'Left academy'+(reason?(' · '+reason):''),date:leftVal,done:true,classes:null,belt:null});
+    initialJourney.push({label:'Returned to myBJJ',date:new Date().toISOString().slice(0,10),done:true,classes:null,belt:null});
+  }
   // The address we'll send the magic link to (parent for kids, student otherwise).
   const inviteEmail=isKids?parentEmail:email;
   if(isKids){
@@ -1963,11 +2057,11 @@ async function sendInvite(dispatch){
     const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
     const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
     const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
-    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,prog:'kids',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,has_gi:true,journey:[],feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone||null,parent_email:parentEmail}).select('id,legacy_id').single();
+    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,prog:'kids',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,has_gi:true,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone||null,parent_email:parentEmail}).select('id,legacy_id').single();
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email:null,hasGi:true,name:fullName,nickname:null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email:null,hasGi:true,name:fullName,nickname:null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail});
     }
     const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
     if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
@@ -1979,7 +2073,26 @@ async function sendInvite(dispatch){
     const matches=STUDENTS.filter(s=>s.unit===unitLegacy&&(s.name||'').trim().toLowerCase()===lowerName);
     if(matches.length===1){
       const m=matches[0];m.email=email;
-      withSb(c=>c.from('students').update({email}).eq('legacy_id',m.id),'link student email');
+      const patch={email};
+      // If this is a transfer/returning re-add, fold the Background
+      // journey entries onto the existing student row so their timeline
+      // reflects it. We don't overwrite an existing non-empty journey.
+      if(initialJourney.length&&!(m.journey&&m.journey.length)){
+        patch.journey=initialJourney;m.journey=initialJourney;
+      }
+      withSb(c=>c.from('students').update(patch).eq('legacy_id',m.id),'link student email');
+    } else if(initialJourney.length){
+      // No existing row to attach to — but Background was filled in, so
+      // create a real students row instead of just leaving the whitelist
+      // entry. The first sign-in will then auto-link by email.
+      const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'adult';
+      const legacy=slug+'_'+Date.now().toString(36).slice(-4);
+      const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'AD';
+      const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,email,prog:'adult',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,has_gi:true,journey:initialJourney,feedback:[],unit_id:unitDbId}).select('id,legacy_id').single();
+      if(ins&&ins.error)console.warn('[mybjj] add adult transfer:',ins.error);
+      else if(ins&&ins.data){
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email,hasGi:true,name:fullName,nickname:null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null});
+      }
     }
   }
   closeSub();
@@ -2137,8 +2250,16 @@ async function savePEdit(){
   const inputs=document.querySelectorAll('.sbody .einput');
   const fn=inputs[0]?inputs[0].value.trim():'';
   const ln=inputs[1]?inputs[1].value.trim():'';
+  // Bug 8 — both names required on Edit profile so the back-filled
+  // "NeedsLastName" placeholder can never round-trip to the DB.
+  if(!fn||!ln){
+    const miss=[];if(!fn)miss.push('first name');if(!ln)miss.push('last name');
+    return showSaveToast2('Missing: '+miss.join(', '),'error');
+  }
+  if(/NeedsLastName/i.test(fn)||/NeedsLastName/i.test(ln)){
+    return showSaveToast2('Please replace the placeholder with your real last name.','error');
+  }
   const full=(fn+' '+ln).trim();
-  if(!full)return showSaveToast2('Name is required','error');
   const newInitials=((fn[0]||'')+(ln[0]||'')).toUpperCase()||(S.me&&S.me.initials)||'??';
   S.me.name=full;S.me.initials=newInitials;
   if(S.profile)S.profile.full_name=full;
@@ -2176,6 +2297,13 @@ function meFromProfile(p){
   else if(p.role==='admin'||p.role==='instructor') r='admin';
   else if(p.role==='parent') r='parent';
   else r='student';
+  // Bug 6 — load saved notification preferences into S.notif so toggles
+  // persist across sessions. The DB column defaults to {} so first-login
+  // users keep the in-app defaults defined in S.
+  const prefs=p.notification_preferences||{};
+  if(prefs&&typeof prefs==='object'){
+    Object.keys(prefs).forEach(k=>{S.notif[k]=!!prefs[k];});
+  }
   return Object.assign({},base,{id:p.id,name:p.full_name||p.email,role:r,email:p.email,initials:(p.full_name||p.email||'?').slice(0,2).toUpperCase(),photoUrl:p.photo_url||null});
 }
 function avMe(size){
@@ -2995,9 +3123,10 @@ async function hydrateData(){
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
+      c.from('attendance').select('id,student_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at').gte('class_date',dk(new Date(Date.now()-7*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
     ]);
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5);
+    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6);
     const uMap={};
     if(u.data&&u.data.length){
       u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
@@ -3024,6 +3153,10 @@ async function hydrateData(){
       SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,theme:r.theme,color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
       touched=true;
     }else if(pw.error)console.warn('[mybjj] hydrate programme_weeks:',pw.error);
+    if(at.data){
+      ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null}));
+      touched=true;
+    }else if(at.error)console.warn('[mybjj] hydrate attendance:',at.error);
     if(touched){console.log('[mybjj] hydrated from Supabase');render();if(canEditClassCounts())loadPhotoQueue();}
     else console.warn('[mybjj] hydration returned no rows — keeping local fallback');
   }catch(e){
@@ -3157,9 +3290,16 @@ async function advanceAuthStep(){
   S.authBusy=false;render();
 }
 
-// "Not you?" — clear email + return to Step 1.
+// "Not you?" / "Use another method" — clear email + return to Step 1.
+// Also resets authState so the post-magic-send screen (authState='magic-sent')
+// goes back to the email-entry view; without this the send-confirmation
+// screen stays up forever.
 function resetAuthStep(){
-  S.authStep=1;S.authEmail='';S.authHasPassword=false;S.authMsg='';
+  S.authStep=1;
+  S.authEmail='';
+  S.authHasPassword=false;
+  S.authMsg='';
+  S.authState='unauthenticated';
   render();
 }
 
@@ -3422,19 +3562,101 @@ function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyE
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
 function pickUnit(u){S.unit=u;S.unitOpen=false;render();}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
-function doCI(id){S.ci[id]=true;render();}
-function undoCI(id){delete S.ci[id];render();}
+// Parses the synthetic class id getDC() builds: 'YYYY-MM-DD_HH:MM_legacy'
+function _parseCID(id){const m=String(id||'').match(/^(\d{4}-\d{2}-\d{2})_(\d{2}:\d{2})_(.+)$/);if(!m)return null;return{date:m[1],time:m[2],legacy:m[3]};}
+
+// "I'm going" — INSERTs an attendance row for the signed-in user's
+// linked students row. Pushes to the local ATTENDANCE array first for
+// instant UI; on DB error the row is removed.
+async function doCI(id){
+  const stu=myStudentRow();
+  if(!stu){showSaveToast2('Sign in as a student to check in.','error');return;}
+  const c=_parseCID(id);if(!c){showSaveToast2('Class id malformed','error');return;}
+  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const unit=UNITS.find(u=>u.id===stu.unit);
+  const local={_dbId:'local-'+Date.now(),studentDbId:stu._dbId,classDate:c.date,classTime:c.time,classType:t.type||null,status:'going'};
+  ATTENDANCE.push(local);
+  render();
+  const cli=initSupabase();if(!cli||!stu._dbId)return;
+  const r=await cli.from('attendance').insert({student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:'going'}).select('id').single();
+  if(r&&r.error){
+    // Roll back local
+    const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
+    console.warn('[mybjj] check-in failed:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    render();return;
+  }
+  if(r&&r.data)local._dbId=r.data.id;
+}
+
+// Undo — DELETE the attendance row for the signed-in user's student row.
+async function undoCI(id){
+  const stu=myStudentRow();if(!stu)return;
+  const c=_parseCID(id);if(!c)return;
+  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===stu._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  if(ix<0)return;
+  const removed=ATTENDANCE.splice(ix,1)[0];
+  render();
+  const cli=initSupabase();if(!cli||!removed._dbId||String(removed._dbId).startsWith('local-'))return;
+  const r=await cli.from('attendance').delete().eq('id',removed._dbId);
+  if(r&&r.error){
+    // Restore
+    ATTENDANCE.push(removed);
+    console.warn('[mybjj] undo check-in failed:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    render();
+  }
+}
 function setAtab(t){S.atab=t;render();if(t==='photos'&&canEditClassCounts())loadPhotoQueue();}
 function setSweek(w){S.sweek=w;S.editWeek=false;render();}
 function setPtab(t){S.ptab=t;render();}
 function setRseg(s){S.rseg=s;render();}
 function setPresUnit(u){S.presUnit=u;render();}
 function toggleExp(id){S.expanded[id]=!S.expanded[id];render();}
-function togNotif(k){S.notif[k]=!S.notif[k];render();}
+async function togNotif(k){
+  const prev=!!S.notif[k];
+  S.notif[k]=!prev;
+  render();
+  const cli=initSupabase();
+  if(!cli||!S.profile||!S.profile.id)return;
+  const merged=Object.assign({},S.profile.notification_preferences||{},{[k]:S.notif[k]});
+  const r=await cli.from('users').update({notification_preferences:merged}).eq('id',S.profile.id);
+  if(r&&r.error){
+    S.notif[k]=prev;
+    console.warn('[mybjj] notif pref save:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    render();return;
+  }
+  S.profile.notification_preferences=merged;
+}
 function setNAud(k){S.naud=k;render();}
 function sendN(){S.nsent=true;render();}
-function markP(cid,sid){const k=cid+'_'+sid;S.pconf[k]=!S.pconf[k];if(S.pconf[k])delete S.pabs[k];render();const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;if(S.pconf[k]){const today=new Date().toISOString().slice(0,10);withSb(c=>c.from('attendance').insert({student_id:s._dbId,class_legacy_id:cid,confirmed_by_instructor_id:meStaffDbId(),attended_at:new Date().toISOString(),gi:true}),'mark present');}else{withSb(c=>c.from('attendance').delete().eq('student_id',s._dbId).eq('class_legacy_id',cid).gte('attended_at',new Date().toISOString().slice(0,10)),'unmark present');}}
-function markA(cid,sid){const k=cid+'_'+sid;S.pabs[k]=!S.pabs[k];if(S.pabs[k])delete S.pconf[k];render();const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;if(S.pabs[k])withSb(c=>c.from('attendance').delete().eq('student_id',s._dbId).eq('class_legacy_id',cid).gte('attended_at',new Date().toISOString().slice(0,10)),'mark absent (delete attendance)');}
+// markP / markA — staff toggles per attendee inside the expanded class
+// card. Both operate on existing attendance rows (the student must have
+// checked in for a row to exist). markP flips status='present';
+// markA flips to 'absent'. The DB UPDATE policy gates this to staff.
+async function markP(cid,sid){
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
+  const c=_parseCID(cid);if(!c)return;
+  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  if(!row){showSaveToast2('No check-in to confirm.','error');return;}
+  const prev=row.status;row.status='present';row.confirmedBy=S.profile&&S.profile.id;row.confirmedAt=new Date().toISOString();
+  render();
+  const cli=initSupabase();if(!cli||String(row._dbId).startsWith('local-'))return;
+  const r=await cli.from('attendance').update({status:'present',confirmed_by:S.profile&&S.profile.id,confirmed_at:new Date().toISOString()}).eq('id',row._dbId);
+  if(r&&r.error){row.status=prev;console.warn('[mybjj] mark present:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');render();}
+}
+async function markA(cid,sid){
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
+  const c=_parseCID(cid);if(!c)return;
+  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  if(!row)return;
+  const prev=row.status;row.status='absent';
+  render();
+  const cli=initSupabase();if(!cli||String(row._dbId).startsWith('local-'))return;
+  const r=await cli.from('attendance').update({status:'absent'}).eq('id',row._dbId);
+  if(r&&r.error){row.status=prev;console.warn('[mybjj] mark absent:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');render();}
+}
 function openInbox(){S.inboxOpen=true;S.panelOpen=false;render();}
 function closeInbox(){S.inboxOpen=false;render();}
 function markRead(id){const n=NOTIFS.find(x=>x.id===id);if(n)n.read=true;render();}
