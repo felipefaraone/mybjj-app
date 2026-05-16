@@ -509,6 +509,57 @@ function instructorTitle(belt,deg,role){
   return 'Coach';
 }
 
+// ---------------------------------------------------------------------------
+// BJJ title system (Batch 1)
+// ---------------------------------------------------------------------------
+// Two-layer staff representation:
+//   - Permission/role badge (functional, admin contexts): rendered via the
+//     existing 'OWNER' / 'INSTRUCTOR' chips in Manage / Roster.
+//   - BJJ cultural title (social contexts): derived from belt + degree +
+//     role_title and prepended to the clean name. Lives only in Members,
+//     Class detail attendee/Confirmed-by trails, Journey timelines, the
+//     own-profile header, and the staff profile sub-panel.
+//
+// parseStaffName strips the legacy "Prof." / "Professor " prefix from any
+// staff display string so the BJJ title doesn't end up doubled
+// ("Professor Prof. Mario"). DB rows are untouched per the batch spec —
+// the cleanup is purely a render-time transform.
+function parseStaffName(fullName){
+  if(!fullName)return '';
+  return String(fullName).replace(/^(Prof\.?|Professor)\s+/i,'').trim();
+}
+function _initialsFromName(name){
+  return (name||'').trim().split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'??';
+}
+// getStaffBJJTitle accepts the in-memory STAFF row shape (belt, deg, role,
+// roleTitle) or the spec's shape (belt, degree, role_title). Returns null
+// for non-staff so the call is safe to chain.
+function getStaffBJJTitle(s){
+  if(!s||!s.belt)return null;
+  const deg=(s.degree!=null?s.degree:(s.deg!=null?s.deg:0))|0;
+  if(s.belt==='black'){
+    if(deg>=9)return 'Grandmaster';   // red belt (9th–10th)
+    if(deg>=7)return 'Master';        // coral belt (7th–8th)
+    return 'Professor';               // 1st–6th degree
+  }
+  // Coach: brown or purple belt with an instructor / owner role title.
+  const rt=String(s.role_title||s.roleTitle||'').toLowerCase();
+  const r=String(s.role||'').toLowerCase();
+  const isStaffRole=rt==='instructor'||rt==='owner'||rt==='professor'||rt==='head professor'||r==='admin'||r==='owner';
+  if((s.belt==='purple'||s.belt==='brown')&&isStaffRole)return 'Coach';
+  return null;
+}
+// staffDisplayName — social-context renderer. Combines the BJJ title with
+// the cleaned name. Pass an opts.firstOnly=true to render just the first
+// name (compact contexts like the Confirmed-by trail).
+function staffDisplayName(s,opts){
+  if(!s)return '';
+  const clean=parseStaffName(s.name||s.full_name||'');
+  const display=opts&&opts.firstOnly?(clean.split(' ')[0]||clean):clean;
+  const title=getStaffBJJTitle(s);
+  return title?(title+' '+display):display;
+}
+
 let PROMOTION_LOG=[
   {id:'pl1',studentId:'dio',  studentName:'Diogo M.', fromBelt:'purple',fromDeg:0,toBelt:'purple',toDeg:1,isNewBelt:false,date:'2026-01-15',promotedBy:'Prof. Mario',unit:'nb'},
   {id:'pl2',studentId:'aar',  studentName:'Aaron',    fromBelt:'purple',fromDeg:1,toBelt:'purple',toDeg:2,isNewBelt:false,date:'2026-01-15',promotedBy:'Prof. Mario',unit:'nb'},
@@ -651,17 +702,23 @@ function rAtts(all,cid){
 // Staff variant of rAtts — shown when an admin / owner / instructor
 // expands a class card. Each row has status-aware buttons: 'going'
 // shows Present / Absent; 'present' shows Mark Absent / Undo; 'absent'
-// shows Mark Present / Undo. Buttons disappear after class_end + 60min
-// (isClassLocked) — the row becomes read-only history.
+// shows Mark Present / Undo. Past classes remain fully editable;
+// classes more than 7 days in the future are locked (Batch 1).
 function rAttsStaff(rows,cid){
   const visible=rows.filter(r=>r.status==='going'||r.status==='present'||r.status==='absent');
-  if(!visible.length)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:12px;color:var(--text3)">No check-ins yet</span></div></div>`;
   const exp=!!S.expanded[cid];
   const cf=visible.filter(r=>r.status==='present').length;
   const going=visible.filter(r=>r.status==='going'||r.status==='present').length;
   const locked=isClassLocked(cid);
-  const lockTag=locked?'<span style="font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:8px">LOCKED</span>':'';
-  const header=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf}/${going} confirmed${lockTag}</span><span class="aexp" onclick="toggleExp('${cid}')">${exp?'Show less':'Confirm attendance'}</span></div>`;
+  // "+ Add student" appears for staff on every class — past, today,
+  // or up to 7 days ahead. Locked far-future classes hide it.
+  const addBtn=!locked
+    ?'<button class="bsm" onclick="openClassAddStudent(\''+cid+'\')" style="margin-left:auto;padding:6px 10px;font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:#1A5DAD;border:1px solid var(--blue-mid);background:var(--blue-tint);border-radius:6px;cursor:pointer">+ Add student</button>'
+    :'';
+  const header=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf}/${going} confirmed</span><div style="display:flex;align-items:center;gap:8px">${addBtn}<span class="aexp" onclick="toggleExp('${cid}')">${exp?'Show less':'Confirm attendance'}</span></div></div>`;
+  if(!visible.length){
+    return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}<div style="display:flex;align-items:center;gap:10px;padding:6px 0"><span style="font-size:12px;color:var(--text3)">No check-ins yet</span></div></div>`;
+  }
   if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}</div>`;
   const btnFor=(r,s)=>{
     if(locked){
@@ -722,7 +779,7 @@ function rTL(journey,shareSid){
 
 function rInbox(){const ur=NOTIFS.filter(n=>!n.read).length;const IBACK=`<button class="sback" onclick="closeInbox()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:#1A5DAD;font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?`<div style="padding:40px;text-align:center;color:var(--text3)">No notifications</div>`:NOTIFS.map(n=>`<div class="nitem ${n.read?'':'unr'}" onclick="markRead('${n.id}')"><div class="ndot ${n.read?'rd':''}"></div><div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${n.title}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${n.body}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${n.time}</div></div><button class="ndel" onclick="event.stopPropagation();delNotif('${n.id}')">×</button></div>`).join('')}</div></div>`;}
 
-function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${m.name}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
+function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();const greetName=isA?staffDisplayName(m):m.name;return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
 
 function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'kidpeer':rKidPeer};return(ss[S.sub]||(() =>''))();}
 function rPEdit(){
@@ -892,14 +949,14 @@ function rStaffProf(){
   const bottomActions='';
 
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="closeSub()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+s.name+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="closeSub()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+staffDisplayName(s)+'</div></div>'
     +'<div class="sbody">'
-    // Header
+    // Header — social context: BJJ title before the clean name.
     +'<div class="card" style="padding:16px">'
       +'<div style="display:flex;align-items:flex-start;gap:14px">'
         +photo
         +'<div style="flex:1;min-width:0">'
-          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+s.name+'</div>'
+          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+staffDisplayName(s)+'</div>'
           +(s.nickname?'<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:2px">'+s.nickname+'</div>':'')
           +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,'adult')+roleChip+'</div>'
           +'<div style="margin-top:5px;font-size:11px;color:var(--text3)">'+unitName+'</div>'
@@ -1280,7 +1337,7 @@ function rAttHistory(s,canAdminView){
     if(!uid)return null;
     const sf=STAFF.find(x=>x._userId===uid);
     if(!sf)return null;
-    return instructorTitle(sf.belt||'white',sf.deg||0,sf.role)+' '+(sf.name||'').split(' ')[0];
+    return staffDisplayName(sf,{firstOnly:true});
   };
   const pill=st=>{
     if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
@@ -1746,7 +1803,7 @@ function rParentAttendance(child){
     if(!uid)return null;
     const sf=STAFF.find(x=>x._userId===uid);
     if(!sf)return null;
-    return instructorTitle(sf.belt||'white',sf.deg||0,sf.role)+' '+(sf.name||'').split(' ')[0];
+    return staffDisplayName(sf,{firstOnly:true});
   };
   const pill=st=>{
     if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
@@ -1826,14 +1883,15 @@ function rMembers(){
     const isInstr=m._kind==='instructor';
     const av=isInstr?avStaff(m,40):avStu(m,40);
     const tapHandler=isInstr?"viewStaff('"+m.id+"')":"viewStu('"+m.id+"')";
-    const subline=isInstr
-      ?(instructorTitle(m.belt||'white',m.deg||0,m.role)+(m.nickname?' · '+m.nickname:''))
-      :(m.nickname||'');
-    const badge=isInstr?'<span style="display:inline-block;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;color:#1A5DAD;background:var(--blue-tint);border:1px solid var(--blue-mid);letter-spacing:.5px;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:1px">INSTRUCTOR</span>':'';
+    // Social context — Members tab. Instructors render with their BJJ
+    // title prefixed to the clean name; no INSTRUCTOR role chip (that
+    // badge lives in admin contexts per the Layer 1 / Layer 2 split).
+    const displayName=isInstr?staffDisplayName(m):m.name;
+    const subline=m.nickname||'';
     return '<div class="card" onclick="'+tapHandler+'" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
       +av
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.name+badge+'</div>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+displayName+'</div>'
       +(subline?'<div style="font-size:11px;color:var(--text3);'+(isInstr?'':'font-style:italic;')+'margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+subline+'</div>':'')
       +'</div>'
       +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog)+'</div>'
@@ -1892,8 +1950,8 @@ function rParentMembers(){
       return '<div class="card" onclick="viewStaff(\''+m.id+'\')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
         +avStaff(m,40)
         +'<div style="flex:1;min-width:0">'
-        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.name+'<span style="display:inline-block;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;color:#1A5DAD;background:var(--blue-tint);border:1px solid var(--blue-mid);letter-spacing:.5px;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:1px">INSTRUCTOR</span></div>'
-        +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+instructorTitle(m.belt||'white',m.deg||0,m.role)+'</div>'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
+        +(m.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.nickname+'</div>':'')
         +'</div>'
         +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult')+'</div>'
         +'</div>';
@@ -2040,7 +2098,7 @@ function rPromoWall(){
         +'<div style="width:38px;height:38px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;flex-shrink:0'+(isBelt?';box-shadow:0 0 0 2.5px '+b.bg+',0 0 0 4.5px var(--card),0 0 0 6px '+b.bg:'')+'">'+ini+'</div>'
         +'<div style="flex:1"><div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
         +nickLine
-        +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(isBelt?'Belt promotion':'Stripe')+'&nbsp;·&nbsp;'+p.promotedBy+'</div></div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(isBelt?'Belt promotion':'Stripe')+'&nbsp;·&nbsp;'+parseStaffName(p.promotedBy)+'</div></div>'
         +(isBelt?'<div>'+bb(p.toBelt,0,'adult')+'</div>':'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;color:var(--text3)">+1&nbsp;stripe</div>')
         +'</div>';
     }).join('');
@@ -2257,7 +2315,7 @@ function rRecentPromos(){
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">'
       +avStu(s,34)
       +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
-      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+p.promotedBy+' · '+dateStr+'</div></div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+parseStaffName(p.promotedBy)+' · '+dateStr+'</div></div>'
       +'<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px">'
       +(p.isNewBelt
         ?('<div>'+bb(p.fromBelt,p.fromDeg,s.prog)+'<span style="font-size:16px;color:var(--text3);margin:0 4px">→</span>'+bb(p.toBelt,0,s.prog)+'</div>')
@@ -2467,7 +2525,7 @@ function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rClassAddStudentModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -2664,7 +2722,7 @@ function render(){
 }
 
 function doLogin(r){if(r==='owner'){S.me=AME;S.atab='roster';}else if(r==='instructor_jonathan')S.me=INSE_JOHN;else if(r==='admin')S.me=INSE_FELIPE;else S.me=SME;S.loggedIn=true;S.tab=(r==='admin'||r==='owner'||r==='instructor_jonathan')?'admin':'class';render();}
-function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;S.authState='unauthenticated';S.authEmail='';S.authMsg='';if(sb)sb.auth.signOut();render();}
+function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.classAdd=null;if(sb)sb.auth.signOut();render();}
 
 function friendlyAuthError(err){
   if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
@@ -2792,7 +2850,12 @@ function meFromProfile(p){
   if(prefs&&typeof prefs==='object'){
     Object.keys(prefs).forEach(k=>{S.notif[k]=!!prefs[k];});
   }
-  return Object.assign({},base,{id:p.id,name:p.full_name||p.email,role:r,email:p.email,initials:(p.full_name||p.email||'?').slice(0,2).toUpperCase(),photoUrl:p.photo_url||null});
+  // Strip any "Prof." prefix from the display name and recompute the
+  // initials from the cleaned name — Batch 1 BJJ-title rendering relies
+  // on s.name being clean.
+  const cleanName=parseStaffName(p.full_name||p.email||'');
+  const initials=_initialsFromName(cleanName)||(p.email||'?').slice(0,2).toUpperCase();
+  return Object.assign({},base,{id:p.id,name:cleanName,role:r,email:p.email,initials,photoUrl:p.photo_url||null});
 }
 // avMe — own avatar with the small blue camera badge. `mode` controls
 // what tapping the avatar does:
@@ -3777,7 +3840,14 @@ async function hydrateData(){
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
-      STAFF=sf.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:r.full_name,nickname:r.nickname||null,email:r.email||null,belt:r.belt,deg:r.degree,initials:r.initials,role:r.role_title==='Head Professor'?'owner':'admin',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null}));
+      STAFF=sf.data.map(r=>{
+        // Strip any legacy "Prof." / "Professor " prefix at hydrate so
+        // every downstream consumer sees a clean name + matching
+        // initials. The raw value is kept on _rawFullName for debug.
+        const cleanName=parseStaffName(r.full_name);
+        const initials=_initialsFromName(cleanName)||r.initials||'??';
+        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,_rawFullName:r.full_name||null,nickname:r.nickname||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:r.role_title==='Head Professor'?'owner':'admin',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null};
+      });
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
     if(pm.data&&pm.data.length){
@@ -4428,7 +4498,7 @@ function rPending(){
     : `Hi <strong>${email}</strong>.<br/>Your account isn’t on the access list yet. Once an admin approves you, you’ll be able to sign in here.`;
   return `<div class="lw">${authHero()}<div class="lbody"><div class="fg" style="padding:24px"><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);letter-spacing:.5px;margin-bottom:10px">${title}</div><div style="color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:18px">${body}</div><button class="bout" onclick="logout()">Sign out</button></div></div></div>`;
 }
-function setTab(t){S.tab=t;render();}
+function setTab(t){S.tab=t;S.classAdd=null;render();}
 function openPanel(){S.panelOpen=true;S.sub=null;S.inboxOpen=false;render();}
 function closePanel(){S.panelOpen=false;S.unitOpen=false;S.sub=null;render();}
 function openSub(s){
@@ -4529,9 +4599,8 @@ async function togNotif(k){
 function setNAud(k){S.naud=k;render();}
 function sendN(){S.nsent=true;render();}
 // classMinutesAfterEnd: how many minutes past the class end-time we are.
-// Used to lock attendance edits 60min after a class ends. Returns null
-// for any class not on today's date (future/past days are always
-// editable for now — only "today, an hour after the bell" locks).
+// Used by the student-side check-in window in rClass (30min before /
+// 1h after). Returns null for any class not on today's date.
 function classMinutesAfterEnd(cid){
   const c=_parseCID(cid);if(!c)return null;
   if(c.date!==dk(TODAY))return null;
@@ -4544,13 +4613,21 @@ function classMinutesAfterEnd(cid){
   const cm=+(parts.find(p=>p.type==='minute')||{}).value||0;
   return (ch*60+cm)-endMin;
 }
+// Batch 1 — staff lock removed on retroactive edits.
+// John needs to mark attendance hours or days after a class ended.
+// Staff are no longer blocked on past classes (unlimited backward) and
+// can mark up to 7 days in the future. The student-side check-in
+// window (30min before / 1h after) is handled separately in rClass
+// via isPreopen / isEnded — that's untouched.
+const STAFF_FUTURE_LIMIT_DAYS=7;
 function isClassLocked(cid){
   const c=_parseCID(cid);if(!c)return false;
-  // Days other than today are always editable. Today, lock 60min after
-  // the class ends (staff have a clear cut-off; matches the spec).
-  const mins=classMinutesAfterEnd(cid);
-  if(mins===null)return false;
-  return mins>60;
+  const todayK=dk(TODAY);
+  if(c.date<=todayK)return false; // past + today: always editable for staff
+  const cdate=new Date(c.date+'T00:00:00');
+  const limit=new Date(TODAY);
+  limit.setDate(TODAY.getDate()+STAFF_FUTURE_LIMIT_DAYS);
+  return cdate>limit;
 }
 
 // Refresh cached counts on the local STUDENTS row after an attendance
@@ -4579,7 +4656,7 @@ async function refreshStudentStats(dbId){
 async function _setAttStatus(cid,sid,newStatus){
   const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
-  if(isClassLocked(cid)){showSaveToast2('Class locked — attendance can no longer be changed.','error');return;}
+  if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
   let row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
   const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
   const unit=UNITS.find(u=>u.id===s.unit);
@@ -4620,6 +4697,143 @@ async function _setAttStatus(cid,sid,newStatus){
 function markP(cid,sid){return _setAttStatus(cid,sid,'present');}
 function markA(cid,sid){return _setAttStatus(cid,sid,'absent');}
 function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
+
+// Item 2 — "+ Add student" modal. Lets an instructor register a walk-in
+// or late arrival on the spot. State carries the synthetic class id +
+// search box + "all programmes" toggle. The per-class class_type tells
+// us the default programme filter (kids classes default to kids).
+function openClassAddStudent(cid){
+  if(!canEditClassCounts()&&!(S.me&&(S.me.role==='owner'||S.me.role==='admin')))return;
+  if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
+  S.classAdd={cid,q:'',allProgs:false,saving:false};
+  render();
+  setTimeout(()=>{const el=document.getElementById('cas-input');if(el)el.focus();},20);
+}
+function closeClassAddStudent(){S.classAdd=null;render();}
+function setClassAddQ(v){if(!S.classAdd)return;S.classAdd.q=v;_renderClassAddList();}
+function toggleClassAddAllProgs(){if(!S.classAdd)return;S.classAdd.allProgs=!S.classAdd.allProgs;render();setTimeout(()=>{const el=document.getElementById('cas-input');if(el){el.focus();}},10);}
+
+// Mutates only the results <div> on each keystroke so the search input
+// doesn't lose focus from a full render() round-trip.
+function _renderClassAddList(){
+  const host=document.getElementById('cas-results');
+  if(!host||!S.classAdd)return;
+  host.innerHTML=_classAddListHTML();
+}
+function _classAddListHTML(){
+  if(!S.classAdd)return '';
+  const{cid,q,allProgs}=S.classAdd;
+  const c=_parseCID(cid);if(!c)return '';
+  // Resolve unit from the class's day-of-week template entry. Falls
+  // back to the current side-panel unit so a stand-alone open works.
+  const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const classType=tt.type||'';
+  const curU=UNITS.find(u=>u.name===S.unit);
+  const unitLegacy=curU?curU.id:null;
+  const kidTypes=['jun','jnogi','jmma','mini'];
+  const defaultsKids=kidTypes.indexOf(classType)>=0;
+  const targetProg=defaultsKids?'kids':'adult';
+  const attDbIds=new Set(ATTENDANCE.filter(a=>a.classDate===c.date&&a.classTime===c.time).map(a=>a.studentDbId));
+  const needle=String(q||'').trim().toLowerCase();
+  let list=STUDENTS.filter(s=>s._active!==false&&s.unit===unitLegacy);
+  if(!allProgs)list=list.filter(s=>s.prog===targetProg);
+  if(needle){
+    list=list.filter(s=>{
+      const blob=(s.name||'').toLowerCase()+' '+(s.nickname||'').toLowerCase();
+      return blob.indexOf(needle)>=0;
+    });
+  }
+  list=list.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  if(!list.length){
+    return '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No matching students.</div>';
+  }
+  return list.slice(0,50).map(s=>{
+    const already=attDbIds.has(s._dbId);
+    const b=(s.prog==='kids'?BK:BA)[s.belt]||BA.white;
+    const dim=already?'opacity:.5;cursor:not-allowed':'cursor:pointer';
+    const onclick=already?'':`onclick="addStudentToClass('${cid}','${s.id}')"`;
+    const tag=already?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">ALREADY IN</span>':'';
+    const progChip='<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;color:'+(s.prog==='kids'?'var(--amber-text)':'var(--text3)')+';letter-spacing:.5px;margin-left:6px">'+s.prog.toUpperCase()+'</span>';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);'+dim+'" '+onclick+'>'
+      +avStu(s,34)
+      +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+s.name+progChip+tag+'</div>'
+      +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt'+(s.nickname?' · '+s.nickname:'')+'</div></div>'
+      +'</div>';
+  }).join('');
+}
+
+function rClassAddStudentModal(){
+  if(!S.classAdd)return '';
+  const{cid,q,allProgs}=S.classAdd;
+  const c=_parseCID(cid);if(!c)return '';
+  const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const ctLabel=(CT.find(x=>x.id===tt.type)||{}).lbl||tt.type||'class';
+  return `<div class="cov" onclick="closeClassAddStudent()" style="align-items:center;justify-content:center;z-index:280;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:460px;width:100%;margin:0 auto;padding:18px;max-height:calc(100vh - 32px);overflow:hidden;display:flex;flex-direction:column">
+<button onclick="closeClassAddStudent()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px;padding-right:40px">Add student to class</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:12px">${ctLabel} · ${c.date} · ${c.time}</div>
+<div style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 12px;margin-bottom:10px">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+  <input id="cas-input" value="${(q||'').replace(/"/g,'&quot;')}" oninput="setClassAddQ(this.value)" placeholder="Search by name…" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)" autocomplete="off"/>
+</div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+  <button onclick="toggleClassAddAllProgs()" style="border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid ${allProgs?'#1A5DAD':'var(--border)'};background:${allProgs?'#1A5DAD15':'transparent'};color:${allProgs?'#1A5DAD':'var(--text3)'}">Show all programmes${allProgs?' ✓':''}</button>
+  <span style="font-size:11px;color:var(--text3)">Default: ${(['jun','jnogi','jmma','mini'].indexOf(tt.type||'')>=0)?'Kids':'Adults'}</span>
+</div>
+<div id="cas-results" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--border);margin:0 -2px">${_classAddListHTML()}</div>
+<div style="font-size:11px;color:var(--text3);text-align:center;padding-top:8px">Tap a student to add. Modal stays open for adding more.</div>
+</div></div>`;
+}
+
+async function addStudentToClass(cid,legacyId){
+  if(!S.classAdd||S.classAdd.saving)return;
+  const c=_parseCID(cid);if(!c)return;
+  const s=STUDENTS.find(x=>x.id===legacyId);if(!s||!s._dbId)return;
+  if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
+  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
+  S.classAdd.saving=true;
+  const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const unit=UNITS.find(u=>u.id===s.unit);
+  const nowISO=new Date().toISOString();
+  const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classDate:c.date,classTime:c.time,classType:tt.type||null,status:'present',confirmedBy:S.profile&&S.profile.id,confirmedAt:nowISO};
+  ATTENDANCE.push(local);
+  // Update the per-class results inline AND the expanded attendees
+  // list below the class card; no full re-render so input keeps focus.
+  _renderClassAddList();
+  const cli=initSupabase();
+  if(!cli){S.classAdd.saving=false;showSaveToast2('Connection issue','error');return;}
+  const r=await cli.from('attendance').insert({
+    student_id:s._dbId,
+    unit_id:unit&&unit._dbId||null,
+    class_date:c.date,
+    class_time:c.time,
+    class_type:tt.type||null,
+    status:'present',
+    confirmed_by:S.profile&&S.profile.id,
+    confirmed_at:nowISO,
+  }).select('id').single();
+  if(r&&r.error){
+    const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
+    console.warn('[mybjj] add student to class:',r.error);
+    S.classAdd.saving=false;
+    _renderClassAddList();
+    showSaveToast2(friendlyMutationError(r.error)||'Could not add student.','error');
+    return;
+  }
+  if(r&&r.data)local._dbId=r.data.id;
+  S.classAdd.saving=false;
+  // Mirror the per-student stats refresh used by markP / markA so the
+  // trigger-updated total / gi_classes / etc. land in STUDENTS too.
+  await refreshStudentStats(s._dbId);
+  // Repaint everything once the DB has confirmed — the class card's
+  // attendees list needs to reflect the new row.
+  render();
+  // After re-render, S.classAdd state still holds; reapply focus to
+  // the search input for the next-add.
+  setTimeout(()=>{const el=document.getElementById('cas-input');if(el)el.focus();},20);
+  showSaveToast2('Added '+s.name.split(' ')[0]);
+}
 function openInbox(){S.inboxOpen=true;S.panelOpen=false;render();}
 function closeInbox(){S.inboxOpen=false;render();}
 function markRead(id){const n=NOTIFS.find(x=>x.id===id);if(n)n.read=true;render();}
