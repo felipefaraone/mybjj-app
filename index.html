@@ -438,7 +438,7 @@ const SOCIAL={
 let STUDENTS=[
   {id:'ff',hasGi:true,name:'Felipe F.',    belt:'white', deg:4,total:87, giTotal:52, grade:37,giGrade:22,initials:'FF',prog:'adult',unit:'nb',gender:'m',
    journey:[{label:'Transferred from Academia Gracie SP',date:'Jan 2022',classes:null,done:true,xfer:true,prev:'Academia Gracie São Paulo'},{belt:'white',label:'Started at myBJJ',date:'Mar 2023',classes:0,done:true},{belt:'white',label:'White — 1st stripe',date:'Jun 2023',classes:18,done:true},{belt:'white',label:'White — 2nd stripe',date:'Oct 2023',classes:40,done:true},{belt:'white',label:'White — 3rd stripe',date:'Feb 2024',classes:64,done:true},{belt:'white',label:'White — 4th stripe',date:'Sep 2024',classes:87,done:true,current:true},{belt:'blue',label:'Blue belt promotion',date:null,classes:null,done:false}],
-   feedback:[{ins:'Prof. Mario',date:'Mar 2026',text:'Great improvement in guard retention. Work on hip movement — mobility drills will help.'},{ins:'Prof. Felipe',date:'Feb 2026',text:'Good consistency. Focus on base when opponent stands in guard.'}]},
+   feedback:[]},
   {id:'jp',hasGi:true,   name:'Johnpatrick M.',belt:'blue', deg:2,total:280,giTotal:220,grade:60,giGrade:55,initials:'JM',prog:'adult',unit:'nb',gender:'m',journey:[{belt:'white',label:'Started BJJ',date:'Jan 2020',classes:0,done:true},{belt:'blue',label:'Blue belt',date:'Jun 2022',classes:180,done:true},{belt:'blue',label:'Blue — 2nd stripe',date:'Mar 2025',classes:260,done:true,current:true},{belt:'blue',label:'Blue — 3rd stripe',date:null,classes:null,done:false}],feedback:[]},
   {id:'lp',hasGi:true,   name:'Luke P.',       belt:'white',deg:3,total:95, giTotal:70, grade:35,giGrade:28,initials:'LP',prog:'adult',unit:'nb',gender:'m',journey:[{belt:'white',label:'Started BJJ',date:'Aug 2023',classes:0,done:true},{belt:'white',label:'White — 3rd stripe',date:'Jun 2025',classes:80,done:true,current:true},{belt:'white',label:'White — 4th stripe',date:null,classes:null,done:false}],feedback:[]},
   {id:'dig',hasGi:true,  name:'Diggaj',        belt:'blue', deg:1,total:210,giTotal:160,grade:50,giGrade:45,initials:'DG',prog:'adult',unit:'nb',gender:'m',journey:[{belt:'white',label:'Started BJJ',date:'Mar 2021',classes:0,done:true},{belt:'blue',label:'Blue belt',date:'Sep 2023',classes:160,done:true},{belt:'blue',label:'Blue — 1st stripe',date:'Dec 2024',classes:195,done:true,current:true},{belt:'blue',label:'Blue — 2nd stripe',date:null,classes:null,done:false}],feedback:[]},
@@ -499,7 +499,7 @@ let STAFF=[
    feedback:[]},
   {id:'felipe_s',name:'Prof. Felipe',belt:'black',deg:1,initials:'FP',role:'instructor',unit:'nb',
    totalClasses:0,journey:[{belt:'white',label:'Started BJJ',date:'Mar 2010',classes:0,done:true},{belt:'blue',label:'Blue belt',date:'Sep 2012',classes:0,done:true},{belt:'purple',label:'Purple belt',date:'Jun 2015',classes:0,done:true},{belt:'brown',label:'Brown belt',date:'Apr 2020',classes:0,done:true},{belt:'brown',label:'Brown — 3rd stripe',date:'Oct 2025',classes:0,done:true,current:true},{belt:'black',label:'Black belt promotion',date:null,classes:null,done:false}],
-   feedback:[{ins:'Prof. Mario',date:'Feb 2026',text:'Felipe is showing strong leadership in kids classes. Technically ready — working on the mat presence and teaching consistency before black belt.'}]},
+   feedback:[]},
   {id:'john_s',name:'Prof. John',belt:'black',deg:1,initials:'JN2',role:'instructor',unit:'hq',
    totalClasses:0,journey:[{belt:'white',label:'Started BJJ',date:'Jan 2009',classes:0,done:true},{belt:'blue',label:'Blue belt',date:'Aug 2011',classes:0,done:true},{belt:'purple',label:'Purple belt',date:'Mar 2014',classes:0,done:true},{belt:'brown',label:'Brown belt',date:'Nov 2018',classes:0,done:true},{belt:'black',label:'Black belt',date:'Jun 2022',classes:0,done:true},{belt:'black',label:'1st degree',date:'Jan 2026',classes:0,done:true,current:true},{belt:'black',label:'2nd degree',date:null,classes:null,done:false}],
    feedback:[]},
@@ -625,15 +625,11 @@ function staffDisplayName(s,opts){
   return title?(title+' '+display):display;
 }
 
-let PROMOTION_LOG=[
-  {id:'pl1',studentId:'dio',  studentName:'Diogo M.', fromBelt:'purple',fromDeg:0,toBelt:'purple',toDeg:1,isNewBelt:false,date:'2026-01-15',promotedBy:'Prof. Mario',unit:'nb'},
-  {id:'pl2',studentId:'aar',  studentName:'Aaron',    fromBelt:'purple',fromDeg:1,toBelt:'purple',toDeg:2,isNewBelt:false,date:'2026-01-15',promotedBy:'Prof. Mario',unit:'nb'},
-  {id:'pl3',studentId:'lia',  studentName:'Liam G.',  fromBelt:'white', fromDeg:3,toBelt:'white', toDeg:4,isNewBelt:false,date:'2026-02-10',promotedBy:'Prof. Felipe',unit:'nb'},
-  {id:'pl4',studentId:'benv', studentName:'Ben V.',   fromBelt:'white', fromDeg:3,toBelt:'white', toDeg:4,isNewBelt:false,date:'2026-02-10',promotedBy:'Prof. Felipe',unit:'nb'},
-  {id:'pl5',studentId:'grae', studentName:'Graeme Y.',fromBelt:'blue',  fromDeg:1,toBelt:'blue',  toDeg:2,isNewBelt:false,date:'2026-03-08',promotedBy:'Prof. Mario',unit:'nb'},
-  {id:'pl6',studentId:'abs',  studentName:'Abs',      fromBelt:'blue',  fromDeg:1,toBelt:'blue',  toDeg:2,isNewBelt:false,date:'2026-03-08',promotedBy:'Prof. Mario',unit:'nb'},
-  {id:'pl7',studentId:'ben',  studentName:'Benji',    fromBelt:'white', fromDeg:0,toBelt:'white', toDeg:1,isNewBelt:false,date:'2026-03-20',promotedBy:'Prof. Mario',unit:'nb'},
-];
+// Etapa 4 — public.promotions is the source of truth. Empty on boot,
+// populated by hydrateData below. Render code keeps reading from
+// PROMOTION_LOG so consumers don't need rewriting; an empty array
+// triggers the "No promotions yet" empty state in rPromoWall.
+let PROMOTION_LOG=[];
 
 let EVENTS=[
   {id:'e1',title:'Grappling Industries',date:'22 Mar 2026',type:'competition',desc:'Brock, Jack and Diggaj competing. Come support the team!',link:'',competing:['jac','dan','dig'],supporting:['ff','lia'],units:['nb']},
@@ -1311,7 +1307,7 @@ ${rAttHistory(s,canAdmin)}
 <!-- Instructor feedback (history; new notes are added via the Feedback
      modal in the Admin Actions row at the top of the profile) -->
 <div class="slbl" style="margin-top:18px">Instructor feedback</div>
-${(s.feedback||[]).length===0?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback notes yet.</div>`:''}
+${(s.feedback||[]).length===0?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback yet.</div>`:''}
 ${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">${f.date}</div>${canDeleteFeedback(f)?`<button onclick="deleteFeedback('${s.id}',${i})" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color='var(--red-text)'" onmouseout="this.style.color='var(--text3)'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`:''}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}
 
 <!-- Section 5: More (stubs) -->
@@ -2113,7 +2109,7 @@ function rProgress(){
     var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+lbl+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+giPct+'%</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">'+((s.hasGi!==false&&s.giTotal>0)?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-size:12px;color:var(--amber-text)">Start attending Gi classes to unlock promotion</span></div>')+'All classes count toward promotion</div>'+pbBelt((coachStu.grade||0),goal,s.belt,s.prog||'adult')+'<div style="font-size:12px;color:var(--text2);margin-top:8px">'+(coachStu.grade||0)+' / '+goal+' classes</div></div>';
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
     var techsTab=rTechniquesLog(s);
-    var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback notes yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
+    var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='wall'?rPromoWall():feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
   }
@@ -2148,16 +2144,25 @@ function rProgress(){
 
   var techsTab=rTechniquesLog(s);
 
-  var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback notes yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
+  var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
 
   var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='wall'?rPromoWall():feedbackTab;
 
   return `<div style="height:16px"></div><div class="stabs"><button class="stab ${S.ptab==='rank'?'active':''}" onclick="setPtab('rank')">Rank</button><button class="stab ${S.ptab==='journey'?'active':''}" onclick="setPtab('journey')">Journey</button><button class="stab ${S.ptab==='techniques'?'active':''}" onclick="setPtab('techniques')">Techniques</button><button class="stab ${S.ptab==='wall'?'active':''}" onclick="setPtab('wall')">Wall</button><button class="stab ${S.ptab==='feedback'?'active':''}" onclick="setPtab('feedback')">Feedback</button></div>${content}<div style="height:16px"></div>`;
 }
 
+// Etapa 4 — prefer the joined staff row (BJJ title + clean name).
+// Falls back to the denormalized promoted_by_name string, parsed
+// through parseStaffName so any legacy "Prof. X" snapshot still
+// renders cleanly.
+function _promoByLabel(p){
+  if(!p)return '';
+  if(p.promotedByStaff)return staffDisplayName(p.promotedByStaff);
+  return parseStaffName(p.promotedBy||'');
+}
 function rPromoWall(){
   const sorted=[...PROMOTION_LOG].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  if(!sorted.length)return '<div class="card" style="text-align:center;padding:28px"><div style="font-size:13px;color:var(--text3)">No promotions recorded yet.</div></div>';
+  if(!sorted.length)return '<div class="card" style="text-align:center;padding:32px 20px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No promotions yet</div><div style="font-size:12px;color:var(--text3);line-height:1.5">Belt and stripe promotions will appear here as they happen.</div></div>';
   const byMonth={};
   sorted.forEach(p=>{const d=new Date(p.date);const key=d.toLocaleDateString('en-AU',{month:'long',year:'numeric'});if(!byMonth[key])byMonth[key]=[];byMonth[key].push(p);});
   return Object.entries(byMonth).map(([month,promos])=>{
@@ -2168,7 +2173,7 @@ function rPromoWall(){
       return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0" class="divider">'
         +'<div style="width:38px;height:38px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;flex-shrink:0'+(isBelt?';box-shadow:0 0 0 2.5px '+b.bg+',0 0 0 4.5px var(--card),0 0 0 6px '+b.bg:'')+'">'+ini+'</div>'
         +'<div style="flex:1"><div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
-        +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(isBelt?'Belt promotion':'Stripe')+'&nbsp;·&nbsp;'+parseStaffName(p.promotedBy)+'</div></div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(isBelt?'Belt promotion':'Stripe')+'&nbsp;·&nbsp;'+_promoByLabel(p)+'</div></div>'
         +(isBelt?'<div>'+bb(p.toBelt,0,'adult')+'</div>':'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;color:var(--text3)">+1&nbsp;stripe</div>')
         +'</div>';
     }).join('');
@@ -2384,7 +2389,7 @@ function rRecentPromos(){
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">'
       +avStu(s,34)
       +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
-      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+parseStaffName(p.promotedBy)+' · '+dateStr+'</div></div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+_promoByLabel(p)+' · '+dateStr+'</div></div>'
       +'<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px">'
       +(p.isNewBelt
         ?('<div>'+bb(p.fromBelt,p.fromDeg,s.prog)+'<span style="font-size:16px;color:var(--text3);margin:0 4px">→</span>'+bb(p.toBelt,0,s.prog)+'</div>')
@@ -3884,9 +3889,9 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id').order('name'),
-      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active'),
+      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active'),
       c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url'),
-      c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
+      c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
       c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
@@ -3894,9 +3899,16 @@ async function hydrateData(){
       // can render the instructor's clean display name without a
       // second lookup. Order so rebuildTT sees a stable shape.
       c.from('classes').select('id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
+      // Etapa 5 — feedback hydrated from public.feedback. RLS scopes
+      // rows automatically: staff of unit see every student's feedback;
+      // students see their own; parents see their kid's. Each row is
+      // grouped by student_id below and attached to the matching
+      // STUDENTS row as `.feedback`, replacing whatever the JSONB
+      // students.feedback column produced.
+      c.from('feedback').select('id,student_id,instructor_id,text,date,created_at,instructor:staff!instructor_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(500),
     ]);
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),cl=get(7);
+    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),cl=get(7),fb=get(8);
     const uMap={};
     if(u.data&&u.data.length){
       u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
@@ -3904,7 +3916,11 @@ async function hydrateData(){
       touched=true;
     }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
     if(st.data&&st.data.length){
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null}));
+      // Etapa 5 — students.feedback JSONB is no longer the source of
+      // truth. Initialize each STUDENTS row with feedback:[]; the
+      // public.feedback fetch below populates them after grouping
+      // by student_id.
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
@@ -3924,10 +3940,42 @@ async function hydrateData(){
       });
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
-    if(pm.data&&pm.data.length){
-      PROMOTION_LOG=pm.data.map(r=>({id:r.legacy_id,_dbId:r.id,studentId:r.student&&r.student.legacy_id,studentName:r.student_name,fromBelt:r.from_belt,fromDeg:r.from_deg,toBelt:r.to_belt,toDeg:r.to_deg,isNewBelt:r.is_new_belt,date:r.date,promotedBy:r.promoted_by_name,unit:uMap[r.unit_id]||null}));
+    if(pm.data){
+      // Etapa 4 — public.promotions is the source of truth. Empty
+      // arrays clear the in-memory log instead of falling back to
+      // the (now-removed) mock seed.
+      PROMOTION_LOG=pm.data.map(r=>{
+        const pb=r.promoted_by;
+        // Shape the joined staff row for staffDisplayName().
+        const promotedByStaff=pb?{
+          name:parseStaffName(pb.full_name||''),
+          belt:pb.belt,
+          deg:pb.degree,
+          role:pb.role_title==='Head Professor'?'owner':'instructor',
+          roleTitle:pb.role_title||'Professor',
+        }:null;
+        return{
+          id:r.legacy_id||r.id,
+          _dbId:r.id,
+          studentId:r.student&&r.student.legacy_id,
+          studentName:r.student_name,
+          fromBelt:r.from_belt,
+          fromDeg:r.from_deg,
+          toBelt:r.to_belt,
+          toDeg:r.to_deg,
+          isNewBelt:r.is_new_belt,
+          date:r.date,
+          promotedBy:r.promoted_by_name,
+          promotedById:r.promoted_by_id||null,
+          promotedByStaff,
+          unit:uMap[r.unit_id]||null,
+        };
+      });
       touched=true;
-    }else if(pm.error)console.warn('[mybjj] hydrate promotions:',pm.error);
+    }else if(pm.error){
+      console.warn('[mybjj] hydrate promotions:',pm.error);
+      PROMOTION_LOG=[];
+    }
     if(ev.data&&ev.data.length){
       EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]}));
       touched=true;
@@ -3947,6 +3995,38 @@ async function hydrateData(){
     }else if(cl.error){
       console.warn('[mybjj] hydrate classes:',cl.error);
       CLASSES=[];rebuildTT();
+    }
+    // Etapa 5 — group public.feedback rows by student_id and attach.
+    // Each STUDENTS entry's `.feedback` array becomes the canonical
+    // list rendered in rStuProf / rProgress (feedbackTab). Shape
+    // matches what the existing render code reads: {ins, date, text,
+    // _dbId} so callers don't need rewriting.
+    if(fb.data){
+      const byStudent=new Map();
+      for(const r of fb.data){
+        const sid=r.student_id;if(!sid)continue;
+        const arr=byStudent.get(sid)||[];
+        const ins=r.instructor;
+        const insName=ins
+          ?staffDisplayName({name:parseStaffName(ins.full_name||''),belt:ins.belt,deg:ins.degree,role:ins.role_title==='Head Professor'?'owner':'instructor',roleTitle:ins.role_title||'Professor'})
+          :'Instructor';
+        arr.push({
+          _dbId:r.id,
+          ins:insName,
+          insStaffId:r.instructor_id||null,
+          date:_fmtJnyDate(r.date)||r.date,
+          text:r.text||'',
+        });
+        byStudent.set(sid,arr);
+      }
+      for(const s of STUDENTS){
+        const list=byStudent.get(s._dbId);
+        s.feedback=list||[];
+      }
+      touched=true;
+    }else if(fb.error){
+      console.warn('[mybjj] hydrate feedback:',fb.error);
+      for(const s of STUDENTS)s.feedback=[];
     }
     if(touched){console.log('[mybjj] hydrated from Supabase');render();if(canEditClassCounts())loadPhotoQueue();}
     else console.warn('[mybjj] hydration returned no rows — keeping local fallback');
