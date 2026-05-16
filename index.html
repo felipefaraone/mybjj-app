@@ -369,14 +369,44 @@ let UNITS=[
   {id:'kor2',name:'Busan (Myeongji)', country:'KR',city:'Busan',    active:true, address:'Myeongjigukje 2-ro, Gangseo-gu, Busan'},
   {id:'usa', name:'USA',              country:'US',city:'TBD',      active:false,address:'Coming soon'},
 ];
-let TT={
-  1:[{id:'m1',time:'06:00',type:'nogi',ins:'Prof. Mario',dur:60,aud:'Adults'},{id:'m2',time:'12:00',type:'alev',ins:'Prof. John',dur:60,aud:'Adults'},{id:'m3',time:'16:00',type:'jun',ins:'Prof. Felipe',dur:50,aud:'Kids'},{id:'m4',time:'17:00',type:'jun',ins:'Prof. Felipe',dur:50,aud:'Kids'},{id:'m5',time:'18:00',type:'nogi',ins:'Prof. Mario',dur:60,aud:'Adults'}],
-  2:[{id:'t1',time:'06:00',type:'alev',ins:'Prof. Felipe',dur:60,aud:'Adults'},{id:'t2',time:'12:00',type:'nogi',ins:'Prof. John',dur:60,aud:'Adults'},{id:'t3',time:'16:00',type:'jun',ins:'Prof. John',dur:50,aud:'Kids'},{id:'t4',time:'17:00',type:'jun',ins:'Prof. John',dur:50,aud:'Kids'},{id:'t5',time:'18:00',type:'alev',ins:'Prof. Mario',dur:60,aud:'Adults'},{id:'t6',time:'18:30',type:'beg',ins:'Prof. Mario',dur:45,aud:'Adults'}],
-  3:[{id:'w1',time:'06:00',type:'nogi',ins:'Prof. Mario',dur:60,aud:'Adults'},{id:'w2',time:'12:00',type:'alev',ins:'Prof. Felipe',dur:60,aud:'Adults'},{id:'w3',time:'16:00',type:'jun',ins:'Prof. John',dur:50,aud:'Kids'},{id:'w4',time:'17:00',type:'jun',ins:'Prof. John',dur:50,aud:'Kids'},{id:'w5',time:'18:00',type:'nogi',ins:'Prof. Mario',dur:60,aud:'Adults'}],
-  4:[{id:'h1',time:'06:00',type:'alev',ins:'Prof. Felipe',dur:60,aud:'Adults'},{id:'h2',time:'12:00',type:'nogi',ins:'Prof. Mario',dur:60,aud:'Adults'},{id:'h3',time:'16:00',type:'jun',ins:'Prof. Felipe',dur:50,aud:'Kids'},{id:'h4',time:'17:00',type:'jun',ins:'Prof. Felipe',dur:50,aud:'Kids'},{id:'h5',time:'18:00',type:'alev',ins:'Prof. John',dur:60,aud:'Adults'},{id:'h6',time:'18:30',type:'beg',ins:'Prof. John',dur:45,aud:'Adults'}],
-  5:[{id:'f1',time:'06:00',type:'nogi',ins:'Prof. John',dur:60,aud:'Adults'},{id:'f2',time:'12:00',type:'alev',ins:'Prof. Mario',dur:60,aud:'Adults'},{id:'f3',time:'17:00',type:'mma',ins:'Prof. Mario',dur:60,aud:'Adults'},{id:'f4',time:'17:00',type:'jmma',ins:'Prof. Felipe',dur:60,aud:'Kids'},{id:'f5',time:'18:00',type:'adv',ins:'Prof. Mario',dur:60,aud:'Adults'}],
-  6:[{id:'s1',time:'07:30',type:'nogi',ins:'Prof. Mario',dur:60,aud:'Adults'},{id:'s2',time:'08:30',type:'adv',ins:'Prof. Felipe',dur:90,aud:'Adults'},{id:'s3',time:'09:30',type:'omat',ins:'Prof. Mario',dur:60,aud:'All'},{id:'s4',time:'10:00',type:'mini',ins:'Prof. Felipe',dur:30,aud:'Kids'},{id:'s5',time:'10:30',type:'jun',ins:'Prof. John',dur:50,aud:'Kids'}],
-};
+// Etapa 1 — schedule lives in public.classes now. Hydrate populates
+// CLASSES (raw rows for every unit) and rebuildTT() projects them
+// into the legacy-shape TT object keyed by day_of_week (0..6) for the
+// currently selected unit. Consumers below keep reading TT[dow]
+// without rewrite.
+//
+// TT entries carry the same shape the old hardcoded const exposed
+// (id / time / type / ins / dur / aud) PLUS a new classId UUID that
+// downstream code uses when writing attendance rows.
+let CLASSES=[];
+let TT={0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
+function rebuildTT(){
+  const next={0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
+  const cur=UNITS.find(u=>u.name===S.unit);
+  const unitDbId=cur&&cur._dbId;
+  for(const row of CLASSES){
+    if(row.active===false)continue;
+    if(unitDbId&&row.unit_id!==unitDbId)continue;
+    const dow=row.day_of_week;
+    if(dow<0||dow>6)continue;
+    const insRow=row.instructor; // joined staff row (may be null)
+    const insName=insRow?staffDisplayName({name:insRow.full_name,belt:insRow.belt,deg:insRow.degree,role:insRow.role_title==='Head Professor'?'owner':'instructor',roleTitle:insRow.role_title||'Professor'}):'TBD';
+    next[dow].push({
+      // legacy_id keeps the synthetic class-instance id ("2026-05-16_18:00_m1")
+      // shape working for every existing consumer (_parseCID, getDC, etc).
+      id:row.legacy_id||row.id,
+      classId:row.id,
+      instructorId:row.instructor_id||null,
+      time:String(row.time||'').slice(0,5),
+      type:row.type,
+      ins:insName,
+      dur:row.duration_minutes||60,
+      aud:row.audience||'Adults',
+    });
+  }
+  for(const k of Object.keys(next))next[k].sort((a,b)=>a.time.localeCompare(b.time));
+  TT=next;
+}
 let SCHED=[
   {week:1,theme:'Closed Guard',color:'#1A5DAD',
    programs:['Fundamentals','Mixed','Advanced','Kids'],
@@ -3859,10 +3889,14 @@ async function hydrateData(){
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
-      c.from('attendance').select('id,student_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
+      c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
+      // Etapa 1 — schedule lives in public.classes. Join staff so we
+      // can render the instructor's clean display name without a
+      // second lookup. Order so rebuildTT sees a stable shape.
+      c.from('classes').select('id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
     ]);
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6);
+    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),cl=get(7);
     const uMap={};
     if(u.data&&u.data.length){
       u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
@@ -3903,9 +3937,17 @@ async function hydrateData(){
       touched=true;
     }else if(pw.error)console.warn('[mybjj] hydrate programme_weeks:',pw.error);
     if(at.data){
-      ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null}));
+      ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null}));
       touched=true;
     }else if(at.error)console.warn('[mybjj] hydrate attendance:',at.error);
+    if(cl.data){
+      CLASSES=cl.data;
+      rebuildTT();
+      touched=true;
+    }else if(cl.error){
+      console.warn('[mybjj] hydrate classes:',cl.error);
+      CLASSES=[];rebuildTT();
+    }
     if(touched){console.log('[mybjj] hydrated from Supabase');render();if(canEditClassCounts())loadPhotoQueue();}
     else console.warn('[mybjj] hydration returned no rows — keeping local fallback');
   }catch(e){
@@ -4560,7 +4602,7 @@ function openSub(s){
 }
 function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;S.pwdReauthAttempts=0;S.pwdResetSent=false;render();}
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
-function pickUnit(u){S.unit=u;S.unitOpen=false;render();}
+function pickUnit(u){S.unit=u;S.unitOpen=false;rebuildTT();render();}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
 // Parses the synthetic class id getDC() builds: 'YYYY-MM-DD_HH:MM_legacy'
 function _parseCID(id){const m=String(id||'').match(/^(\d{4}-\d{2}-\d{2})_(\d{2}:\d{2})_(.+)$/);if(!m)return null;return{date:m[1],time:m[2],legacy:m[3]};}
@@ -4574,11 +4616,11 @@ async function doCI(id){
   const c=_parseCID(id);if(!c){showSaveToast2('Class id malformed','error');return;}
   const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
   const unit=UNITS.find(u=>u.id===stu.unit);
-  const local={_dbId:'local-'+Date.now(),studentDbId:stu._dbId,classDate:c.date,classTime:c.time,classType:t.type||null,status:'going'};
+  const local={_dbId:'local-'+Date.now(),studentDbId:stu._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:'going'};
   ATTENDANCE.push(local);
   render();
   const cli=initSupabase();if(!cli||!stu._dbId)return;
-  const r=await cli.from('attendance').insert({student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:'going'}).select('id').single();
+  const r=await cli.from('attendance').insert({student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:'going'}).select('id').single();
   if(r&&r.error){
     // Roll back local
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
@@ -4707,11 +4749,11 @@ async function _setAttStatus(cid,sid,newStatus){
     // No existing row — staff is recording attendance for a student
     // who didn't self-check-in. INSERT a fresh row at the target
     // status, the trigger will recompute.
-    const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classDate:c.date,classTime:c.time,classType:t.type||null,status:newStatus,confirmedBy:confirmed,confirmedAt};
+    const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:newStatus,confirmedBy:confirmed,confirmedAt};
     ATTENDANCE.push(local);
     render();
     if(!cli)return;
-    const r=await cli.from('attendance').insert({student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt}).select('id').single();
+    const r=await cli.from('attendance').insert({student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt}).select('id').single();
     if(r&&r.error){
       const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
       console.warn('[mybjj] insert attendance ('+newStatus+'):',r.error);
@@ -4835,7 +4877,7 @@ async function addStudentToClass(cid,legacyId){
   const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
   const unit=UNITS.find(u=>u.id===s.unit);
   const nowISO=new Date().toISOString();
-  const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classDate:c.date,classTime:c.time,classType:tt.type||null,status:'present',confirmedBy:S.profile&&S.profile.id,confirmedAt:nowISO};
+  const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:tt.classId||null,classDate:c.date,classTime:c.time,classType:tt.type||null,status:'present',confirmedBy:S.profile&&S.profile.id,confirmedAt:nowISO};
   ATTENDANCE.push(local);
   // Update the per-class results inline AND the expanded attendees
   // list below the class card; no full re-render so input keeps focus.
@@ -4845,6 +4887,8 @@ async function addStudentToClass(cid,legacyId){
   const r=await cli.from('attendance').insert({
     student_id:s._dbId,
     unit_id:unit&&unit._dbId||null,
+    class_id:tt.classId||null,
+    class_legacy_id:tt.id||null,
     class_date:c.date,
     class_time:c.time,
     class_type:tt.type||null,
