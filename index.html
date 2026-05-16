@@ -141,6 +141,12 @@ html,body{overscroll-behavior-y:none}
 .dstrip{display:flex;gap:6px;overflow-x:auto;padding:0 16px;scrollbar-width:none}.dstrip::-webkit-scrollbar{display:none}
 .dp{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 10px;border-radius:12px;cursor:pointer;border:1px solid transparent;min-width:44px}
 .dp.active{background:#1A5DAD;border-color:#1A5DAD}.dp.hc{border-color:var(--border);background:var(--card)}.dp.hol{opacity:.4;cursor:default}.dp.nc{opacity:.35;cursor:default}
+/* Past day pills — muted text, no card shadow, no dot. Tappable when
+ * classes exist (matches today/future). The .active override below
+ * keeps the selected day fully styled even if it's in the past. */
+.dp.past:not(.active){background:transparent;border-color:transparent;box-shadow:none}
+.dp.past:not(.active) .dpn,.dp.past:not(.active) .dpd{color:var(--text3)}
+.dp.past .dpdot{display:none}
 .dpn{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3)}
 .dpd{font-family:'Bebas Neue',sans-serif;font-size:20px;line-height:1;color:var(--text)}
 .dp.active .dpn,.dp.active .dpd{color:#fff}
@@ -594,7 +600,22 @@ let ATTENDANCE=[];
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function isHol(d){return PH.has(dk(d));}
 function getDC(d){if(isHol(d))return [];return(TT[d.getDay()]||[]).map(c=>({...c,date:dk(d),id:dk(d)+'_'+c.time+'_'+c.id}));}
-function bdays(){const a=[];for(let i=0;i<7;i++){const d=new Date(TODAY);d.setDate(TODAY.getDate()+i);a.push(d);}return a;}
+// Mini-fix Batch 1 — schedule day strip spans 7 past + today + 6 future.
+// Past range matches the staff retroactive-edit window from Batch 1 so
+// instructors can navigate to any class they're allowed to mark. TODAY
+// computation uses the Sydney-local date so a late-night class doesn't
+// flip to "yesterday" via UTC drift.
+const SCHEDULE_PAST_DAYS=7;
+const SCHEDULE_FUTURE_DAYS=6;
+function bdays(){
+  const a=[];
+  for(let i=-SCHEDULE_PAST_DAYS;i<=SCHEDULE_FUTURE_DAYS;i++){
+    const d=new Date(TODAY);
+    d.setDate(TODAY.getDate()+i);
+    a.push(d);
+  }
+  return a;
+}
 function fd(d){return `${DS[d.getDay()]}, ${d.getDate()} ${MS[d.getMonth()]}`;}
 // gattFor: list of student legacy_ids checked in to a class (date + time).
 // Replaces the old hard-coded gatt(time) lookup table. Filters to
@@ -1581,7 +1602,24 @@ function jnyTypeChange(){
   if(suggested)labelEl.value=suggested;
 }
 
-function rDayStrip(){const days=bdays();const sk=dk(S.selDay||TODAY);return `<div class="dstrip-w"><div class="dstrip">${days.map(d=>{const k=dk(d);const isT=k===dk(TODAY);const isSel=k===sk;const hol=isHol(d);const hasCls=getDC(d).length>0&&!hol;let cls='dp '+(isSel?'active':hol?'hol':hasCls?'hc':'nc');return `<div class="${cls}" id="dp-${k}" onclick="${hol||(!hasCls&&!isSel)?'':'selDay(\''+k+'\')'}"><div class="dpn">${isT?'Today':DS[d.getDay()]}</div><div class="dpd">${d.getDate()}</div>${hol?'<div style="font-family:Barlow Condensed,sans-serif;font-size:7px;font-weight:700;color:var(--amber);letter-spacing:.5px;margin-top:1px">HOL</div>':hasCls?'<div class="dpdot"></div>':'<div style="height:5px"></div>'}</div>`;}).join('')}</div></div>`;}
+function rDayStrip(){
+  const days=bdays();
+  const tk=dk(TODAY);
+  const sk=dk(S.selDay||TODAY);
+  return `<div class="dstrip-w"><div class="dstrip">${days.map(d=>{
+    const k=dk(d);
+    const isT=k===tk;
+    const isSel=k===sk;
+    const isPast=k<tk; // string compare on YYYY-MM-DD is correct
+    const hol=isHol(d);
+    const hasCls=getDC(d).length>0&&!hol;
+    let cls='dp '+(isSel?'active':hol?'hol':hasCls?'hc':'nc');
+    if(isPast)cls+=' past';
+    const tappable=!hol&&(hasCls||isSel);
+    const onclick=tappable?`selDay('${k}')`:'';
+    return `<div class="${cls}" id="dp-${k}" onclick="${onclick}"><div class="dpn">${isT?'Today':DS[d.getDay()]}</div><div class="dpd">${d.getDate()}</div>${hol?'<div style="font-family:Barlow Condensed,sans-serif;font-size:7px;font-weight:700;color:var(--amber);letter-spacing:.5px;margin-top:1px">HOL</div>':(hasCls&&!isPast)?'<div class="dpdot"></div>':'<div style="height:5px"></div>'}</div>`;
+  }).join('')}</div></div>`;
+}
 
 
 function nextBeltColor(belt,prog){
