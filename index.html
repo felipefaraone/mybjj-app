@@ -467,10 +467,10 @@ let STAFF=[
   {id:'mario_s',name:'Prof. Mario',belt:'black',deg:5,initials:'MY',role:'owner',unit:'nb',
    totalClasses:0,journey:[{belt:'black',label:'Black belt',date:'Jan 2005',classes:0,done:true},{belt:'black',label:'1st degree',date:'Jun 2008',classes:0,done:true},{belt:'black',label:'2nd degree',date:'Mar 2012',classes:0,done:true},{belt:'black',label:'3rd degree',date:'Sep 2016',classes:0,done:true},{belt:'black',label:'4th degree',date:'Jan 2021',classes:0,done:true},{belt:'black',label:'5th degree',date:'Mar 2025',classes:0,done:true,current:true},{belt:'black',label:'6th degree',date:null,classes:null,done:false}],
    feedback:[]},
-  {id:'felipe_s',name:'Prof. Felipe',belt:'black',deg:1,initials:'FP',role:'admin',unit:'nb',
+  {id:'felipe_s',name:'Prof. Felipe',belt:'black',deg:1,initials:'FP',role:'instructor',unit:'nb',
    totalClasses:0,journey:[{belt:'white',label:'Started BJJ',date:'Mar 2010',classes:0,done:true},{belt:'blue',label:'Blue belt',date:'Sep 2012',classes:0,done:true},{belt:'purple',label:'Purple belt',date:'Jun 2015',classes:0,done:true},{belt:'brown',label:'Brown belt',date:'Apr 2020',classes:0,done:true},{belt:'brown',label:'Brown — 3rd stripe',date:'Oct 2025',classes:0,done:true,current:true},{belt:'black',label:'Black belt promotion',date:null,classes:null,done:false}],
    feedback:[{ins:'Prof. Mario',date:'Feb 2026',text:'Felipe is showing strong leadership in kids classes. Technically ready — working on the mat presence and teaching consistency before black belt.'}]},
-  {id:'john_s',name:'Prof. John',belt:'black',deg:1,initials:'JN2',role:'admin',unit:'hq',
+  {id:'john_s',name:'Prof. John',belt:'black',deg:1,initials:'JN2',role:'instructor',unit:'hq',
    totalClasses:0,journey:[{belt:'white',label:'Started BJJ',date:'Jan 2009',classes:0,done:true},{belt:'blue',label:'Blue belt',date:'Aug 2011',classes:0,done:true},{belt:'purple',label:'Purple belt',date:'Mar 2014',classes:0,done:true},{belt:'brown',label:'Brown belt',date:'Nov 2018',classes:0,done:true},{belt:'black',label:'Black belt',date:'Jun 2022',classes:0,done:true},{belt:'black',label:'1st degree',date:'Jan 2026',classes:0,done:true,current:true},{belt:'black',label:'2nd degree',date:null,classes:null,done:false}],
    feedback:[]},
 ];
@@ -621,15 +621,15 @@ const SME={id:'ff',name:'Felipe F.',belt:'white',deg:4,total:87,giTotal:52,grade
 // migration 32, the real Mario will have role='instructor' and his
 // ownership comes from units.owner_user_id.
 const AME={id:'mario',name:'Prof. Mario',belt:'black',deg:5,total:0,initials:'MY',role:'owner',_isUnitOwner:true};
-const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,initials:'FP',role:'admin'};
-const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
+const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,initials:'FP',role:'instructor'};
+const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'instructor',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
 const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{classReminder:true,cancellations:true,promotions:true,announcements:true,curriculum:false},naud:'all',nsent:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all'};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
-// 'going' | 'present' | 'absent'.
+// 'going' | 'present' (Batch 2B removed 'absent').
 let ATTENDANCE=[];
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -654,11 +654,11 @@ function bdays(){
 function fd(d){return `${DS[d.getDay()]}, ${d.getDate()} ${MS[d.getMonth()]}`;}
 // gattFor: list of student legacy_ids checked in to a class (date + time).
 // Replaces the old hard-coded gatt(time) lookup table. Filters to
-// status in ('going','present') so 'absent' rows don't surface as
+// status in ('going','present') — 'absent' was removed in Batch 2B
 // peers in the social-signal view.
 function gattFor(date,time){
   if(!date||!time)return [];
-  const rows=ATTENDANCE.filter(a=>a.classDate===date&&a.classTime===time&&a.status!=='absent');
+  const rows=ATTENDANCE.filter(a=>a.classDate===date&&a.classTime===time);
   return rows.map(a=>{
     const s=STUDENTS.find(x=>x._dbId===a.studentDbId);
     return s?s.id:null;
@@ -704,7 +704,7 @@ function av(ini,bg,fg,sz,role){
   sz=sz||32;const fs=Math.round(sz*.34);
   let ring='';
   if(role==='owner')ring='box-shadow:0 0 0 2.5px #dc2626,0 0 0 5px #111827,0 0 0 7px #dc2626;';
-  else if(role==='admin'&&bg==='#111827')ring='box-shadow:0 0 0 2.5px #374151,0 0 0 5px rgba(255,255,255,.08);';
+  else if((role==='instructor'||role==='admin')&&bg==='#111827')ring='box-shadow:0 0 0 2.5px #374151,0 0 0 5px rgba(255,255,255,.08);';
   return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:${fs}px;flex-shrink:0;${ring}">${ini}</div>`;
 }
 function beltSVG(belt,deg,prog,width){
@@ -751,20 +751,20 @@ function rVC(url,title){
 function rAtts(all,cid){
   if(!all.length)return '';const exp=!!S.expanded[cid];const P=3;const rest=all.length-P;
   const ms=sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return null;const m=s.prog==='kids'?BK:BA;const b=m[s.belt]||BA.white;return{s,b,me:sid===S.me.id};};
-  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';const nickPart=r.s.nickname?` <span style="font-style:italic;font-weight:400;opacity:.8">· ${r.s.nickname}</span>`:'';return `<div class="achip" onclick="viewStu('${sid}')" style="cursor:pointer;background:${r.me?'#1A5DAD':r.b.bg}20;border:1px solid ${r.me?'#1A5DAD':r.b.bg}40"><div class="acav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'#1A5DAD':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${nickPart}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
+  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="achip" onclick="viewStu('${sid}')" style="cursor:pointer;background:${r.me?'#1A5DAD':r.b.bg}20;border:1px solid ${r.me?'#1A5DAD':r.b.bg}40"><div class="acav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'#1A5DAD':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
   return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="aav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div>`;}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">${all.length>P?'See all':'Show all'}</span></div></div>`;
 }
 
 // Staff variant of rAtts — shown when an admin / owner / instructor
-// expands a class card. Each row has status-aware buttons: 'going'
-// shows Present / Absent; 'present' shows Mark Absent / Undo; 'absent'
-// shows Mark Present / Undo. Past classes remain fully editable;
-// classes more than 7 days in the future are locked (Batch 1).
+// expands a class card. Status model is now 'going' | 'present' only
+// (Batch 2B removed 'absent'). A 'going' row shows a Present button;
+// a 'present' row shows Undo (back to going). Past classes remain
+// fully editable; classes more than 7 days in the future are locked.
 function rAttsStaff(rows,cid){
-  const visible=rows.filter(r=>r.status==='going'||r.status==='present'||r.status==='absent');
+  const visible=rows.filter(r=>r.status==='going'||r.status==='present');
   const exp=!!S.expanded[cid];
   const cf=visible.filter(r=>r.status==='present').length;
-  const going=visible.filter(r=>r.status==='going'||r.status==='present').length;
+  const going=visible.length;
   const locked=isClassLocked(cid);
   // "+ Add student" appears for staff on every class — past, today,
   // or up to 7 days ahead. Locked far-future classes hide it.
@@ -778,23 +778,21 @@ function rAttsStaff(rows,cid){
   if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}</div>`;
   const btnFor=(r,s)=>{
     if(locked){
-      const lbl=r.status==='present'?'Present':r.status==='absent'?'Absent':'Going';
-      const tone=r.status==='present'?'var(--green-text)':r.status==='absent'?'var(--red-text)':'var(--text3)';
+      const lbl=r.status==='present'?'Present':'Going';
+      const tone=r.status==='present'?'var(--green-text)':'var(--text3)';
       return `<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;color:${tone};letter-spacing:.5px">${lbl.toUpperCase()}</div>`;
     }
-    if(r.status==='present')return `<button class="bsm" onclick="markA('${cid}','${s.id}')">Mark Absent</button><button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
-    if(r.status==='absent') return `<button class="bsm" onclick="markP('${cid}','${s.id}')">Mark Present</button><button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
-    return `<button class="bsm bpre" onclick="markP('${cid}','${s.id}')">Present</button><button class="bsm" onclick="markA('${cid}','${s.id}')">Absent</button>`;
+    if(r.status==='present')return `<button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
+    return `<button class="bsm bpre" onclick="markP('${cid}','${s.id}')">Present</button>`;
   };
   const statusPill=r=>{
     if(r.status==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">PRESENT</span>';
-    if(r.status==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px;margin-left:6px">ABSENT</span>';
     return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;margin-left:6px">GOING</span>';
   };
   return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId);if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">${s.name}${s.nickname?` <span style="font-style:italic;color:var(--text3);font-weight:400;margin-left:4px">· ${s.nickname}</span>`:''}${statusPill(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">${s.name}${statusPill(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
 }
 // _fmtJnyDate — journey entries store the date in two formats:
@@ -835,7 +833,7 @@ function rTL(journey,shareSid){
 
 function rInbox(){const ur=NOTIFS.filter(n=>!n.read).length;const IBACK=`<button class="sback" onclick="closeInbox()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:#1A5DAD;font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?`<div style="padding:40px;text-align:center;color:var(--text3)">No notifications</div>`:NOTIFS.map(n=>`<div class="nitem ${n.read?'':'unr'}" onclick="markRead('${n.id}')"><div class="ndot ${n.read?'rd':''}"></div><div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${n.title}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${n.body}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${n.time}</div></div><button class="ndel" onclick="event.stopPropagation();delNotif('${n.id}')">×</button></div>`).join('')}</div></div>`;}
 
-function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;const nick=myNickname();const greetName=isA?staffDisplayName(m):m.name;return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
+function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;const greetName=isA?staffDisplayName(m):m.name;return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div><div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
 
 function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'kidpeer':rKidPeer};return(ss[S.sub]||(() =>''))();}
 function rPEdit(){
@@ -851,22 +849,6 @@ function rPEdit(){
   var fn=cleanName.split(' ')[0]||'';
   var ln=needsLast?'':(cleanName.split(' ').slice(1).join(' ')||'');
   var isParentRole=me.role==='parent';
-  var nickSubject=null;
-  if(isParentRole){
-    nickSubject=parentSelectedChild();
-  } else if(S.profile&&S.profile.id){
-    nickSubject=STUDENTS.find(function(x){return x._userId===S.profile.id;})
-              ||STAFF.find(function(x){return x._userId===S.profile.id;})
-              ||S.profile;
-  } else {
-    nickSubject=stu;
-  }
-  var currentNickname=(nickSubject&&nickSubject.nickname)?String(nickSubject.nickname):'';
-  var nickSubjectFirst=isParentRole&&nickSubject?(nickSubject.name||'').split(' ')[0]:'';
-  var nickHelper=isParentRole
-    ? ('How <strong>'+(nickSubjectFirst||'your child')+'</strong> appears to other members')
-    : 'How you want to appear to other members';
-  var nickValueAttr=currentNickname.replace(/"/g,'&quot;');
   var nudge=needsLast?'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span style="font-size:12px;color:var(--amber-text);font-weight:500;line-height:1.4">Please add your last name so other members can find you.</span></div>':'';
   // Parents: surface each linked child with a photo-edit affordance so
   // the parent has one consolidated place (Edit profile) to change
@@ -890,7 +872,7 @@ function rPEdit(){
         +'</div>';
     }
   }
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Edit Profile</div></div><div class="sbody">${nudge}<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg><span style="font-size:12px;color:var(--amber-text);font-weight:500">Editing mode \u2014 changes are saved when you tap Save</span></div><div class="ef"><div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px;border-bottom:1px solid var(--border)">${avMe(72)}${beltInfo}<div style="font-size:11px;color:var(--text3)">Tap your photo to change it</div></div><div class="erow"><div class="elbl">First name</div><input class="einput" value="${fn}"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" value="${ln}"/></div>${isParentRole?'':`<div class="erow"><div class="elbl">Email</div><input class="einput" type="email" value="${((S.profile&&S.profile.email)||me.email||'—').replace(/"/g,'&quot;')}" disabled style="color:var(--text2);background:var(--bg);cursor:not-allowed"/></div><div style="font-size:11px;color:var(--text3);padding:4px 14px 8px;line-height:1.4">Login email. <a href="#" onclick="event.preventDefault();showSaveToast2('Change-email flow coming soon.');" style="color:#1A5DAD">Change email</a></div>`}<div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date" value="1986-09-15"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" value="+61 412 345 678"/></div><div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" type="number" value="79"/></div><div class="erow"><div class="elbl">Height (cm)</div><input class="einput" type="number" value="178"/></div></div>${childPhotos}<div class="slbl" style="margin-top:8px">Nickname (optional)</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">${nickHelper}</div><div class="ef"><div class="erow"><div class="elbl">Nickname</div><input id="pe-nickname" class="einput" maxlength="40" placeholder="e.g. The Half Guard Prince" value="${nickValueAttr}"/></div></div><div class="slbl" style="margin-top:8px">Emergency contact</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" value="Monica Faraone"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" value="+61 411 222 333"/></div></div><div style="height:16px"></div><button onclick="savePEdit()" class="bblue" style="margin-bottom:24px">Save changes</button></div></div>`;
+  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Edit Profile</div></div><div class="sbody">${nudge}<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg><span style="font-size:12px;color:var(--amber-text);font-weight:500">Editing mode \u2014 changes are saved when you tap Save</span></div><div class="ef"><div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px;border-bottom:1px solid var(--border)">${avMe(72)}${beltInfo}<div style="font-size:11px;color:var(--text3)">Tap your photo to change it</div></div><div class="erow"><div class="elbl">First name</div><input class="einput" value="${fn}"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" value="${ln}"/></div>${isParentRole?'':`<div class="erow"><div class="elbl">Email</div><input class="einput" type="email" value="${((S.profile&&S.profile.email)||me.email||'—').replace(/"/g,'&quot;')}" disabled style="color:var(--text2);background:var(--bg);cursor:not-allowed"/></div><div style="font-size:11px;color:var(--text3);padding:4px 14px 8px;line-height:1.4">Login email. <a href="#" onclick="event.preventDefault();showSaveToast2('Change-email flow coming soon.');" style="color:#1A5DAD">Change email</a></div>`}<div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date" value="1986-09-15"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" value="+61 412 345 678"/></div><div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" type="number" value="79"/></div><div class="erow"><div class="elbl">Height (cm)</div><input class="einput" type="number" value="178"/></div></div>${childPhotos}<div class="slbl" style="margin-top:8px">Emergency contact</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" value="Monica Faraone"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" value="+61 411 222 333"/></div></div><div style="height:16px"></div><button onclick="savePEdit()" class="bblue" style="margin-bottom:24px">Save changes</button></div></div>`;
 }
 
 function rNPrefs(){const ps=[{k:'classReminder',t:'Class reminder',s:'2 hours before a confirmed class'},{k:'cancellations',t:'Cancellations',s:'When a class you checked into is cancelled'},{k:'promotions',t:'Promotions & stripes',s:'When your belt or degree changes'},{k:'announcements',t:'Announcements',s:'General messages from the team'},{k:'curriculum',t:'New curriculum',s:'When the weekly schedule is updated'}];return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Notifications</div></div><div class="sbody"><div class="card" style="padding:0;overflow:hidden">${ps.map(p=>`<div class="togrow"><div class="toginfo"><div class="togtitle">${p.t}</div><div class="togsub">${p.s}</div></div><button class="toggle ${S.notif[p.k]?'on':''}" onclick="togNotif('${p.k}')"></button></div>`).join('')}</div><div style="height:24px"></div></div></div>`;}
@@ -1013,7 +995,6 @@ function rStaffProf(){
         +photo
         +'<div style="flex:1;min-width:0">'
           +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+staffDisplayName(s)+'</div>'
-          +(s.nickname?'<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:2px">'+s.nickname+'</div>':'')
           +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,'adult')+roleChip+'</div>'
           +'<div style="margin-top:5px;font-size:11px;color:var(--text3)">'+unitName+'</div>'
         +'</div>'
@@ -1259,7 +1240,6 @@ function rStuProf(){
     ${photoBlock}
     <div style="flex:1;min-width:0;padding-right:96px">
       <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">${s.name}</div>
-      ${s.nickname?`<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:2px">${s.nickname}</div>`:''}
       <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${bb(s.belt,s.deg||0,s.prog)}${progChip}${giTag}</div>
       <div style="margin-top:5px;font-size:11px;color:var(--text3)">${unitName}</div>
     </div>
@@ -1376,13 +1356,13 @@ function rJnySection(s,sidKey){
 // Attendance history block on rStuProf. Renders the last ~20 rows for
 // this student from the in-memory ATTENDANCE window (±21d). Each row
 // shows the date / time / class type / status pill, and — for present
-// or absent rows — a "Confirmed by Prof. X on <date>" trail when we
+// rows — a "Confirmed by Prof. X on <date>" trail when we
 // can resolve the confirming staff via their user_id. Visible to all
 // roles who can see the profile.
 function rAttHistory(s,canAdminView){
   if(!s||!s._dbId)return '';
   const rows=ATTENDANCE
-    .filter(a=>a.studentDbId===s._dbId&&(a.status==='present'||a.status==='absent'||a.status==='going'))
+    .filter(a=>a.studentDbId===s._dbId&&(a.status==='present'||a.status==='going'))
     .sort((a,b)=>(b.classDate+'_'+b.classTime).localeCompare(a.classDate+'_'+a.classTime))
     .slice(0,20);
   if(!rows.length){
@@ -1397,7 +1377,6 @@ function rAttHistory(s,canAdminView){
   };
   const pill=st=>{
     if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
-    if(st==='absent') return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
     return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
   };
   return '<div class="slbl" style="margin-top:18px">Attendance log</div>'
@@ -1408,7 +1387,6 @@ function rAttHistory(s,canAdminView){
       const when=r.confirmedAt?new Date(r.confirmedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):null;
       let trail='';
       if(r.status==='present'&&ins)trail='Confirmed by '+ins+(when?' on '+when:'');
-      else if(r.status==='absent'&&ins)trail='Marked absent by '+ins+(when?' on '+when:'');
       else if(r.status==='going')trail='Awaiting confirmation';
       const ctLabel=r.classType||'class';
       return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
@@ -1712,7 +1690,7 @@ function rClass(){
     // gated on me.role==='admin' only, so owner-role users fell through
     // to the check-in path and saw confusing "Opens at HH:MM" tiles on
     // every class.
-    const isStudentAdmin=me.role==='admin'&&!!myStu;
+    const isStudentAdmin=(me.role==='instructor'||me.role==='admin')&&!!myStu;
     const isStaffViewer=isStaffOrOwner()&&!isStudentAdmin;
     // Per-row window check (today only). Check-in opens 30 min before
     // start and stays open until 60 min after end. Outside that window
@@ -1828,7 +1806,6 @@ function rParentChildView(){
   const header='<div class="card" style="padding:16px;margin-bottom:12px"><div style="display:flex;align-items:center;gap:14px">'
     +avStu(child,64)
     +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+child.name+'</div>'
-    +(child.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px">'+child.nickname+'</div>':'')
     +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(child.belt,child.deg||0,child.prog)+'</div>'
     +'<div style="margin-top:5px;font-size:11px;color:var(--text3)">'+unitName+' · '+child.prog+'</div></div></div></div>';
   const gi=Math.max(child.giGrade||0,0);
@@ -1860,7 +1837,7 @@ function rParentChildView(){
 // rParentAttendance — child class history within the hydrated ±21d
 // window. Each row shows date / time / class type / status pill, with
 // the "Confirmed by Prof. X on <date>" trail when the row is present
-// or absent. Sorted desc by date+time.
+// Sorted desc by date+time.
 function rParentAttendance(child){
   if(!child||!child._dbId){
     return '<div class="card" style="padding:14px;text-align:center;font-size:12px;color:var(--text3)">No child selected.</div>';
@@ -1880,7 +1857,6 @@ function rParentAttendance(child){
   };
   const pill=st=>{
     if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
-    if(st==='absent') return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
     return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
   };
   return '<div class="card" style="padding:2px 14px">'
@@ -1890,7 +1866,6 @@ function rParentAttendance(child){
       const when=r.confirmedAt?new Date(r.confirmedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):null;
       let trail='';
       if(r.status==='present'&&ins) trail='Confirmed by '+ins+(when?' on '+when:'');
-      else if(r.status==='absent'&&ins) trail='Marked absent by '+ins+(when?' on '+when:'');
       else if(r.status==='going') trail='Checked in — awaiting confirmation';
       const ctLabel=r.classType||'class';
       return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
@@ -1907,7 +1882,7 @@ function setParentChild(id){S.parentChild=id;render();}
 function rMembers(){
   // Parents get a different lens: only see other kids in the same unit,
   // never adults, never their own children. Privacy-first peer view —
-  // first name + nickname + belt only, no contact info.
+  // first name + belt only, no contact info.
   if(isParent())return rParentMembers();
   const curU=UNITS.find(u=>u.name===S.unit);
   const curUnit=curU?curU.id:null;
@@ -1960,12 +1935,10 @@ function rMembers(){
     // title prefixed to the clean name; no INSTRUCTOR role chip (that
     // badge lives in admin contexts per the Layer 1 / Layer 2 split).
     const displayName=isInstr?staffDisplayName(m):m.name;
-    const subline=m.nickname||'';
     return '<div class="card" onclick="'+tapHandler+'" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
       +av
       +'<div style="flex:1;min-width:0">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+displayName+'</div>'
-      +(subline?'<div style="font-size:11px;color:var(--text3);'+(isInstr?'':'font-style:italic;')+'margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+subline+'</div>':'')
       +'</div>'
       +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog)+'</div>'
       +'</div>';
@@ -2024,18 +1997,16 @@ function rParentMembers(){
         +avStaff(m,40)
         +'<div style="flex:1;min-width:0">'
         +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
-        +(m.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.nickname+'</div>':'')
         +'</div>'
         +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult')+'</div>'
         +'</div>';
     }
-    // Kid peer row — privacy-first (first name + nickname only).
+    // Kid peer row — privacy-first (first name only).
     const first=(m.name||'').split(' ')[0]||'';
     return '<div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer" onclick="openKidPeer(\''+m.id+'\')">'
       +avStu(m,40)
       +'<div style="flex:1;min-width:0">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+first+'</div>'
-      +(m.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.nickname+'</div>':'')
       +'</div>'
       +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,m.prog)+'</div>'
       +'</div>';
@@ -2045,7 +2016,7 @@ function rParentMembers(){
 
 // Minimal peer view for parents tapping another kid. No last name,
 // no contact info, no parent fields, no journey detail — just photo,
-// first name, nickname, belt, class count. Read-only.
+// first name, belt, class count. Read-only.
 function openKidPeer(sid){S.kidPeer=sid;S.panelOpen=true;S.sub='kidpeer';render();}
 function rKidPeer(){
   const sid=S.kidPeer;
@@ -2057,7 +2028,6 @@ function rKidPeer(){
     +'<div class="card" style="padding:20px;text-align:center">'
     +'<div style="display:flex;justify-content:center;margin-bottom:12px">'+avStu(s,80)+'</div>'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;color:var(--text)">'+first+'</div>'
-    +(s.nickname?'<div style="font-size:12px;color:var(--text3);font-style:italic;margin-top:2px">'+s.nickname+'</div>':'')
     +'<div style="margin-top:10px">'+bb(s.belt,s.deg||0,s.prog)+'</div>'
     +'<div style="margin-top:14px;display:flex;justify-content:center;gap:24px">'
       +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--text);line-height:1">'+(s.total||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Total classes</div></div>'
@@ -2165,12 +2135,9 @@ function rPromoWall(){
       const bmap=BA;const b=bmap[p.toBelt]||BA.white;
       const ini=p.studentName.split(' ').map(w=>w[0]).join('').slice(0,2);
       const isBelt=p.isNewBelt;
-      const stu=STUDENTS.find(x=>x.id===p.studentId);
-      const nickLine=(stu&&stu.nickname)?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px">'+stu.nickname+'</div>':'';
       return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0" class="divider">'
         +'<div style="width:38px;height:38px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;flex-shrink:0'+(isBelt?';box-shadow:0 0 0 2.5px '+b.bg+',0 0 0 4.5px var(--card),0 0 0 6px '+b.bg:'')+'">'+ini+'</div>'
         +'<div style="flex:1"><div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
-        +nickLine
         +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(isBelt?'Belt promotion':'Stripe')+'&nbsp;·&nbsp;'+parseStaffName(p.promotedBy)+'</div></div>'
         +(isBelt?'<div>'+bb(p.toBelt,0,'adult')+'</div>':'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;color:var(--text3)">+1&nbsp;stripe</div>')
         +'</div>';
@@ -2240,7 +2207,7 @@ function evStack(ids){
 }
 
 // Admin-only named attendee list for events. Each row: avatar + name +
-// nickname; tapping a student row opens their profile.
+// tapping a student row opens their profile.
 function evNamedList(ids){
   const all=[...STUDENTS,...STAFF];
   if(!ids||!ids.length)return '';
@@ -2252,8 +2219,7 @@ function evNamedList(ids){
     const onclick=isStudent?'onclick="viewStu(\''+s.id+'\')"':'';
     const cursor=isStudent?';cursor:pointer':'';
     const avatar='<div style="width:24px;height:24px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:9px;flex-shrink:0">'+s.initials+'</div>';
-    const nick=s.nickname?' <span style="color:var(--text3);font-style:italic">· '+s.nickname+'</span>':'';
-    return '<div '+onclick+' style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:var(--text)'+cursor+'">'+avatar+'<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+nick+'</div></div>';
+    return '<div '+onclick+' style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:var(--text)'+cursor+'">'+avatar+'<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</div></div>';
   }).join('')+'</div>';
 }
 
@@ -2540,9 +2506,8 @@ function rStaff(){
     const remBtn=showRemove?'<button onclick="event.stopPropagation();openRemoveStaff(\''+s.id+'\')" title="Remove" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>':'';
     const actions=(showEdit||showRemove)?'<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">'+editBtn+remBtn+'</div>':'';
     const emailLine=s.email?'<div style="font-size:11px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.email+'</div>':'';
-    const nickLine=s.nickname?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.nickname+'</div>':'';
     const inviteRow=inviteStatusRow(s,'staff');
-    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid)" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div>'+nickLine+'<div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+' · '+b.label+degLbl+' · '+unitName+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
+    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid)" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+' · '+b.label+degLbl+' · '+unitName+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
   }).join('');
   return header+rows;
 }
@@ -2673,7 +2638,7 @@ async function sendInvite(dispatch){
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email:null,hasGi:true,name:fullName,nickname:null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email:null,hasGi:true,name:fullName,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail});
     }
     const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
     if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
@@ -2703,7 +2668,7 @@ async function sendInvite(dispatch){
       const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,email,prog:'adult',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,has_gi:true,journey:initialJourney,feedback:[],unit_id:unitDbId}).select('id,legacy_id').single();
       if(ins&&ins.error)console.warn('[mybjj] add adult transfer:',ins.error);
       else if(ins&&ins.data){
-        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email,hasGi:true,name:fullName,nickname:null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null});
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email,hasGi:true,name:fullName,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null});
       }
     }
   }
@@ -2887,36 +2852,28 @@ async function savePEdit(){
   if(S.profile)S.profile.full_name=full;
   const linkedStaff=STAFF.find(x=>x._userId&&S.profile&&x._userId===S.profile.id)||STAFF.find(x=>x.name===S.me.name);
   if(linkedStaff){linkedStaff.name=full;linkedStaff.initials=newInitials;}
-  const nickEl=document.getElementById('pe-nickname');
-  const rawNick=nickEl?nickEl.value.trim().slice(0,40):'';
-  const nickVal=rawNick||null;
-  const isParentEdit=S.me&&S.me.role==='parent';
-  let childLegacy=null;
-  if(isParentEdit){
-    const ch=parentSelectedChild();
-    if(ch){childLegacy=ch.id;ch.nickname=nickVal;}
-  } else {
-    const ownStu=(S.profile&&S.profile.id)?STUDENTS.find(x=>x._userId===S.profile.id):null;
-    if(ownStu)ownStu.nickname=nickVal;
-    if(linkedStaff)linkedStaff.nickname=nickVal;
-    if(S.profile)S.profile.nickname=nickVal;
-    S.me.nickname=nickVal;
-  }
   showSaveToast2('Profile updated');closeSub();
+  // Migration 34's sync_user_full_name_from_staff trigger keeps
+  // public.users.full_name in step when we write staff.full_name —
+  // but the user has no staff row when they're a plain student or
+  // parent, so we still write users.full_name directly here too.
   if(S.profile&&S.profile.id){
     withSb(c=>c.from('users').update({full_name:full}).eq('id',S.profile.id),'update self full_name');
   }
   if(linkedStaff&&linkedStaff._dbId){
     withSb(c=>c.from('staff').update({full_name:full,initials:newInitials}).eq('id',linkedStaff._dbId),'update self staff name');
   }
-  withSb(c=>c.rpc('set_my_nickname',{p_nickname:rawNick,p_child_legacy_id:childLegacy}),'set nickname');
 }
 
 function meFromProfile(p){
+  // Batch 2A migration 32 flipped users.role from 'owner' to
+  // 'instructor' for the single owner row. We keep the 'owner' branch
+  // for the cutover window in case claim_profile races the migration;
+  // post-migration only the 'instructor' path fires.
   const base=p.role==='owner'?AME:(p.role==='admin'||p.role==='instructor')?INSE_FELIPE:SME;
   let r;
   if(p.role==='owner') r='owner';
-  else if(p.role==='admin'||p.role==='instructor') r='admin';
+  else if(p.role==='admin'||p.role==='instructor') r='instructor';
   else if(p.role==='parent') r='parent';
   else r='student';
   // Bug 6 — load saved notification preferences into S.notif so toggles
@@ -2974,18 +2931,11 @@ function avStaff(s,size){
   return av(s.initials,b.bg,b.fg,size,s.role);
 }
 function isParent(){return !!(S.me&&S.me.role==='parent');}
-function myNickname(){
-  if(!S.me)return null;
-  const uid=S.profile&&S.profile.id;
-  if(uid){
-    const stu=STUDENTS.find(x=>x._userId===uid);
-    if(stu&&stu.nickname)return stu.nickname;
-    const sf=STAFF.find(x=>x._userId===uid);
-    if(sf&&sf.nickname)return sf.nickname;
-  }
-  if(S.profile&&S.profile.nickname)return S.profile.nickname;
-  return S.me.nickname||null;
-}
+// Batch 2B — nicknames removed. Helper kept as a hard null so any
+// remaining template literal that interpolates ${myNickname()} simply
+// renders nothing instead of breaking. Safe to drop once every
+// callsite has been pruned in a follow-up pass.
+function myNickname(){return null;}
 function parentChildren(){
   if(!isParent()||!S.profile||!S.profile.id) return [];
   return STUDENTS.filter(s=>s._parentUserId===S.profile.id);
@@ -3018,15 +2968,16 @@ function meUnitDbId(){const cur=UNITS.find(u=>u.name===S.unit);return cur&&cur._
 function isOwner(){return !!(S.me&&isUnitOwner(S.me));}
 // "Can act in admin contexts" — instructors AND unit owners both qualify.
 // Replaces the inline `S.me.role==='admin'||S.me.role==='owner'` pattern
-// that appeared everywhere admin-only UI was gated. Note S.me.role is
-// the in-memory normalized value ('admin' for instructors, 'owner' for
-// the legacy demo path); the DB value of users.role is 'instructor'
-// or 'student'/'parent' after migration 32.
-function isStaffOrOwner(){return !!(S.me&&(S.me.role==='admin'||S.me.role==='owner'||isOwner()));}
-function isProfessor(){return !!(S.me&&S.me.role==='admin'&&S.me.belt==='black');}
-function isCoach(){return !!(S.me&&S.me.role==='admin'&&S.me.belt!=='black');}
+// that appeared everywhere admin-only UI was gated. Batch 2B: S.me.role
+// is normalized to 'instructor' for any non-owner staff (was 'admin'
+// pre-2B). The 'owner' branch survives only as a legacy demo / cutover
+// fallback; isOwner() is the canonical signal sourced from the units
+// table.
+function isStaffOrOwner(){return !!(S.me&&(S.me.role==='instructor'||S.me.role==='owner'||isOwner()));}
+function isProfessor(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt==='black');}
+function isCoach(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt!=='black');}
 function canEditClassCounts(){return isOwner()||isProfessor();}
-function canDeleteFeedback(f){if(isOwner())return true;if(!f)return false;if(S.me&&S.me.role==='admin')return f.ins===S.me.name;return false;}
+function canDeleteFeedback(f){if(isOwner())return true;if(!f)return false;if(S.me&&S.me.role==='instructor')return f.ins===S.me.name;return false;}
 function friendlyMutationError(err){
   if(!err)return 'Something went wrong. Please try again.';
   let m=''; if(typeof err==='string')m=err; else if(err.message)m=err.message; else m=String(err);
@@ -3443,7 +3394,7 @@ async function saveAddStaff(){
   console.log('[mybjj] add staff OK');
   if(r&&r.data){
     const u=UNITS.find(x=>x.id===unitLegacy);
-    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,email:r.data.email||email,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:(r.data.role_title==='Head Professor')?'owner':'admin',roleTitle:r.data.role_title||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],feedback:[]});
+    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,email:r.data.email||email,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:(r.data.role_title==='Head Professor')?'owner':'instructor',roleTitle:r.data.role_title||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],feedback:[]});
   }
   S.addStaff=false;render();
   showSaveToast2("Staff member added. They'll get access on next sign-in with "+email+".");
@@ -3903,8 +3854,8 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id').order('name'),
-      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,nickname,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active'),
-      c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url,nickname'),
+      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active'),
+      c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
@@ -3919,17 +3870,23 @@ async function hydrateData(){
       touched=true;
     }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
     if(st.data&&st.data.length){
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,nickname:r.nickname||null,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
       STAFF=sf.data.map(r=>{
         // Strip any legacy "Prof." / "Professor " prefix at hydrate so
         // every downstream consumer sees a clean name + matching
-        // initials. The raw value is kept on _rawFullName for debug.
+        // initials.
         const cleanName=parseStaffName(r.full_name);
         const initials=_initialsFromName(cleanName)||r.initials||'??';
-        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,_rawFullName:r.full_name||null,nickname:r.nickname||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:r.role_title==='Head Professor'?'owner':'admin',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null};
+        // Batch 2A normalization: staff users.role is 'instructor' post
+        // migration 32, so the in-memory role label is 'instructor' for
+        // everyone except the Head Professor (kept 'owner' for legacy
+        // callsites; canonical ownership lives on units.owner_user_id).
+        // Batch 2B: nickname column dropped; _rawFullName dropped because
+        // migration 34 cleans the staff.full_name source data.
+        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:r.role_title==='Head Professor'?'owner':'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null};
       });
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
@@ -4778,7 +4735,6 @@ async function _setAttStatus(cid,sid,newStatus){
   await refreshStudentStats(s._dbId);render();
 }
 function markP(cid,sid){return _setAttStatus(cid,sid,'present');}
-function markA(cid,sid){return _setAttStatus(cid,sid,'absent');}
 function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
 
 // Item 2 — "+ Add student" modal. Lets an instructor register a walk-in
@@ -4822,7 +4778,7 @@ function _classAddListHTML(){
   if(!allProgs)list=list.filter(s=>s.prog===targetProg);
   if(needle){
     list=list.filter(s=>{
-      const blob=(s.name||'').toLowerCase()+' '+(s.nickname||'').toLowerCase();
+      const blob=(s.name||'').toLowerCase();
       return blob.indexOf(needle)>=0;
     });
   }
@@ -4840,7 +4796,7 @@ function _classAddListHTML(){
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);'+dim+'" '+onclick+'>'
       +avStu(s,34)
       +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+s.name+progChip+tag+'</div>'
-      +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt'+(s.nickname?' · '+s.nickname:'')+'</div></div>'
+      +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt</div></div>'
       +'</div>';
   }).join('');
 }
@@ -5171,7 +5127,6 @@ function rEditStu(){
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" value="${esc(last)}"/></div>
 ${isKids?'':`<div class="erow"><div class="elbl">Email</div><input class="einput" type="email" value="${esc(s.email||'—')}" disabled style="color:var(--text2);background:var(--bg);cursor:not-allowed"/></div>
 <div style="font-size:11px;color:var(--text3);padding:4px 14px 8px;line-height:1.4">Login email. <a href="#" onclick="event.preventDefault();openChangeEmail('student','${s.id}');" style="color:#1A5DAD">Change email</a></div>`}
-<div class="erow"><div class="elbl">Nickname</div><input class="einput" id="es-nick" maxlength="40" placeholder="Optional" value="${esc(s.nickname||'')}"/></div>
 <div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(s.dob||'')}"/></div>
 <div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(s.phone||'')}"/></div>
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender">${genders.map(g=>`<option value="${g.v}" ${g.v===(s.gender||'')?'selected':''}>${g.l}</option>`).join('')}</select></div>
@@ -5206,7 +5161,6 @@ async function saveEditStu(){
   const phone=val('es-phone');
   if(phone&&!/^[\d+\-()\s]{6,}$/.test(phone))return showErr('Phone format looks off.');
   const isKids=s.prog==='kids';
-  const nick=val('es-nick').slice(0,40)||null;
   const dob=val('es-dob')||null;
   const gender=val('es-gender')||null;
   const hasGi=!!document.getElementById('es-hasgi')?.classList.contains('on');
@@ -5230,7 +5184,7 @@ async function saveEditStu(){
   const initials=((first[0]||'')+(last[0]||'')).toUpperCase()||s.initials;
 
   // Local first (UI snappy), then DB.
-  s.name=fullName;s.initials=initials;s.nickname=nick;
+  s.name=fullName;s.initials=initials;
   s.dob=dob;s.phone=phone||null;s.gender=gender;s.hasGi=hasGi;
   s.weightKg=weightKg;s.heightCm=heightCm;
   s.ecName=ecName;s.ecPhone=ecPhone;
@@ -5243,7 +5197,7 @@ async function saveEditStu(){
 
   if(!s._dbId)return;
   const cli=initSupabase();if(!cli)return;
-  const payload={full_name:fullName,initials,nickname:nick,date_of_birth:dob,phone:phone||null,gender,has_gi:hasGi,weight_kg:weightKg,height_cm:heightCm,emergency_contact_name:ecName,emergency_contact_phone:ecPhone};
+  const payload={full_name:fullName,initials,date_of_birth:dob,phone:phone||null,gender,has_gi:hasGi,weight_kg:weightKg,height_cm:heightCm,emergency_contact_name:ecName,emergency_contact_phone:ecPhone};
   if(isKids){
     payload.parent_name=parentName;payload.parent_phone=parentPhone;payload.parent_email=parentEmail;
     payload.parent2_name=parent2Name;payload.parent2_phone=parent2Phone;payload.parent2_email=parent2Email;
@@ -5553,7 +5507,7 @@ function toggleRFEligible(){S.rfEligible=!S.rfEligible;render();}
 function toggleRFInactive(){S.rfInactive=!S.rfInactive;render();}
 function setRF(k,v){S[k]=v;render();}
 
-function fmt(n,role){if(role==='admin'||role==='owner')return n;var p=n.trim().split(' ');if(p.length<2)return p[0];return p[0]+' '+p[p.length-1][0]+'.';}
+function fmt(n,role){if(role==='instructor'||role==='owner'||role==='admin')return n;var p=n.trim().split(' ');if(p.length<2)return p[0];return p[0]+' '+p[p.length-1][0]+'.';}
 
 render();bootAuth();
 // PullToRefresh CDN script is `defer`red, so it may finish loading
