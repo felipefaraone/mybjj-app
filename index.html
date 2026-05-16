@@ -508,10 +508,39 @@ function canPromote(instructorBelt, instructorDeg, targetBelt, targetDeg, isNewB
 const IBJJF_MIN_MONTHS={white:0,blue:24,purple:18,brown:12,black:36};
 const IBJJF_MIN_AGE={white:4,blue:16,purple:16,brown:18,black:19};
 
-// Title based on role and belt
+// Title based on role and belt — kept for legacy callers that pass
+// the raw role string (e.g. the Add Staff modal preview). Most UI
+// should call staffTitle(target) below which derives ownership from
+// units.owner_user_id (Batch 2A).
 function instructorTitle(belt,deg,role){
   if(role==='owner') return 'Head Professor';
   if(belt==='black') return 'Professor';
+  return 'Coach';
+}
+// Batch 2A — separate ownership from permission.
+// isUnitOwner: returns true when `target` is the owner_user_id of any
+// unit in UNITS. Accepts:
+//   - S.me (uses target.id, the auth user_id)
+//   - STAFF row (uses target._userId)
+//   - { _isUnitOwner: true } for demo/local-dev shortcuts (doLogin
+//     hits this path before Supabase hydrate ever runs)
+function isUnitOwner(target,units){
+  if(!target)return false;
+  if(target._isUnitOwner===true)return true;
+  const uid=target._userId||target.id||null;
+  if(!uid)return false;
+  const list=units||(typeof UNITS!=='undefined'?UNITS:[]);
+  return list.some(u=>u&&u._ownerUserId===uid);
+}
+// staffTitle: the BJJ rank label shown next to a staff name. Replaces
+// instructorTitle(belt,deg,role) for callers that have the whole
+// staff or S.me record — derives "Head Professor" from unit ownership
+// instead of trusting role='owner' (which is being phased out by
+// migration 32).
+function staffTitle(target){
+  if(!target)return 'Coach';
+  if(isUnitOwner(target)) return 'Head Professor';
+  if(target.belt==='black') return 'Professor';
   return 'Coach';
 }
 
@@ -585,7 +614,13 @@ let EVENTS=[
 ];
 let NOTIFS=[{id:'n1',title:'Class cancelled — Wed 6pm',body:'The 18:00 No-Gi class this Wednesday is cancelled. See you Thursday!',time:'2h ago',read:false},{id:'n2',title:'New curriculum posted',body:'April curriculum is live. Week 1 focuses on Closed Guard.',time:'1d ago',read:false},{id:'n3',title:'Getting close!',body:'Only 18 more Gi classes until your next degree.',time:'3d ago',read:true}];
 const SME={id:'ff',name:'Felipe F.',belt:'white',deg:4,total:87,giTotal:52,grade:37,giGrade:22,initials:'FF',role:'student',prog:'adult'};
-const AME={id:'mario',name:'Prof. Mario',belt:'black',deg:5,total:0,initials:'MY',role:'owner'};
+// Batch 2A — AME is the local-dev demo user for Mario. role:'owner'
+// stays as a synthetic placeholder so legacy code paths that still
+// inspect S.me.role keep working, but the source of truth for the
+// "this user owns the academy" decision is _isUnitOwner. After
+// migration 32, the real Mario will have role='instructor' and his
+// ownership comes from units.owner_user_id.
+const AME={id:'mario',name:'Prof. Mario',belt:'black',deg:5,total:0,initials:'MY',role:'owner',_isUnitOwner:true};
 const INSE_FELIPE={id:'felipei',name:'Prof. Felipe',belt:'black',deg:1,total:0,initials:'FP',role:'admin'};
 const INSE_JOHN={id:'jon',name:'Jonathan C.',belt:'white',deg:2,total:52,giTotal:40,grade:22,giGrade:18,initials:'JN',role:'admin',prog:'adult'};
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
@@ -800,7 +835,7 @@ function rTL(journey,shareSid){
 
 function rInbox(){const ur=NOTIFS.filter(n=>!n.read).length;const IBACK=`<button class="sback" onclick="closeInbox()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:#1A5DAD;font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?`<div style="padding:40px;text-align:center;color:var(--text3)">No notifications</div>`:NOTIFS.map(n=>`<div class="nitem ${n.read?'':'unr'}" onclick="markRead('${n.id}')"><div class="ndot ${n.read?'rd':''}"></div><div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${n.title}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${n.body}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${n.time}</div></div><button class="ndel" onclick="event.stopPropagation();delNotif('${n.id}')">×</button></div>`).join('')}</div></div>`;}
 
-function rPanel(){const m=S.me;const isA=m.role==='admin'||m.role==='owner';const b=BA[m.belt]||BA.white;const nick=myNickname();const greetName=isA?staffDisplayName(m):m.name;return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${instructorTitle(m.belt,m.deg||0,m.role).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${S.me.role!=='owner'?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
+function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;const nick=myNickname();const greetName=isA?staffDisplayName(m):m.name;return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div>${nick?`<div style="font-size:12px;color:rgba(255,255,255,.7);font-style:italic;margin-top:2px">${nick}</div>`:''}<div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div></div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
 
 function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'kidpeer':rKidPeer};return(ss[S.sub]||(() =>''))();}
 function rPEdit(){
@@ -940,7 +975,7 @@ function rStaffProf(){
   const fbKey='staff:'+s.id;
   const sidKey='staff:'+s.id;
   const photo=avStaff(s,52);
-  const roleChip='<span style="background:var(--blue-tint);color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+instructorTitle(s.belt,s.deg||0,s.role).toUpperCase()+'</span>';
+  const roleChip='<span style="background:var(--blue-tint);color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+staffTitle(s).toUpperCase()+'</span>';
   const isActive=s._active!==false;
   // Section 4 — Details. Same shape as rStuProf so the eye lands in
   // the same spots when switching between profiles.
@@ -950,7 +985,7 @@ function rStaffProf(){
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
     +rDetailRow('Unit',unitName,'')
-    +rDetailRow('Role',s.roleTitle||instructorTitle(s.belt,s.deg||0,s.role),'')
+    +rDetailRow('Role',s.roleTitle||staffTitle(s),'')
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:'+(isActive?'var(--green-text)':'var(--amber-text)')+';font-weight:600">'+(isActive?'Active':'Inactive')+'</div></div>'
     +'</div>';
 
@@ -1019,7 +1054,7 @@ function saveStaffFb(sid){
 
 function rPromoPanel(s){
   const me=S.me;
-  if(me.role!=='admin'&&me.role!=='owner')return '';
+  if(!isStaffOrOwner())return '';
   const instrBelt=me.belt||'white';const instrDeg=me.deg||0;
   const ORDER_A=['white','blue','purple','brown','black'];
   const ORDER_K=['white','grey','yellow','orange','green'];
@@ -1678,7 +1713,7 @@ function rClass(){
     // to the check-in path and saw confusing "Opens at HH:MM" tiles on
     // every class.
     const isStudentAdmin=me.role==='admin'&&!!myStu;
-    const isStaffViewer=(me.role==='admin'||me.role==='owner')&&!isStudentAdmin;
+    const isStaffViewer=isStaffOrOwner()&&!isStudentAdmin;
     // Per-row window check (today only). Check-in opens 30 min before
     // start and stays open until 60 min after end. Outside that window
     // the row still renders — we just swap the action button for an
@@ -2043,12 +2078,12 @@ function rProgress(){
   // instructor career timeline, not personal training) whenever it
   // exists.
   var myStu=(S.profile&&STUDENTS.find(function(x){return x._userId===S.profile.id;}))||null;
-  if(s.role==='admin'||s.role==='owner'){
+  if(isStaffOrOwner()){
     var staff=STAFF.find(function(x){return x._userId&&S.profile&&x._userId===S.profile.id;})
              ||STAFF.find(function(x){return x.name===s.name;})
              ||null;
     var b=BA[s.belt]||BA.white;
-    var isOwner=s.role==='owner';
+    var isOwnerLocal=isOwner();
     if(staff){
       // Instructor with STAFF record — show rank, journey, techniques.
       // If they also have a student row (training in their own academy),
@@ -2056,7 +2091,7 @@ function rProgress(){
       // "Joined myBJJ app" or stripe promotions land where the user
       // looks for them.
       var sJourney=(myStu&&myStu.journey&&myStu.journey.length?myStu.journey:staff.journey)||[];
-      var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,'adult')+(isOwner?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>')+'</div>';
+      var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,'adult')+(isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>')+'</div>';
       var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney)+'</div>';
       var techsTab=rTechniquesLog(s);
       var iContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:rPromoWall();
@@ -2145,7 +2180,7 @@ function rPromoWall(){
   }).join('');
 }
 function rSchedule(){
-  const isA=S.me.role==='admin'||S.me.role==='owner';
+  const isA=isStaffOrOwner();
   const showEv=S.sweek===0;const w=SCHED.find(x=>x.week===S.sweek);
   const tabsHtml='<div class="stabs" style="margin-bottom:6px">'
     +'<button class="stab '+(showEv?'active':'')+'" onclick="setSweek(0)">Events</button>'
@@ -2329,14 +2364,14 @@ function rAdmin(){
   // Bug 2 — the "Presence" tab is gone. Staff now confirm attendance
   // inline on the Classes tab (rAttsStaff), so admin defaults to the
   // roster view for all roles.
-  const isOwner=S.me.role==='owner';
+  const owner=isOwner();
   const validAtabs={roster:1,manage:1,staff:1,photos:1};
   let effAtab=validAtabs[S.atab]?S.atab:'roster';
-  if(effAtab==='staff'&&!isOwner)effAtab='roster';
+  if(effAtab==='staff'&&!owner)effAtab='roster';
   const showPhotos=canEditClassCounts();
   const pendingCount=(S.photoQueue||[]).length;
   const photosTab=showPhotos?'<button class="stab '+(effAtab==='photos'?'active':'')+'" onclick="setAtab(\'photos\')">Photos'+(pendingCount?' <span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;background:var(--red);color:#fff;border-radius:9px;font-size:10px;font-weight:700;margin-left:4px;vertical-align:1px">'+pendingCount+'</span>':'')+'</button>':'';
-  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${effAtab==='roster'?'active':''}" onclick="setAtab('roster')">Roster</button><button class="stab ${effAtab==='manage'?'active':''}" onclick="setAtab('manage')">Classes</button>${isOwner?'<button class="stab '+(effAtab==="staff"?"active":"")+'" onclick="setAtab(\'staff\')">Staff</button>':''}${photosTab}</div>${effAtab==='roster'?rARoster():effAtab==='staff'?rStaff():effAtab==='photos'?rPhotoQueue():rManage()}${S.cdel?rCDel():''}${(S.editCls!==null&&S.editCls!==undefined)||S.addCls?rCEdit():''}${S.editJny?rJnyEditor():''}<div style="height:16px"></div>`;}
+  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${effAtab==='roster'?'active':''}" onclick="setAtab('roster')">Roster</button><button class="stab ${effAtab==='manage'?'active':''}" onclick="setAtab('manage')">Classes</button>${owner?'<button class="stab '+(effAtab==="staff"?"active":"")+'" onclick="setAtab(\'staff\')">Staff</button>':''}${photosTab}</div>${effAtab==='roster'?rARoster():effAtab==='staff'?rStaff():effAtab==='photos'?rPhotoQueue():rManage()}${S.cdel?rCDel():''}${(S.editCls!==null&&S.editCls!==undefined)||S.addCls?rCEdit():''}${S.editJny?rJnyEditor():''}<div style="height:16px"></div>`;}
 
 
 function rRecentPromos(){
@@ -2494,7 +2529,11 @@ function rStaff(){
     const b=BA[s.belt]||BA.white;
     const showEdit=canEditStaffRow(s);
     const showRemove=canRemoveStaffRow(s);
-    const roleLbl=s.role==='owner'?'Owner':'Professor';
+    // Roster role label — "Owner" badge now derives from units.owner_user_id
+    // (Batch 2A), not from the legacy s.role==='owner' check. Falls back
+    // to the legacy in-memory role so the Manage Staff list still shows
+    // "Owner" for Mario before migration 32 has been applied.
+    const roleLbl=(isUnitOwner(s)||s.role==='owner')?'Owner':'Professor';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     const degLbl=s.deg>0?' · '+s.deg+(s.deg===1?'st':s.deg===2?'nd':s.deg===3?'rd':'th')+' degree':'';
     const editBtn=showEdit?'<button onclick="event.stopPropagation();openEditStaff(\''+s.id+'\')" title="Edit" style="background:none;border:1px solid var(--border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
@@ -2563,7 +2602,7 @@ function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=me.role==='admin'||me.role==='owner';const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rClassAddStudentModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${instructorTitle(S.me.belt,S.me.deg||0,S.me.role)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${(S.me.role==='admin'||S.me.role==='owner')?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=NOTIFS.filter(n=>!n.read).length;const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rClassAddStudentModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?'<div class="bell-badge"></div>':''}</div><div class="hav" onclick="openPanel()">${me.initials}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -2701,8 +2740,7 @@ function getPromoReady(){
 // eligible student in their current unit. Tap → Roster with the
 // "Eligible only" filter chip pre-activated.
 function rPromoAlert(){
-  var isA=S.me.role==='admin'||S.me.role==='owner';
-  if(!isA)return '';
+  if(!isStaffOrOwner())return '';
   var ready=getPromoReady();
   if(ready.length===0)return '';
   var n=ready.length;
@@ -2973,7 +3011,18 @@ function meStaffDbId(){
   const s=STAFF.find(x=>x.name===(S.me&&S.me.name));return s&&s._dbId;
 }
 function meUnitDbId(){const cur=UNITS.find(u=>u.name===S.unit);return cur&&cur._dbId;}
-function isOwner(){return !!(S.me&&S.me.role==='owner');}
+// Batch 2A — "is the academy owner" now derives from units.owner_user_id
+// (via isUnitOwner) rather than users.role. Mario's role becomes
+// 'instructor' after migration 32; the OWNER signal moves to the units
+// table. Demo flow still works because AME carries _isUnitOwner:true.
+function isOwner(){return !!(S.me&&isUnitOwner(S.me));}
+// "Can act in admin contexts" — instructors AND unit owners both qualify.
+// Replaces the inline `S.me.role==='admin'||S.me.role==='owner'` pattern
+// that appeared everywhere admin-only UI was gated. Note S.me.role is
+// the in-memory normalized value ('admin' for instructors, 'owner' for
+// the legacy demo path); the DB value of users.role is 'instructor'
+// or 'student'/'parent' after migration 32.
+function isStaffOrOwner(){return !!(S.me&&(S.me.role==='admin'||S.me.role==='owner'||isOwner()));}
 function isProfessor(){return !!(S.me&&S.me.role==='admin'&&S.me.belt==='black');}
 function isCoach(){return !!(S.me&&S.me.role==='admin'&&S.me.belt!=='black');}
 function canEditClassCounts(){return isOwner()||isProfessor();}
@@ -3000,7 +3049,7 @@ function inviteStatusRow(target,kind){
   const isStaff=kind==='staff';
   const email=isParent?target.parentEmail:target.email;
   const userId=isParent?target._parentUserId:target._userId;
-  const canAct=!!(S.me&&(S.me.role==='owner'||S.me.role==='admin'));
+  const canAct=isStaffOrOwner();
   let label,bg,fg,action='';
   const chipStyle='padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase';
   const btnStyle='background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer';
@@ -3382,8 +3431,9 @@ async function saveAddStaff(){
   if(!/^\S+@\S+\.\S+$/.test(email))return showErr('Please enter a valid email address.');
   if(!unitLegacy)return showErr('Please select a unit.');
   if(!Number.isInteger(degree)||degree<0||degree>6)return showErr('Degree must be 0–6.');
-  if(role==='owner'&&!isOwner())return showErr('Only owners can create owner accounts.');
-  if(role==='owner'&&!confirm('Adding '+fname+' as an Owner gives full admin rights. Continue?'))return;
+  // Batch 2A — role=='owner' branch is dead; the dropdown only offers
+  // 'professor' now. Ownership is set on the units row in a separate
+  // flow (Manage Units), not while creating a staff account.
   const cli=initSupabase();
   if(!cli)return showErr('Connection issue. Please try again.');
   const btn=event&&event.target;if(btn)btn.disabled=true;
@@ -3419,17 +3469,12 @@ async function saveEditStaff(sid){
     if(belt)payload.belt=belt;
     if(Number.isInteger(degree))payload.degree=degree;
     if(unitLegacy)payload.unit_legacy_id=unitLegacy;
-    if(roleSel){
-      const currentlyOwner=(s.role==='owner');
-      const willBeOwner=(roleSel==='owner');
-      if(currentlyOwner!==willBeOwner){
-        willChangeRole=true;
-        const msg=willBeOwner?'Promoting to Owner gives full admin rights. Continue?':'Demoting from Owner to Professor will reduce their access. Continue?';
-        if(!confirm(msg))return;
-        payload.role=willBeOwner?'owner':'admin';
-        payload.role_title=willBeOwner?'Head Professor':'Professor';
-      }
-    }
+    // Batch 2A — the legacy "promote to Owner / demote from Owner"
+    // path is disabled here. Ownership is now controlled via
+    // units.owner_user_id and lives in the Manage Units flow, not in
+    // Edit Staff. The dropdown only offers Professor; the role-write
+    // side-effect that used to push users.role='owner' is gone.
+    // (Adding a unit-owner toggle is Batch 2A follow-up if needed.)
     // Belt / degree change → journey delta.
     //   Upgrade: append a clean auto milestone — "<Color> belt" for a
     //            belt change, "Nth degree" on black, "Nth stripe" on
@@ -3561,7 +3606,7 @@ function rAddStaffModal(){
 <div class="ef" style="margin-bottom:0">
 <div class="erow"><div class="elbl">Full name</div><input class="einput" id="as-fname" placeholder="e.g. Maria Silva" oninput="asAutoInitials()"/></div>
 <div class="erow"><div class="elbl">Email</div><input class="einput" id="as-email" type="email" placeholder="maria@example.com" autocapitalize="none" autocorrect="off"/></div>
-<div class="erow"><div class="elbl">Role</div><select class="esel" id="as-role"><option value="professor" selected>Professor</option>${isOwner()?'<option value="owner">Owner</option>':''}</select></div>
+<div class="erow"><div class="elbl">Role</div><select class="esel" id="as-role"><option value="professor" selected>Professor</option></select></div>
 <div class="erow"><div class="elbl">Belt</div><select class="esel" id="as-belt"><option value="black" selected>Black</option><option value="brown">Brown</option><option value="purple">Purple</option><option value="blue">Blue</option><option value="white">White</option></select></div>
 <div class="erow"><div class="elbl">Degree</div><select class="esel" id="as-degree">${[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'">'+i+'</option>').join('')}</select></div>
 <div class="erow"><div class="elbl">Unit</div><select class="esel" id="as-unit">${unitOpts}</select></div>
@@ -3595,7 +3640,7 @@ function rEditStaffModal(){
 <div class="erow"><div class="elbl">Belt</div><select class="esel" id="es-belt">${beltOpts}</select></div>
 <div class="erow"><div class="elbl">Degree</div><select class="esel" id="es-degree">${degOpts}</select></div>
 <div class="erow"><div class="elbl">Unit</div><select class="esel" id="es-unit">${unitOpts}</select></div>
-<div class="erow"><div class="elbl">Role</div><select class="esel" id="es-role"><option value="professor" ${s.role!=='owner'?'selected':''}>Professor</option><option value="owner" ${s.role==='owner'?'selected':''}>Owner</option></select></div>`:emailField;
+<div class="erow"><div class="elbl">Role</div><select class="esel" id="es-role"><option value="professor" selected>Professor</option></select></div>`:emailField;
   const selfOnlyNote=!ownerEdit?`<div class="inv" style="margin-bottom:12px;margin-top:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>You can update your name, initials and journey. Belt, degree and role changes are owner-only.</span></div>`:'';
   return `<div class="cov" onclick="closeEditStaff()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
 <button onclick="closeEditStaff()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -3857,7 +3902,7 @@ async function hydrateData(){
   let touched=false;
   try{
     const res=await Promise.allSettled([
-      c.from('units').select('id,legacy_id,name,country,city,address,active').order('name'),
+      c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id').order('name'),
       c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,feedback,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,nickname,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active'),
       c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url,nickname'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,unit_id,student:students(legacy_id)').order('date',{ascending:false}),
@@ -3870,7 +3915,7 @@ async function hydrateData(){
     const uMap={};
     if(u.data&&u.data.length){
       u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
-      UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active}));
+      UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active,_ownerUserId:r.owner_user_id||null}));
       touched=true;
     }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
     if(st.data&&st.data.length){
@@ -4741,7 +4786,7 @@ function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
 // search box + "all programmes" toggle. The per-class class_type tells
 // us the default programme filter (kids classes default to kids).
 function openClassAddStudent(cid){
-  if(!canEditClassCounts()&&!(S.me&&(S.me.role==='owner'||S.me.role==='admin')))return;
+  if(!canEditClassCounts()&&!isStaffOrOwner())return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
   S.classAdd={cid,q:'',allProgs:false,saving:false};
   render();
