@@ -414,7 +414,7 @@ function rebuildTT(){
     const dow=row.day_of_week;
     if(dow<0||dow>6)continue;
     const insRow=row.instructor; // joined staff row (may be null)
-    const insName=insRow?staffDisplayName({name:insRow.full_name,belt:insRow.belt,deg:insRow.degree,role:insRow.role_title==='Head Professor'?'owner':'instructor',roleTitle:insRow.role_title||'Professor'}):'TBD';
+    const insName=insRow?staffDisplayName({name:insRow.full_name,belt:insRow.belt,deg:insRow.degree,role:'instructor',roleTitle:insRow.role_title||'Professor'}):'TBD';
     next[dow].push({
       // legacy_id keeps the synthetic class-instance id ("2026-05-16_18:00_m1")
       // shape working for every existing consumer (_parseCID, getDC, etc).
@@ -502,15 +502,9 @@ function canPromote(instructorBelt, instructorDeg, targetBelt, targetDeg, isNewB
 const IBJJF_MIN_MONTHS={white:0,blue:24,purple:18,brown:12,black:36};
 const IBJJF_MIN_AGE={white:4,blue:16,purple:16,brown:18,black:19};
 
-// Title based on role and belt — kept for legacy callers that pass
-// the raw role string (e.g. the Add Staff modal preview). Most UI
-// should call staffTitle(target) below which derives ownership from
-// units.owner_user_id (Batch 2A).
-function instructorTitle(belt,deg,role){
-  if(role==='owner') return 'Head Professor';
-  if(belt==='black') return 'Professor';
-  return 'Coach';
-}
+// Etapa 6 — instructorTitle(belt,deg,role) deleted. Was the legacy raw-role
+// helper; every caller migrated to staffTitle(target) which sources
+// ownership from units.owner_user_id.
 // Batch 2A — separate ownership from permission.
 // isUnitOwner: returns true when `target` is the owner_user_id of any
 // unit in UNITS. Accepts:
@@ -568,10 +562,11 @@ function getStaffBJJTitle(s){
     if(deg>=7)return 'Master';        // coral belt (7th–8th)
     return 'Professor';               // 1st–6th degree
   }
-  // Coach: brown or purple belt with an instructor / owner role title.
+  // Coach: brown or purple belt holder whose staff.role_title is one of the
+  // BJJ titling values. Etapa 6 — sourced from role_title only; the legacy
+  // in-memory role==='owner'/'admin' fallbacks are gone with Batch 2A.
   const rt=String(s.role_title||s.roleTitle||'').toLowerCase();
-  const r=String(s.role||'').toLowerCase();
-  const isStaffRole=rt==='instructor'||rt==='owner'||rt==='professor'||rt==='head professor'||r==='admin'||r==='owner';
+  const isStaffRole=rt==='professor'||rt==='head professor';
   if((s.belt==='purple'||s.belt==='brown')&&isStaffRole)return 'Coach';
   return null;
 }
@@ -681,11 +676,15 @@ function studentEligibility(s){
     : need+' more class'+(need===1?'':'es')+' to become eligible for next stripe';
   return {eligible,reason,percent,required,grade};
 }
-function av(ini,bg,fg,sz,role){
+// Etapa 6 — av() takes an explicit isOwnerRing flag instead of inferring
+// owner-ness from a role string. Owner-ness is now a unit-level fact
+// (units.owner_user_id) and only avStaff() — which has the staff row in
+// hand — can resolve it.
+function av(ini,bg,fg,sz,role,isOwnerRing){
   sz=sz||32;const fs=Math.round(sz*.34);
   let ring='';
-  if(role==='owner')ring='box-shadow:0 0 0 2.5px #dc2626,0 0 0 5px #111827,0 0 0 7px #dc2626;';
-  else if((role==='instructor'||role==='admin')&&bg==='#111827')ring='box-shadow:0 0 0 2.5px #374151,0 0 0 5px rgba(255,255,255,.08);';
+  if(isOwnerRing)ring='box-shadow:0 0 0 2.5px #dc2626,0 0 0 5px #111827,0 0 0 7px #dc2626;';
+  else if(role==='instructor'&&bg==='#111827')ring='box-shadow:0 0 0 2.5px #374151,0 0 0 5px rgba(255,255,255,.08);';
   return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:${fs}px;flex-shrink:0;${ring}">${ini}</div>`;
 }
 function beltSVG(belt,deg,prog,width){
@@ -1667,11 +1666,8 @@ function rClass(){
     const isCf=!!myRow&&myRow.status==='present';
     const all=rows.filter(r=>r.status==='going'||r.status==='present').map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId);return s?s.id:null;}).filter(Boolean);
     // Owners and instructors are also staff viewers — they should see the
-    // "N going" indicator, not a check-in button. Previously this was
-    // gated on me.role==='admin' only, so owner-role users fell through
-    // to the check-in path and saw confusing "Opens at HH:MM" tiles on
-    // every class.
-    const isStudentAdmin=(me.role==='instructor'||me.role==='admin')&&!!myStu;
+    // "N going" indicator, not a check-in button.
+    const isStudentAdmin=me.role==='instructor'&&!!myStu;
     const isStaffViewer=isStaffOrOwner()&&!isStudentAdmin;
     // Per-row window check (today only). Check-in opens 30 min before
     // start and stays open until 60 min after end. Outside that window
@@ -2490,11 +2486,10 @@ function rStaff(){
     const b=BA[s.belt]||BA.white;
     const showEdit=canEditStaffRow(s);
     const showRemove=canRemoveStaffRow(s);
-    // Roster role label — "Owner" badge now derives from units.owner_user_id
-    // (Batch 2A), not from the legacy s.role==='owner' check. Falls back
-    // to the legacy in-memory role so the Manage Staff list still shows
-    // "Owner" for Mario before migration 32 has been applied.
-    const roleLbl=(isUnitOwner(s)||s.role==='owner')?'Owner':'Professor';
+    // Roster role label — "Owner" badge derives from units.owner_user_id
+    // (Batch 2A). Etapa 6 dropped the legacy s.role==='owner' fallback;
+    // all in-memory staff rows carry role:'instructor' now.
+    const roleLbl=isUnitOwner(s)?'Owner':'Professor';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     const degLbl=s.deg>0?' · '+s.deg+(s.deg===1?'st':s.deg===2?'nd':s.deg===3?'rd':'th')+' degree':'';
     const editBtn=showEdit?'<button onclick="event.stopPropagation();openEditStaff(\''+s.id+'\')" title="Edit" style="background:none;border:1px solid var(--border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
@@ -2868,13 +2863,13 @@ function meFromProfile(p){
   // enrichMeFromHydrate() once hydrate completes. Until then S.me
   // carries safe neutral defaults (white belt, zero counts) so the
   // first render doesn't error.
-  // Batch 2A migration 32 flipped users.role from 'owner' to
-  // 'instructor' for the single owner row. The 'owner' branch is
-  // kept for the cutover window; post-migration only the 'instructor'
-  // path fires.
+  // Etapa 6 — users.role values in the DB are 'instructor', 'student',
+  // or 'parent'. 'owner' was flipped to 'instructor' by migration 32;
+  // 'admin' was never a real DB value (only documentation). Both
+  // legacy branches dropped here. Ownership is sourced from
+  // units.owner_user_id via isUnitOwner().
   let r;
-  if(p.role==='owner') r='owner';
-  else if(p.role==='admin'||p.role==='instructor') r='instructor';
+  if(p.role==='instructor') r='instructor';
   else if(p.role==='parent') r='parent';
   else r='student';
   // Bug 6 — load saved notification preferences into S.notif so toggles
@@ -2904,7 +2899,7 @@ function meFromProfile(p){
     giGrade:0,
     prog:r==='student'||r==='parent'?'adult':'adult',
     hasGi:true,
-    roleTitle:r==='owner'?'Head Professor':r==='instructor'?'Professor':null,
+    roleTitle:r==='instructor'?'Professor':null,
   };
 }
 // Etapa 3 — after hydrate, refresh S.me from the canonical STAFF or
@@ -2922,7 +2917,7 @@ function enrichMeFromHydrate(){
     S.me.deg=sf.deg!=null?sf.deg:S.me.deg;
     S.me.initials=sf.initials||S.me.initials;
     S.me.name=sf.name||S.me.name;
-    S.me.role=sf.role==='owner'?'owner':'instructor';
+    S.me.role='instructor';
     S.me.roleTitle=sf.roleTitle||S.me.roleTitle||'Professor';
     if(sf.photoUrl)S.me.photoUrl=sf.photoUrl;
     return;
@@ -2979,7 +2974,7 @@ function avStaff(s,size){
   if(s&&s.photoUrl){
     return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';
   }
-  return av(s.initials,b.bg,b.fg,size,s.role);
+  return av(s.initials,b.bg,b.fg,size,s.role,isUnitOwner(s));
 }
 function isParent(){return !!(S.me&&S.me.role==='parent');}
 function parentChildren(){
@@ -3013,13 +3008,12 @@ function meUnitDbId(){const cur=UNITS.find(u=>u.name===S.unit);return cur&&cur._
 // table.
 function isOwner(){return !!(S.me&&isUnitOwner(S.me));}
 // "Can act in admin contexts" — instructors AND unit owners both qualify.
-// Replaces the inline `S.me.role==='admin'||S.me.role==='owner'` pattern
-// that appeared everywhere admin-only UI was gated. Batch 2B: S.me.role
-// is normalized to 'instructor' for any non-owner staff (was 'admin'
-// pre-2B). The 'owner' branch survives only as a legacy demo / cutover
-// fallback; isOwner() is the canonical signal sourced from the units
-// table.
-function isStaffOrOwner(){return !!(S.me&&(S.me.role==='instructor'||S.me.role==='owner'||isOwner()));}
+// Etapa 6 — S.me.role is always 'instructor' for staff (owner-ness is a
+// unit-level fact via isOwner()); the legacy 'owner'/'admin' role
+// branches are gone. isOwner() remains the canonical ownership signal
+// (sources from units.owner_user_id) and is included so a future
+// owner-without-instructor-role still resolves true.
+function isStaffOrOwner(){return !!(S.me&&(S.me.role==='instructor'||isOwner()));}
 function isProfessor(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt==='black');}
 function isCoach(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt!=='black');}
 function canEditClassCounts(){return isOwner()||isProfessor();}
@@ -3401,7 +3395,7 @@ function staffInitialsAuto(fullName){
 function avStaff(s,size){
   size=size||38;
   const b=BA[s.belt]||BA.white;
-  return av(s.initials,b.bg,b.fg,size,s.role);
+  return av(s.initials,b.bg,b.fg,size,s.role,isUnitOwner(s));
 }
 
 function openAddStaff(){if(!isOwner())return;S.addStaff=true;render();setTimeout(()=>{const el=document.getElementById('as-fname');if(el)el.focus();},50);}
@@ -3428,9 +3422,10 @@ async function saveAddStaff(){
   if(!/^\S+@\S+\.\S+$/.test(email))return showErr('Please enter a valid email address.');
   if(!unitLegacy)return showErr('Please select a unit.');
   if(!Number.isInteger(degree)||degree<0||degree>6)return showErr('Degree must be 0–6.');
-  // Batch 2A — role=='owner' branch is dead; the dropdown only offers
-  // 'professor' now. Ownership is set on the units row in a separate
-  // flow (Manage Units), not while creating a staff account.
+  // The add-staff dropdown only offers 'professor'. Ownership is set
+  // on the units row in a separate flow (Manage Units), not while
+  // creating a staff account. Etapa 7's migration 39 tightens
+  // add_staff_member to reject any other p_role value server-side.
   const cli=initSupabase();
   if(!cli)return showErr('Connection issue. Please try again.');
   const btn=event&&event.target;if(btn)btn.disabled=true;
@@ -3440,7 +3435,7 @@ async function saveAddStaff(){
   console.log('[mybjj] add staff OK');
   if(r&&r.data){
     const u=UNITS.find(x=>x.id===unitLegacy);
-    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,email:r.data.email||email,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:(r.data.role_title==='Head Professor')?'owner':'instructor',roleTitle:r.data.role_title||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],feedback:[]});
+    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,email:r.data.email||email,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:'instructor',roleTitle:r.data.role_title||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],feedback:[]});
   }
   S.addStaff=false;render();
   showSaveToast2("Staff member added. They'll get access on next sign-in with "+email+".");
@@ -3941,13 +3936,13 @@ async function hydrateData(){
         // initials.
         const cleanName=parseStaffName(r.full_name);
         const initials=_initialsFromName(cleanName)||r.initials||'??';
-        // Batch 2A normalization: staff users.role is 'instructor' post
-        // migration 32, so the in-memory role label is 'instructor' for
-        // everyone except the Head Professor (kept 'owner' for legacy
-        // callsites; canonical ownership lives on units.owner_user_id).
+        // Etapa 6 — in-memory STAFF rows carry role:'instructor' for
+        // everyone. Ownership is sourced from units.owner_user_id via
+        // isUnitOwner(s); role_title still distinguishes 'Head
+        // Professor' vs 'Professor' for BJJ-title rendering.
         // Batch 2B: nickname column dropped; _rawFullName dropped because
         // migration 34 cleans the staff.full_name source data.
-        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:r.role_title==='Head Professor'?'owner':'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null};
+        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null};
       });
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
@@ -3962,7 +3957,7 @@ async function hydrateData(){
           name:parseStaffName(pb.full_name||''),
           belt:pb.belt,
           deg:pb.degree,
-          role:pb.role_title==='Head Professor'?'owner':'instructor',
+          role:'instructor',
           roleTitle:pb.role_title||'Professor',
         }:null;
         return{
@@ -4019,7 +4014,7 @@ async function hydrateData(){
         const arr=byStudent.get(sid)||[];
         const ins=r.instructor;
         const insName=ins
-          ?staffDisplayName({name:parseStaffName(ins.full_name||''),belt:ins.belt,deg:ins.degree,role:ins.role_title==='Head Professor'?'owner':'instructor',roleTitle:ins.role_title||'Professor'})
+          ?staffDisplayName({name:parseStaffName(ins.full_name||''),belt:ins.belt,deg:ins.degree,role:'instructor',roleTitle:ins.role_title||'Professor'})
           :'Instructor';
         arr.push({
           _dbId:r.id,
@@ -5643,7 +5638,9 @@ function toggleRFEligible(){S.rfEligible=!S.rfEligible;render();}
 function toggleRFInactive(){S.rfInactive=!S.rfInactive;render();}
 function setRF(k,v){S[k]=v;render();}
 
-function fmt(n,role){if(role==='instructor'||role==='owner'||role==='admin')return n;var p=n.trim().split(' ');if(p.length<2)return p[0];return p[0]+' '+p[p.length-1][0]+'.';}
+// Etapa 6 — drops legacy 'owner'/'admin' branches; in-memory role for
+// staff is always 'instructor' now.
+function fmt(n,role){if(role==='instructor')return n;var p=n.trim().split(' ');if(p.length<2)return p[0];return p[0]+' '+p[p.length-1][0]+'.';}
 
 render();bootAuth();
 // PullToRefresh CDN script is `defer`red, so it may finish loading
