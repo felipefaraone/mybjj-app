@@ -345,6 +345,89 @@ const PROGRESSION_THRESHOLDS={
 const CT=[{id:'nogi',lbl:'No-Gi',tc:'tn',gi:false},{id:'alev',lbl:'All Levels',tc:'ta',gi:true},{id:'beg',lbl:'Beginner',tc:'tb',gi:true},{id:'adv',lbl:'Advanced',tc:'tv',gi:true},{id:'omat',lbl:'Open Mat',tc:'to',gi:false},{id:'mma',lbl:'MMA',tc:'tm',gi:false},{id:'jun',lbl:'Kids',tc:'tj',gi:true},{id:'jnogi',lbl:'Kids No-Gi',tc:'tn',gi:false},{id:'jmma',lbl:'Kids MMA',tc:'tm',gi:false},{id:'mini',lbl:'Mini Champs',tc:'ti',gi:false}];
 const AUD=['Adults','Kids','All'];
 const DL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+// G9 Phase 1 — adult promotion criteria from John's data (see
+// 07-promotion-criteria.md). `classes` are INCREMENTAL since the
+// previous milestone; `months` is the minimum dwell-time on the
+// previous marker. Kids belts use compound encoding (stripe+grade)
+// and are Phase 2 work — UI shows a placeholder until then.
+const PROMO_CRITERIA={
+  adults:[
+    {belt:'white', marker:'1st_stripe',label:'1st stripe', classes:10,months:1},
+    {belt:'white', marker:'2nd_stripe',label:'2nd stripe', classes:20,months:1},
+    {belt:'white', marker:'3rd_stripe',label:'3rd stripe', classes:30,months:2},
+    {belt:'white', marker:'4th_stripe',label:'4th stripe', classes:40,months:2},
+    {belt:'white', marker:'promotion', label:'Blue belt',  classes:20,months:2},
+    {belt:'blue',  marker:'1st_stripe',label:'1st stripe', classes:40,months:4},
+    {belt:'blue',  marker:'2nd_stripe',label:'2nd stripe', classes:80,months:5},
+    {belt:'blue',  marker:'3rd_stripe',label:'3rd stripe', classes:80,months:5},
+    {belt:'blue',  marker:'4th_stripe',label:'4th stripe', classes:80,months:5},
+    {belt:'blue',  marker:'promotion', label:'Purple belt',classes:40,months:5},
+    {belt:'purple',marker:'1st_stripe',label:'1st stripe', classes:40,months:3},
+    {belt:'purple',marker:'2nd_stripe',label:'2nd stripe', classes:80,months:3},
+    {belt:'purple',marker:'3rd_stripe',label:'3rd stripe', classes:80,months:4},
+    {belt:'purple',marker:'4th_stripe',label:'4th stripe', classes:80,months:4},
+    {belt:'purple',marker:'promotion', label:'Brown belt', classes:40,months:4},
+    {belt:'brown', marker:'1st_stripe',label:'1st stripe', classes:40,months:3},
+    {belt:'brown', marker:'2nd_stripe',label:'2nd stripe', classes:60,months:3},
+    {belt:'brown', marker:'3rd_stripe',label:'3rd stripe', classes:60,months:4},
+    {belt:'brown', marker:'4th_stripe',label:'4th stripe', classes:60,months:4},
+    {belt:'brown', marker:'promotion', label:'Black belt', classes:40,months:4}
+  ]
+};
+// getNextMarker — looks up the row in PROMO_CRITERIA the student is
+// working toward. Returns null for black belt (no further markers)
+// and for kids (Phase 2). Reads student.deg (in-memory degree slot;
+// hydrate maps students.degree → deg).
+function getNextMarker(student){
+  if(!student)return null;
+  if(student.prog!=='adult')return null;
+  if(student.belt==='black')return null;
+  const path=PROMO_CRITERIA.adults;
+  const belt=student.belt;
+  const degree=student.deg||0;
+  if(degree<4){
+    const markerKey=['1st_stripe','2nd_stripe','3rd_stripe','4th_stripe'][degree];
+    return path.find(p=>p.belt===belt&&p.marker===markerKey);
+  }
+  return path.find(p=>p.belt===belt&&p.marker==='promotion');
+}
+function monthsBetween(from,to){
+  const f=new Date(from);const t=new Date(to);
+  return(t.getFullYear()-f.getFullYear())*12+(t.getMonth()-f.getMonth());
+}
+// Anchor for the months gate. Prefer the cached last_marker_date
+// (set by migration 45's recompute_student_stats from public.promotions).
+// When the student has never been promoted, fall back to their
+// students.created_at — matches the legacy recompute semantics so a
+// brand-new student doesn't appear "instantly time-eligible".
+function getLastMarkerDate(student){
+  if(student&&student._lastMarkerDate)return new Date(student._lastMarkerDate);
+  if(student&&student._createdAt)return new Date(student._createdAt);
+  return new Date();
+}
+function getEligibilityStatus(student){
+  if(!student)return null;
+  if(student.prog==='kids'){
+    // TODO Phase 2 — kids belts use compound stripe+grade encoding;
+    // wire up real criteria when that schema lands.
+    return {status:'pending',message:'Promotion criteria pending — ask coach'};
+  }
+  if(student.belt==='black')return null;
+  const next=getNextMarker(student);
+  if(!next)return null;
+  const lastDate=getLastMarkerDate(student);
+  const classesDone=student.grade||0;
+  const monthsDone=monthsBetween(lastDate,new Date());
+  const eligible=classesDone>=next.classes&&monthsDone>=next.months;
+  return {
+    status:eligible?'eligible':'in_progress',
+    label:next.label,
+    classes_done:classesDone,
+    classes_target:next.classes,
+    months_done:monthsDone,
+    months_target:next.months
+  };
+}
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 // Etapa 3 — INS hardcoded instructor list deleted. Dropdowns now read
@@ -2517,6 +2600,18 @@ function rARosterListInner(){
       : '<span style="color:'+(near?(isProm?'#111827':'#1A5DAD'):'var(--text2)')+';font-weight:'+(near?600:400)+'">'+(s.grade||0)+'/'+goal+' · '+lbl.toLowerCase()+'</span>'
         +' &nbsp;·&nbsp; <span style="color:var(--text3)">'+s.total+' total</span>';
     const breakdownLine='<div style="font-size:11px;color:var(--text3);margin-top:4px">Gi: '+giSince+' · No-Gi: '+noGiSince+(noGiOnly?' · <span style="color:var(--amber-text)">No-Gi only — Gi required for IBJJF</span>':'')+'</div>';
+    // G9 Phase 1 — eligibility hint driven by PROMO_CRITERIA. Adults
+    // only; kids show a "criteria pending" placeholder until Phase 2.
+    // Black belts and any null result render nothing.
+    const eg=getEligibilityStatus(s);
+    let eligHint='';
+    if(eg&&eg.status==='eligible'){
+      eligHint='<div style="margin-top:6px"><span style="display:inline-block;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">Ready: '+eg.label+'</span></div>';
+    } else if(eg&&eg.status==='in_progress'){
+      eligHint='<div style="font-size:11px;color:var(--text3);margin-top:4px">'+eg.classes_done+'/'+eg.classes_target+' classes · '+eg.months_done+'/'+eg.months_target+' mo</div>';
+    } else if(eg&&eg.status==='pending'){
+      eligHint='<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:4px">'+eg.message+'</div>';
+    }
     const inviteRow=inviteStatusRow(s,s.prog==='kids'?'kidParent':'student');
     return '<div class="card" style="cursor:pointer" onclick="viewStu(this.dataset.sid)" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
@@ -2527,6 +2622,7 @@ function rARosterListInner(){
       +'<div style="font-size:12px;color:var(--text2);margin-bottom:6px">'+progressLine+'</div>'
       +pbBelt(pct,100,s.belt,s.prog)
       +breakdownLine
+      +eligHint
       +(isElig?'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);margin-top:6px;letter-spacing:.5px">ELIGIBLE FOR NEXT STRIPE</div>':'')
       +inviteRow
       +'</div>';
@@ -4085,7 +4181,7 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id').order('name'),
-      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active'),
+      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date'),
       c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
@@ -4116,7 +4212,7 @@ async function hydrateData(){
       // truth. Initialize each STUDENTS row with feedback:[]; the
       // public.feedback fetch below populates them after grouping
       // by student_id.
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
