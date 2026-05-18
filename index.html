@@ -848,7 +848,7 @@ function rInbox(){
     const titleHtml=escHtml(n.title||'');
     const bodyHtml=n.body?`<div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(n.body)}</div>`:'';
     const timeHtml=`<div style="font-size:11px;color:var(--text3);margin-top:3px">${escHtml(notifRelTime(n.created_at))}</div>`;
-    return `<div class="nitem ${isRead?'':'unr'}" onclick="markRead('${escHtml(n.id)}')"><div class="ndot ${isRead?'rd':''}"></div><div style="flex:1;min-width:0"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${titleHtml}</div>${bodyHtml}${timeHtml}</div><button class="ndel" title="Dismiss" aria-label="Dismiss" onclick="event.stopPropagation();dismissNotif('${escHtml(n.id)}')">×</button></div>`;
+    return `<div class="nitem ${isRead?'':'unr'}" onclick="openNotif('${escHtml(n.id)}')"><div class="ndot ${isRead?'rd':''}"></div><div style="flex:1;min-width:0"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${titleHtml}</div>${bodyHtml}${timeHtml}</div><button class="ndel" title="Dismiss" aria-label="Dismiss" onclick="event.stopPropagation();dismissNotif('${escHtml(n.id)}')">×</button></div>`;
   }).join('');
   return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur>99?'99+':ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:#1A5DAD;font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?empty:list}</div></div>`;
 }
@@ -1500,7 +1500,10 @@ async function saveFbModal(sid){
     withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');
     withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');
   }
-  showSaveToast2('Note saved.');
+  // G1 follow-up — explicit recipient + longer dwell so the instructor
+  // sees confirmation that the feedback actually reached its target.
+  const recipientFirst=((s.name||'').split(' ')[0])||'student';
+  showSaveToast2('Feedback sent to '+recipientFirst+'.',undefined,4000);
 }
 
 // Promote modal (Phase 8 v2). Replaces the inline rPromoPanel buttons —
@@ -2206,11 +2209,16 @@ function rPromoWall(){
   return Object.entries(byMonth).map(([month,promos])=>{
     const rows=promos.map(p=>{
       const bmap=BA;const b=bmap[p.toBelt]||BA.white;
-      const ini=p.studentName.split(' ').map(w=>w[0]).join('').slice(0,2);
+      // G1 follow-up — guard against null/empty studentName. Same
+      // pattern as rMonthPromos' hotfix from 003bf1d; previously
+      // skipped because it was out of that batch's scope.
+      const safeName=(p.studentName||'').trim();
+      const ini=safeName?safeName.split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase():'??';
+      const displayName=safeName||'Unknown student';
       const isBelt=p.isNewBelt;
       return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0" class="divider">'
         +'<div style="width:38px;height:38px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;flex-shrink:0'+(isBelt?';box-shadow:0 0 0 2.5px '+b.bg+',0 0 0 4.5px var(--card),0 0 0 6px '+b.bg:'')+'">'+ini+'</div>'
-        +'<div style="flex:1"><div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+p.studentName+'</div>'
+        +'<div style="flex:1"><div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+displayName+'</div>'
         +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(isBelt?'Belt promotion':'Stripe')+'&nbsp;·&nbsp;'+_promoByLabel(p)+'</div></div>'
         +(isBelt?'<div>'+bb(p.toBelt,0,'adult')+'</div>':'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;color:var(--text3)">+1&nbsp;stripe</div>')
         +'</div>';
@@ -2762,7 +2770,11 @@ async function sendInvite(dispatch){
     showSaveToast2(fullName+' added, but invite email failed: '+friendlyMutationError(r.error),'error');
   }
 }
-function showSaveToast2(msg,type){const t=document.createElement('div');const isErr=type==='error';t.innerHTML=(isErr?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>')+msg;t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(isErr?'#DC2626':'#1A5DAD')+';color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s;white-space:nowrap';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},2200);}
+// G1 follow-up — third arg is an optional dwell time in ms. Default
+// 2200 keeps every existing caller's behaviour identical; longer values
+// are reserved for "you just did a thing that's worth confirming" cases
+// (e.g. instructor sending feedback to a student).
+function showSaveToast2(msg,type,duration){const t=document.createElement('div');const isErr=type==='error';const ms=(typeof duration==='number'&&duration>0)?duration:2200;t.innerHTML=(isErr?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>')+msg;t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(isErr?'#DC2626':'#1A5DAD')+';color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s;white-space:nowrap';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},ms);}
 
 function getPromoReady(){
   var unit=UNITS.find(function(u){return u.name===S.unit;});
@@ -5190,6 +5202,35 @@ async function refreshUnreadCount(){
 }
 function openInbox(){S.inboxOpen=true;S.panelOpen=false;render();loadNotifications();}
 function closeInbox(){S.inboxOpen=false;render();}
+// G1 follow-up — tap-to-open. Marks the row read AND routes the user to
+// the surface where the related entity lives. Routing matrix:
+//   feedback_received → Progress tab → Feedback sub-tab
+//   promotion         → Progress tab → Journey sub-tab
+//   photo_approved /
+//   photo_rejected    → Profile side panel → Edit profile
+//   admin_message     → no nav (body has the content)
+// The handler is forgiving: a notification whose target tab isn't
+// reachable for the current role (e.g. a student with no Feedback
+// sub-tab in their Progress view) still lands on the Progress tab —
+// markRead always runs first so the bell badge stays in sync.
+function openNotif(id){
+  const n=NOTIFS.find(x=>x.id===id);
+  markRead(id);
+  if(!n)return;
+  const t=n.type;
+  if(t==='feedback_received'){
+    S.inboxOpen=false;S.tab='progress';S.ptab='feedback';render();return;
+  }
+  if(t==='promotion'){
+    S.inboxOpen=false;S.tab='progress';S.ptab='journey';render();return;
+  }
+  if(t==='photo_approved'||t==='photo_rejected'){
+    S.inboxOpen=false;S.panelOpen=true;S.sub='pedit';render();return;
+  }
+  // admin_message and any unknown type: just close the inbox so the
+  // user returns to whatever they were doing. Mark-as-read already ran.
+  S.inboxOpen=false;render();
+}
 async function markRead(id){
   const n=NOTIFS.find(x=>x.id===id);
   if(n&&n.read_at)return; // already read — skip the round-trip
