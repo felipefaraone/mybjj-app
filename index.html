@@ -591,20 +591,36 @@ function maxPromotableBelt(belt, deg){
   return null; // cannot promote
 }
 
-// Check if instructor can award a specific promotion
-function canPromote(instructorBelt, instructorDeg, targetBelt, targetDeg, isNewBelt){
-  // isNewBelt = true means belt promotion (e.g. white→blue), false = stripe
-  const maxBelt = maxPromotableBelt(instructorBelt, instructorDeg);
-  if(!maxBelt) return {ok:false, reason:'Not authorized to promote students.'};
-  const ORDER=['white','blue','purple','brown','black'];
-  const maxIdx = ORDER.indexOf(maxBelt);
-  const targetIdx = ORDER.indexOf(targetBelt);
-  if(isNewBelt){
-    // promoting to targetBelt
-    if(targetIdx > maxIdx) return {ok:false, reason:'Requires a '+maxBelt+'-level promotion authority or higher.'};
-  } else {
-    // adding a stripe to targetBelt
-    if(targetIdx > maxIdx) return {ok:false, reason:'Requires a higher-ranked instructor to award stripes at this level.'};
+// G9.2 — canPromote now uses the academy authority model, not IBJJF
+// belt rank. Two paths grant authority:
+//   1. The caller is a unit owner (canonical post-Batch-2A check via
+//      isOwner / units.owner_user_id) — can promote anyone in any
+//      unit they own.
+//   2. The caller has role='instructor' AND their staff row's unit
+//      matches the student's unit.
+// Dev Admin (admin.mybjj@gmail.com) owns Neutral Bay so they fall
+// into path 1 and no longer hit the legacy "Not authorized" gate
+// just because their default belt is white. The legacy IBJJF
+// authority function maxPromotableBelt is kept (deprecated) — if
+// the academy ever wants to enforce IBJJF rules at the UI layer we
+// can layer it back on top of the role gate. The instructorBelt /
+// instructorDeg / targetBelt / targetDeg / isNewBelt parameters are
+// retained so existing callers don't break; only the new `student`
+// arg is consulted for the actual authority check.
+function canPromote(instructorBelt, instructorDeg, targetBelt, targetDeg, isNewBelt, student){
+  if(!S||!S.me) return {ok:false, reason:'Not authorized to promote students.'};
+  if(typeof isOwner==='function' && isOwner()) return {ok:true, reason:null};
+  if(S.me.role!=='instructor') return {ok:false, reason:'Not authorized to promote students.'};
+  // Resolve the caller's staff unit. STAFF rows are keyed by auth
+  // user_id (set by hydrate); fall back to a name match for the
+  // legacy demo path that doesn't always populate _userId.
+  const meStaff=STAFF.find(x=>S.profile&&x._userId===S.profile.id)||STAFF.find(x=>x.name===S.me.name);
+  const myUnit=meStaff&&meStaff.unit;
+  // No student in scope — preview-only call (e.g. eligibility hint).
+  // Don't block; the action-level callsites pass the student.
+  if(!student) return {ok:true, reason:null};
+  if(myUnit && student.unit && myUnit!==student.unit){
+    return {ok:false, reason:"This student is in a different unit."};
   }
   return {ok:true, reason:null};
 }
@@ -1200,8 +1216,8 @@ function rPromoPanel(s){
   const nextBelt=curIdx<ORDER.length-1?ORDER[curIdx+1]:null;
   const maxDeg=(s.belt==='black')?6:4;
   const canAddStripe=s.deg<maxDeg;
-  const stripeChk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false);
-  const beltChk=nextBelt?canPromote(instrBelt,instrDeg,nextBelt,0,true):{ok:false,reason:'Already at maximum belt.'};
+  const stripeChk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false,s);
+  const beltChk=nextBelt?canPromote(instrBelt,instrDeg,nextBelt,0,true,s):{ok:false,reason:'Already at maximum belt.'};
 
   const stripeRow=canAddStripe
     ?('<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
@@ -1272,7 +1288,7 @@ function doPromote(id, isBeltPromotion){
     const curIdx=ORDER.indexOf(s.belt);
     if(curIdx>=ORDER.length-1){alert('Already at maximum belt.');return;}
     const nextBelt=ORDER[curIdx+1];
-    const chk=canPromote(instrBelt,instrDeg,nextBelt,0,true);
+    const chk=canPromote(instrBelt,instrDeg,nextBelt,0,true,s);
     if(!chk.ok){alert('Not authorized: '+chk.reason);return;}
     const fromBelt=s.belt;const fromDeg=s.deg;
     s.belt=nextBelt;s.deg=0;s.grade=0;s.giGrade=0;
@@ -1292,7 +1308,7 @@ function doPromote(id, isBeltPromotion){
   } else {
     const maxDeg=s.belt==='black'?6:4;
     if(s.deg>=maxDeg){alert('Already at maximum stripes for this belt.');return;}
-    const chk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false);
+    const chk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false,s);
     if(!chk.ok){alert('Not authorized: '+chk.reason);return;}
     const fromDeg=s.deg;
     s.deg+=1;s.grade=0;s.giGrade=0;
@@ -1655,8 +1671,8 @@ function rPromoteModal(){
   const nextBelt=curIdx<ORDER.length-1?ORDER[curIdx+1]:null;
   const maxDeg=(s.belt==='black')?6:4;
   const canAddStripe=s.deg<maxDeg;
-  const stripeChk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false);
-  const beltChk=nextBelt?canPromote(instrBelt,instrDeg,nextBelt,0,true):{ok:false,reason:'Already at maximum belt.'};
+  const stripeChk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false,s);
+  const beltChk=nextBelt?canPromote(instrBelt,instrDeg,nextBelt,0,true,s):{ok:false,reason:'Already at maximum belt.'};
   // G9 Phase 1 consolidation — Promote modal hint now reads from
   // PROMO_CRITERIA via _egDisplay (single source of truth across
   // every eligibility surface). Kids resolve to status:'pending'
@@ -1840,11 +1856,6 @@ function rClass(){
     const m=+(parts.find(p=>p.type==='minute')||{}).value||0;
     return h*60+m;
   })();
-  const _fmtHHMM=(mins)=>{
-    const hh=Math.floor(((mins%1440)+1440)%1440/60);
-    const mm=((mins%60)+60)%60;
-    return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
-  };
   return `${rDayStrip()}${rMonthPromos()}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div></div>
   ${hol?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${HN[sk]||'Public Holiday'}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Academy closed · No classes scheduled today</div></div></div>`
   :cls.length===0?`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`
@@ -1860,15 +1871,17 @@ function rClass(){
     // "N going" indicator, not a check-in button.
     const isStudentAdmin=me.role==='instructor'&&!!myStu;
     const isStaffViewer=isStaffOrOwner()&&!isStudentAdmin;
-    // Per-row window check (today only). Check-in opens 30 min before
-    // start and stays open until 60 min after end. Outside that window
-    // the row still renders — we just swap the action button for an
-    // "Opens at HH:MM" or "Class ended" status.
+    // G9.2 — check-in is open from the start of the day until class
+    // end. Two changes vs. previous behaviour:
+    //   1. The pre-window "Opens at HH:MM" floor is gone — students
+    //      want to see the going-list early to decide attendance.
+    //   2. isEnded is strict at class end (no 60-min grace) so the
+    //      UI agrees with the doCI / undoCI past-time guard in
+    //      _classEndedToday().
     const [_ch,_cm]=c.time.split(':').map(Number);
     const startMin=_ch*60+_cm;
     const endMin=startMin+(c.dur||60);
-    const isPreopen=isT&&_now!=null&&_now<startMin-30;
-    const isEnded=isT&&_now!=null&&_now>endMin+60;
+    const isEnded=isT&&_now!=null&&_now>endMin;
     let cc='card';let btn='';
     if(isStaffViewer){btn=`<div style="font-size:11px;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700">${all.length} going</div>`;}
     else if(isCf){cc='card stc';btn=`<button class="bconf"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Present</button>`;}
@@ -1885,11 +1898,10 @@ function rClass(){
       }
     }
     else if(isEnded){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;}
-    else if(isPreopen){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);cursor:default;width:100%;line-height:1.2"><div>Opens at</div><div style="font-size:14px;color:var(--text2);margin-top:2px">${_fmtHHMM(startMin-30)}</div></button>`;}
     else if(!isT){
-      // G1-B hotfix — past/future day selected. The isPreopen / isEnded
-      // gates only fire on `isT`, so without this branch the chain fell
-      // through to the "I'm going" final and let students check into
+      // G1-B hotfix — past/future day selected. The isEnded gate only
+      // fires on `isT`, so without this branch the chain fell through
+      // to the "I'm going" final and let students check into
       // historical or future classes.
       const isPast=dk(sd)<dk(TODAY);
       if(isPast){
