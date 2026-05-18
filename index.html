@@ -2584,21 +2584,25 @@ function rARosterListInner(){
   const rows=list.map(s=>{
     const bmap=s.prog==='kids'?BK:BA;
     const b=bmap[s.belt]||BA.white;
+    // studentEligibility still drives the legacy "ELIGIBLE FOR NEXT
+    // STRIPE" green strip and the rfNear / rfEligible filters above;
+    // the goal / pct / lbl / isProm locals that used to feed
+    // progressLine and pbBelt are gone with this batch.
     const elig=studentEligibility(s);
-    const goal=elig.required;
-    const pct=elig.percent==null?0:elig.percent;
-    const near=pct>=80;
     const isElig=elig.eligible;
-    const lbl=nxlbl(s.belt,s.deg,s.prog);
-    const isProm=lbl==='Next promotion';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     const giSince=Math.max(s.giGrade||0,0);
     const noGiSince=Math.max((s.grade||0)-giSince,0);
     const noGiOnly=s.hasGi===false;
-    const progressLine=goal==null
-      ? '<span style="color:var(--text3)">By time only</span>'
-      : '<span style="color:'+(near?(isProm?'#111827':'#1A5DAD'):'var(--text2)')+';font-weight:'+(near?600:400)+'">'+(s.grade||0)+'/'+goal+' · '+lbl.toLowerCase()+'</span>'
-        +' &nbsp;·&nbsp; <span style="color:var(--text3)">'+s.total+' total</span>';
+    // G9 Phase 1 follow-up — the legacy "X/Y · next degree/promotion ·
+    // Z total" line used hardcoded thresholds (25 adults / 30 kids)
+    // that didn't match PROMO_CRITERIA, so it conflicted with the new
+    // eligHint below. Removed in favour of:
+    //   - a standalone "X total" line (cumulative count, useful and
+    //     independent of the next-marker math)
+    //   - eligHint now leads with "Next: <label>" so users can tell
+    //     what the X/Y figures are measuring against.
+    const totalLine='<div style="font-size:11px;color:var(--text3);margin-top:6px">'+(s.total||0)+' total</div>';
     const breakdownLine='<div style="font-size:11px;color:var(--text3);margin-top:4px">Gi: '+giSince+' · No-Gi: '+noGiSince+(noGiOnly?' · <span style="color:var(--amber-text)">No-Gi only — Gi required for IBJJF</span>':'')+'</div>';
     // G9 Phase 1 — eligibility hint driven by PROMO_CRITERIA. Adults
     // only; kids show a "criteria pending" placeholder until Phase 2.
@@ -2608,7 +2612,8 @@ function rARosterListInner(){
     if(eg&&eg.status==='eligible'){
       eligHint='<div style="margin-top:6px"><span style="display:inline-block;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">Ready: '+eg.label+'</span></div>';
     } else if(eg&&eg.status==='in_progress'){
-      eligHint='<div style="font-size:11px;color:var(--text3);margin-top:4px">'+eg.classes_done+'/'+eg.classes_target+' classes · '+eg.months_done+'/'+eg.months_target+' mo</div>';
+      eligHint='<div style="font-size:12px;color:var(--text);font-weight:600;margin-top:6px">Next: '+eg.label+'</div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+eg.classes_done+'/'+eg.classes_target+' classes · '+eg.months_done+'/'+eg.months_target+' mo</div>';
     } else if(eg&&eg.status==='pending'){
       eligHint='<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:4px">'+eg.message+'</div>';
     }
@@ -2619,8 +2624,7 @@ function rARosterListInner(){
       +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+(isElig?'<span title="Eligible for promotion" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-text)"></span>':'')+s.name+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div></div></div>'
       +bb(s.belt,s.deg||0,s.prog)+'</div>'
-      +'<div style="font-size:12px;color:var(--text2);margin-bottom:6px">'+progressLine+'</div>'
-      +pbBelt(pct,100,s.belt,s.prog)
+      +totalLine
       +breakdownLine
       +eligHint
       +(isElig?'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);margin-top:6px;letter-spacing:.5px">ELIGIBLE FOR NEXT STRIPE</div>':'')
