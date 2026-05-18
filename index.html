@@ -1745,7 +1745,18 @@ function rClass(){
     let cc='card';let btn='';
     if(isStaffViewer){btn=`<div style="font-size:11px;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700">${all.length} going</div>`;}
     else if(isCf){cc='card stc';btn=`<button class="bconf"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Present</button>`;}
-    else if(isIn){cc='card stp';btn=`<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;}
+    else if(isIn){
+      cc='card stp';
+      if(isT){
+        // Today — keep the existing "Checked in / undo" affordance.
+        btn=`<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;
+      } else {
+        // Past/future day — static read-only "Checked in". undoCI is
+        // guarded server-side too; this just stops the UI offering an
+        // affordance we'd refuse anyway.
+        btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text2);cursor:default;width:100%">Checked in</button>`;
+      }
+    }
     else if(isEnded){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;}
     else if(isPreopen){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);cursor:default;width:100%;line-height:1.2"><div>Opens at</div><div style="font-size:14px;color:var(--text2);margin-top:2px">${_fmtHHMM(startMin-30)}</div></button>`;}
     else if(!isT){
@@ -4831,6 +4842,14 @@ async function doCI(id){
 
 // Undo — DELETE the attendance row for the signed-in user's student row.
 async function undoCI(id){
+  // G1-B hotfix follow-up — mirror the doCI guard. Past/future days
+  // must not allow retroactive uncheck-in; rClass also hides the
+  // affordance on non-today days, this is the belt-and-suspenders.
+  const sk=dk(S.selDay||TODAY);
+  if(sk!==dk(TODAY)){
+    console.warn('[mybjj] undoCI blocked — selected day is not today:',sk);
+    return;
+  }
   const stu=myStudentRow();if(!stu)return;
   const c=_parseCID(id);if(!c)return;
   const ix=ATTENDANCE.findIndex(a=>a.studentDbId===stu._dbId&&a.classDate===c.date&&a.classTime===c.time);
