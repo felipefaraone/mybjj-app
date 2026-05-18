@@ -1691,7 +1691,11 @@ function rMonthPromos(){
   if(!recent.length)return '';
   const chips=recent.slice(0,3).map(p=>{
     const bmap=BA;const b=bmap[p.toBelt]||BA.white;
-    return '<span style="background:'+b.bg+'25;color:'+b.bg+';border:1px solid '+b.bg+'40;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px">'+p.studentName.split(' ')[0]+'&nbsp;→&nbsp;'+p.toBelt+'</span>';
+    // G1-B hotfix — guard against null/empty studentName / toBelt so a
+    // partial promotion row can't crash the home screen render.
+    const firstName=(p.studentName||'').split(' ')[0]||'?';
+    const toBelt=p.toBelt||'?';
+    return '<span style="background:'+b.bg+'25;color:'+b.bg+';border:1px solid '+b.bg+'40;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px">'+firstName+'&nbsp;→&nbsp;'+toBelt+'</span>';
   }).join('');
   const moreTxt=recent.length>3?'<span style="font-size:11px;color:var(--text3)">+' +(recent.length-3)+'</span>':'';
   return `<div style="background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 14px;margin-bottom:12px"><div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5DAD;margin-bottom:6px">🥋 Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
@@ -1744,6 +1748,18 @@ function rClass(){
     else if(isIn){cc='card stp';btn=`<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;}
     else if(isEnded){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;}
     else if(isPreopen){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);cursor:default;width:100%;line-height:1.2"><div>Opens at</div><div style="font-size:14px;color:var(--text2);margin-top:2px">${_fmtHHMM(startMin-30)}</div></button>`;}
+    else if(!isT){
+      // G1-B hotfix — past/future day selected. The isPreopen / isEnded
+      // gates only fire on `isT`, so without this branch the chain fell
+      // through to the "I'm going" final and let students check into
+      // historical or future classes.
+      const isPast=dk(sd)<dk(TODAY);
+      if(isPast){
+        btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;
+      } else {
+        btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);cursor:default;width:100%;line-height:1.2"><div>Opens</div><div style="font-size:14px;color:var(--text2);margin-top:2px">${fd(sd)}</div></button>`;
+      }
+    }
     else{btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
     const attBlock=isStaffViewer?rAttsStaff(rows,c.id):rAtts(all,c.id);
     return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${c.time}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud} · ${all.length} going</div></div><div style="flex-shrink:0;padding-top:4px;min-width:96px">${btn}</div></div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
@@ -4780,6 +4796,15 @@ function _parseCID(id){const m=String(id||'').match(/^(\d{4}-\d{2}-\d{2})_(\d{2}
 // linked students row. Pushes to the local ATTENDANCE array first for
 // instant UI; on DB error the row is removed.
 async function doCI(id){
+  // G1-B hotfix — defense in depth. rClass should never expose the
+  // "I'm going" button on a non-today day, but if it does (stale cached
+  // bundle, console-driven call, race during day-strip swipe) we must
+  // refuse the insert.
+  const sk=dk(S.selDay||TODAY);
+  if(sk!==dk(TODAY)){
+    console.warn('[mybjj] doCI blocked — selected day is not today:',sk);
+    return;
+  }
   const stu=myStudentRow();
   if(!stu){showSaveToast2('Sign in as a student to check in.','error');return;}
   const c=_parseCID(id);if(!c){showSaveToast2('Class id malformed','error');return;}
