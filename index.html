@@ -775,6 +775,11 @@ function myStudentRow(){
 }
 function nxlbl(belt,deg){return deg>=(MAXD[belt]||4)?'Next promotion':'Next degree';}
 
+// DEPRECATED — kept only so a stale browser bundle hitting this file
+// doesn't ReferenceError. G9 Phase 1 consolidation (commit pending)
+// migrated every caller to getEligibilityStatus / _egDisplay /
+// getNextMarker. Safe to delete once we're confident no old code
+// path lingers; tracked for the next cleanup batch.
 function studentEligibility(s){
   if(!s) return {eligible:false,reason:'',percent:0,required:null,grade:0};
   if(s.belt==='black') return {eligible:false,reason:'Black belt — by time only',percent:null,required:null,grade:s.grade||0};
@@ -1652,14 +1657,19 @@ function rPromoteModal(){
   const canAddStripe=s.deg<maxDeg;
   const stripeChk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false);
   const beltChk=nextBelt?canPromote(instrBelt,instrDeg,nextBelt,0,true):{ok:false,reason:'Already at maximum belt.'};
-  const elig=studentEligibility(s);
+  // G9 Phase 1 consolidation — Promote modal hint now reads from
+  // PROMO_CRITERIA via _egDisplay (single source of truth across
+  // every eligibility surface). Kids resolve to status:'pending'
+  // ("Promotion criteria pending — ask coach"); black belt returns
+  // null reason → empty hint.
+  const egd=_egDisplay(s);
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
   const isBlack=s.belt==='black';
   const lastPromo=PROMOTION_LOG.find(p=>p.studentId===s.id);
 
-  // Eligibility hint line — green when grade hit threshold, neutral otherwise.
-  const eligLine=elig.reason
-    ?'<div style="margin-bottom:14px;padding:8px 12px;border-radius:8px;background:'+(elig.eligible?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(elig.eligible?'var(--green-border)':'var(--border)')+';font-size:12px;color:'+(elig.eligible?'var(--green-text)':'var(--text2)')+'">'+(elig.eligible?'✓ ':'')+elig.reason+'</div>'
+  // Eligibility hint line — green when egd marks ready, neutral otherwise.
+  const eligLine=egd.reason
+    ?'<div style="margin-bottom:14px;padding:8px 12px;border-radius:8px;background:'+(egd.isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(egd.isReady?'var(--green-border)':'var(--border)')+';font-size:12px;color:'+(egd.isReady?'var(--green-text)':'var(--text2)')+'">'+(egd.isReady?'✓ ':'')+egd.reason+'</div>'
     :'';
 
   const rowBtn=(label,sub,disabled,reason,onclick)=>'<button '+(disabled?'':('onclick="'+onclick+'"'))+' style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;cursor:'+(disabled?'default':'pointer')+';margin-bottom:8px;text-align:left'+(disabled?';opacity:.55':'')+'">'
@@ -2595,15 +2605,22 @@ function rARosterListInner(){
   let list=S.rseg==='adult'?allAdults:allKids;
   if(rfUnit!=='all')list=list.filter(s=>s.unit===rfUnit);
   if(rfBelt!=='all')list=list.filter(s=>s.belt===rfBelt);
-  if(rfNear)list=list.filter(s=>(studentEligibility(s).percent||0)>=80);
-  if(rfEligible)list=list.filter(s=>studentEligibility(s).eligible);
+  // G9 Phase 1 consolidation — filters now read PROMO_CRITERIA via
+  // _egDisplay / getEligibilityStatus. studentEligibility (legacy
+  // 25/30 thresholds) no longer fed any UI as of this batch.
+  if(rfNear)list=list.filter(s=>{const e=_egDisplay(s);return (e.pct||0)>=80;});
+  if(rfEligible)list=list.filter(s=>{const e=getEligibilityStatus(s);return e&&e.status==='eligible';});
   if(q)list=list.filter(s=>s.name.toLowerCase().includes(q));
   list=[...list].sort((a,b)=>{
-    const ea=studentEligibility(a),eb=studentEligibility(b);
-    const pA=ea.percent==null?-1:ea.percent;
-    const pB=eb.percent==null?-1:eb.percent;
-    const rankA=ea.eligible?0:pA>=80?1:2;
-    const rankB=eb.eligible?0:pB>=80?1:2;
+    // G9 Phase 1 consolidation — sort ranking sourced from
+    // _egDisplay. eligible students first, then near-promotion
+    // (pct ≥ 80), then everyone else (incl. kids pending and black
+    // belt where pct is null).
+    const ea=_egDisplay(a),eb=_egDisplay(b);
+    const pA=ea.pct==null?-1:ea.pct;
+    const pB=eb.pct==null?-1:eb.pct;
+    const rankA=ea.isReady?0:pA>=80?1:2;
+    const rankB=eb.isReady?0:pB>=80?1:2;
     if(rankA!==rankB)return rankA-rankB;
     return a.name.localeCompare(b.name);
   });
@@ -2616,12 +2633,12 @@ function rARosterListInner(){
   const rows=list.map(s=>{
     const bmap=s.prog==='kids'?BK:BA;
     const b=bmap[s.belt]||BA.white;
-    // studentEligibility still drives the legacy "ELIGIBLE FOR NEXT
-    // STRIPE" green strip and the rfNear / rfEligible filters above;
-    // the goal / pct / lbl / isProm locals that used to feed
-    // progressLine and pbBelt are gone with this batch.
-    const elig=studentEligibility(s);
-    const isElig=elig.eligible;
+    // G9 Phase 1 consolidation — the per-card "ELIGIBLE FOR NEXT
+    // STRIPE" green strip and the green dot before the name now read
+    // from _egDisplay (same source as the eligHint pill below).
+    // studentEligibility() has no callers after this batch.
+    const egd=_egDisplay(s);
+    const isElig=egd.isReady;
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     const giSince=Math.max(s.giGrade||0,0);
     const noGiSince=Math.max((s.grade||0)-giSince,0);
@@ -2961,10 +2978,12 @@ function getPromoReady(){
   var unitId=unit?unit.id:'nb';
   var ready=[];
   STUDENTS.filter(function(s){return s._active!==false&&s.unit===unitId;}).forEach(function(s){
-    var elig=studentEligibility(s);
-    if(elig.eligible){
+    // G9 Phase 1 consolidation — alert count sourced from
+    // PROMO_CRITERIA. Excludes kids (pending) and black belt (null).
+    var eg=getEligibilityStatus(s);
+    if(eg&&eg.status==='eligible'){
       var isProm=s.deg>=(MAXD[s.belt]||4);
-      ready.push({name:s.name,id:s.id,belt:s.belt,deg:s.deg,pct:elig.percent||100,grade:elig.grade,goal:elig.required,isProm:isProm,prog:s.prog});
+      ready.push({name:s.name,id:s.id,belt:s.belt,deg:s.deg,pct:100,grade:eg.classes_done,goal:eg.classes_target,isProm:isProm,prog:s.prog});
     }
   });
   return ready.sort(function(a,b){return b.pct-a.pct;});
@@ -5019,6 +5038,23 @@ function _parseCID(id){const m=String(id||'').match(/^(\d{4}-\d{2}-\d{2})_(\d{2}
 // "I'm going" — INSERTs an attendance row for the signed-in user's
 // linked students row. Pushes to the local ATTENDANCE array first for
 // instant UI; on DB error the row is removed.
+// G9 Phase 1 consolidation — true if c (parsed class instance) refers
+// to a today's class whose end time (start + dur) is already past in
+// Sydney local time. Used to block check-in / undo on classes that
+// have ended within today, in addition to the pre-existing past-day
+// guard. Backlog: defense in depth via an attendance RLS policy that
+// gates writes on class_date + class_time + classes.duration_minutes.
+function _classEndedToday(c){
+  if(!c||c.date!==dk(TODAY))return false;
+  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const dur=t.dur||60;
+  const [hh,mm]=String(c.time||'00:00').split(':').map(Number);
+  const endMin=((hh|0)*60+(mm|0))+dur;
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Australia/Sydney',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
+  const h=+(parts.find(p=>p.type==='hour')||{}).value||0;
+  const m=+(parts.find(p=>p.type==='minute')||{}).value||0;
+  return (h*60+m)>endMin;
+}
 async function doCI(id){
   // G1-B hotfix — defense in depth. rClass should never expose the
   // "I'm going" button on a non-today day, but if it does (stale cached
@@ -5032,6 +5068,14 @@ async function doCI(id){
   const stu=myStudentRow();
   if(!stu){showSaveToast2('Sign in as a student to check in.','error');return;}
   const c=_parseCID(id);if(!c){showSaveToast2('Class id malformed','error');return;}
+  // G9 Phase 1 consolidation — additional past-time guard. rClass
+  // hides the check-in button 60 min after class end, but this guard
+  // is strict at class end so a console call / stale UI can't sneak
+  // a late check-in through.
+  if(_classEndedToday(c)){
+    showSaveToast2("Class already ended. Can't check in.",'error');
+    return;
+  }
   const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
   const unit=UNITS.find(u=>u.id===stu.unit);
   const local={_dbId:'local-'+Date.now(),studentDbId:stu._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:'going'};
@@ -5065,6 +5109,13 @@ async function undoCI(id){
   }
   const stu=myStudentRow();if(!stu)return;
   const c=_parseCID(id);if(!c)return;
+  // G9 Phase 1 consolidation — additional past-time guard. Once a
+  // today's class has ended the student loses self-service undo;
+  // they must ask an instructor to remove the record.
+  if(_classEndedToday(c)){
+    showSaveToast2('Class already ended. Ask instructor to remove.','error');
+    return;
+  }
   const ix=ATTENDANCE.findIndex(a=>a.studentDbId===stu._dbId&&a.classDate===c.date&&a.classTime===c.time);
   if(ix<0)return;
   const removed=ATTENDANCE.splice(ix,1)[0];
