@@ -2989,18 +2989,29 @@ async function savePEdit(){
   const newInitials=((fn[0]||'')+(ln[0]||'')).toUpperCase()||(S.me&&S.me.initials)||'??';
   S.me.name=full;S.me.initials=newInitials;
   if(S.profile)S.profile.full_name=full;
-  const linkedStaff=STAFF.find(x=>x._userId&&S.profile&&x._userId===S.profile.id)||STAFF.find(x=>x.name===S.me.name);
+  // Source-of-truth routing. The migration-34 triggers
+  // (trg_sync_user_full_name_from_staff / _from_student) keep
+  // public.users.full_name in step whenever staff.full_name or
+  // students.full_name changes. So self-edits land on the canonical
+  // table for the role; the legacy direct users.full_name write is
+  // gone for student/staff selves (it was leaving students.full_name
+  // stale — Roster admin views read from students, so they saw an
+  // out-of-date "Felipe NeedsLastName"). Parents have no
+  // staff/students row of their own (their uid is in
+  // students.parent_user_id, not students.user_id) so they fall
+  // through to a direct users.full_name write.
+  const uid=S.profile&&S.profile.id;
+  const linkedStaff=uid?STAFF.find(x=>x._userId===uid):null;
+  const linkedStudent=(uid&&!linkedStaff)?STUDENTS.find(x=>x._userId===uid):null;
   if(linkedStaff){linkedStaff.name=full;linkedStaff.initials=newInitials;}
+  if(linkedStudent){linkedStudent.name=full;linkedStudent.initials=newInitials;}
   showSaveToast2('Profile updated');closeSub();
-  // Migration 34's sync_user_full_name_from_staff trigger keeps
-  // public.users.full_name in step when we write staff.full_name —
-  // but the user has no staff row when they're a plain student or
-  // parent, so we still write users.full_name directly here too.
-  if(S.profile&&S.profile.id){
-    withSb(c=>c.from('users').update({full_name:full}).eq('id',S.profile.id),'update self full_name');
-  }
   if(linkedStaff&&linkedStaff._dbId){
     withSb(c=>c.from('staff').update({full_name:full,initials:newInitials}).eq('id',linkedStaff._dbId),'update self staff name');
+  } else if(linkedStudent&&linkedStudent._dbId){
+    withSb(c=>c.from('students').update({full_name:full,initials:newInitials}).eq('id',linkedStudent._dbId),'update self student name');
+  } else if(uid){
+    withSb(c=>c.from('users').update({full_name:full}).eq('id',uid),'update self full_name');
   }
 }
 
