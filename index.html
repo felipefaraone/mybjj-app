@@ -3008,8 +3008,18 @@ async function savePEdit(){
   showSaveToast2('Profile updated');closeSub();
   if(linkedStaff&&linkedStaff._dbId){
     withSb(c=>c.from('staff').update({full_name:full,initials:newInitials}).eq('id',linkedStaff._dbId),'update self staff name');
-  } else if(linkedStudent&&linkedStudent._dbId){
-    withSb(c=>c.from('students').update({full_name:full,initials:newInitials}).eq('id',linkedStudent._dbId),'update self student name');
+  } else if(linkedStudent&&linkedStudent.id){
+    // Direct UPDATE on public.students silently returns 0 rows for
+    // student/parent self because students_write RLS requires
+    // is_admin() OR is_staff(). Migration 44 introduced the
+    // edit_student_self RPC (SECURITY DEFINER) — it authorises by
+    // user_id OR parent_user_id and bypasses RLS. p_legacy_id is the
+    // slug ("fwb", …) which the hydrate maps onto linkedStudent.id.
+    // TODO — rPEdit doesn't yet write DOB / phone / weight / height /
+    // emergency_contact_* from the DOM (those inputs are display-only
+    // mocks right now). Add them to p_payload when those inputs
+    // become editable; the RPC already accepts the keys.
+    withSb(c=>c.rpc('edit_student_self',{p_legacy_id:linkedStudent.id,p_payload:{full_name:full,initials:newInitials}}),'update self student name');
   } else if(uid){
     withSb(c=>c.from('users').update({full_name:full}).eq('id',uid),'update self full_name');
   }
