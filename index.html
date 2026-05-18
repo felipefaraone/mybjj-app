@@ -428,6 +428,24 @@ function getEligibilityStatus(student){
     months_target:next.months
   };
 }
+// G9 Phase 1 — derived fields the legacy progress / stat surfaces
+// (rStuProf detail panel, rParentChildView, rProgress's rank tab)
+// expect: pct, barPct, isReady, isPending, label, reason. Wraps
+// getEligibilityStatus so each surface reads from the new
+// PROMO_CRITERIA-driven model instead of studentEligibility's
+// hardcoded 25 / 30 thresholds. studentEligibility itself is kept
+// because the rfNear / rfEligible filters and roster sort still
+// consume it; unifying those is Phase 2 territory.
+function _egDisplay(student){
+  const eg=getEligibilityStatus(student);
+  if(!eg)return {hide:true,pct:null,barPct:0,isReady:false,isPending:false,label:null,reason:''};
+  if(eg.status==='pending')return {hide:false,pct:null,barPct:0,isReady:false,isPending:true,label:null,reason:eg.message};
+  if(eg.status==='eligible')return {hide:false,pct:100,barPct:100,isReady:true,isPending:false,label:eg.label,reason:'Ready: '+eg.label};
+  const target=eg.classes_target||1;
+  const pct=Math.max(0,Math.min(100,Math.round((eg.classes_done/target)*100)));
+  const remaining=Math.max(0,eg.classes_target-eg.classes_done);
+  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,reason:remaining+' more class'+(remaining===1?'':'es')+' for '+eg.label};
+}
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 // Etapa 3 — INS hardcoded instructor list deleted. Dropdowns now read
@@ -1307,10 +1325,13 @@ function doPromote(id, isBeltPromotion){
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
   const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
-  const elig=studentEligibility(s);
-  const pct=elig.percent==null?null:elig.percent;
+  // G9 Phase 1 follow-up 2 — stats / bar / reason now sourced from
+  // PROMO_CRITERIA via _egDisplay. Legacy studentEligibility's
+  // hardcoded 25/30 thresholds no longer surface here.
+  const egd=_egDisplay(s);
+  const pct=egd.hide||egd.isPending?null:egd.pct;
+  const isReady=egd.isReady;
   const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
-  const isReady=elig.eligible;
   const isKids=s.prog==='kids';
   const canAdmin=canEditClassCounts(); // owner + professor (excludes coach)
   const ownerView=isOwner();
@@ -1391,8 +1412,8 @@ ${canAdmin?rAdminActionRow(s):''}
     <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${noGiSince}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>
     <div style="flex:1;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div></div>
   </div>
-  ${pct==null?'':pbBelt(elig.percent,100,s.belt,s.prog)}
-  ${elig.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${elig.reason}</span></div>`:''}
+  ${egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog)}
+  ${egd.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${egd.reason}</span></div>`:''}
   ${noGiOnly?'<div style="margin-top:8px;font-size:11px;color:var(--amber-text)">No-Gi only — Gi training required for IBJJF promotion.</div>':''}
   ${canAdmin?rReconcileBadge(s):''}
 </div>
@@ -1955,9 +1976,13 @@ function rParentChildView(){
   }
   const child=parentSelectedChild();
   const unitName=(UNITS.find(u=>u.id===child.unit)||{name:'—'}).name;
-  const elig=studentEligibility(child);
-  const pct=elig.percent==null?null:elig.percent;
-  const isReady=elig.eligible;
+  // G9 Phase 1 follow-up 2 — sourced from PROMO_CRITERIA via
+  // _egDisplay. Kids currently resolve to status:'pending' (Phase 2
+  // wires real kids criteria) so the stat shows '—' and the reason
+  // shows "Promotion criteria pending — ask coach".
+  const egd=_egDisplay(child);
+  const pct=egd.hide||egd.isPending?null:egd.pct;
+  const isReady=egd.isReady;
   const ptab=['rank','journey','attendance','wall'].includes(S.ptab)?S.ptab:'rank';
   const switcher=kids.length>1?'<div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px">'+kids.map(k=>{
     const sel=k.id===child.id;
@@ -1975,8 +2000,8 @@ function rParentChildView(){
     +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+gi+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>'
     +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+ng+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>'
     +'<div style="flex:1;text-align:center"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:'+(isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)'))+'">'+(pct==null?'—':pct+'%')+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">'+(isReady?'Ready':'Progress')+'</div></div>'
-    +'</div>'+(pct==null?'':pbBelt(elig.percent,100,child.belt,child.prog))
-    +(elig.reason?'<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:'+(isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(isReady?'var(--green-border)':'var(--border)')+';font-size:12px;line-height:1.4;color:'+(isReady?'var(--green-text)':'var(--text2)')+';font-family:Barlow Condensed,sans-serif;font-weight:600;letter-spacing:.5px">'+elig.reason+'</div>':'')
+    +'</div>'+(egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,child.belt,child.prog))
+    +(egd.reason?'<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:'+(isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(isReady?'var(--green-border)':'var(--border)')+';font-size:12px;line-height:1.4;color:'+(isReady?'var(--green-text)':'var(--text2)')+';font-family:Barlow Condensed,sans-serif;font-weight:600;letter-spacing:.5px">'+egd.reason+'</div>':'')
     +(child.hasGi===false?'<div style="margin-top:8px;font-size:11px;color:var(--amber-text)">No-Gi only — Gi training required for IBJJF promotion.</div>':'')
     +'</div>';
   const journeyCard='<div class="slbl">'+child.name.split(' ')[0]+'\'s journey</div><div class="card" style="padding:12px 16px">'+rTL(child.journey||[])+'</div>';
@@ -2235,12 +2260,15 @@ function rProgress(){
       ||s;
     var bmap=s.prog==='kids'?BK:BA;
     var bc=bmap[s.belt]||BA.white;
-    var gg=s.prog==='kids'?GGK:GGA;
-    var goal=gg[s.belt]||40;
-    var giPct=Math.round((coachStu.grade||0)/goal*100);
-    var lbl=nxlbl(s.belt,s.deg,s.prog);
-    var nc=nextBeltColor(s.belt,s.prog);
-    var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+lbl+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+giPct+'%</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">'+((s.hasGi!==false&&s.giTotal>0)?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-size:12px;color:var(--amber-text)">Start attending Gi classes to unlock promotion</span></div>')+'All classes count toward promotion</div>'+pbBelt((coachStu.grade||0),goal,s.belt,s.prog||'adult')+'<div style="font-size:12px;color:var(--text2);margin-top:8px">'+(coachStu.grade||0)+' / '+goal+' classes</div></div>';
+    // G9 Phase 1 follow-up 2 — coach progress card now reads
+    // PROMO_CRITERIA via _egDisplay. nxlbl / GGA-GGK / hardcoded 40
+    // fallback are gone.
+    var coachEgd=_egDisplay(coachStu);
+    var coachHeading=coachEgd.label?('Next: '+coachEgd.label):(coachEgd.isPending?'Promotion':'Black belt');
+    var coachPctHtml=coachEgd.hide||coachEgd.isPending?'<span style="color:var(--text3)">—</span>':(coachEgd.pct+'%');
+    var coachBarHtml=coachEgd.hide||coachEgd.isPending?'':pbBelt(coachEgd.barPct,100,s.belt,s.prog||'adult');
+    var coachReasonHtml=coachEgd.reason?'<div style="font-size:12px;color:'+(coachEgd.isReady?'var(--green-text)':'var(--text2)')+';margin-top:8px">'+coachEgd.reason+'</div>':'';
+    var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">'+((s.hasGi!==false&&s.giTotal>0)?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-size:12px;color:var(--amber-text)">Start attending Gi classes to unlock promotion</span></div>')+'All classes count toward promotion</div>'+coachBarHtml+coachReasonHtml+'</div>';
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
     var techsTab=rTechniquesLog(s);
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
@@ -2266,13 +2294,17 @@ function rProgress(){
      hasGi:stu.hasGi!==undefined?stu.hasGi:s.hasGi};
   var bmap=s.prog==='kids'?BK:BA;
   var b=bmap[s.belt]||BA.white;
-  var gg=s.prog==='kids'?GGK:GGA;
-  var goal=gg[s.belt]||40;
-  var giPct=Math.round((s.grade||0)/goal*100);
-  var lbl=nxlbl(s.belt,s.deg,s.prog);
-  var nc=nextBeltColor(s.belt,s.prog);
+  // G9 Phase 1 follow-up 2 \u2014 student progress card now reads
+  // PROMO_CRITERIA via _egDisplay. Legacy nxlbl / GGA-GGK / hardcoded
+  // 40 fallback removed. The Gi breakdown + footnote below are
+  // unchanged.
+  var egd=_egDisplay(s);
+  var heading=egd.label?('Next: '+egd.label):(egd.isPending?'Promotion':'Black belt');
+  var pctHtml=egd.hide||egd.isPending?'<span style="color:var(--text3)">\u2014</span>':(egd.pct+'%');
+  var barHtml=egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog);
+  var reasonHtml=egd.reason?`<div style="font-size:12px;color:${egd.isReady?'var(--green-text)':'var(--text2)'};margin-top:8px">${egd.reason}</div>`:'';
 
-  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${s.total}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${s.grade}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${lbl}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${giPct}%</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${pbBelt(s.grade,goal,s.belt,s.prog)}<div style="font-size:12px;color:var(--text2);margin-top:8px">${s.grade} / ${goal} classes \xb7 ${Math.max(0,goal-s.grade)} to go</div>${(s.hasGi!==false&&s.giTotal>0)?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>':'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${s.giTotal}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${s.total-s.giTotal}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">${(s.hasGi!==false&&s.giTotal>0)?"Your Gi + No-Gi classes all count toward promotion. Final decision is always the instructor\u2019s.":"Your No-Gi classes are being counted. Once you start attending Gi classes, all your accumulated classes will count toward promotion. Final decision is always the instructor\u2019s."}</div></div>`;
+  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${s.total}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${s.grade}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${(s.hasGi!==false&&s.giTotal>0)?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>':'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${s.giTotal}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${s.total-s.giTotal}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">${(s.hasGi!==false&&s.giTotal>0)?"Your Gi + No-Gi classes all count toward promotion. Final decision is always the instructor\u2019s.":"Your No-Gi classes are being counted. Once you start attending Gi classes, all your accumulated classes will count toward promotion. Final decision is always the instructor\u2019s."}</div></div>`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
 
