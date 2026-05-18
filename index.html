@@ -404,6 +404,33 @@ let UNITS=[
 // downstream code uses when writing attendance rows.
 let CLASSES=[];
 let TT={0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
+// G4 — inactive class rows for the current unit, fetched on demand when
+// the admin toggles "Show inactive" in rManage. Kept separate from
+// CLASSES so the main schedule (rClass, attendance routing) never sees
+// them — rebuildTT() and getDC() naturally exclude inactive rows
+// because they're not in CLASSES.
+let CLASSES_INACTIVE=[];
+// _projClsRow — project a raw public.classes row (with joined
+// instructor staff) into the TT-shape entry every consumer expects.
+// Used by rebuildTT() for active rows AND by rManage() for inactive
+// rows fetched into CLASSES_INACTIVE.
+function _projClsRow(row){
+  const insRow=row.instructor;
+  const insName=insRow?staffDisplayName({name:insRow.full_name,belt:insRow.belt,deg:insRow.degree,role:'instructor',roleTitle:insRow.role_title||'Professor'}):'TBD';
+  return {
+    // legacy_id keeps the synthetic class-instance id ("2026-05-16_18:00_m1")
+    // shape working for every existing consumer (_parseCID, getDC, etc).
+    id:row.legacy_id||row.id,
+    classId:row.id,
+    instructorId:row.instructor_id||null,
+    time:String(row.time||'').slice(0,5),
+    type:row.type,
+    ins:insName,
+    dur:row.duration_minutes||60,
+    aud:row.audience||'Adults',
+    _active:row.active!==false,
+  };
+}
 function rebuildTT(){
   const next={0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
   const cur=UNITS.find(u=>u.name===S.unit);
@@ -413,20 +440,7 @@ function rebuildTT(){
     if(unitDbId&&row.unit_id!==unitDbId)continue;
     const dow=row.day_of_week;
     if(dow<0||dow>6)continue;
-    const insRow=row.instructor; // joined staff row (may be null)
-    const insName=insRow?staffDisplayName({name:insRow.full_name,belt:insRow.belt,deg:insRow.degree,role:'instructor',roleTitle:insRow.role_title||'Professor'}):'TBD';
-    next[dow].push({
-      // legacy_id keeps the synthetic class-instance id ("2026-05-16_18:00_m1")
-      // shape working for every existing consumer (_parseCID, getDC, etc).
-      id:row.legacy_id||row.id,
-      classId:row.id,
-      instructorId:row.instructor_id||null,
-      time:String(row.time||'').slice(0,5),
-      type:row.type,
-      ins:insName,
-      dur:row.duration_minutes||60,
-      aud:row.audience||'Adults',
-    });
+    next[dow].push(_projClsRow(row));
   }
   for(const k of Object.keys(next))next[k].sort((a,b)=>a.time.localeCompare(b.time));
   TT=next;
@@ -609,7 +623,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all'};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',showInactiveCls:false,inactiveClsLoading:false,clsSaving:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -2599,11 +2613,60 @@ function rStaff(){
 function viewStaffMember(id){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;render();}
 function openStaffFb(sid){S.addFb='staff:'+sid;render();}
 function addJnyStaff(sid){S.editJny={sid:'staff:'+sid,idx:null,isNew:true};render();}
-function rManage(){return `<div style="margin-bottom:12px"><div style="font-size:13px;color:var(--text2)">Editing the weekly timetable. Changes apply to all future weeks.</div></div>${[1,2,3,4,5,6,0].map(dow=>{const cls=(TT[dow]||[]).slice().sort((a,b)=>a.time.localeCompare(b.time));return `<div class="dsec"><div class="dhd"><span>${DL[dow]}</span><button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;display:flex;align-items:center;gap:4px" onclick="openAddCls(${dow})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add</button></div>${cls.length===0?`<div style="font-size:12px;color:var(--text3);padding:8px 0">No classes.</div>`:''}${cls.map(c=>{const t=CT.find(x=>x.id===c.type)||CT[0];return `<div class="citem"><div class="cit">${c.time}</div><div class="cii"><div class="cin">${t.lbl}</div><div class="cim"><span>${c.ins.replace('Prof. ','')}</span><span>·</span><span>${c.dur}min</span><span>·</span><span class="ctag ${t.tc}" style="font-size:10px;padding:1px 5px">${c.aud}</span></div></div><div style="display:flex;gap:6px"><button class="bedit" onclick="openEditCls('${c.id}',${dow})">Edit</button><button class="bdel" onclick="reqDel('${c.id}',${dow})">✕</button></div></div>`;}).join('')}<button class="badd" onclick="openAddCls(${dow})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add class on ${DL[dow]}</button></div>`;}).join('')}`;}
+function rManage(){
+  // G4 — current unit's classes only. RLS already scopes write access;
+  // the visual filter mirrors what rebuildTT already does for TT.
+  const cur=UNITS.find(u=>u.name===S.unit);
+  const unitDbId=cur&&cur._dbId;
+  // Build a per-day list that optionally folds inactive classes in.
+  // Inactive rows are projected on the fly from CLASSES_INACTIVE so
+  // openEditCls() can find them via TT-shape lookup.
+  const showInactive=!!S.showInactiveCls;
+  const inactiveByDow={};
+  if(showInactive){
+    for(const row of CLASSES_INACTIVE){
+      if(unitDbId&&row.unit_id!==unitDbId)continue;
+      const d=row.day_of_week;if(d<0||d>6)continue;
+      (inactiveByDow[d]=inactiveByDow[d]||[]).push(_projClsRow(row));
+    }
+  }
+  const toggle=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap"><div style="font-size:13px;color:var(--text2);flex:1;min-width:200px">Editing the weekly timetable. Changes apply to all future weeks.</div><button class="achip2 ${showInactive?'on':''}" onclick="toggleShowInactiveCls()" style="cursor:pointer">${showInactive?'Hide inactive':'Show inactive'}${S.inactiveClsLoading?' …':''}</button></div>`;
+  const renderCard=(c,dow)=>{
+    const t=CT.find(x=>x.id===c.type)||CT[0];
+    const dim=c._active===false?'opacity:.55;':'';
+    const badge=c._active===false?'<span style="display:inline-block;background:var(--text3);color:var(--surface);font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 6px;border-radius:3px;margin-left:6px">INACTIVE</span>':'';
+    const rowBtn=c._active===false
+      ?`<button class="bedit" style="background:var(--green-bg);color:var(--green-text);border-color:var(--green-border)" onclick="reactivateCls('${c.classId||c.id}')">Reactivate</button>`
+      :`<button class="bedit" style="color:var(--red-text);border-color:var(--red-border)" onclick="reqDel('${c.id}',${dow})">Mark inactive</button>`;
+    return `<div class="citem" style="${dim}"><div class="cit">${c.time}</div><div class="cii"><div class="cin">${t.lbl}${badge}</div><div class="cim"><span>${c.ins.replace('Prof. ','')}</span><span>·</span><span>${c.dur}min</span><span>·</span><span class="ctag ${t.tc}" style="font-size:10px;padding:1px 5px">${c.aud}</span></div></div><div style="display:flex;gap:6px"><button class="bedit" onclick="openEditCls('${c.id}',${dow})">Edit</button>${rowBtn}</div></div>`;
+  };
+  const dayBlocks=[1,2,3,4,5,6,0].map(dow=>{
+    const act=(TT[dow]||[]).slice();
+    const inact=inactiveByDow[dow]||[];
+    const cls=[...act,...inact].sort((a,b)=>a.time.localeCompare(b.time)||((a._active===false)-(b._active===false)));
+    const empty=cls.length===0?`<div style="font-size:12px;color:var(--text3);padding:8px 0">No classes.</div>`:'';
+    return `<div class="dsec"><div class="dhd"><span>${DL[dow]}</span><button style="background:none;border:none;color:#1A5DAD;font-size:12px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;display:flex;align-items:center;gap:4px" onclick="openAddCls(${dow})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add</button></div>${empty}${cls.map(c=>renderCard(c,dow)).join('')}<button class="badd" onclick="openAddCls(${dow})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add class on ${DL[dow]}</button></div>`;
+  }).join('');
+  return toggle+dayBlocks;
+}
 
-function rCDel(){const cd=S.cdel;if(!cd)return '';const t=CT.find(x=>x.id===cd.type)||CT[0];return `<div class="cov" onclick="cancelDel()"><div class="csheet" onclick="event.stopPropagation()"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:var(--text);margin-bottom:8px">Delete class?</div><div style="font-size:14px;color:var(--text2);margin-bottom:20px;line-height:1.5">${DL[cd.dow]} at ${cd.time} · ${t.lbl}<br>This will remove it from the timetable permanently.</div><div style="display:flex;gap:10px"><button class="bsm" style="flex:1;padding:13px;border-radius:10px;font-size:15px" onclick="cancelDel()">Cancel</button><button style="flex:1;background:var(--red);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="confDel()">Delete</button></div></div></div>`;}
+function rCDel(){const cd=S.cdel;if(!cd)return '';const t=CT.find(x=>x.id===cd.type)||CT[0];const busy=!!S.clsSaving;return `<div class="cov" onclick="${busy?'':'cancelDel()'}"><div class="csheet" onclick="event.stopPropagation()"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:var(--text);margin-bottom:8px">Mark this class as inactive?</div><div style="font-size:14px;color:var(--text2);margin-bottom:20px;line-height:1.5">${DL[cd.dow]} at ${cd.time} · ${t.lbl}<br>It will be hidden from the schedule but attendance history is preserved.</div><div style="display:flex;gap:10px"><button class="bsm" style="flex:1;padding:13px;border-radius:10px;font-size:15px" onclick="cancelDel()" ${busy?'disabled':''}>Cancel</button><button style="flex:1;background:var(--red);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="confDel()" ${busy?'disabled':''}>${busy?'Working…':'Mark inactive'}</button></div></div></div>`;}
 
-function rCEdit(){const isNew=!S.editCls;const c=S.editCls||{time:'18:00',type:'alev',ins:defaultInstructorName(),dur:60,aud:'Adults'};const dow=S.editDow||2;return `<div class="sub open" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeCEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">${isNew?'Add class':'Edit class'}</div><button class="ssave" onclick="saveCls()">Save</button></div><div class="sbody"><div class="ef"><div class="erow"><div class="elbl">Day</div><select class="esel" id="ce-dow">${[1,2,3,4,5,6].map(d=>`<option value="${d}" ${d===dow?'selected':''}>${DL[d]}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Time</div><input class="einput" id="ce-time" type="time" value="${c.time}"/></div><div class="erow"><div class="elbl">Duration</div><select class="esel" id="ce-dur">${[30,45,50,60,90].map(d=>`<option value="${d}" ${d===c.dur?'selected':''}>${d} min</option>`).join('')}</select></div></div><div class="slbl" style="margin-top:8px">Class type</div><div class="ef"><div class="erow" style="flex-wrap:wrap;gap:8px;padding:12px 16px">${CT.map(t=>`<div onclick="setCet('${t.id}')" style="cursor:pointer"><span class="ctag ${t.tc}" style="cursor:pointer;opacity:${(S._cet||c.type)===t.id?'1':'.4'}">${t.lbl}</span></div>`).join('')}</div></div><div class="slbl" style="margin-top:8px">Audience & instructor</div><div class="ef"><div class="erow"><div class="elbl">Audience</div><div class="seg">${AUD.map(a=>`<button class="segb ${(S._cea||c.aud)===a?'on':''}" onclick="setCea('${a}')">${a}</button>`).join('')}</div></div><div class="erow"><div class="elbl">Instructor</div><select class="esel" id="ce-ins">${instructorOptionsHtml(c.ins)}</select></div></div>${!isNew?`<button class="bdel" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px" onclick="reqDel('${c.id}',${dow})">Delete this class</button>`:''}<div style="height:24px"></div></div></div>`;}
+function rCEdit(){
+  const isNew=!S.editCls;
+  const c=S.editCls||{time:'18:00',type:'alev',ins:defaultInstructorName(),dur:60,aud:'Adults',_active:true};
+  const dow=S.editDow||2;
+  const busy=!!S.clsSaving;
+  const isInactive=c._active===false;
+  // G4 — bottom action: "Mark inactive" on an active class (opens the
+  // confirm sheet, calls confDel→soft delete). On an inactive class it
+  // flips to a green "Reactivate" button that hits update({active:true})
+  // directly with no confirm — reactivation is reversible and low-risk.
+  const bottomAction=isNew?'':(isInactive
+    ?`<button class="bblue" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border)" onclick="reactivateCls('${c.classId||c.id}')" ${busy?'disabled':''}>${busy?'Working…':'Reactivate this class'}</button>`
+    :`<button class="bdel" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px" onclick="reqDel('${c.id}',${dow})" ${busy?'disabled':''}>Mark inactive</button>`);
+  return `<div class="sub open" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeCEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">${isNew?'Add class':isInactive?'Edit (inactive)':'Edit class'}</div><button class="ssave" onclick="saveCls()" ${busy?'disabled':''}>${busy?'…':'Save'}</button></div><div class="sbody"><div class="ef"><div class="erow"><div class="elbl">Day</div><select class="esel" id="ce-dow">${[1,2,3,4,5,6].map(d=>`<option value="${d}" ${d===dow?'selected':''}>${DL[d]}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Time</div><input class="einput" id="ce-time" type="time" value="${c.time}"/></div><div class="erow"><div class="elbl">Duration</div><select class="esel" id="ce-dur">${[30,45,50,60,90].map(d=>`<option value="${d}" ${d===c.dur?'selected':''}>${d} min</option>`).join('')}</select></div></div><div class="slbl" style="margin-top:8px">Class type</div><div class="ef"><div class="erow" style="flex-wrap:wrap;gap:8px;padding:12px 16px">${CT.map(t=>`<div onclick="setCet('${t.id}')" style="cursor:pointer"><span class="ctag ${t.tc}" style="cursor:pointer;opacity:${(S._cet||c.type)===t.id?'1':'.4'}">${t.lbl}</span></div>`).join('')}</div></div><div class="slbl" style="margin-top:8px">Audience & instructor</div><div class="ef"><div class="erow"><div class="elbl">Audience</div><div class="seg">${AUD.map(a=>`<button class="segb ${(S._cea||c.aud)===a?'on':''}" onclick="setCea('${a}')">${a}</button>`).join('')}</div></div><div class="erow"><div class="elbl">Instructor</div><select class="esel" id="ce-ins">${instructorOptionsHtml(c.ins)}</select></div></div>${bottomAction}<div style="height:24px"></div></div></div>`;
+}
 
 // ---------------------------------------------------------------------------
 // Role × feature matrix — single source of truth for who sees what
@@ -5781,14 +5844,192 @@ function saveJny(){
   render();
 }
 function openAddCls(dow){S.addCls=true;S.editCls=null;S.editDow=dow;S._cet=null;S._cea=null;render();}
-function openEditCls(cid,dow){const c=(TT[dow]||[]).find(x=>x.id===cid);if(!c)return;S.editCls={...c};S.editDow=dow;S.addCls=false;S._cet=c.type;S._cea=c.aud;render();}
+// G4 — TT only contains active classes. When the user taps an inactive
+// row (visible via the "Show inactive" toggle in rManage) we project
+// the matching raw row from CLASSES_INACTIVE before opening the modal,
+// so the form pre-fills correctly AND _active=false flips the bottom
+// action button to "Reactivate".
+function openEditCls(cid,dow){
+  let c=(TT[dow]||[]).find(x=>x.id===cid);
+  if(!c){
+    const cur=UNITS.find(u=>u.name===S.unit);
+    const unitDbId=cur&&cur._dbId;
+    const raw=CLASSES_INACTIVE.find(r=>(r.legacy_id||r.id)===cid&&(!unitDbId||r.unit_id===unitDbId)&&r.day_of_week===dow);
+    if(raw)c=_projClsRow(raw);
+  }
+  if(!c)return;
+  S.editCls={...c};S.editDow=dow;S.addCls=false;S._cet=c.type;S._cea=c.aud;render();
+}
 function closeCEdit(){S.editCls=null;S.addCls=false;S._cet=null;S._cea=null;render();}
 function setCet(t){S._cet=t;render();}
 function setCea(a){S._cea=a;render();}
-function saveCls(){const dow=parseInt(document.getElementById('ce-dow')?.value||S.editDow||2);const time=document.getElementById('ce-time')?.value||'18:00';const dur=parseInt(document.getElementById('ce-dur')?.value||60);const ins=document.getElementById('ce-ins')?.value||defaultInstructorName();const type=S._cet||'alev';const aud=S._cea||'Adults';if(S.addCls){const nid='cls'+String(++IDC);if(!TT[dow])TT[dow]=[];TT[dow].push({id:nid,time,type,ins,dur,aud});}else if(S.editCls){const ix=(TT[dow]||[]).findIndex(c=>c.id===S.editCls.id);if(ix>=0)TT[dow][ix]={...S.editCls,time,type,ins,dur,aud};}closeCEdit();}
-function reqDel(cid,dow){const c=(TT[dow]||[]).find(x=>x.id===cid);if(!c)return;S.cdel={...c,dow};render();}
-function confDel(){if(!S.cdel)return;const{id,dow}=S.cdel;if(TT[dow])TT[dow]=TT[dow].filter(c=>c.id!==id);S.cdel=null;render();}
-function cancelDel(){S.cdel=null;render();}
+// G4 — saveCls persists to public.classes. Insert on add, update on
+// edit. Catches the unique-index violation (23505 on
+// classes_unit_day_time_type_idx, migration 36) and surfaces a
+// friendly toast — the constraint is the FULL combo (unit, day, time,
+// type), so two classes at the same time-of-day with different
+// types/audiences (e.g. Fri 17:00 mma Adults + jmma Kids) are fine.
+const _CLS_SELECT='id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)';
+async function saveCls(){
+  if(S.clsSaving)return;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue. Please try again.','error');return;}
+  const dow=parseInt(document.getElementById('ce-dow')?.value||S.editDow||2,10);
+  const time=(document.getElementById('ce-time')?.value||'18:00').slice(0,5);
+  const dur=parseInt(document.getElementById('ce-dur')?.value||60,10);
+  const insName=document.getElementById('ce-ins')?.value||defaultInstructorName();
+  const type=S._cet||(S.editCls&&S.editCls.type)||'alev';
+  const aud=S._cea||(S.editCls&&S.editCls.aud)||'Adults';
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showSaveToast2('Time must be HH:MM.','error');return;}
+  if(!(dur>=15&&dur<=240)){showSaveToast2('Duration must be 15–240 minutes.','error');return;}
+  if(!CT.some(t=>t.id===type)){showSaveToast2('Pick a valid class type.','error');return;}
+  if(AUD.indexOf(aud)<0){showSaveToast2('Pick a valid audience.','error');return;}
+  const cur=UNITS.find(u=>u.name===S.unit);
+  const unitDbId=cur&&cur._dbId;
+  if(!unitDbId){showSaveToast2('Unit not set. Pick a unit first.','error');return;}
+  // Resolve the chosen instructor display name back to a staff DB id.
+  // instructorOptionsHtml emits staffDisplayName(s) as the option value,
+  // so we match against the same projection.
+  const insStaff=STAFF.find(s=>staffDisplayName(s)===insName);
+  const instructor_id=insStaff?insStaff._dbId:null;
+  if(!instructor_id){showSaveToast2('Pick a valid instructor.','error');return;}
+  const payload={unit_id:unitDbId,day_of_week:dow,time,type,instructor_id,duration_minutes:dur,audience:aud,active:true};
+  S.clsSaving=true;render();
+  let r;
+  if(S.addCls){
+    r=await cli.from('classes').insert(payload).select(_CLS_SELECT).single();
+  } else if(S.editCls&&S.editCls.classId){
+    r=await cli.from('classes').update(payload).eq('id',S.editCls.classId).select(_CLS_SELECT).single();
+  } else {
+    S.clsSaving=false;render();showSaveToast2('Nothing to save.','error');return;
+  }
+  S.clsSaving=false;
+  if(r&&r.error){
+    if(r.error.code==='23505'){
+      showSaveToast2('A class with the same day, time, and type already exists in this unit.','error');
+      render();return;
+    }
+    console.warn('[mybjj] saveCls:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    render();return;
+  }
+  // Splice the returned row into CLASSES (or CLASSES_INACTIVE if we
+  // somehow saved an inactive one — currently the form only sets
+  // active=true, so we always land in CLASSES). Then rebuildTT()
+  // refreshes the schedule view in the same tick.
+  const newRow=r&&r.data;
+  if(newRow){
+    if(newRow.active===false){
+      const ix=CLASSES_INACTIVE.findIndex(x=>x.id===newRow.id);
+      if(ix>=0)CLASSES_INACTIVE[ix]=newRow;else CLASSES_INACTIVE.push(newRow);
+      // Remove from active if it migrated.
+      const aix=CLASSES.findIndex(x=>x.id===newRow.id);if(aix>=0)CLASSES.splice(aix,1);
+    } else {
+      const ix=CLASSES.findIndex(x=>x.id===newRow.id);
+      if(ix>=0)CLASSES[ix]=newRow;else CLASSES.push(newRow);
+      const iix=CLASSES_INACTIVE.findIndex(x=>x.id===newRow.id);if(iix>=0)CLASSES_INACTIVE.splice(iix,1);
+    }
+    rebuildTT();
+  }
+  closeCEdit();
+  showSaveToast2(S.addCls?'Class added.':'Class updated.');
+}
+function reqDel(cid,dow){
+  // The row we're inactivating may be active (in TT) or inactive (in
+  // CLASSES_INACTIVE). Project from the right source.
+  let c=(TT[dow]||[]).find(x=>x.id===cid);
+  if(!c){
+    const cur=UNITS.find(u=>u.name===S.unit);
+    const unitDbId=cur&&cur._dbId;
+    const raw=CLASSES_INACTIVE.find(r=>(r.legacy_id||r.id)===cid&&(!unitDbId||r.unit_id===unitDbId)&&r.day_of_week===dow);
+    if(raw)c=_projClsRow(raw);
+  }
+  if(!c)return;
+  S.cdel={...c,dow};render();
+}
+async function confDel(){
+  if(!S.cdel||S.clsSaving)return;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue. Please try again.','error');return;}
+  const dbId=S.cdel.classId;
+  if(!dbId){
+    // Defensive — every CLASSES row carries classId. If missing we
+    // bail rather than no-op silently.
+    console.warn('[mybjj] confDel: missing classId on',S.cdel);
+    showSaveToast2('Class id missing. Refresh and try again.','error');
+    return;
+  }
+  S.clsSaving=true;render();
+  const r=await cli.from('classes').update({active:false}).eq('id',dbId).select(_CLS_SELECT).single();
+  S.clsSaving=false;
+  if(r&&r.error){
+    console.warn('[mybjj] confDel:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    render();return;
+  }
+  // Move the row from CLASSES to CLASSES_INACTIVE so the schedule view
+  // updates immediately, and the "Show inactive" toggle can render it.
+  const row=r&&r.data;
+  if(row){
+    const aix=CLASSES.findIndex(x=>x.id===dbId);if(aix>=0)CLASSES.splice(aix,1);
+    const iix=CLASSES_INACTIVE.findIndex(x=>x.id===dbId);
+    if(iix>=0)CLASSES_INACTIVE[iix]=row;else CLASSES_INACTIVE.push(row);
+    rebuildTT();
+  }
+  S.cdel=null;
+  // If the edit modal is open on the same row, close it — the row is
+  // now inactive and the modal title was "Edit class" (active state).
+  if(S.editCls&&S.editCls.classId===dbId)closeCEdit();
+  render();
+  showSaveToast2('Class marked inactive.');
+}
+function cancelDel(){if(S.clsSaving)return;S.cdel=null;render();}
+async function reactivateCls(dbId){
+  if(!dbId||S.clsSaving)return;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue. Please try again.','error');return;}
+  S.clsSaving=true;render();
+  const r=await cli.from('classes').update({active:true}).eq('id',dbId).select(_CLS_SELECT).single();
+  S.clsSaving=false;
+  if(r&&r.error){
+    if(r.error.code==='23505'){
+      showSaveToast2('A class with the same day, time, and type already exists in this unit.','error');
+      render();return;
+    }
+    console.warn('[mybjj] reactivateCls:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    render();return;
+  }
+  const row=r&&r.data;
+  if(row){
+    const iix=CLASSES_INACTIVE.findIndex(x=>x.id===dbId);if(iix>=0)CLASSES_INACTIVE.splice(iix,1);
+    const aix=CLASSES.findIndex(x=>x.id===dbId);
+    if(aix>=0)CLASSES[aix]=row;else CLASSES.push(row);
+    rebuildTT();
+  }
+  if(S.editCls&&S.editCls.classId===dbId)closeCEdit();
+  render();
+  showSaveToast2('Class reactivated.');
+}
+// G4 — "Show inactive" toggle. First flip-on triggers a lazy fetch of
+// inactive rows for the current unit. The result lives in
+// CLASSES_INACTIVE so the main schedule (rClass, attendance) is
+// unaffected.
+function toggleShowInactiveCls(){
+  S.showInactiveCls=!S.showInactiveCls;
+  if(S.showInactiveCls&&CLASSES_INACTIVE.length===0)loadInactiveClasses();
+  else render();
+}
+async function loadInactiveClasses(){
+  const cli=initSupabase();if(!cli)return;
+  S.inactiveClsLoading=true;render();
+  try{
+    const r=await cli.from('classes').select(_CLS_SELECT).eq('active',false);
+    if(r&&r.error){console.warn('[mybjj] loadInactiveClasses:',r.error);CLASSES_INACTIVE=[];}
+    else CLASSES_INACTIVE=(r&&r.data)||[];
+  }catch(e){console.warn('[mybjj] loadInactiveClasses exception:',e);CLASSES_INACTIVE=[];}
+  S.inactiveClsLoading=false;render();
+}
 function editW(w){S.editWeek=w;render();}
 function closeWE(){S.editWeek=false;render();}
 function updateTech(week,cat,idx,field,val){const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;if(typeof w[cat][idx]==='string')w[cat][idx]={t:w[cat][idx],video:''};w[cat][idx][field]=val;}
