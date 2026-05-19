@@ -1419,6 +1419,20 @@ function rStuProf(){
   const isKids=s.prog==='kids';
   const canAdmin=canEditClassCounts(); // owner + professor (excludes coach)
   const ownerView=isOwner();
+  // G11 — viewer-role gate. Peer students / peer parents see only the
+  // header + journey card; stats, details, attendance log, instructor
+  // feedback, and admin actions are hidden. Self (the student
+  // themselves) and parent-of-this-kid both get the full view.
+  // isStaffOrOwner covers any instructor (incl. non-black-belt coaches)
+  // and the unit owner — broader than canAdmin (which gates the
+  // promote / mark-inactive action buttons). V1 has a single unit so
+  // there's no cross-unit instructor leak yet; tighten with a
+  // unit-match check when Camperdown lands.
+  const viewerId=(S.profile&&S.profile.id)||null;
+  const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
+  const isParentOfKid=!!(viewerId&&s._parentUserId&&s._parentUserId===viewerId);
+  const isAdminViewer=isStaffOrOwner();
+  const isPeer=!(isSelf||isParentOfKid||isAdminViewer);
   const giSince=Math.max(s.giGrade||0,0);
   const noGiSince=Math.max((s.grade||0)-giSince,0);
   const noGiOnly=s.hasGi===false;
@@ -1468,8 +1482,39 @@ function rStuProf(){
   // view a plain display surface avoids the duplicated affordance.
   const photoBlock=avStu(s,52);
 
+  // G11 — back-button label adapts to the origin tab so peer viewers
+  // don't see "Roster" (admin nomenclature). Admins on the Manage
+  // tab keep "Roster"; everyone else lands on a contextual label.
+  const backLbl=isPeer
+    ?(S.tab==='community'?'Members':S.tab==='class'?'Class':'Back')
+    :'Roster';
+  // G11 — peer view (non-admin, non-self, non-parent-of-kid): only
+  // header card + journey card. Stats / eligibility hint / details /
+  // attendance log / instructor feedback / action buttons are gated
+  // out below.
+  const statsCard=isPeer?'':`<div class="card" style="padding:16px;margin-top:12px">
+  <div style="display:flex;gap:0;margin-bottom:10px">
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(giSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(noGiSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>
+    <div style="flex:1;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div></div>
+  </div>
+  ${egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog)}
+  ${egd.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${egd.reason}</span></div>`:''}
+  ${(s.hasGi!==false&&s.giTotal>0)
+    ?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>'
+    :'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}
+  ${canAdmin?rReconcileBadge(s):''}
+</div>`;
+  const detailsBlock=isPeer?'':details;
+  const attendanceBlock=isPeer?'':rAttHistory(s,canAdmin);
+  const feedbackBlock=isPeer?'':`<div class="slbl" style="margin-top:18px">Instructor feedback</div>
+${(s.feedback||[]).length===0?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback yet.</div>`:''}
+${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">${f.date}</div>${canDeleteFeedback(f)?`<button onclick="deleteFeedback('${s.id}',${i})" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color='var(--red-text)'" onmouseout="this.style.color='var(--text3)'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`:''}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}`;
+  const bottomBlock=isPeer?'':bottomActions;
+  const adminActionsBlock=(isPeer||!canAdmin)?'':rAdminActionRow(s);
   return `<div class="sub open">
-<div class="shdr"><button class="sback" onclick="closeStudentProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Roster</button><div class="stitle">${s.name}</div></div>
+<div class="shdr"><button class="sback" onclick="closeStudentProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> ${backLbl}</button><div class="stitle">${s.name}</div></div>
 <div class="sbody">
 
 <!-- Header -->
@@ -1485,47 +1530,32 @@ function rStuProf(){
   </div>
 </div>
 
-<!-- Section 1: Admin actions (owner/professor) -->
-${canAdmin?rAdminActionRow(s):''}
+<!-- Section 1: Admin actions (owner/professor) — peer-gated -->
+${adminActionsBlock}
 
-<!-- Section 2: Stats -->
-<div class="card" style="padding:16px;margin-top:12px">
-  <div style="display:flex;gap:0;margin-bottom:10px">
-    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
-    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(giSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
-    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(noGiSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>
-    <div style="flex:1;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div></div>
-  </div>
-  ${egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog)}
-  ${egd.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${egd.reason}</span></div>`:''}
-  ${(s.hasGi!==false&&s.giTotal>0)
-    ?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>'
-    :'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}
-  ${canAdmin?rReconcileBadge(s):''}
-</div>
+<!-- Section 2: Stats — peer-gated -->
+${statsCard}
 
 <!-- (Promote panel removed — the Promote button in Admin Actions opens
      a modal that contains the same info + actions, so the inline panel
      was redundant and visually clashed with the new design.) -->
 
 
-<!-- Section 3: Journey -->
+<!-- Section 3: Journey — always visible -->
 ${rJnySection(s)}
 
-<!-- Section 4: Details -->
-${details}
+<!-- Section 4: Details — peer-gated -->
+${detailsBlock}
 
-<!-- Section 4.5: Attendance log (transparency + verification trail) -->
-${rAttHistory(s,canAdmin)}
+<!-- Section 4.5: Attendance log — peer-gated -->
+${attendanceBlock}
 
-<!-- Instructor feedback (history; new notes are added via the Feedback
-     modal in the Admin Actions row at the top of the profile) -->
-<div class="slbl" style="margin-top:18px">Instructor feedback</div>
-${(s.feedback||[]).length===0?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback yet.</div>`:''}
-${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">${f.date}</div>${canDeleteFeedback(f)?`<button onclick="deleteFeedback('${s.id}',${i})" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color='var(--red-text)'" onmouseout="this.style.color='var(--text3)'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`:''}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}
+<!-- Instructor feedback — peer-gated -->
+${feedbackBlock}
 
-<!-- Section 5: More (stubs) -->
-${bottomActions}
+<!-- Section 5: More (stubs) — peer-gated via canAdmin already, plus
+     the explicit isPeer gate below for extra defense in depth -->
+${bottomBlock}
 
 ${S.editJny?rJnyEditor():''}
 <div style="height:24px"></div>
@@ -2332,15 +2362,13 @@ function rKidPeer(){
   if(!s){return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Member</div></div><div class="sbody"><div class="card" style="padding:16px">Member not found.</div></div></div>';}
   const first=(s.name||'').split(' ')[0]||'';
   const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+  // G11 — peer-kid view (parent tapping another kid). Stats removed
+  // per the peer-view privacy matrix; header + belt visual only.
   return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">'+first+'</div></div><div class="sbody">'
     +'<div class="card" style="padding:20px;text-align:center">'
     +'<div style="display:flex;justify-content:center;margin-bottom:12px">'+avStu(s,80)+'</div>'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;color:var(--text)">'+first+'</div>'
     +'<div style="margin-top:10px">'+bb(s.belt,s.deg||0,s.prog)+'</div>'
-    +'<div style="margin-top:14px;display:flex;justify-content:center;gap:24px">'
-      +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--text);line-height:1">'+formatStat(s.total||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Total classes</div></div>'
-      +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:#1A5DAD;line-height:1">'+formatStat(s.grade||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Since last promo</div></div>'
-    +'</div>'
     +'</div>'
     +'<div style="height:24px"></div>'
   +'</div></div>';
