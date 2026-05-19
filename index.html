@@ -2398,22 +2398,29 @@ function rProgress(){
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='wall'?rPromoWall():feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
   }
-  // Find the linked students row for this signed-in user. Real users
-  // resolve via user_id; the dev demoLogin path leaves S.me.id as the
-  // legacy_id, so fall back to that for local testing.
+  // G9.3 follow-up — student self lookup adds an email-fallback so a
+  // broken or missing students.user_id link doesn't drop the Progress
+  // tab back to S.me's meFromProfile defaults (zeros). The legacy
+  // `STUDENTS.find(x.id===s.id)` branch was dead code — s.id is the
+  // auth UUID, x.id is the legacy slug, they never matched. Email is
+  // the stable identifier that survives a missing user_id link.
+  var meEmail=S.profile&&S.profile.email?String(S.profile.email).toLowerCase():null;
   var stu=(S.profile&&STUDENTS.find(function(x){return x._userId===S.profile.id;}))
-    ||STUDENTS.find(function(x){return x.id===s.id;})
+    ||(meEmail?STUDENTS.find(function(x){return x.email&&String(x.email).toLowerCase()===meEmail;}):null)
     ||s;
   // Use the linked row's belt/prog/grade/total so progress + journey
   // both read from the same source instead of half-falling-back to
-  // S.me defaults.
+  // S.me defaults. Number() wraps protect against String values that
+  // refreshStudentStats may have written during an active session
+  // (it doesn't currently wrap its post-mark fetch — fixed below).
   s={...s,
      belt:stu.belt||s.belt,
      deg:stu.deg!=null?stu.deg:s.deg,
      prog:stu.prog||s.prog,
-     grade:stu.grade!=null?stu.grade:s.grade,
-     total:stu.total!=null?stu.total:s.total,
-     giTotal:stu.giTotal!=null?stu.giTotal:s.giTotal,
+     grade:stu.grade!=null?Number(stu.grade):s.grade,
+     total:stu.total!=null?Number(stu.total):s.total,
+     giTotal:stu.giTotal!=null?Number(stu.giTotal):s.giTotal,
+     giGrade:stu.giGrade!=null?Number(stu.giGrade):s.giGrade,
      hasGi:stu.hasGi!==undefined?stu.hasGi:s.hasGi};
   var bmap=s.prog==='kids'?BK:BA;
   var b=bmap[s.belt]||BA.white;
@@ -3354,15 +3361,25 @@ function enrichMeFromHydrate(){
     if(sf.photoUrl)S.me.photoUrl=sf.photoUrl;
     return;
   }
-  const stu=STUDENTS.find(x=>x._userId===uid);
+  // G9.3 follow-up — student self lookup falls back to email match when
+  // the user_id link is broken or missing on public.students. Symptom:
+  // signed-in student sees Progress > Rank stats as zeros even when the
+  // DB row has fractional totals (admin-side detail panel renders the
+  // values correctly because it looks up by legacy_id, not user_id).
+  const email=S.profile&&S.profile.email?String(S.profile.email).toLowerCase():null;
+  const stu=STUDENTS.find(x=>x._userId===uid)
+    ||(email?STUDENTS.find(x=>x.email&&String(x.email).toLowerCase()===email):null);
   if(stu){
     S.me.belt=stu.belt||S.me.belt;
     S.me.deg=stu.deg!=null?stu.deg:S.me.deg;
     S.me.initials=stu.initials||S.me.initials;
-    S.me.total=stu.total||0;
-    S.me.giTotal=stu.giTotal||0;
-    S.me.grade=stu.grade||0;
-    S.me.giGrade=stu.giGrade||0;
+    // Number() wrap is belt-and-suspenders even though the STUDENTS
+    // hydrate already wraps; refreshStudentStats writes raw response
+    // values into the same array during an active session.
+    S.me.total=Number(stu.total||0);
+    S.me.giTotal=Number(stu.giTotal||0);
+    S.me.grade=Number(stu.grade||0);
+    S.me.giGrade=Number(stu.giGrade||0);
     S.me.prog=stu.prog||S.me.prog;
     S.me.hasGi=stu.hasGi!==false;
     if(stu.photoUrl)S.me.photoUrl=stu.photoUrl;
@@ -5360,7 +5377,11 @@ async function refreshStudentStats(dbId){
   const r=await cli.from('students').select('total,gi_classes,nogi_classes,grade,gi_grade').eq('id',dbId).single();
   if(r&&r.data){
     const s=STUDENTS.find(x=>x._dbId===dbId);
-    if(s){s.total=r.data.total||0;s.giTotal=r.data.gi_classes||0;s.grade=r.data.grade||0;s.giGrade=r.data.gi_grade||0;}
+    // G9.3 follow-up — Number() wrap. After migration 47 students.total
+    // and friends are numeric(5,2); supabase-js@2 returns Postgres
+    // numeric as String, so writing the raw response back here would
+    // poison downstream math (sort, eligibility, formatStat input).
+    if(s){s.total=Number(r.data.total||0);s.giTotal=Number(r.data.gi_classes||0);s.grade=Number(r.data.grade||0);s.giGrade=Number(r.data.gi_grade||0);}
   }
 }
 
