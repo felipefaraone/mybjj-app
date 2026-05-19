@@ -344,6 +344,27 @@ const PROGRESSION_THRESHOLDS={
 };
 const CT=[{id:'nogi',lbl:'No-Gi',tc:'tn',gi:false},{id:'alev',lbl:'All Levels',tc:'ta',gi:true},{id:'beg',lbl:'Beginner',tc:'tb',gi:true},{id:'adv',lbl:'Advanced',tc:'tv',gi:true},{id:'omat',lbl:'Open Mat',tc:'to',gi:false},{id:'mma',lbl:'MMA',tc:'tm',gi:false},{id:'jun',lbl:'Kids',tc:'tj',gi:true},{id:'jnogi',lbl:'Kids No-Gi',tc:'tn',gi:false},{id:'jmma',lbl:'Kids MMA',tc:'tm',gi:false},{id:'mini',lbl:'Mini Champs',tc:'ti',gi:false}];
 const AUD=['Adults','Kids','All'];
+// G9.2 — 5-tier attendance marking. Maps to John's physical-card
+// system: instructor picks the same glyph they'd write on the card,
+// app records the corresponding class_value (numeric(3,2) on
+// public.attendance, default 1.00). recompute_student_stats already
+// SUMs class_value for total / grade, so picking a non-default value
+// just flows through migration 45's existing trigger.
+const CLASS_VALUE_TIERS=[
+  {value:2.00, label:'Signature + Circle', sub:'Back-to-back classes',     glyph:'✓○'},
+  {value:1.00, label:'Signature',          sub:'Normal presence',          glyph:'✓',  isDefault:true},
+  {value:0.50, label:'Circle',             sub:'Partial',                  glyph:'○'},
+  {value:0.25, label:'Tick',               sub:'Brief',                    glyph:'·'},
+  {value:0.00, label:'X',                  sub:"Marked but doesn't count", glyph:'✕'}
+];
+// Compact chip label for a non-default class_value on attendee rows.
+function _cvChipLabel(v){
+  if(v===2)return '2.0';
+  if(v===0.5)return '½';
+  if(v===0.25)return '¼';
+  if(v===0)return '×';
+  return ''; // 1.00 → no chip
+}
 const DL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 // G9 Phase 1 — adult promotion criteria from John's data (see
 // 07-promotion-criteria.md). `classes` are INCREMENTAL since the
@@ -736,7 +757,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -909,10 +930,29 @@ function rAttsStaff(rows,cid){
     if(r.status==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">PRESENT</span>';
     return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;margin-left:6px">GOING</span>';
   };
+  // G9.2 — class_value chip only when the present row was marked at a
+  // non-default tier (≠ 1.00). The standard PRESENT pill already
+  // implies 1.00; adding the chip there would clutter the row.
+  const cvChip=r=>{
+    if(r.status!=='present')return '';
+    const v=typeof r.classValue==='number'?r.classValue:1;
+    const lbl=_cvChipLabel(v);
+    if(!lbl)return '';
+    const isZero=v===0;
+    const accent=isZero?'var(--text3)':(v>1?'var(--blue)':'var(--amber-text)');
+    const bg=isZero?'var(--bg)':(v>1?'var(--blue-tint)':'var(--amber-bg)');
+    const border=isZero?'var(--border)':(v>1?'var(--blue-mid)':'var(--amber-border)');
+    return '<span title="class_value = '+v.toFixed(2)+'" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:'+accent+';background:'+bg+';border:1px solid '+border+';padding:1px 6px;border-radius:4px;margin-left:6px">'+lbl+'</span>';
+  };
   return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId);if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">${s.name}${statusPill(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    // G9.2 — strikethrough the student name when class_value === 0
+    // (instructor marked "X — doesn't count") so the row visually
+    // reads "they were here but it doesn't count toward promotion".
+    const isZero=r.status==='present'&&r.classValue===0;
+    const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
 }
 // _fmtJnyDate — journey entries store the date in two formats:
@@ -2888,7 +2928,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rClassAddStudentModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hav" onclick="openPanel()" style="overflow:hidden">${me.photoUrl?`<img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/>`:me.initials}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rClassAddStudentModal()}${rMarkPSheet()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hav" onclick="openPanel()" style="overflow:hidden">${me.photoUrl?`<img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/>`:me.initials}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -4285,7 +4325,7 @@ async function hydrateData(){
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
-      c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
+      c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
       // Etapa 1 — schedule lives in public.classes. Join staff so we
       // can render the instructor's clean display name without a
       // second lookup. Order so rebuildTT sees a stable shape.
@@ -4376,7 +4416,7 @@ async function hydrateData(){
       touched=true;
     }else if(pw.error)console.warn('[mybjj] hydrate programme_weeks:',pw.error);
     if(at.data){
-      ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null}));
+      ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,classValue:r.class_value!=null?Number(r.class_value):1}));
       touched=true;
     }else if(at.error)console.warn('[mybjj] hydrate attendance:',at.error);
     if(cl.data){
@@ -5291,7 +5331,12 @@ async function refreshStudentStats(dbId){
 // pulls the new cached counts so the roster + profile views see the
 // change immediately. Locked once we're more than an hour past the
 // class end-time (isClassLocked).
-async function _setAttStatus(cid,sid,newStatus){
+// G9.2 — _setAttStatus accepts an optional class_value (4th arg).
+// Only meaningful for status==='present' (recompute_student_stats sums
+// class_value only for present rows). For status==='going' the value
+// is ignored on the wire — we don't write it on the going-undo path
+// to avoid clobbering whatever was on the previous present row.
+async function _setAttStatus(cid,sid,newStatus,classValue){
   const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
@@ -5300,16 +5345,16 @@ async function _setAttStatus(cid,sid,newStatus){
   const unit=UNITS.find(u=>u.id===s.unit);
   const confirmed=newStatus==='going'?null:(S.profile&&S.profile.id);
   const confirmedAt=newStatus==='going'?null:new Date().toISOString();
+  const cv=(newStatus==='present'&&typeof classValue==='number')?classValue:null;
   const cli=initSupabase();
   if(!row){
-    // No existing row — staff is recording attendance for a student
-    // who didn't self-check-in. INSERT a fresh row at the target
-    // status, the trigger will recompute.
-    const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:newStatus,confirmedBy:confirmed,confirmedAt};
+    const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:newStatus,confirmedBy:confirmed,confirmedAt,classValue:cv!=null?cv:1};
     ATTENDANCE.push(local);
     render();
     if(!cli)return;
-    const r=await cli.from('attendance').insert({student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt}).select('id').single();
+    const payload={student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
+    if(cv!=null)payload.class_value=cv;
+    const r=await cli.from('attendance').insert(payload).select('id').single();
     if(r&&r.error){
       const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
       console.warn('[mybjj] insert attendance ('+newStatus+'):',r.error);
@@ -5319,21 +5364,63 @@ async function _setAttStatus(cid,sid,newStatus){
     showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
     await refreshStudentStats(s._dbId);render();return;
   }
-  const prev=row.status;
+  const prev={status:row.status,classValue:row.classValue};
   row.status=newStatus;row.confirmedBy=confirmed;row.confirmedAt=confirmedAt;
+  if(cv!=null)row.classValue=cv;
   render();
   if(!cli||String(row._dbId).startsWith('local-'))return;
-  const r=await cli.from('attendance').update({status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt}).eq('id',row._dbId);
+  const updatePayload={status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
+  if(cv!=null)updatePayload.class_value=cv;
+  const r=await cli.from('attendance').update(updatePayload).eq('id',row._dbId);
   if(r&&r.error){
-    row.status=prev;
+    row.status=prev.status;row.classValue=prev.classValue;
     console.warn('[mybjj] update attendance ('+newStatus+'):',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');render();return;
   }
   showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
   await refreshStudentStats(s._dbId);render();
 }
-function markP(cid,sid){return _setAttStatus(cid,sid,'present');}
+// G9.2 — Mark Present now opens the 5-tier picker sheet instead of
+// going straight to class_value=1.00. Tap a row → openMarkPSheet →
+// confirmMarkPresent(value) → _setAttStatus(cid, sid, 'present', value).
+function markP(cid,sid){openMarkPSheet(cid,sid,false);}
 function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
+function openMarkPSheet(cid,sid,walkin){
+  S.markP={cid,sid,walkin:!!walkin};
+  render();
+}
+function closeMarkPSheet(){
+  if(!S.markP)return;
+  S.markP=null;
+  render();
+}
+async function confirmMarkPresent(value){
+  const m=S.markP;if(!m)return;
+  const v=typeof value==='number'?value:1;
+  const cid=m.cid, sid=m.sid, walkin=!!m.walkin;
+  S.markP=null;render();
+  if(walkin) return _doAddStudentToClass(cid,sid,v);
+  return _setAttStatus(cid,sid,'present',v);
+}
+function rMarkPSheet(){
+  if(!S.markP)return '';
+  const m=S.markP;
+  const s=STUDENTS.find(x=>x.id===m.sid);
+  const c=_parseCID(m.cid);
+  if(!s||!c)return '';
+  const d=new Date(c.date+'T00:00:00');
+  const dayLbl=DL[d.getDay()];
+  const headerLbl='Mark '+s.name.split(' ')[0]+' — '+dayLbl+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' · '+c.time;
+  const rows=CLASS_VALUE_TIERS.map(tier=>{
+    const isDefault=!!tier.isDefault;
+    const accent=isDefault?'#1A5DAD':'var(--text2)';
+    const bg=isDefault?'var(--blue-tint)':'transparent';
+    const border=isDefault?'1px solid var(--blue-mid)':'1px solid var(--border)';
+    const weight=isDefault?700:600;
+    return `<button onclick="confirmMarkPresent(${tier.value})" style="display:flex;align-items:center;gap:14px;width:100%;min-height:52px;padding:10px 14px;background:${bg};border:${border};border-radius:10px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="flex:0 0 28px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:${accent};text-align:center">${tier.glyph}</div><div style="flex:1;min-width:0"><div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:${weight};color:var(--text);line-height:1.15">${tier.label}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${tier.sub}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:${accent};flex-shrink:0">${tier.value.toFixed(2)}</div></button>`;
+  }).join('');
+  return `<div class="cov" onclick="closeMarkPSheet()" style="align-items:flex-end;z-index:290"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;margin:0 auto;padding:18px;max-height:calc(100vh - 40px);overflow:auto"><button onclick="closeMarkPSheet()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;color:var(--text);margin-bottom:14px;padding-right:40px">${headerLbl}</div>${rows}</div></div>`;
+}
 
 // Item 2 — "+ Add student" modal. Lets an instructor register a walk-in
 // or late arrival on the spot. State carries the synthetic class id +
@@ -5422,7 +5509,22 @@ function rClassAddStudentModal(){
 </div></div>`;
 }
 
+// G9.2 — Walk-in "Add student to class" now opens the same 5-tier
+// picker the staff Confirm-attendance flow uses. The click on a
+// student row only opens the sheet; the actual INSERT happens after
+// the instructor picks a tier (via confirmMarkPresent →
+// _doAddStudentToClass). Keeps a single mental model: every Mark
+// Present = one pick.
 async function addStudentToClass(cid,legacyId){
+  if(!S.classAdd||S.classAdd.saving)return;
+  const c=_parseCID(cid);if(!c)return;
+  const s=STUDENTS.find(x=>x.id===legacyId);if(!s||!s._dbId)return;
+  if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
+  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
+  openMarkPSheet(cid,legacyId,true);
+}
+async function _doAddStudentToClass(cid,legacyId,classValue){
   if(!S.classAdd||S.classAdd.saving)return;
   const c=_parseCID(cid);if(!c)return;
   const s=STUDENTS.find(x=>x.id===legacyId);if(!s||!s._dbId)return;
@@ -5433,10 +5535,9 @@ async function addStudentToClass(cid,legacyId){
   const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
   const unit=UNITS.find(u=>u.id===s.unit);
   const nowISO=new Date().toISOString();
-  const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:tt.classId||null,classDate:c.date,classTime:c.time,classType:tt.type||null,status:'present',confirmedBy:S.profile&&S.profile.id,confirmedAt:nowISO};
+  const cv=typeof classValue==='number'?classValue:1;
+  const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:tt.classId||null,classDate:c.date,classTime:c.time,classType:tt.type||null,status:'present',confirmedBy:S.profile&&S.profile.id,confirmedAt:nowISO,classValue:cv};
   ATTENDANCE.push(local);
-  // Update the per-class results inline AND the expanded attendees
-  // list below the class card; no full re-render so input keeps focus.
   _renderClassAddList();
   const cli=initSupabase();
   if(!cli){S.classAdd.saving=false;showSaveToast2('Connection issue','error');return;}
@@ -5451,6 +5552,7 @@ async function addStudentToClass(cid,legacyId){
     status:'present',
     confirmed_by:S.profile&&S.profile.id,
     confirmed_at:nowISO,
+    class_value:cv,
   }).select('id').single();
   if(r&&r.error){
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
