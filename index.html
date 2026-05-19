@@ -350,13 +350,23 @@ const AUD=['Adults','Kids','All'];
 // public.attendance, default 1.00). recompute_student_stats already
 // SUMs class_value for total / grade, so picking a non-default value
 // just flows through migration 45's existing trigger.
+// G9.3 — dropped the 2.00 tier (back-to-back classes are now distinct
+// rows on public.classes, so a single attendance row should never
+// represent two). Labels switched from the physical-card glyph names
+// to semantic ones the instructor actually thinks in.
 const CLASS_VALUE_TIERS=[
-  {value:2.00, label:'Signature + Circle', sub:'Back-to-back classes',     glyph:'✓○'},
-  {value:1.00, label:'Signature',          sub:'Normal presence',          glyph:'✓',  isDefault:true},
-  {value:0.50, label:'Circle',             sub:'Partial',                  glyph:'○'},
-  {value:0.25, label:'Tick',               sub:'Brief',                    glyph:'·'},
-  {value:0.00, label:'X',                  sub:"Marked but doesn't count", glyph:'✕'}
+  {value:1.00, label:'Full presence', sub:'Standard',               glyph:'✓', isDefault:true},
+  {value:0.50, label:'Partial',       sub:'Late or left early',     glyph:'○'},
+  {value:0.25, label:'Brief',         sub:'Stopped by',             glyph:'·'},
+  {value:0.00, label:'No count',      sub:'Present but no credit',  glyph:'✕'}
 ];
+// G9.3 — stats are now numeric(5,2). Display rule: integer values
+// drop the decimal ("19"); fractional values show one decimal ("19.5").
+function formatStat(v){
+  const n=typeof v==='number'?v:Number(v||0);
+  if(!isFinite(n))return '0';
+  return n%1===0?String(Math.round(n)):n.toFixed(1);
+}
 // Compact chip label for a non-default class_value on attendee rows.
 function _cvChipLabel(v){
   if(v===2)return '2.0';
@@ -464,7 +474,10 @@ function _egDisplay(student){
   if(eg.status==='eligible')return {hide:false,pct:100,barPct:100,isReady:true,isPending:false,label:eg.label,reason:'Ready: '+eg.label};
   const target=eg.classes_target||1;
   const pct=Math.max(0,Math.min(100,Math.round((eg.classes_done/target)*100)));
-  const remaining=Math.max(0,eg.classes_target-eg.classes_done);
+  // G9.3 — student.grade may now be fractional (numeric(5,2)). Round
+  // up so 0.5 remaining renders as "1 more class" — students can't
+  // attend a fractional class to close the gap.
+  const remaining=Math.max(0,Math.ceil(eg.classes_target-eg.classes_done));
   return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,reason:remaining+' more class'+(remaining===1?'':'es')+' for '+eg.label};
 }
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -902,13 +915,17 @@ function rAtts(all,cid){
 // a 'present' row shows Undo (back to going). Past classes remain
 // fully editable; classes more than 7 days in the future are locked.
 function rAttsStaff(rows,cid){
-  const visible=rows.filter(r=>r.status==='going'||r.status==='present');
+  // G9.3 — include 'absent' rows in the staff confirm-attendance view.
+  // Absent is now an explicit disambiguation signal (re-allowed in
+  // migration 47), not a soft-delete. Counts: cf is still PRESENT
+  // only; going is the total tally of any-non-absent rows that were
+  // expecting attendance, but absent rows display so the instructor
+  // can review and undo if needed.
+  const visible=rows.filter(r=>r.status==='going'||r.status==='present'||r.status==='absent');
   const exp=!!S.expanded[cid];
   const cf=visible.filter(r=>r.status==='present').length;
-  const going=visible.length;
+  const going=visible.filter(r=>r.status!=='absent').length;
   const locked=isClassLocked(cid);
-  // "+ Add student" appears for staff on every class — past, today,
-  // or up to 7 days ahead. Locked far-future classes hide it.
   const addBtn=!locked
     ?'<button class="bsm" onclick="openClassAddStudent(\''+cid+'\')" style="margin-left:auto;padding:6px 10px;font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:#1A5DAD;border:1px solid var(--blue-mid);background:var(--blue-tint);border-radius:6px;cursor:pointer">+ Add student</button>'
     :'';
@@ -919,15 +936,21 @@ function rAttsStaff(rows,cid){
   if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}</div>`;
   const btnFor=(r,s)=>{
     if(locked){
-      const lbl=r.status==='present'?'Present':'Going';
-      const tone=r.status==='present'?'var(--green-text)':'var(--text3)';
+      const lbl=r.status==='present'?'Present':r.status==='absent'?'Absent':'Going';
+      const tone=r.status==='present'?'var(--green-text)':r.status==='absent'?'var(--red-text)':'var(--text3)';
       return `<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;color:${tone};letter-spacing:.5px">${lbl.toUpperCase()}</div>`;
     }
     if(r.status==='present')return `<button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
-    return `<button class="bsm bpre" onclick="markP('${cid}','${s.id}')">Present</button>`;
+    if(r.status==='absent')return `<button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
+    // G9.3 — going state now shows both Present (opens picker sheet)
+    // and Absent (direct write, no sheet — closes the
+    // "instructor forgot to mark me" dispute path).
+    return `<button class="bsm bpre" onclick="markP('${cid}','${s.id}')">Present</button>`
+      +`<button class="bsm" onclick="markA('${cid}','${s.id}')" style="color:var(--red-text);border-color:var(--red-border);background:var(--red-bg)">Absent</button>`;
   };
   const statusPill=r=>{
     if(r.status==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">PRESENT</span>';
+    if(r.status==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px;margin-left:6px">ABSENT</span>';
     return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;margin-left:6px">GOING</span>';
   };
   // G9.2 — class_value chip only when the present row was marked at a
@@ -1468,9 +1491,9 @@ ${canAdmin?rAdminActionRow(s):''}
 <!-- Section 2: Stats -->
 <div class="card" style="padding:16px;margin-top:12px">
   <div style="display:flex;gap:0;margin-bottom:10px">
-    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${s.total}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
-    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${giSince}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
-    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${noGiSince}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(giSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(noGiSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>
     <div style="flex:1;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div></div>
   </div>
   ${egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog)}
@@ -1578,8 +1601,12 @@ function rJnySection(s,sidKey){
 // roles who can see the profile.
 function rAttHistory(s,canAdminView){
   if(!s||!s._dbId)return '';
+  // G9.3 — include 'absent' rows so admins (and the student themselves
+  // via rParentChildView's mirror) can see explicit absences in the
+  // log. Absent rows render with their own pill + a "Marked absent
+  // by …" trail.
   const rows=ATTENDANCE
-    .filter(a=>a.studentDbId===s._dbId&&(a.status==='present'||a.status==='going'))
+    .filter(a=>a.studentDbId===s._dbId&&(a.status==='present'||a.status==='going'||a.status==='absent'))
     .sort((a,b)=>(b.classDate+'_'+b.classTime).localeCompare(a.classDate+'_'+a.classTime))
     .slice(0,20);
   if(!rows.length){
@@ -1594,6 +1621,7 @@ function rAttHistory(s,canAdminView){
   };
   const pill=st=>{
     if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
+    if(st==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
     return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
   };
   return '<div class="slbl" style="margin-top:18px">Attendance log</div>'
@@ -1604,6 +1632,7 @@ function rAttHistory(s,canAdminView){
       const when=r.confirmedAt?new Date(r.confirmedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):null;
       let trail='';
       if(r.status==='present'&&ins)trail='Confirmed by '+ins+(when?' on '+when:'');
+      else if(r.status==='absent')trail='Marked absent'+(ins?' by '+ins:'')+(when?' on '+when:'');
       else if(r.status==='going')trail='Awaiting confirmation';
       const ctLabel=r.classType||'class';
       return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
@@ -1630,7 +1659,7 @@ function rReconcileBadge(s){
   // with truncation.
   const mismatch=presentCount>(s.total||0);
   if(!mismatch){
-    return '<div style="margin-top:8px;font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;letter-spacing:.5px;text-align:center">Cache OK · '+(s.total||0)+' total / '+presentCount+' confirmed in last 21d</div>';
+    return '<div style="margin-top:8px;font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;letter-spacing:.5px;text-align:center">Cache OK · '+formatStat(s.total||0)+' total / '+presentCount+' confirmed in last 21d</div>';
   }
   // Fire-and-forget recompute. The badge will refresh on the next render.
   refreshStudentStats(s._dbId);
@@ -2085,9 +2114,9 @@ function rParentChildView(){
   const gi=Math.max(child.giGrade||0,0);
   const ng=Math.max((child.grade||0)-gi,0);
   const rankCard='<div class="card" style="padding:16px"><div style="display:flex;gap:0;margin-bottom:10px">'
-    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+(child.total||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>'
-    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+gi+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>'
-    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+ng+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>'
+    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+formatStat(child.total||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>'
+    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+formatStat(gi)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>'
+    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+formatStat(ng)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>'
     +'<div style="flex:1;text-align:center"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:'+(isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)'))+'">'+(pct==null?'—':pct+'%')+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">'+(isReady?'Ready':'Progress')+'</div></div>'
     +'</div>'+(egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,child.belt,child.prog))
     +(egd.reason?'<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:'+(isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(isReady?'var(--green-border)':'var(--border)')+';font-size:12px;line-height:1.4;color:'+(isReady?'var(--green-text)':'var(--text2)')+';font-family:Barlow Condensed,sans-serif;font-weight:600;letter-spacing:.5px">'+egd.reason+'</div>':'')
@@ -2129,8 +2158,12 @@ function rParentAttendance(child){
     if(!sf)return null;
     return staffDisplayName(sf,{firstOnly:true});
   };
+  // G9.3 — include 'absent' rows so parents can see explicit absences
+  // in the kid's class history. rParentAttendance already shows all
+  // statuses (no filter); adding the absent branch to pill() + trail.
   const pill=st=>{
     if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
+    if(st==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
     return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
   };
   return '<div class="card" style="padding:2px 14px">'
@@ -2140,6 +2173,7 @@ function rParentAttendance(child){
       const when=r.confirmedAt?new Date(r.confirmedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):null;
       let trail='';
       if(r.status==='present'&&ins) trail='Confirmed by '+ins+(when?' on '+when:'');
+      else if(r.status==='absent') trail='Marked absent'+(ins?' by '+ins:'')+(when?' on '+when:'');
       else if(r.status==='going') trail='Checked in — awaiting confirmation';
       const ctLabel=r.classType||'class';
       return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
@@ -2304,8 +2338,8 @@ function rKidPeer(){
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;color:var(--text)">'+first+'</div>'
     +'<div style="margin-top:10px">'+bb(s.belt,s.deg||0,s.prog)+'</div>'
     +'<div style="margin-top:14px;display:flex;justify-content:center;gap:24px">'
-      +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--text);line-height:1">'+(s.total||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Total classes</div></div>'
-      +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:#1A5DAD;line-height:1">'+(s.grade||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Since last promo</div></div>'
+      +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--text);line-height:1">'+formatStat(s.total||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Total classes</div></div>'
+      +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:#1A5DAD;line-height:1">'+formatStat(s.grade||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Since last promo</div></div>'
     +'</div>'
     +'</div>'
     +'<div style="height:24px"></div>'
@@ -2357,7 +2391,7 @@ function rProgress(){
     var coachPctHtml=coachEgd.hide||coachEgd.isPending?'<span style="color:var(--text3)">—</span>':(coachEgd.pct+'%');
     var coachBarHtml=coachEgd.hide||coachEgd.isPending?'':pbBelt(coachEgd.barPct,100,s.belt,s.prog||'adult');
     var coachReasonHtml=coachEgd.reason?'<div style="font-size:12px;color:'+(coachEgd.isReady?'var(--green-text)':'var(--text2)')+';margin-top:8px">'+coachEgd.reason+'</div>':'';
-    var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">'+((s.hasGi!==false&&s.giTotal>0)?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-size:12px;color:var(--amber-text)">Start attending Gi classes to unlock promotion</span></div>')+'All classes count toward promotion</div>'+coachBarHtml+coachReasonHtml+'</div>';
+    var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+formatStat(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+formatStat(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">'+((s.hasGi!==false&&s.giTotal>0)?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-size:12px;color:var(--amber-text)">Start attending Gi classes to unlock promotion</span></div>')+'All classes count toward promotion</div>'+coachBarHtml+coachReasonHtml+'</div>';
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
     var techsTab=rTechniquesLog(s);
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
@@ -2393,7 +2427,7 @@ function rProgress(){
   var barHtml=egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog);
   var reasonHtml=egd.reason?`<div style="font-size:12px;color:${egd.isReady?'var(--green-text)':'var(--text2)'};margin-top:8px">${egd.reason}</div>`:'';
 
-  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${s.total}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${s.grade}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${(s.hasGi!==false&&s.giTotal>0)?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>':'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${s.giTotal}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${s.total-s.giTotal}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">${(s.hasGi!==false&&s.giTotal>0)?"Your Gi + No-Gi classes all count toward promotion. Final decision is always the instructor\u2019s.":"Your No-Gi classes are being counted. Once you start attending Gi classes, all your accumulated classes will count toward promotion. Final decision is always the instructor\u2019s."}</div></div>`;
+  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${(s.hasGi!==false&&s.giTotal>0)?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>':'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">${(s.hasGi!==false&&s.giTotal>0)?"Your Gi + No-Gi classes all count toward promotion. Final decision is always the instructor\u2019s.":"Your No-Gi classes are being counted. Once you start attending Gi classes, all your accumulated classes will count toward promotion. Final decision is always the instructor\u2019s."}</div></div>`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
 
@@ -2730,7 +2764,7 @@ function rARosterListInner(){
     //     independent of the next-marker math)
     //   - eligHint now leads with "Next: <label>" so users can tell
     //     what the X/Y figures are measuring against.
-    const totalLine='<div style="font-size:11px;color:var(--text3);margin-top:6px">'+(s.total||0)+' total</div>';
+    const totalLine='<div style="font-size:11px;color:var(--text3);margin-top:6px">'+formatStat(s.total||0)+' total</div>';
     const breakdownLine='<div style="font-size:11px;color:var(--text3);margin-top:4px">Gi: '+giSince+' · No-Gi: '+noGiSince+(noGiOnly?' · <span style="color:var(--amber-text)">No-Gi only — Gi required for IBJJF</span>':'')+'</div>';
     // G9 Phase 1 — eligibility hint driven by PROMO_CRITERIA. Adults
     // only; kids show a "criteria pending" placeholder until Phase 2.
@@ -4351,7 +4385,12 @@ async function hydrateData(){
       // truth. Initialize each STUDENTS row with feedback:[]; the
       // public.feedback fetch below populates them after grouping
       // by student_id.
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:r.total||0,giTotal:r.gi_classes||0,grade:r.grade||0,giGrade:r.gi_grade||0,initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null}));
+      // G9.3 — total/grade/gi_classes/nogi_classes/gi_grade are now
+      // numeric(5,2) on the DB (migration 47). supabase-js@2 returns
+      // Postgres numeric as String to avoid precision loss; wrap with
+      // Number() so downstream math (sort, eligibility, formatStat)
+      // compares numerically instead of lexicographically.
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
@@ -5385,6 +5424,11 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
 // confirmMarkPresent(value) → _setAttStatus(cid, sid, 'present', value).
 function markP(cid,sid){openMarkPSheet(cid,sid,false);}
 function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
+// G9.3 — Absent is a direct write, no picker sheet. Routes through
+// _setAttStatus → DB INSERT/UPDATE with status='absent'. No
+// class_value is sent; recompute_student_stats's WHERE status='present'
+// clause keeps absent rows out of every stat sum.
+function markA(cid,sid){return _setAttStatus(cid,sid,'absent');}
 function openMarkPSheet(cid,sid,walkin){
   S.markP={cid,sid,walkin:!!walkin};
   render();
