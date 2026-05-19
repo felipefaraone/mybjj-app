@@ -1435,7 +1435,9 @@ ${canAdmin?rAdminActionRow(s):''}
   </div>
   ${egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog)}
   ${egd.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${egd.reason}</span></div>`:''}
-  ${noGiOnly?'<div style="margin-top:8px;font-size:11px;color:var(--amber-text)">No-Gi only — Gi training required for IBJJF promotion.</div>':''}
+  ${(s.hasGi!==false&&s.giTotal>0)
+    ?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>'
+    :'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}
   ${canAdmin?rReconcileBadge(s):''}
 </div>
 
@@ -1828,10 +1830,20 @@ function nextBeltColor(belt,prog){
   if(i<0||i>=O.length-1)return '#111827';
   return C[O[i+1]]||'#1A5DAD';
 }
+// G3 Item 1+2 — banner now sits 20px below the day strip and gets a
+// dismiss button. Dismissal is persisted in localStorage keyed by the
+// Sydney-local month (YYYY-MM), so it lasts the rest of the month and
+// auto-resets on the next month rollover.
+function _promoBannerMonthKey(){
+  return TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
+}
 function rMonthPromos(){
   const cutoff=new Date('2026-03-01');
   const recent=PROMOTION_LOG.filter(p=>new Date(p.date)>=cutoff&&p.isNewBelt);
   if(!recent.length)return '';
+  try{
+    if(localStorage.getItem('banner_promo_dismissed_'+_promoBannerMonthKey()))return '';
+  }catch(_){/* localStorage disabled (private mode) → just always render */}
   const chips=recent.slice(0,3).map(p=>{
     const bmap=BA;const b=bmap[p.toBelt]||BA.white;
     // G1-B hotfix — guard against null/empty studentName / toBelt so a
@@ -1841,7 +1853,22 @@ function rMonthPromos(){
     return '<span style="background:'+b.bg+'25;color:'+b.bg+';border:1px solid '+b.bg+'40;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px">'+firstName+'&nbsp;→&nbsp;'+toBelt+'</span>';
   }).join('');
   const moreTxt=recent.length>3?'<span style="font-size:11px;color:var(--text3)">+' +(recent.length-3)+'</span>':'';
-  return `<div style="background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 14px;margin-bottom:12px"><div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5DAD;margin-bottom:6px">🥋 Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
+  const closeBtn='<button onclick="event.stopPropagation();dismissMonthPromos()" aria-label="Dismiss" title="Dismiss" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:#1A5DAD;padding:2px;display:flex;align-items:center;justify-content:center;border-radius:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+  return `<div id="month-promos-banner" style="position:relative;background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 30px 11px 14px;margin-top:20px;margin-bottom:12px;transition:opacity 200ms">${closeBtn}<div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5DAD;margin-bottom:6px">🥋 Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
+}
+function dismissMonthPromos(){
+  const key='banner_promo_dismissed_'+_promoBannerMonthKey();
+  const el=document.getElementById('month-promos-banner');
+  if(el){
+    el.style.opacity='0';
+    setTimeout(()=>{
+      try{localStorage.setItem(key,'1');}catch(_){/* no-op */}
+      render();
+    },220);
+  } else {
+    try{localStorage.setItem(key,'1');}catch(_){/* no-op */}
+    render();
+  }
 }
 function rClass(){
   const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const cls=getDC(sd);const isT=sk===dk(TODAY);const hol=isHol(sd);const me=S.me;
@@ -3292,9 +3319,14 @@ function avMe(size,mode){
   const badge=mode==='upload'
     ?'<div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>'
     :'';
+  // G3 Item 4 — add a 2px var(--blue-mid) ring to the avatar so the
+  // side-panel header (and Edit Profile photo block) matches the
+  // top-right .hav small avatar's border. Applied via box-shadow on
+  // the inner circle so the wrapper's layout stays unchanged; the
+  // initials branch gets the same ring via a thin wrapping span.
   const inner=photoUrl
-    ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
-    : av(m.initials,b.bg,b.fg,size,m.role);
+    ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px var(--blue-mid)"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
+    : '<span style="display:inline-flex;border-radius:50%;box-shadow:0 0 0 2px var(--blue-mid)">'+av(m.initials,b.bg,b.fg,size,m.role)+'</span>';
   const handler=mode==='opensub'?"openSub('pedit')":"triggerPhotoUpload('self')";
   const title=mode==='opensub'?'Edit profile':'Change photo';
   return '<div onclick="'+handler+'" title="'+title+'" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">'+inner+badge+'</div>';
