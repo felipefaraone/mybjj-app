@@ -1977,7 +1977,23 @@ function dismissMonthPromos(){
   }
 }
 function rClass(){
-  const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const cls=getDC(sd);const isT=sk===dk(TODAY);const hol=isHol(sd);const me=S.me;
+  const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const isT=sk===dk(TODAY);const hol=isHol(sd);const me=S.me;
+  // G12 — audience gate. Students see classes whose audience matches
+  // their own prog (or 'All'); parents see their kid-program classes
+  // (or 'All'). Staff (instructor + unit owner) see every class
+  // regardless — they need to manage the full schedule. Parents are
+  // hardcoded to 'kids' here because S.me.prog is the parent's own
+  // (always 'adult' default), not their kid's; V1's parent role is
+  // assumed to be parenting kid-prog students.
+  let cls=getDC(sd);
+  if(!isStaffOrOwner()){
+    const meProg=(me&&me.role==='parent')?'kids':((me&&me.prog)||'adult');
+    const myAud=meProg==='kids'?'Kids':'Adults';
+    cls=cls.filter(c=>{
+      const a=c.aud||'Adults';
+      return a==='All'||a===myAud;
+    });
+  }
   // Current Sydney-local minute-of-day via Intl.DateTimeFormat. The
   // previous implementation built a Date from toLocaleString('en-AU')
   // which returns DD/MM/YYYY — new Date() then parsed it as Invalid
@@ -5551,16 +5567,22 @@ function _classAddListHTML(){
   // Resolve unit from the class's day-of-week template entry. Falls
   // back to the current side-panel unit so a stand-alone open works.
   const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
-  const classType=tt.type||'';
   const curU=UNITS.find(u=>u.name===S.unit);
   const unitLegacy=curU?curU.id:null;
-  const kidTypes=['jun','jnogi','jmma','mini'];
-  const defaultsKids=kidTypes.indexOf(classType)>=0;
-  const targetProg=defaultsKids?'kids':'adult';
+  // G12 — picker filter driven by the class's audience (Etapa 2 column
+  // on public.classes), not the class type. Adult audience → adult-prog
+  // students; Kids audience → kid-prog students; All → both. The
+  // "Show all programmes" toggle (allProgs) still works as an admin
+  // escape hatch for the Adults/Kids cases — handy for the occasional
+  // sibling tag-along or demo session. For 'All' audiences the toggle
+  // is a no-op (nothing to override).
+  const classAud=tt.aud||'Adults';
   const attDbIds=new Set(ATTENDANCE.filter(a=>a.classDate===c.date&&a.classTime===c.time).map(a=>a.studentDbId));
   const needle=String(q||'').trim().toLowerCase();
   let list=STUDENTS.filter(s=>s._active!==false&&s.unit===unitLegacy);
-  if(!allProgs)list=list.filter(s=>s.prog===targetProg);
+  if(classAud==='Kids'&&!allProgs)list=list.filter(s=>s.prog==='kids');
+  else if(classAud==='Adults'&&!allProgs)list=list.filter(s=>s.prog==='adult');
+  // classAud==='All' → no prog filter, regardless of toggle.
   if(needle){
     list=list.filter(s=>{
       const blob=(s.name||'').toLowerCase();
@@ -5602,7 +5624,7 @@ function rClassAddStudentModal(){
 </div>
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
   <button onclick="toggleClassAddAllProgs()" style="border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid ${allProgs?'#1A5DAD':'var(--border)'};background:${allProgs?'#1A5DAD15':'transparent'};color:${allProgs?'#1A5DAD':'var(--text3)'}">Show all programmes${allProgs?' ✓':''}</button>
-  <span style="font-size:11px;color:var(--text3)">Default: ${(['jun','jnogi','jmma','mini'].indexOf(tt.type||'')>=0)?'Kids':'Adults'}</span>
+  <span style="font-size:11px;color:var(--text3)">Audience: ${tt.aud||'Adults'}</span>
 </div>
 <div id="cas-results" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--border);margin:0 -2px">${_classAddListHTML()}</div>
 <div style="font-size:11px;color:var(--text3);text-align:center;padding-top:8px">Tap a student to add. Modal stays open for adding more.</div>
