@@ -359,6 +359,50 @@ function _modalityFromType(type){
   if(_MODALITY_NOGI.indexOf(type)>=0)return 'nogi';
   return null;
 }
+// G16a — social handle platforms. Same array drives:
+//   1. Edit Profile Training tab inputs.
+//   2. Details card icon-button row.
+//   3. validate + URL-build helpers below.
+const SOCIAL_PLATFORMS=[
+  {key:'instagram', label:'Instagram',  glyph:'IG', placeholder:'@your_handle'},
+  {key:'tiktok',    label:'TikTok',     glyph:'TT', placeholder:'@your_handle'},
+  {key:'facebook',  label:'Facebook',   glyph:'FB', placeholder:'your.handle'},
+  {key:'youtube',   label:'YouTube',    glyph:'YT', placeholder:'@your_channel'},
+  {key:'x',         label:'X',          glyph:'X',  placeholder:'@your_handle'},
+  {key:'spotify',   label:'Spotify',    glyph:'SP', placeholder:'profile URL or handle'},
+  {key:'letterboxd',label:'Letterboxd', glyph:'LB', placeholder:'your_handle'}
+];
+// External URL for a given platform + handle. Returns null when the
+// handle is empty or the platform isn't known. Spotify accepts a raw
+// URL for handles that already start with http(s):// — otherwise it
+// builds the open.spotify.com/user/… form.
+function _socialUrl(platform,handle){
+  const raw=String(handle==null?'':handle).trim();
+  if(!raw)return null;
+  if(platform==='spotify'&&/^https?:\/\//i.test(raw))return raw;
+  const h=raw.replace(/^@/,'');
+  if(!h)return null;
+  const bases={
+    instagram:'https://instagram.com/',
+    tiktok:'https://tiktok.com/@',
+    facebook:'https://facebook.com/',
+    youtube:'https://youtube.com/@',
+    x:'https://x.com/',
+    spotify:'https://open.spotify.com/user/',
+    letterboxd:'https://letterboxd.com/'
+  };
+  return bases[platform]?bases[platform]+h:null;
+}
+// Allowed handle characters: alphanumeric + underscore + period + @
+// + hyphen (some platforms allow it) + optional protocol/path for the
+// spotify URL case. Empty strings pass.
+function _validHandle(platform,v){
+  const s=String(v==null?'':v).trim();
+  if(!s)return true;
+  if(s.length>100)return false;
+  if(platform==='spotify'&&/^https?:\/\//i.test(s))return s.length<=200&&!/\s/.test(s);
+  return /^[A-Za-z0-9_.@-]+$/.test(s);
+}
 const AUD=['Adults','Kids','All'];
 // G9.2 — 5-tier attendance marking. Maps to John's physical-card
 // system: instructor picks the same glyph they'd write on the card,
@@ -493,10 +537,18 @@ function getEligibilityStatus(student){
 // _egDisplay → no hint.
 function _giCeremonyHint(student,egd){
   if(!student||!egd)return '';
-  if((student.giTotal||0)>=1)return '';
-  if(!egd.pct||egd.pct<70)return '';
   if(egd.isReady||egd.isPending||egd.hide)return '';
-  return '<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">Gi needed for ceremony</span></div>';
+  if(!egd.pct||egd.pct<70)return '';
+  // G16a — two independent nudges, both gated on the same
+  // "approaching eligibility" threshold:
+  //   (a) zero gi attendance → "Gi needed for ceremony"
+  //   (b) doesn't own a MyBJJ Gi → "MyBJJ Gi needed for ceremony"
+  // Both can fire at the same time.
+  const chips=[];
+  if((student.giTotal||0)<1)chips.push('Gi needed for ceremony');
+  if(student.hasMybjjGi!==true)chips.push('MyBJJ Gi needed for ceremony');
+  if(!chips.length)return '';
+  return chips.map(label=>'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-right:6px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">'+label+'</span></div>').join('');
 }
 function _egDisplay(student){
   const eg=getEligibilityStatus(student);
@@ -801,7 +853,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'personal'};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -1487,18 +1539,35 @@ function rStuProf(){
     ?(s.parentEmail+(s._parentUserId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null);
   const joinedDate=((s.journey||[]).find(m=>m.done)||{}).date||null;
+  // G16a — Email row no longer carries inline Edit/Resend (those moved
+  // into the new tabbed Edit Profile modal's Contact tab). MyBJJ Gi
+  // line and Social icons row are new admin/self surfaces.
+  const giOwned=s.hasMybjjGi===true;
+  const giOwnedRow=rDetailRow('MyBJJ Gi',giOwned?'<span style="color:var(--green-text)">✓</span>':'<span style="color:var(--text3)">—</span>','');
+  const social=s.socialHandles||{};
+  const socialChips=SOCIAL_PLATFORMS.map(p=>{
+    const url=_socialUrl(p.key,social[p.key]);
+    if(!url)return '';
+    return '<a href="'+url+'" target="_blank" rel="noopener noreferrer" title="'+p.label+'" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--blue-tint);color:#1A5DAD;border:1px solid var(--blue-mid);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;text-decoration:none">'+p.glyph+'</a>';
+  }).join('');
+  const socialRow=socialChips
+    ?'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Social</div><div style="flex:1;display:flex;flex-wrap:wrap;gap:6px">'+socialChips+'</div></div>'
+    :'';
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
-    +rDetailRow('Email',emailVal,canAdmin?rEmailActions(s,'student'):'')
+    +rDetailRow('Email',emailVal,'')
     +(isKids?rDetailRow('Parent',s.parentName,''):'')
     +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
-    +(isKids?rDetailRow('Parent email',parentEmailVal,canAdmin?rEmailActions(s,'kidParent'):''):'')
+    +(isKids?rDetailRow('Parent email',parentEmailVal,''):'')
     +rDetailRow('Unit',unitName,'')
     +rDetailRow('Joined',joinedDate,'')
+    +giOwnedRow
+    +socialRow
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:var(--green-text);font-weight:600">Active</div></div>'
     +'</div>';
 
-  // Section 5 — More (stubbed; spec calls for these but the backends
-  // don't exist yet — toast on click rather than half-wire).
+  // Section 5 — More (admin only). G16a — "Edit full profile" link
+  // removed; the single entry point is the Edit Profile button on the
+  // header card.
   const isActive=s._active!==false;
   const inactiveBtn=isActive
     ?`<button class="bsm" onclick="markStudentInactive('${s.id}')" style="text-align:left;padding:11px 14px;font-size:13px;color:var(--amber-text)">Mark as inactive</button>`
@@ -1507,7 +1576,6 @@ function rStuProf(){
     ?'<div class="slbl" style="margin-top:20px;color:var(--text3)">More</div>'
       +(isActive?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:var(--amber-text)">This student is inactive. They’re hidden from the default Roster.</div>')
       +'<div style="display:flex;flex-direction:column;gap:8px">'
-      +`<button class="bsm" onclick="openEditStu('${s.id}')" style="text-align:left;padding:11px 14px;font-size:13px">Edit full profile</button>`
       +inactiveBtn
       +(ownerView?`<button class="bsm" onclick="deleteStudent('${s.id}')" style="text-align:left;padding:11px 14px;font-size:13px;color:var(--red-text)">Delete student</button>`:'')
       +'</div>'
@@ -1565,6 +1633,7 @@ ${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class
     </div>
     <div style="position:absolute;top:0;right:0">${headerBadge}</div>
   </div>
+  ${(isAdminViewer||isSelf)?`<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStu('${s.id}')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:#1A5DAD;border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>`:''}
 </div>
 
 <!-- Section 1: Admin actions (owner/professor) — peer-gated -->
@@ -4459,7 +4528,7 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id').order('name'),
-      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date'),
+      c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles'),
       c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
@@ -4495,7 +4564,7 @@ async function hydrateData(){
       // Postgres numeric as String to avoid precision loss; wrap with
       // Number() so downstream math (sort, eligibility, formatStat)
       // compares numerically instead of lexicographically.
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{}}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
@@ -6034,50 +6103,140 @@ function scrollProfileAnchor(id){
 // rarely-touched fields on a students row. Wired from rStuProf's
 // Section 5 Edit full profile entry point.
 // ---------------------------------------------------------------------------
+// G16a — single entry point. Admin (canEditClassCounts) and self
+// (linked student row) both reach this modal via the Edit Profile
+// button on the rStuProf header card. closeEditStu returns to the
+// student detail panel (S.sub='stuprof') instead of clearing to
+// roster — fixes the back-nav bug.
+//
+// Tab inputs persist across tab switches via S.editStuDraft. Each
+// rendered tab seeds its <input> values from the draft first, then
+// falls back to the student row. Tab switches and the Save button
+// both call _captureEditStuTab() to read any currently-rendered
+// inputs into the draft before re-render — without this the user's
+// edits on tab N would be wiped when they switch to tab M.
 function openEditStu(sid){
-  if(!canEditClassCounts())return;
-  S.editStuFor=sid;S.sub='editstu';S.panelOpen=true;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
+  const viewerId=S.profile&&S.profile.id;
+  const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
+  if(!canEditClassCounts()&&!isSelf)return;
+  S.editStuFor=sid;S.editStuTab='personal';S.editStuDraft={};S.sub='editstu';S.panelOpen=true;
   render();
 }
-function closeEditStu(){S.editStuFor=null;S.sub=null;render();}
+function closeEditStu(){S.editStuFor=null;S.editStuTab='personal';S.editStuDraft=null;S.sub=S.viewStu?'stuprof':null;render();}
+function _captureEditStuTab(){
+  if(!S.editStuDraft)S.editStuDraft={};
+  const D=S.editStuDraft;
+  const v=(id)=>{const el=document.getElementById(id);return el?(el.value!=null?el.value:''):undefined;};
+  const f=v('es-first');     if(f!==undefined)D.firstName=f;
+  const l=v('es-last');      if(l!==undefined)D.lastName=l;
+  const d=v('es-dob');       if(d!==undefined)D.dob=d;
+  const p=v('es-phone');     if(p!==undefined)D.phone=p;
+  const g=v('es-gender');    if(g!==undefined)D.gender=g;
+  const w=v('es-weight');    if(w!==undefined)D.weightKg=w;
+  const h=v('es-height');    if(h!==undefined)D.heightCm=h;
+  const myGiEl=document.getElementById('es-hasmybjjgi');
+  if(myGiEl)D.hasMybjjGi=myGiEl.classList.contains('on');
+  const ecn=v('es-ecname');  if(ecn!==undefined)D.ecName=ecn;
+  const ecp=v('es-ecphone'); if(ecp!==undefined)D.ecPhone=ecp;
+  const pn=v('es-pname');    if(pn!==undefined)D.parentName=pn;
+  const pp=v('es-pphone');   if(pp!==undefined)D.parentPhone=pp;
+  const pe=v('es-pemail');   if(pe!==undefined)D.parentEmail=pe;
+  const p2n=v('es-p2name');  if(p2n!==undefined)D.parent2Name=p2n;
+  const p2p=v('es-p2phone'); if(p2p!==undefined)D.parent2Phone=p2p;
+  const p2e=v('es-p2email'); if(p2e!==undefined)D.parent2Email=p2e;
+  if(!D.social)D.social={};
+  SOCIAL_PLATFORMS.forEach(pl=>{
+    const sv=v('es-soc-'+pl.key);
+    if(sv!==undefined)D.social[pl.key]=sv;
+  });
+}
+function setEditStuTab(t){_captureEditStuTab();S.editStuTab=t;render();}
 
 function rEditStu(){
   const sid=S.editStuFor||S.viewStu;
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return '';
+  const D=S.editStuDraft||{};
   const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
-  const first=(s.name||'').split(' ')[0]||'';
-  const last=(s.name||'').split(' ').slice(1).join(' ')||'';
-  const ccOptions=[{c:'+61',l:'AU +61'},{c:'+64',l:'NZ +64'},{c:'+81',l:'JP +81'},{c:'+82',l:'KR +82'},{c:'+1',l:'US +1'},{c:'+44',l:'UK +44'},{c:'+55',l:'BR +55'}];
+  // G16a — every form value reads from S.editStuDraft first (if the
+  // user has touched the field) so tab switches don't wipe in-flight
+  // edits. Falls back to the student row, then to a derived default
+  // (e.g. splitting full_name when first_name backfill missed a row).
+  const draftOr=(d,fallback)=>d!==undefined?d:fallback;
+  const first=draftOr(D.firstName,s.firstName||((s.name||'').split(' ')[0]||''));
+  const last=draftOr(D.lastName,s.lastName!=null?s.lastName:((s.name||'').split(' ').slice(1).join(' ')||''));
+  const dob=draftOr(D.dob,s.dob||'');
+  const phone=draftOr(D.phone,s.phone||'');
+  const gender=draftOr(D.gender,s.gender||'');
+  const weightKg=draftOr(D.weightKg,s.weightKg!=null?s.weightKg:'');
+  const heightCm=draftOr(D.heightCm,s.heightCm!=null?s.heightCm:'');
+  const hasMybjjGi=draftOr(D.hasMybjjGi,!!s.hasMybjjGi);
+  const ecName=draftOr(D.ecName,s.ecName||'');
+  const ecPhone=draftOr(D.ecPhone,s.ecPhone||'');
+  const parentName=draftOr(D.parentName,s.parentName||'');
+  const parentPhone=draftOr(D.parentPhone,s.parentPhone||'');
+  const parentEmail=draftOr(D.parentEmail,s.parentEmail||'');
+  const parent2Name=draftOr(D.parent2Name,s.parent2Name||'');
+  const parent2Phone=draftOr(D.parent2Phone,s.parent2Phone||'');
+  const parent2Email=draftOr(D.parent2Email,s.parent2Email||'');
+  const socialDraft=D.social||{};
+  const social=Object.assign({},s.socialHandles||{},socialDraft);
   const isKids=s.prog==='kids';
   const genders=[{v:'',l:'—'},{v:'m',l:'Male'},{v:'f',l:'Female'},{v:'o',l:'Other'},{v:'n',l:'Prefer not to say'}];
-  // Photo affordance lives only inside this view (and rPEdit for self).
-  // Admin / professor uses Edit full profile to change a student's photo.
-  const photoBlock=canUploadPhotoFor(s)
+  const viewerId=S.profile&&S.profile.id;
+  const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
+  // Photo affordance only for the row's own user — admin viewing
+  // someone else's profile keeps the static avatar; admin uploads on
+  // behalf go through the photo queue.
+  const photoBlock=isSelf
     ?`<div onclick="triggerPhotoUpload('${s.id}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
     :`${avStu(s,72)}`;
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Edit profile</div><button class="ssave" onclick="saveEditStu()">Save</button></div><div class="sbody">
-<div class="ef"><div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:4px;border-bottom:1px solid var(--border)">${photoBlock}</div></div>
-<div class="slbl" style="margin-top:8px">Personal</div>
-<div class="ef">
-<div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" value="${esc(first)}"/></div>
-<div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" value="${esc(last)}"/></div>
-${isKids?'':`<div class="erow"><div class="elbl">Email</div><input class="einput" type="email" value="${esc(s.email||'—')}" disabled style="color:var(--text2);background:var(--bg);cursor:not-allowed"/></div>
-<div style="font-size:11px;color:var(--text3);padding:4px 14px 8px;line-height:1.4">Login email. <a href="#" onclick="event.preventDefault();openChangeEmail('student','${s.id}');" style="color:#1A5DAD">Change email</a></div>`}
-<div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(s.dob||'')}"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(s.phone||'')}"/></div>
-<div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender">${genders.map(g=>`<option value="${g.v}" ${g.v===(s.gender||'')?'selected':''}>${g.l}</option>`).join('')}</select></div>
+  const tab=['personal','training','contact','parent'].indexOf(S.editStuTab)>=0?S.editStuTab:'personal';
+  const tabsHtml='<div class="stabs" style="margin-bottom:12px">'
+    +'<button class="stab '+(tab==='personal'?'active':'')+'" onclick="setEditStuTab(\'personal\')">Personal</button>'
+    +'<button class="stab '+(tab==='training'?'active':'')+'" onclick="setEditStuTab(\'training\')">Training</button>'
+    +'<button class="stab '+(tab==='contact'?'active':'')+'" onclick="setEditStuTab(\'contact\')">Contact</button>'
+    +(isKids?'<button class="stab '+(tab==='parent'?'active':'')+'" onclick="setEditStuTab(\'parent\')">Parent</button>':'')
+    +'</div>';
+  // -------- Personal --------
+  const personalTab=`<div class="ef" style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:4px;border-bottom:1px solid var(--border)">${photoBlock}</div>
+<div class="ef" style="margin-top:8px">
+<div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}"/></div>
+<div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}"/></div>
+<div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(phone)}"/></div>
+<div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
+</div>`;
+  // -------- Training --------
+  const beltVisual='<div class="ef" style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,s.prog)+'<span style="font-size:11px;color:var(--text3)">(belt is set via Promote)</span></div>';
+  const socialInputs=SOCIAL_PLATFORMS.map(p=>{
+    const v=esc(social[p.key]||'');
+    return '<div class="erow"><div class="elbl">'+p.label+'</div><input class="einput" id="es-soc-'+p.key+'" maxlength="100" placeholder="'+p.placeholder+'" value="'+v+'"/></div>';
+  }).join('');
+  const trainingTab=beltVisual+`
+<div class="ef" style="margin-top:8px">
+<div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(weightKg)}"/></div>
+<div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
+<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="toggle ${hasMybjjGi?'on':''}" id="es-hasmybjjgi" onclick="this.classList.toggle('on')"></button></div>
 </div>
-<div class="slbl" style="margin-top:8px">Training</div>
-<div class="ef">
-<div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(s.weightKg!=null?s.weightKg:'')}"/></div>
-<div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(s.heightCm!=null?s.heightCm:'')}"/></div>
-</div>
-<div class="slbl" style="margin-top:8px">Emergency contact</div>
-<div class="ef">
-<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(s.ecName||'')}"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-ecphone" type="tel" placeholder="Optional" value="${esc(s.ecPhone||'')}"/></div>
-</div>
-${isKids?`<div class="slbl" style="margin-top:8px">Parent 1 / Guardian</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(s.parentName||'')}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" placeholder="Required" value="${esc(s.parentPhone||'')}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" placeholder="Required — gates login" value="${esc(s.parentEmail||'')}"/></div></div><div class="slbl" style="margin-top:8px">Parent 2 (secondary contact)</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Optional. If you fill in their email they\\'ll also be able to log in and see this child.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-p2name" placeholder="Optional" value="${esc(s.parent2Name||'')}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-p2phone" type="tel" placeholder="Optional" value="${esc(s.parent2Phone||'')}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-p2email" type="email" placeholder="Optional" value="${esc(s.parent2Email||'')}"/></div></div>`:''}
+<div class="slbl" style="margin-top:14px">Social</div>
+<div class="ef">${socialInputs}</div>`;
+  // -------- Contact --------
+  const emailRow=isKids
+    ?'<div class="erow"><div class="elbl">Email</div><div class="einput" style="display:flex;align-items:center;color:var(--text3);background:var(--input-bg);font-size:12px">Login is via parent email.</div></div>'
+    :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;display:flex;align-items:center;gap:8px;min-width:0"><input class="einput" type="email" value="'+esc(s.email||'—')+'" disabled style="flex:1;color:var(--text2);background:var(--bg);cursor:not-allowed"/><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:#1A5DAD;font-size:12px;white-space:nowrap;text-decoration:underline">Change email</a></div></div>';
+  const contactTab=`<div class="ef" style="margin-top:8px">${emailRow}
+<div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
+<div class="erow"><div class="elbl">Emergency phone</div><input class="einput" id="es-ecphone" type="tel" placeholder="Optional" value="${esc(ecPhone)}"/></div>
+</div>`;
+  // -------- Parent (kids only) --------
+  const parentTab=isKids
+    ?`<div class="slbl" style="margin-top:8px">Parent 1 / Guardian</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" placeholder="Required" value="${esc(parentPhone)}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" placeholder="Required — gates login" value="${esc(parentEmail)}"/></div></div><div class="slbl" style="margin-top:8px">Parent 2 (secondary)</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Optional. If you fill in their email they'll also be able to log in and see this child.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-p2name" placeholder="Optional" value="${esc(parent2Name)}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-p2phone" type="tel" placeholder="Optional" value="${esc(parent2Phone)}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-p2email" type="email" placeholder="Optional" value="${esc(parent2Email)}"/></div></div>`
+    :'<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">Parent fields apply to kid profiles only.</div>';
+  const body=tab==='training'?trainingTab:tab==='contact'?contactTab:tab==='parent'?parentTab:personalTab;
+  return `<div class="sub open"><div class="shdr"><button class="sback" onclick="closeEditStu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Cancel</button><div class="stitle">Edit profile</div><button class="ssave" onclick="saveEditStu()">Save</button></div><div class="sbody">
+${tabsHtml}
+${body}
 <div id="es-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="es-err-txt"></span></div>
 <div style="height:16px"></div>
 <button class="bblue" style="margin-bottom:24px" onclick="saveEditStu()">Save changes</button>
@@ -6087,40 +6246,59 @@ ${isKids?`<div class="slbl" style="margin-top:8px">Parent 1 / Guardian</div><div
 async function saveEditStu(){
   const sid=S.editStuFor||S.viewStu;
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
-  const val=(id)=>((document.getElementById(id)||{}).value||'').trim();
-  const first=val('es-first'), last=val('es-last');
+  _captureEditStuTab();
+  const D=S.editStuDraft||{};
   const err=document.getElementById('es-err');const errTxt=document.getElementById('es-err-txt');
-  const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}};
+  const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}else{showSaveToast2(m,'error');}};
   if(err)err.style.display='none';
+  // Resolve final values from draft (touched) or current student row.
+  const trim=(v,fallback)=>v!==undefined?String(v||'').trim():String(fallback||'').trim();
+  const first=trim(D.firstName,s.firstName||((s.name||'').split(' ')[0]||''));
+  const last=trim(D.lastName, s.lastName!=null?s.lastName:((s.name||'').split(' ').slice(1).join(' ')||''));
   if(!first||!last)return showErr('First and last name are required.');
-  const phone=val('es-phone');
+  if(first.length>60||last.length>60)return showErr('Names must be 60 characters or less.');
+  const phone=trim(D.phone,s.phone||'');
   if(phone&&!/^[\d+\-()\s]{6,}$/.test(phone))return showErr('Phone format looks off.');
   const isKids=s.prog==='kids';
-  const dob=val('es-dob')||null;
-  const gender=val('es-gender')||null;
-  const weightKg=val('es-weight')?parseInt(val('es-weight'),10):null;
-  const heightCm=val('es-height')?parseInt(val('es-height'),10):null;
-  const ecName=val('es-ecname')||null;
-  const ecPhone=val('es-ecphone')||null;
-  const parentName=isKids?(val('es-pname')||null):s.parentName;
-  const parentPhone=isKids?(val('es-pphone')||null):s.parentPhone;
-  const parentEmail=isKids?(val('es-pemail')||'').toLowerCase()||null:s.parentEmail;
-  const parent2Name=isKids?(val('es-p2name')||null):s.parent2Name;
-  const parent2Phone=isKids?(val('es-p2phone')||null):s.parent2Phone;
-  const parent2Email=isKids?(val('es-p2email')||'').toLowerCase()||null:s.parent2Email;
+  const dob=D.dob!==undefined?(D.dob||null):(s.dob||null);
+  const gender=D.gender!==undefined?(D.gender||null):(s.gender||null);
+  const weightStr=D.weightKg!==undefined?String(D.weightKg||''):(s.weightKg!=null?String(s.weightKg):'');
+  const heightStr=D.heightCm!==undefined?String(D.heightCm||''):(s.heightCm!=null?String(s.heightCm):'');
+  const weightKg=weightStr?parseInt(weightStr,10):null;
+  const heightCm=heightStr?parseInt(heightStr,10):null;
+  const hasMybjjGi=D.hasMybjjGi!==undefined?!!D.hasMybjjGi:!!s.hasMybjjGi;
+  const ecName=trim(D.ecName,s.ecName||'')||null;
+  const ecPhone=trim(D.ecPhone,s.ecPhone||'')||null;
+  // Parent fields only for kids; for adults preserve existing row values.
+  const parentName=isKids?(trim(D.parentName,s.parentName||'')||null):s.parentName;
+  const parentPhone=isKids?(trim(D.parentPhone,s.parentPhone||'')||null):s.parentPhone;
+  const parentEmail=isKids?((trim(D.parentEmail,s.parentEmail||'').toLowerCase())||null):s.parentEmail;
+  const parent2Name=isKids?(trim(D.parent2Name,s.parent2Name||'')||null):s.parent2Name;
+  const parent2Phone=isKids?(trim(D.parent2Phone,s.parent2Phone||'')||null):s.parent2Phone;
+  const parent2Email=isKids?((trim(D.parent2Email,s.parent2Email||'').toLowerCase())||null):s.parent2Email;
   if(isKids){
-    if(!parentName||!parentPhone||!parentEmail) return showErr('Parent 1 name, phone and email are required for kids.');
+    if(!parentName||!parentPhone||!parentEmail)return showErr('Parent 1 name, phone and email are required for kids.');
     if(!/^\S+@\S+\.\S+$/.test(parentEmail))return showErr('Parent 1 email format looks off.');
     if(parent2Email&&!/^\S+@\S+\.\S+$/.test(parent2Email))return showErr('Parent 2 email format looks off.');
     if(parent2Email&&parent2Email===parentEmail)return showErr('Parent 1 and Parent 2 emails must differ.');
+  }
+  // Social handles — validate each non-empty value.
+  const baseSocial=Object.assign({},s.socialHandles||{});
+  const draftSocial=D.social||{};
+  const socialOut={};
+  for(const p of SOCIAL_PLATFORMS){
+    const v=(draftSocial[p.key]!==undefined?draftSocial[p.key]:baseSocial[p.key]||'').trim();
+    if(!_validHandle(p.key,v))return showErr(p.label+' handle is not valid.');
+    if(v)socialOut[p.key]=v;
   }
   const fullName=(first+' '+last).trim();
   const initials=((first[0]||'')+(last[0]||'')).toUpperCase()||s.initials;
 
   // Local first (UI snappy), then DB.
-  s.name=fullName;s.initials=initials;
+  s.name=fullName;s.firstName=first;s.lastName=last;s.initials=initials;
   s.dob=dob;s.phone=phone||null;s.gender=gender;
   s.weightKg=weightKg;s.heightCm=heightCm;
+  s.hasMybjjGi=hasMybjjGi;s.socialHandles=socialOut;
   s.ecName=ecName;s.ecPhone=ecPhone;
   if(isKids){
     s.parentName=parentName;s.parentPhone=parentPhone;s.parentEmail=parentEmail;
@@ -6131,15 +6309,38 @@ async function saveEditStu(){
 
   if(!s._dbId)return;
   const cli=initSupabase();if(!cli)return;
-  const payload={full_name:fullName,initials,date_of_birth:dob,phone:phone||null,gender,weight_kg:weightKg,height_cm:heightCm,emergency_contact_name:ecName,emergency_contact_phone:ecPhone};
+  // G16a — dispatch by viewer relationship. Self uses the
+  // edit_student_self RPC (RLS denies direct UPDATE on own student
+  // row, see G9.3 commit c666aa3). Admin uses direct UPDATE
+  // (students_write allows is_admin / is_staff in same unit).
+  const viewerId=S.profile&&S.profile.id;
+  const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
+  if(isSelf){
+    const payload={
+      full_name:fullName,first_name:first,last_name:last,initials,
+      date_of_birth:dob,phone:phone||null,gender,
+      weight_kg:weightKg,height_cm:heightCm,
+      emergency_contact_name:ecName,emergency_contact_phone:ecPhone,
+      has_mybjj_gi:hasMybjjGi,social_handles:socialOut
+    };
+    const r=await cli.rpc('edit_student_self',{p_legacy_id:s.id,p_payload:payload});
+    if(r&&r.error){console.warn('[mybjj] edit_student_self:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');}
+    return;
+  }
+  // Admin path — direct UPDATE.
+  const payload={
+    full_name:fullName,first_name:first,last_name:last,initials,
+    date_of_birth:dob,phone:phone||null,gender,
+    weight_kg:weightKg,height_cm:heightCm,
+    emergency_contact_name:ecName,emergency_contact_phone:ecPhone,
+    has_mybjj_gi:hasMybjjGi,social_handles:socialOut
+  };
   if(isKids){
     payload.parent_name=parentName;payload.parent_phone=parentPhone;payload.parent_email=parentEmail;
     payload.parent2_name=parent2Name;payload.parent2_phone=parent2Phone;payload.parent2_email=parent2Email;
   }
   const r=await cli.from('students').update(payload).eq('id',s._dbId);
   if(r&&r.error){console.warn('[mybjj] update student:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');return;}
-  // If Parent 2 email is filled and unit is known, whitelist them as
-  // a parent role linked to this student. Idempotent on email.
   if(isKids&&parent2Email&&s.unit){
     const unit=UNITS.find(u=>u.id===s.unit);
     if(unit&&unit._dbId){
