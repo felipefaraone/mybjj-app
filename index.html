@@ -1025,13 +1025,19 @@ function beltSVG(belt,deg,prog,width){
   const bandW=Math.min(40,Math.round(sw*0.34));
   const bandX=sw-tipW-bandW;
   const dCount=Math.min(deg||0,maxMarks);
+  // G17.2c.2 — IBJJF stripes/degrees are left-anchored inside the
+  // graduation bar. Slots are fixed-width (bandW/maxMarks); new marks
+  // fill slots 0..N-1, slots N..maxMarks-1 stay empty until the next
+  // promotion. Replaces the previous even-spread layout that
+  // re-centered marks every time the count changed.
   let dotStripes='';
   if(dCount>0){
-    const spacing=bandW/(dCount+1);
-    const dotW=Math.max(1.5,Math.min(2.5,spacing*0.45));
+    const slotW=bandW/maxMarks;
+    const dotW=Math.max(1.5,Math.min(2.5,slotW*0.45));
+    const dotPad=(slotW-dotW)/2;
     for(let i=0;i<dCount;i++){
-      const cx=bandX+(i+1)*spacing;
-      dotStripes+=`<rect x="${cx-dotW/2}" y="3.5" width="${dotW}" height="${sh-7}" rx="0.5" fill="#ffffff"/>`;
+      const x=bandX+i*slotW+dotPad;
+      dotStripes+=`<rect x="${x}" y="3.5" width="${dotW}" height="${sh-7}" rx="0.5" fill="#ffffff"/>`;
     }
   }
   const stripesSvg=`<rect x="${bandX}" y="0" width="${bandW}" height="${sh}" fill="${barColor}"/>${dotStripes}`;
