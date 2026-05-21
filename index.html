@@ -1021,15 +1021,20 @@ function beltSVG(belt,deg,prog,width){
   const isBlack=belt==='black';
   const tipBg=belt==='white'?'#9ca3af':b.bg;
   const barColor=isBlack?'#B91C1C':'#1F2937';
-  const maxMarks=isBlack?10:4;
+  // G17.2c.4 — black maxMarks reduced 10 → 6. IBJJF treats degrees
+  // 7-9 as coral belt (separate visual) and 10 as red belt, so any
+  // count above 6 caps visually at 6 marks here; subtitle copy still
+  // reports the real degree value.
+  const maxMarks=isBlack?6:4;
   const bandW=Math.min(40,Math.round(sw*0.34));
   const bandX=sw-tipW-bandW;
   const dCount=Math.min(deg||0,maxMarks);
-  // G17.2c.2 — IBJJF stripes/degrees are left-anchored inside the
-  // graduation bar. Slots are fixed-width (bandW/maxMarks); new marks
-  // fill slots 0..N-1, slots N..maxMarks-1 stay empty until the next
-  // promotion. Replaces the previous even-spread layout that
-  // re-centered marks every time the count changed.
+  // G17.2c.4 — uniform-gap layout. Total gap budget = bandW minus the
+  // space taken by all maxMarks-worth of stripes; divided into
+  // (maxMarks + 1) slots so the gap before the first mark, between
+  // every adjacent pair, and after the last possible mark are equal.
+  // Marks 0..dCount-1 fill the leftmost positions; the rest of the
+  // bar carries the empty trailing gap until the next promotion.
   let dotStripes='';
   if(dCount>0){
     const slotW=bandW/maxMarks;
@@ -1037,9 +1042,9 @@ function beltSVG(belt,deg,prog,width){
     // FULL height of the graduation bar to read like real BJJ tape
     // pieces covering the band edge-to-edge.
     const dotW=Math.max(3,Math.min(5,slotW*0.55));
-    const dotPad=(slotW-dotW)/2;
+    const gap=(bandW-maxMarks*dotW)/(maxMarks+1);
     for(let i=0;i<dCount;i++){
-      const x=bandX+i*slotW+dotPad;
+      const x=bandX+(i+1)*gap+i*dotW;
       dotStripes+=`<rect x="${x}" y="0" width="${dotW}" height="${sh}" rx="0.5" fill="#ffffff"/>`;
     }
   }
