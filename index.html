@@ -193,6 +193,13 @@ html,body{overscroll-behavior-y:none}
 }
 .einput[type="date"]::-webkit-inner-spin-button,
 .einput[type="date"]::-webkit-clear-button{display:none;-webkit-appearance:none;}
+/* G17.2a.2 — hide the native WebKit search-clear button so the Members
+   search input shows only our custom × affordance (two clear buttons
+   was the smoke regression). */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;appearance:none;display:none;}
 .eta{flex:1;background:none;border:none;outline:none;font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);resize:none;min-height:60px;caret-color:#1A5DAD;padding:0}.eta::placeholder{color:var(--text3)}
 .seg{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--border);flex:1}
 .segb{flex:1;padding:7px 4px;background:none;border:none;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;color:var(--text2);border-right:1px solid var(--border)}.segb:last-child{border-right:none}.segb.on{background:#1A5DAD;color:#fff}
@@ -409,6 +416,23 @@ function _socialUrl(platform,handle){
 // Allowed handle characters: alphanumeric + underscore + period + @
 // + hyphen (some platforms allow it) + optional protocol/path for the
 // spotify URL case. Empty strings pass.
+// G17.2a.2 — shared social chips block. Renders the same card both
+// rStuProf and rStaffProf peer paths use (header + journey + social
+// only). Returns '' when socialHandles is null/empty or no platform
+// resolved to a valid URL. Used by:
+//   • rStuProf  — peer view (G16a.1 path)
+//   • rStaffProf — peer view (G17.2a.2 path)
+function _socialChipsBlock(socialHandles){
+  if(!socialHandles)return '';
+  const chips=SOCIAL_PLATFORMS.map(p=>{
+    const url=_socialUrl(p.key,socialHandles[p.key]);
+    if(!url)return '';
+    const g=SOCIAL_GLYPHS[p.key]||'';
+    return '<a href="'+url+'" target="_blank" rel="noopener noreferrer" title="'+p.label+'" aria-label="'+p.label+'" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none">'+g+'</a>';
+  }).join('');
+  if(!chips)return '';
+  return '<div class="card" style="padding:14px;margin-top:12px"><div class="slbl" style="margin:0 0 8px">Social</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+chips+'</div></div>';
+}
 function _validHandle(platform,v){
   const s=String(v==null?'':v).trim();
   if(!s)return true;
@@ -813,20 +837,27 @@ function _initialsFromName(name){
 // getStaffBJJTitle accepts the in-memory STAFF row shape (belt, deg, role,
 // roleTitle) or the spec's shape (belt, degree, role_title). Returns null
 // for non-staff so the call is safe to chain.
+// G17.2a.2 — role_title now takes top priority and is used verbatim
+// when present. Mario Yokoyama has role_title='Head Professor' but his
+// belt+degree derive plain "Professor"; the previous logic discarded
+// the explicit role_title for the inferred title. Belt+degree only
+// kicks in when role_title is null/blank.
 function getStaffBJJTitle(s){
-  if(!s||!s.belt)return null;
+  if(!s)return null;
+  const rt=String(s.role_title||s.roleTitle||'').trim();
+  if(rt)return rt;
+  if(!s.belt)return null;
   const deg=(s.degree!=null?s.degree:(s.deg!=null?s.deg:0))|0;
   if(s.belt==='black'){
     if(deg>=9)return 'Grandmaster';   // red belt (9th–10th)
     if(deg>=7)return 'Master';        // coral belt (7th–8th)
     return 'Professor';               // 1st–6th degree
   }
-  // Coach: brown or purple belt holder whose staff.role_title is one of the
-  // BJJ titling values. Etapa 6 — sourced from role_title only; the legacy
-  // in-memory role==='owner'/'admin' fallbacks are gone with Batch 2A.
-  const rt=String(s.role_title||s.roleTitle||'').toLowerCase();
-  const isStaffRole=rt==='professor'||rt==='head professor';
-  if((s.belt==='purple'||s.belt==='brown')&&isStaffRole)return 'Coach';
+  // Pre-G17.2a.2 brown/purple Coach path required an explicit
+  // role_title to opt in. With role_title now taking the top priority
+  // the only path that lands here is "no role_title set" — no inferred
+  // Coach title from belt alone (that would be a regression in
+  // attribution for staff who haven't filled in role_title yet).
   return null;
 }
 // staffDisplayName — social-context renderer. Combines the BJJ title with
@@ -1336,9 +1367,14 @@ function rStaffProf(){
   // G17.2a — title surfaces drop the "Professor"/"Coach" prefix. Plain
   // s.name in headers; the inline roleChip carries the title now.
   const cleanName=parseStaffName(s.name||'');
-  // Notes summary card — explicit !isPeer gate. canAdmin gates the
-  // "+ Add" button inside the helper so self-view is read-only.
+  // G17.2a.2 — peer view of staff aligns with the student peer-view
+  // privacy from G11: header + journey + social only. Details (email,
+  // unit, role, status), Notes, and Danger Zone all collapse to ''.
+  // Social card uses the shared _socialChipsBlock so chip rendering
+  // matches rStuProf exactly.
   const notesBlock=(!isPeer)?_staffNotesSummaryCard(s,canAdmin):'';
+  const detailsBlock=(!isPeer)?details:'';
+  const peerSocialBlock=isPeer?_socialChipsBlock(s.socialHandles):'';
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
     +'<div class="sbody">'
@@ -1356,10 +1392,13 @@ function rStaffProf(){
     +'</div>'
     // Journey (editable for owner via rJnySection with staff: sidKey).
     +'<div style="margin-top:12px">'+rJnySection(s,sidKey)+'</div>'
-    // Head Instructor Notes — summary card (replaces the inline list).
+    // Peer-only social card (between journey and the otherwise-empty
+    // remainder for non-peer admin/self).
+    +peerSocialBlock
+    // Head Instructor Notes summary card (hidden for peer).
     +notesBlock
-    // Details summary.
-    +details
+    // Details summary (hidden for peer — privacy).
+    +detailsBlock
     // Danger Zone.
     +dangerZone
     +(S.editJny?rJnyEditor():'')
@@ -1582,12 +1621,10 @@ function rStuProf(){
     ?'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Social</div><div style="flex:1;display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div></div>'
     :'';
   // G16a.1 — peer-view-lite gets a social card after the journey block
-  // (social handles are public links by nature). Admin/self continue to
-  // see them inside the Details card (above). MyBJJ Gi stays admin/self
-  // only — it's a logistics detail, not a social signal.
-  const peerSocialBlock=(isPeer && socialChips)
-    ?'<div class="card" style="padding:14px;margin-top:12px"><div class="slbl" style="margin:0 0 8px">Social</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div></div>'
-    :'';
+  // (social handles are public links by nature). G17.2a.2 — block
+  // rendering now flows through _socialChipsBlock so rStaffProf peer
+  // view can reuse the exact same output.
+  const peerSocialBlock=isPeer?_socialChipsBlock(social):'';
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
     +(isKids?rDetailRow('Parent',s.parentName,''):'')
@@ -3490,7 +3527,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openPanel()" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/>`:av(me.initials,me.belt,36)}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openPanel()" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -3877,8 +3914,13 @@ function avMe(size,mode){
   // G17.2a — drop the legacy blue-mid ring; avatars no longer carry
   // role / role-rank decoration. Hash-of-name from av() drives the
   // colour; photos render edge-to-edge.
+  // G17.2a.2 — photo branch retains belt-color context via a 2px
+  // box-shadow ring (the no-photo path already paints the full
+  // background in belt color, so this only matters when a photo
+  // replaces the initials).
+  const _ringBg=_avBeltPair(m.belt)[0];
   const inner=photoUrl
-    ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
+    ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+_ringBg+'"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
     : av(m.initials,m.belt,size);
   const handler=mode==='opensub'?"openMyProfile()":"triggerPhotoUpload('self')";
   const title=mode==='opensub'?'View my profile':'Change photo';
@@ -3887,7 +3929,8 @@ function avMe(size,mode){
 function avStaff(s,size){
   size=size||38;
   if(s&&s.photoUrl){
-    return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';
+    const ring=_avBeltPair(s.belt)[0];
+    return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';
   }
   return av(s&&s.initials||'??',s&&s.belt||'',size);
 }
@@ -4183,7 +4226,10 @@ async function sendMagicLink(email, opts){
 function photoSrc(path){return path?(SUPABASE_URL+'/storage/v1/object/public/avatars/'+path):'';}
 function avStu(s,size){
   size=size||38;
-  if(s&&s.photoUrl){return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';}
+  if(s&&s.photoUrl){
+    const ring=_avBeltPair(s&&s.belt||'')[0];
+    return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';
+  }
   return av(s&&s.initials||'?',s&&s.belt||'',size);
 }
 
@@ -4830,7 +4876,7 @@ async function hydrateData(){
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id').order('name'),
       c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles'),
-      c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url'),
+      c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url,social_handles'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
@@ -4881,7 +4927,7 @@ async function hydrateData(){
         // Professor' vs 'Professor' for BJJ-title rendering.
         // Batch 2B: nickname column dropped; _rawFullName dropped because
         // migration 34 cleans the staff.full_name source data.
-        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null};
+        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null,socialHandles:r.social_handles||{}};
       });
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
