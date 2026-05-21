@@ -1487,12 +1487,14 @@ function rStuProf(){
   // view a plain display surface avoids the duplicated affordance.
   const photoBlock=avStu(s,52);
 
-  // G11 — back-button label adapts to the origin tab so peer viewers
-  // don't see "Roster" (admin nomenclature). Admins on the Manage
-  // tab keep "Roster"; everyone else lands on a contextual label.
-  const backLbl=isPeer
-    ?(S.tab==='community'?'Members':S.tab==='class'?'Class':'Back')
-    :'Roster';
+  // G11.2 — back-button label reflects WHERE the user came from, not
+  // WHO they are. Non-admin self-view from Members was getting
+  // "Roster" because the previous gate hardcoded the admin label
+  // when isPeer was false; admin from Classes had the same bug
+  // inverted. S.tab is the right signal — the Roster sub-tab lives
+  // under S.tab='admin', so that key carries the Roster label.
+  const _tabLabels={community:'Members',class:'Class',admin:'Roster'};
+  const backLbl=_tabLabels[S.tab]||'Back';
   // G11 — peer view (non-admin, non-self, non-parent-of-kid): only
   // header card + journey card. Stats / eligibility hint / details /
   // attendance log / instructor feedback / action buttons are gated
