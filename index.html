@@ -59,6 +59,11 @@
 <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<!-- G14 — modern equivalent of the iOS legacy directive above. Chrome
+     started emitting a deprecation warning when only the apple-prefixed
+     form was present; both are kept side-by-side so iOS and Android/
+     desktop PWAs each honour their canonical key. -->
+<meta name="mobile-web-app-capable" content="yes">
 <!-- White status-bar icons so they stay readable on the brand-blue splash
      AND on the brand-blue in-app header once the app mounts. -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -538,7 +543,7 @@ function getEligibilityStatus(student){
   if(student.prog==='kids'){
     // TODO Phase 2 — kids belts use compound stripe+grade encoding;
     // wire up real criteria when that schema lands.
-    return {status:'pending',message:'Promotion criteria pending — ask coach'};
+    return {status:'pending',message:'Promotion criteria pending — ask Professor'};
   }
   if(student.belt==='black')return null;
   const next=getNextMarker(student);
@@ -600,7 +605,7 @@ function _egDisplay(student){
   const remaining=Math.max(0,Math.ceil(eg.classes_target-eg.classes_done));
   // G16b — copy is more honest about coach judgment: spells out that the
   // class count is a minimum threshold, not an auto-promotion trigger.
-  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,reason:'Working toward '+eg.label+' — '+remaining+' more class'+(remaining===1?'':'es')+' minimum. Coach decides timing.'};
+  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,reason:'Working toward '+eg.label+' — '+remaining+' more class'+(remaining===1?'':'es')+' minimum. Professor decides timing.'};
 }
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -806,10 +811,13 @@ function isUnitOwner(target,units){
 // instead of trusting role='owner' (which is being phased out by
 // migration 32).
 function staffTitle(target){
-  if(!target)return 'Coach';
+  // G14 — Coach role retired. Non-black-belt instructors render as
+  // "Instructor"; non-owner black-belts remain "Professor"; head
+  // instructors (unit owners) remain "Head Professor".
+  if(!target)return 'Instructor';
   if(isUnitOwner(target)) return 'Head Professor';
   if(target.belt==='black') return 'Professor';
-  return 'Coach';
+  return 'Instructor';
 }
 
 // ---------------------------------------------------------------------------
@@ -899,7 +907,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -2289,7 +2297,7 @@ function rFeedbackModal(){
   const s=STUDENTS.find(x=>x.id===S.fbModalFor);if(!s)return '';
   return `<div class="cov" onclick="closeFbModal()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px">
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">Note on ${s.name.split(' ')[0]}</div>
-<div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.4">Internal coaching note. Not visible to the student or parent.</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.4">Internal instructor note. Not visible to the student or parent.</div>
 <textarea id="fb-modal-input" placeholder="What did they work on today? Any technique to revisit?" style="width:100%;min-height:120px;padding:12px;border:1px solid var(--border);border-radius:10px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;resize:vertical"></textarea>
 <div style="display:flex;gap:10px;margin-top:14px">
 <button class="bsm" style="flex:1;padding:11px;border-radius:10px;font-size:14px" onclick="closeFbModal()">Cancel</button>
@@ -2354,7 +2362,7 @@ function rPromoteModal(){
   // G9 Phase 1 consolidation — Promote modal hint now reads from
   // PROMO_CRITERIA via _egDisplay (single source of truth across
   // every eligibility surface). Kids resolve to status:'pending'
-  // ("Promotion criteria pending — ask coach"); black belt returns
+  // ("Promotion criteria pending — ask Professor"); black belt returns
   // null reason → empty hint.
   const egd=_egDisplay(s);
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
@@ -2720,7 +2728,7 @@ function rParentChildView(){
   // G9 Phase 1 follow-up 2 — sourced from PROMO_CRITERIA via
   // _egDisplay. Kids currently resolve to status:'pending' (Phase 2
   // wires real kids criteria) so the stat shows '—' and the reason
-  // shows "Promotion criteria pending — ask coach".
+  // shows "Promotion criteria pending — ask Professor".
   const egd=_egDisplay(child);
   const pct=egd.hide||egd.isPending?null:egd.pct;
   const isReady=egd.isReady;
@@ -3043,7 +3051,7 @@ function rProgress(){
     var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+formatStat(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+formatStat(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
     var techsTab=rTechniquesLog(s);
-    var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
+    var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='wall'?rPromoWall():feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
   }
@@ -3094,7 +3102,7 @@ function rProgress(){
 
   var techsTab=rTechniquesLog(s);
 
-  var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
+  var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
 
   var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='wall'?rPromoWall():feedbackTab;
 
@@ -3841,8 +3849,18 @@ function render(){
       const next=document.querySelector('.content');
       if(next)next.scrollTop=prevScroll;
     }
-    requestAnimationFrame(()=>{const el=document.getElementById('dp-'+dk(S.selDay||TODAY));if(el){const strip=el.closest('.dstrip');if(strip){const target=el.offsetLeft-(strip.offsetWidth/2)+(el.offsetWidth/2);strip.scrollTo({left:target,behavior:'smooth'});}}});
-    hideSplash();
+    // G14 — day-picker centring uses behavior:'auto' instead of 'smooth'.
+    // Every render() reapplies this scroll; with smooth animation the
+    // strip visibly wobbled on first paint (strip starts at scroll=0
+    // then animates to target). Instant scroll positions the strip
+    // before the user sees it, no wobble.
+    requestAnimationFrame(()=>{const el=document.getElementById('dp-'+dk(S.selDay||TODAY));if(el){const strip=el.closest('.dstrip');if(strip){const target=el.offsetLeft-(strip.offsetWidth/2)+(el.offsetWidth/2);strip.scrollTo({left:target,behavior:'auto'});}}});
+    // G14 — defer hideSplash() until hydrate has populated the
+    // owner/role-resolving data. Without this, isOwner() flickers
+    // false → true during the post-login gap and the Admin tab pops
+    // in 200-800ms after the rest of the chrome. Splash stays on top
+    // of the empty rApp until hydrateData clears S.hydrating.
+    if(!S.hydrating)hideSplash();
     initPullToRefresh();
     return;
   }
@@ -3913,11 +3931,23 @@ async function onAuthed(){
     S.profile=data;
     if(data.status==='approved'){
       S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';
-      if(S.me.role==='parent')S.tab='progress';
+      // G14 — parent lands on Classes (their primary check-in surface)
+      // rather than Progress; Progress was the legacy default that
+      // showed their kid's belt as the headline, which is less useful
+      // than "what's the kid's next class".
+      if(S.me.role==='parent')S.tab='class';
       // If the user arrived via a reset-password link, jump straight
       // into the Set Password sub-panel so they finish the recovery
       // before doing anything else.
       if(S.passwordRecovery){S.panelOpen=true;S.sub='setpwd';}
+      // G14 — keep the splash up until hydrate has populated STAFF /
+      // UNITS / STUDENTS. Without this the first render() runs with an
+      // empty STAFF/UNITS, so isOwner() returns false even for Dev
+      // Admin, the bottom-nav drops the Admin tab, and the UI snaps to
+      // the correct chrome a few hundred ms later when hydrate
+      // completes. render() checks S.hydrating before calling
+      // hideSplash(); hydrateData clears the flag when it finishes.
+      S.hydrating=true;
       render();
       hydrateData();
       return;
@@ -5168,10 +5198,15 @@ async function hydrateData(){
       console.warn('[mybjj] hydrate feedback:',fb.error);
       for(const s of STUDENTS)s.feedback=[];
     }
-    if(touched){enrichMeFromHydrate();console.log('[mybjj] hydrated from Supabase');render();if(canEditClassCounts())loadPhotoQueue();loadMyPhotoApproval();loadNotifications();}
-    else console.warn('[mybjj] hydration returned no rows — keeping local fallback');
+    if(touched){enrichMeFromHydrate();console.log('[mybjj] hydrated from Supabase');S.hydrating=false;render();if(canEditClassCounts())loadPhotoQueue();loadMyPhotoApproval();loadNotifications();}
+    else{console.warn('[mybjj] hydration returned no rows — keeping local fallback');S.hydrating=false;render();}
   }catch(e){
     console.warn('[mybjj] hydration failed — keeping local fallback:',e);
+    // Even on error, drop the splash so the user isn't stuck staring
+    // at it forever — the in-app shell handles missing data
+    // gracefully (empty roster, etc.). The 10-second splash fallback
+    // would catch this anyway; we just want to hide it sooner.
+    S.hydrating=false;render();
   }
 }
 
