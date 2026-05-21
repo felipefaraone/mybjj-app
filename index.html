@@ -869,7 +869,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',showAllJourney:false,stuAttList:null,stuFbList:null,profileOrigin:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -949,16 +949,35 @@ function studentEligibility(s){
     : need+' more class'+(need===1?'':'es')+' to become eligible for next stripe';
   return {eligible,reason,percent,required,grade};
 }
-// Etapa 6 — av() takes an explicit isOwnerRing flag instead of inferring
-// owner-ness from a role string. Owner-ness is now a unit-level fact
-// (units.owner_user_id) and only avStaff() — which has the staff row in
-// hand — can resolve it.
-function av(ini,bg,fg,sz,role,isOwnerRing){
-  sz=sz||32;const fs=Math.round(sz*.34);
-  let ring='';
-  if(isOwnerRing)ring='box-shadow:0 0 0 2.5px #dc2626,0 0 0 5px #111827,0 0 0 7px #dc2626;';
-  else if(role==='instructor'&&bg==='#111827')ring='box-shadow:0 0 0 2.5px #374151,0 0 0 5px rgba(255,255,255,.08);';
-  return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:${fs}px;flex-shrink:0;${ring}">${ini}</div>`;
+// G17.2a — Avatar primitive. Hash-of-name → consistent color from a
+// 12-tone palette. Drops all role / belt / owner ring decorations
+// (Etapa 6 vintage); avatars are now identity-only across every
+// surface (top-right header, drawer, profiles, lists, attribution).
+// Signature: av(initials, name, size). `name` drives the hash so two
+// surfaces showing the same person always pick the same tile.
+const _AV_PALETTE=[
+  ['#1A5DAD','#fff'], // brand blue
+  ['#7c3aed','#fff'], // purple
+  ['#0ea5e9','#fff'], // sky
+  ['#10b981','#fff'], // emerald
+  ['#f59e0b','#111'], // amber
+  ['#ef4444','#fff'], // red
+  ['#ec4899','#fff'], // pink
+  ['#6366f1','#fff'], // indigo
+  ['#14b8a6','#fff'], // teal
+  ['#84cc16','#111'], // lime
+  ['#f97316','#fff'], // orange
+  ['#06b6d4','#fff']  // cyan
+];
+function _avPair(name){
+  const s=String(name||'?');
+  let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0;
+  return _AV_PALETTE[Math.abs(h)%_AV_PALETTE.length];
+}
+function av(ini,name,sz){
+  sz=sz||32;const fs=Math.round(sz*.36);
+  const pair=_avPair(name);
+  return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${pair[0]};color:${pair[1]};display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:${fs}px;flex-shrink:0">${ini}</div>`;
 }
 function beltSVG(belt,deg,prog,width){
   width=width||120;const m=prog==='kids'?BK:BA;const b=m[belt]||BA.white;
@@ -1147,9 +1166,13 @@ function rInbox(){
   return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur>99?'99+':ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:#1A5DAD;font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?empty:list}</div></div>`;
 }
 
-function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;const greetName=isA?staffDisplayName(m):m.name;const pendingPill=(S.myPhotoApproval&&S.myPhotoApproval.status==='pending')?`<div style="margin-top:8px"><span style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>PHOTO PENDING APPROVAL</span></div>`:'';return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div><div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div>${pendingPill}</div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openMyProfile()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">View my profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
+function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;
+// G17.2a — title surfaces drop the "Professor"/"Coach" prefix; the
+// role chip below the name carries that information now. parseStaffName
+// strips any legacy prefix that survived the migration cleanup.
+const greetName=parseStaffName(m.name||'');const pendingPill=(S.myPhotoApproval&&S.myPhotoApproval.status==='pending')?`<div style="margin-top:8px"><span style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>PHOTO PENDING APPROVAL</span></div>`:'';return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div><div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div>${pendingPill}</div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openMyProfile()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">View my profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
 
-function rSub(){const ss={'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'kidpeer':rKidPeer,'stuattlist':rStuAttList,'stufblist':rStuFbList};return(ss[S.sub]||(() =>''))();}
+function rSub(){const ss={'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'kidpeer':rKidPeer,'stuattlist':rStuAttList,'stufblist':rStuFbList,'staffnoteslist':rStaffNotesList};return(ss[S.sub]||(() =>''))();}
 
 // G17.1 — legacy single-form Edit Profile modal deleted. Canonical
 // entry points are now:
@@ -1305,36 +1328,35 @@ function rStaffProf(){
       +'</div>'
     :'';
 
+  // G17.2a — title surfaces drop the "Professor"/"Coach" prefix. Plain
+  // s.name in headers; the inline roleChip carries the title now.
+  const cleanName=parseStaffName(s.name||'');
+  // Notes summary card (visible to canAdmin || isSelf; peer view hides).
+  // G16b feedback-card pattern reused; canAdmin gates the "+ Add" button
+  // so self-view is read-only.
+  const notesBlock=(canAdmin||isSelf)?_staffNotesSummaryCard(s,canAdmin):'';
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+staffDisplayName(s)+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
     +'<div class="sbody">'
-    // Header — social context: BJJ title before the clean name.
+    // Header — plain name; role badge inline carries the BJJ title.
     +'<div class="card" style="padding:16px">'
       +'<div style="display:flex;align-items:flex-start;gap:14px">'
         +photo
         +'<div style="flex:1;min-width:0">'
-          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+staffDisplayName(s)+'</div>'
+          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+cleanName+'</div>'
           +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,'adult')+roleChip+'</div>'
           +'<div style="margin-top:5px;font-size:11px;color:var(--text3)">'+unitName+'</div>'
         +'</div>'
       +'</div>'
       +editPencil
     +'</div>'
-    // Section 3 — Journey (editable for owner via rJnySection with staff: sidKey)
+    // Journey (editable for owner via rJnySection with staff: sidKey).
     +'<div style="margin-top:12px">'+rJnySection(s,sidKey)+'</div>'
-    // Section 4 — Details
+    // Head Instructor Notes — summary card (replaces the inline list).
+    +notesBlock
+    // Details summary.
     +details
-    // Section 5 — Head-instructor notes (owner only)
-    +(canAdmin?(
-      '<div class="slbl" style="margin-top:18px;display:flex;align-items:center;justify-content:space-between"><span>Head instructor notes</span>'
-      +'<button onclick="openStaffFb(\''+s.id+'\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer">+ Add note</button>'
-      +'</div>'
-      +(S.addFb===fbKey?'<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Notes for '+s.name.split(' ')[0]+'..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveStaffFb(\''+s.id+'\')">Save</button></div></div>':'')
-      +((s.feedback&&s.feedback.length)
-        ?s.feedback.map(f=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('')
-        :(S.addFb!==fbKey?'<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No notes yet.</div>':'')
-      )
-    ):'')
+    // Danger Zone.
     +dangerZone
     +(S.editJny?rJnyEditor():'')
     +'<div style="height:24px"></div>'
@@ -1979,6 +2001,66 @@ function _stuDangerZone(s,canAdmin,ownerView){
     :'';
   return '<div class="slbl" style="margin-top:20px;color:var(--red-text);border-bottom:1px solid var(--red-border);padding-bottom:6px;letter-spacing:2px">Danger Zone</div>'+banner+inactiveCard+deleteCard;
 }
+// G17.2a — Head Instructor Notes summary card + subview, mirroring
+// the rStuFbList G16b feedback pattern. Data source is the in-memory
+// STAFF row's `feedback` jsonb (already hydrated from public.staff at
+// startup; see hydrate select at line ~4698). Note: saveStaffFb today
+// only pushes into the in-memory array — DB persistence is a known
+// gap and ships in G17.2b alongside rEditStaff. Read path works
+// end-to-end (hydrate → render); the Add button stubs the in-memory
+// write so the UI surface is wired and reviewable.
+function _staffNotesSummaryCard(s,canAdmin){
+  const fb=(s.feedback||[]);
+  const latest=fb[0];
+  const fbKey='staff:'+s.id;
+  const addBtn=canAdmin?'<button onclick="openStaffFb(\''+s.id+'\')" style="background:none;border:1px solid #1A5DAD;color:#1A5DAD;border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">+ Add</button>':'';
+  // Inline compose (opened via openStaffFb). Mounts under the summary
+  // card so the textarea has room without resizing the modal.
+  const compose=(canAdmin&&S.addFb===fbKey)
+    ?'<div class="ef" style="margin-top:8px"><textarea class="fbta" id="fb-input" placeholder="Notes for '+parseStaffName(s.name).split(' ')[0]+'..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveStaffFb(\''+s.id+'\')">Save</button></div></div>'
+    :'';
+  if(!latest){
+    return '<div class="slbl" style="margin-top:18px">Head Instructor Notes</div>'
+      +'<div class="card" style="padding:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">'
+      +'<div style="font-size:13px;color:var(--text3)">No notes yet</div>'
+      +addBtn
+      +'</div>'
+      +compose;
+  }
+  const excerpt=String(latest.text||'');
+  const trimmed=excerpt.length>80?excerpt.slice(0,80).trim()+'…':excerpt;
+  const viewAll='<button onclick="openStaffNotesList(\''+s.id+'\')" style="background:none;border:none;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0">View all '+fb.length+' →</button>';
+  return '<div class="slbl" style="margin-top:18px">Head Instructor Notes</div>'
+    +'<div class="card" style="padding:14px">'
+    +'<div style="font-size:12px;color:var(--text3)">Latest by <span style="color:var(--text);font-weight:600">'+latest.ins+'</span> · '+latest.date+'</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.5">'+trimmed+'</div>'
+    +'<div style="margin-top:10px;display:flex;align-items:center;justify-content:flex-end;gap:10px">'+addBtn+viewAll+'</div>'
+    +'</div>'
+    +compose;
+}
+function openStaffNotesList(sid){S.staffNotesList={sid};S.sub='staffnoteslist';render();}
+function closeStaffNotesList(){S.staffNotesList=null;S.sub='staffprof';render();}
+function rStaffNotesList(){
+  if(!S.staffNotesList)return '';
+  const s=STAFF.find(x=>x.id===S.staffNotesList.sid);if(!s)return '';
+  const canAdmin=isOwner();
+  const fbKey='staff:'+s.id;
+  const fb=s.feedback||[];
+  const empty=!fb.length?'<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No notes yet.</div>':'';
+  const list=fb.map(f=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('');
+  const addBtn=canAdmin?'<button onclick="openStaffFb(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add note</button>':'';
+  const compose=(canAdmin&&S.addFb===fbKey)
+    ?'<div class="ef" style="margin-bottom:12px"><textarea class="fbta" id="fb-input" placeholder="Notes for '+parseStaffName(s.name).split(' ')[0]+'..."></textarea><div class="fbfoot"><button class="fbsend" onclick="saveStaffFb(\''+s.id+'\')">Save</button></div></div>'
+    :'';
+  return '<div class="sub open">'
+    +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+parseStaffName(s.name).split(' ')[0]+'</div></div>'
+    +'<div class="sbody">'
+      +(addBtn?'<div style="display:flex;justify-content:flex-end;margin-bottom:12px">'+addBtn+'</div>':'')
+      +compose
+      +empty+list
+      +'<div style="height:24px"></div>'
+    +'</div></div>';
+}
 
 // Cache reconcile badge — admin / professor only. Compares the cached
 // students.total against the count of 'present' rows in ATTENDANCE for
@@ -2593,7 +2675,9 @@ function rMembers(){
     // Social context — Members tab. Instructors render with their BJJ
     // title prefixed to the clean name; no INSTRUCTOR role chip (that
     // badge lives in admin contexts per the Layer 1 / Layer 2 split).
-    const displayName=isInstr?staffDisplayName(m):m.name;
+    // G17.2a — Members list shows plain name (no "Professor" prefix).
+    // The role context belongs to the badge / header, not the title.
+    const displayName=isInstr?parseStaffName(m.name):m.name;
     return '<div class="card" onclick="'+tapHandler+'" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
       +av
       +'<div style="flex:1;min-width:0">'
@@ -2655,7 +2739,7 @@ function rParentMembers(){
       return '<div class="card" onclick="viewStaff(\''+m.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
         +avStaff(m,40)
         +'<div style="flex:1;min-width:0">'
-        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+parseStaffName(m.name)+'</div>'
         +'</div>'
         +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult')+'</div>'
         +'</div>';
@@ -3359,7 +3443,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rClassAddStudentModal()}${rMarkPSheet()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hav" onclick="openPanel()" style="overflow:hidden">${me.photoUrl?`<img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/>`:me.initials}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rEditStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rClassAddStudentModal()}${rMarkPSheet()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openPanel()" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/>`:av(me.initials,me.name,36)}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -3733,41 +3817,32 @@ function avMe(size,mode){
   size=size||48;
   mode=mode||'upload';
   const m=S.me||{};
-  const b=BA[m.belt]||BA.white;
   // Prefer the linked staff row's photo (the canonical subject) over
   // users.photo_url so display stays consistent with the approval flow.
   const linkedStaff=(S.profile&&S.profile.id)?STAFF.find(x=>x._userId===S.profile.id):null;
   const photoUrl=(linkedStaff&&linkedStaff.photoUrl)||m.photoUrl||null;
   // Camera badge only renders when the tap fires the upload picker
-  // directly. In 'opensub' mode the tap opens Edit profile, so the
-  // photo-edit affordance lives *inside* that screen — showing the
-  // camera badge here would advertise photo edit from a profile-list
-  // surface, which the spec forbids.
+  // directly. In 'opensub' mode the tap opens self profile (G17.1),
+  // so the photo-edit affordance lives inside Edit Profile (pencil).
   const badge=mode==='upload'
     ?'<div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>'
     :'';
-  // G3 Item 4 — add a 2px var(--blue-mid) ring to the avatar so the
-  // side-panel header (and Edit Profile photo block) matches the
-  // top-right .hav small avatar's border. Applied via box-shadow on
-  // the inner circle so the wrapper's layout stays unchanged; the
-  // initials branch gets the same ring via a thin wrapping span.
+  // G17.2a — drop the legacy blue-mid ring; avatars no longer carry
+  // role / role-rank decoration. Hash-of-name from av() drives the
+  // colour; photos render edge-to-edge.
   const inner=photoUrl
-    ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px var(--blue-mid)"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
-    : '<span style="display:inline-flex;border-radius:50%;box-shadow:0 0 0 2px var(--blue-mid)">'+av(m.initials,b.bg,b.fg,size,m.role)+'</span>';
-  // G17.1 — drawer-header avatar now opens self profile (mode='opensub')
-  // instead of the legacy Edit Profile modal. triggerPhotoUpload path
-  // is unchanged.
+    ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
+    : av(m.initials,m.name,size);
   const handler=mode==='opensub'?"openMyProfile()":"triggerPhotoUpload('self')";
   const title=mode==='opensub'?'View my profile':'Change photo';
   return '<div onclick="'+handler+'" title="'+title+'" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">'+inner+badge+'</div>';
 }
 function avStaff(s,size){
   size=size||38;
-  const b=BA[s.belt]||BA.white;
   if(s&&s.photoUrl){
     return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';
   }
-  return av(s.initials,b.bg,b.fg,size,s.role,isUnitOwner(s));
+  return av(s&&s.initials||'??',s&&s.name||'',size);
 }
 function isParent(){return !!(S.me&&S.me.role==='parent');}
 function parentChildren(){
@@ -4059,11 +4134,10 @@ async function sendMagicLink(email, opts){
 }
 
 function photoSrc(path){return path?(SUPABASE_URL+'/storage/v1/object/public/avatars/'+path):'';}
-function avStu(s,size,roleIcon){
+function avStu(s,size){
   size=size||38;
   if(s&&s.photoUrl){return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';}
-  const bmap=s&&s.prog==='kids'?BK:BA;const b=bmap[s&&s.belt]||BA.white;
-  return av(s?s.initials:'?',b.bg,b.fg,size,roleIcon);
+  return av(s&&s.initials||'?',s&&s.name||'',size);
 }
 
 let _crop={img:null,scale:1,x:0,y:0,panning:false,lastX:0,lastY:0,sid:null};
@@ -4185,11 +4259,9 @@ function staffInitialsAuto(fullName){
   if(parts.length===1)return parts[0].slice(0,2).toUpperCase();
   return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
 }
-function avStaff(s,size){
-  size=size||38;
-  const b=BA[s.belt]||BA.white;
-  return av(s.initials,b.bg,b.fg,size,s.role,isUnitOwner(s));
-}
+// G17.2a — duplicate avStaff removed (the earlier definition near
+// avMe is canonical; the one that used to live here was a stale
+// belt-color fallback that JS hoisting silently overrode anyway).
 
 function openAddStaff(){if(!isOwner())return;S.addStaff=true;render();setTimeout(()=>{const el=document.getElementById('as-fname');if(el)el.focus();},50);}
 function closeAddStaff(){S.addStaff=false;render();}
@@ -6232,6 +6304,7 @@ function closeStaffProfile(){
   S.viewStaff=null;S.sub=null;
   S.panelOpen=(origin==='drawer');
   S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;
+  S.staffNotesList=null;
   S.profileOrigin=null;
   render();
 }
