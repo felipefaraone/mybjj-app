@@ -575,7 +575,9 @@ function _egDisplay(student){
   // up so 0.5 remaining renders as "1 more class" — students can't
   // attend a fractional class to close the gap.
   const remaining=Math.max(0,Math.ceil(eg.classes_target-eg.classes_done));
-  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,reason:remaining+' more class'+(remaining===1?'':'es')+' for '+eg.label};
+  // G16b — copy is more honest about coach judgment: spells out that the
+  // class count is a minimum threshold, not an auto-promotion trigger.
+  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,reason:'Working toward '+eg.label+' — '+remaining+' more class'+(remaining===1?'':'es')+' minimum. Coach decides timing.'};
 }
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -867,7 +869,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'personal'};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'personal',showAllJourney:false,stuAttList:null,stuFbList:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -1147,7 +1149,7 @@ function rInbox(){
 
 function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;const greetName=isA?staffDisplayName(m):m.name;const pendingPill=(S.myPhotoApproval&&S.myPhotoApproval.status==='pending')?`<div style="margin-top:8px"><span style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>PHOTO PENDING APPROVAL</span></div>`:'';return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${S.sub?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div><div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:bb(m.belt,m.deg||0,m.prog||'adult')}</div>${pendingPill}</div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openSub('pedit')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">Edit profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div><div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
 
-function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'kidpeer':rKidPeer};return(ss[S.sub]||(() =>''))();}
+function rSub(){const ss={'pedit':rPEdit,'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'kidpeer':rKidPeer,'stuattlist':rStuAttList,'stufblist':rStuFbList};return(ss[S.sub]||(() =>''))();}
 function rPEdit(){
   var me=S.me;
   var stu=STUDENTS.find(function(x){return x.id===me.id;})||STAFF.find(function(x){return x.name===me.name;})||me;
@@ -1590,21 +1592,11 @@ function rStuProf(){
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:var(--green-text);font-weight:600">Active</div></div>'
     +'</div>';
 
-  // Section 5 — More (admin only). G16a — "Edit full profile" link
-  // removed; the single entry point is the Edit Profile button on the
-  // header card.
-  const isActive=s._active!==false;
-  const inactiveBtn=isActive
-    ?`<button class="bsm" onclick="markStudentInactive('${s.id}')" style="text-align:left;padding:11px 14px;font-size:13px;color:var(--amber-text)">Mark as inactive</button>`
-    :`<button class="bsm" onclick="reactivateStudent('${s.id}')" style="text-align:left;padding:11px 14px;font-size:13px;color:var(--green-text)">Reactivate</button>`;
-  const bottomActions=canAdmin
-    ?'<div class="slbl" style="margin-top:20px;color:var(--text3)">More</div>'
-      +(isActive?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:var(--amber-text)">This student is inactive. They’re hidden from the default Roster.</div>')
-      +'<div style="display:flex;flex-direction:column;gap:8px">'
-      +inactiveBtn
-      +(ownerView?`<button class="bsm" onclick="deleteStudent('${s.id}')" style="text-align:left;padding:11px 14px;font-size:13px;color:var(--red-text)">Delete student</button>`:'')
-      +'</div>'
-    :'';
+  // G16b — Section "More" replaced with the Danger Zone helper. Same
+  // gating (canAdmin for inactive toggle, ownerView for delete) as the
+  // legacy bottomActions; visuals match GitHub's repo Settings danger
+  // zone (red border + muted description + outline red button).
+  const bottomActions=_stuDangerZone(s,canAdmin,ownerView);
 
   // Photo edit is intentionally NOT here. Admin / owner / professor
   // changes a student photo through "Edit full profile"; the student
@@ -1637,10 +1629,10 @@ function rStuProf(){
   ${canAdmin?rReconcileBadge(s):''}
 </div>`;
   const detailsBlock=isPeer?'':details;
-  const attendanceBlock=isPeer?'':rAttHistory(s,canAdmin);
-  const feedbackBlock=isPeer?'':`<div class="slbl" style="margin-top:18px">Instructor feedback</div>
-${(s.feedback||[]).length===0?`<div style="font-size:13px;color:var(--text3);margin-bottom:12px">No feedback yet.</div>`:''}
-${(s.feedback||[]).map((f,i)=>`<div class="fbitem"><div class="fbhdr"><div class="fbins">${f.ins}</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">${f.date}</div>${canDeleteFeedback(f)?`<button onclick="deleteFeedback('${s.id}',${i})" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color='var(--red-text)'" onmouseout="this.style.color='var(--text3)'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>`:''}</div></div><div class="fbtxt">${f.text}</div></div>`).join('')}`;
+  // G16b — attendance + feedback collapsed into summary cards. Full
+  // history sits behind View all subviews (rStuAttList / rStuFbList).
+  const attendanceBlock=isPeer?'':_stuAttSummaryCard(s);
+  const feedbackBlock=isPeer?'':_stuFbSummaryCard(s);
   const bottomBlock=isPeer?'':bottomActions;
   const adminActionsBlock=(isPeer||!canAdmin)?'':rAdminActionRow(s);
   return `<div class="sub open">
@@ -1672,30 +1664,40 @@ ${statsCard}
      was redundant and visually clashed with the new design.) -->
 
 
-<!-- Section 3: Journey — always visible -->
+<!-- Section 3: Journey — always visible. G16b collapses entries >3
+     to last 3 + "Show all" link. -->
 ${rJnySection(s)}
 
 <!-- Section 3.5: Peer-view social block — only renders for isPeer + at
      least one handle. Admin/self see social inside the Details card. -->
 ${peerSocialBlock}
 
-<!-- Section 4: Details — peer-gated -->
-${detailsBlock}
-
-<!-- Section 4.5: Attendance log — peer-gated -->
+<!-- Section 4: Attendance summary — peer-gated. View all opens
+     rStuAttList subview. -->
 ${attendanceBlock}
 
-<!-- Instructor feedback — peer-gated -->
+<!-- Section 5: Feedback summary — peer-gated. View all opens
+     rStuFbList subview; Add opens openFbModal (existing). -->
 ${feedbackBlock}
 
-<!-- Section 5: More (stubs) — peer-gated via canAdmin already, plus
-     the explicit isPeer gate below for extra defense in depth -->
+<!-- Section 6: Details — peer-gated. Moved after attendance/feedback
+     per G16b layout: surfaces students/instructors interact with most
+     come first; reference data sits below. -->
+${detailsBlock}
+
+<!-- Section 7: Danger Zone — owner/professor only. Replaces the
+     legacy plain "More" buttons with bordered red cards. -->
 ${bottomBlock}
 
 ${S.editJny?rJnyEditor():''}
 <div style="height:24px"></div>
 </div></div>`;
 }
+
+// G16b — toggle for the collapsible Journey card. State is reset when
+// the student profile closes (closeStudentProfile) so a different
+// student doesn't inherit the expansion from a previous viewer.
+function toggleShowAllJourney(){S.showAllJourney=!S.showAllJourney;render();}
 
 // rJnySection renders the Journey block inside rStuProf / rStaffProf.
 // `sidKey` is what S.jnyEditFor / addJny / editJnyMilestone use to
@@ -1718,8 +1720,17 @@ function rJnySection(s,sidKey){
     // would 404 for instructors. Pass null shareSid for the staff
     // sidKey ('staff:<id>') so rTL skips the share affordance.
     const isStaffJourney=sidKey&&sidKey.indexOf('staff:')===0;
+    // G16b — collapsible journey for students. Renders the last 3
+    // milestones by default; "Show all (N) →" link expands inline.
+    // Staff journeys keep full render — those are short enough.
+    const jArr=Array.isArray(s.journey)?s.journey:[];
+    const collapsed=!isStaffJourney && jArr.length>3 && !S.showAllJourney;
+    const showLink=!isStaffJourney && jArr.length>3
+      ? '<div style="padding:10px 16px 12px 16px;text-align:center"><button onclick="toggleShowAllJourney()" style="background:none;border:none;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer;padding:4px 8px">'+(S.showAllJourney?'Show less ↑':'Show all ('+jArr.length+') →')+'</button></div>'
+      : '';
+    const renderJourney=collapsed?jArr.slice(-3):jArr;
     return '<div class="slbl" style="display:flex;align-items:center;justify-content:space-between"><span>Journey</span>'+editBtn+'</div>'
-      +'<div class="card" style="padding:12px 16px">'+rTL(s.journey,isStaffJourney?null:s.id)+'</div>';
+      +'<div class="card" style="padding:12px 16px">'+rTL(renderJourney,isStaffJourney?null:s.id)+showLink+'</div>';
   }
   // Editing mode — replace timeline with a row list per milestone.
   const j=s.journey||[];
@@ -1758,56 +1769,231 @@ function rJnySection(s,sidKey){
     +'<div style="margin-top:8px;font-size:11px;color:var(--text3);line-height:1.45">Editing journey doesn’t change the student’s current belt or grade. Use Promote / Demote for that.</div>';
 }
 
-// Attendance history block on rStuProf. Renders the last ~20 rows for
-// this student from the in-memory ATTENDANCE window (±21d). Each row
-// shows the date / time / class type / status pill, and — for present
-// rows — a "Confirmed by Prof. X on <date>" trail when we
-// can resolve the confirming staff via their user_id. Visible to all
-// roles who can see the profile.
-function rAttHistory(s,canAdminView){
-  if(!s||!s._dbId)return '';
-  // G9.3 — include 'absent' rows so admins (and the student themselves
-  // via rParentChildView's mirror) can see explicit absences in the
-  // log. Absent rows render with their own pill + a "Marked absent
-  // by …" trail.
-  const rows=ATTENDANCE
-    .filter(a=>a.studentDbId===s._dbId&&(a.status==='present'||a.status==='going'||a.status==='absent'))
-    .sort((a,b)=>(b.classDate+'_'+b.classTime).localeCompare(a.classDate+'_'+a.classTime))
-    .slice(0,20);
-  if(!rows.length){
-    return '<div class="slbl" style="margin-top:18px">Attendance log</div>'
-      +'<div class="card" style="padding:14px;text-align:center;font-size:12px;color:var(--text3)">No attendance recorded in the last 21 days.</div>';
+// G16b — Attendance summary card. Replaces the inline rAttHistory list
+// on rStuProf with a 2-line teaser: recent-window class count + last
+// session date. ATTENDANCE in memory only covers a ±21 day window
+// (see line ~4565 hydrate select), so the summary label is "Last 21
+// days" — honest about the in-memory window. Full history sits behind
+// the "View all" button which opens rStuAttList and hits Supabase with
+// the chosen date range.
+function _stuAttSummary(s){
+  if(!s||!s._dbId)return {recentCount:0,giCount:0,nogiCount:0,lastRow:null};
+  const rows=ATTENDANCE.filter(a=>a.studentDbId===s._dbId&&a.status==='present');
+  let recentCount=0,giCount=0,nogiCount=0;
+  rows.forEach(a=>{
+    recentCount++;
+    const m=_modalityFromType(a.classType);
+    if(m==='gi')giCount++;
+    else if(m==='nogi')nogiCount++;
+  });
+  const lastRow=rows.slice().sort((a,b)=>(b.classDate+'_'+b.classTime).localeCompare(a.classDate+'_'+a.classTime))[0]||null;
+  return {recentCount,giCount,nogiCount,lastRow};
+}
+function _stuAttSummaryCard(s){
+  const sum=_stuAttSummary(s);
+  const totalLifetime=Number(s.total||0);
+  const modBadge=m=>{
+    if(m==='gi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:#1e40af;background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px;margin-left:6px">GI</span>';
+    if(m==='nogi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text2);background:var(--input-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;margin-left:6px">NO-GI</span>';
+    return '';
+  };
+  const lastLine=sum.lastRow
+    ?'<div style="font-size:12px;color:var(--text3);margin-top:6px">Last: '+sum.lastRow.classDate+' · '+sum.lastRow.classTime+modBadge(_modalityFromType(sum.lastRow.classType))+'</div>'
+    :'';
+  const numLine=sum.recentCount>0
+    ?'<div style="font-size:13px;color:var(--text);font-weight:600">Last 21 days: '+sum.recentCount+' class'+(sum.recentCount===1?'':'es')+' <span style="font-size:11px;color:var(--text3);font-weight:400">('+sum.giCount+' Gi · '+sum.nogiCount+' No-Gi)</span></div>'
+    :(totalLifetime>0
+      ?'<div style="font-size:13px;color:var(--text3)">No attendance in the last 21 days</div>'
+      :'<div style="font-size:13px;color:var(--text3)">No attendance recorded yet</div>');
+  const viewAll=totalLifetime>0
+    ?'<div style="margin-top:10px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+s.id+'\')" style="background:none;border:none;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0">View all '+formatStat(totalLifetime)+' →</button></div>'
+    :'';
+  return '<div class="slbl" style="margin-top:18px">Attendance</div>'
+    +'<div class="card" style="padding:14px">'+numLine+lastLine+viewAll+'</div>';
+}
+// G16b — Attendance subview. Fetches per-student history from
+// Supabase on open / filter change. attendance.modality (migration 48)
+// drives the Gi / No-Gi filter; class_type falls back via
+// _modalityFromType for any pre-migration rows still carrying NULL.
+async function _fetchStuAtt(){
+  if(!S.stuAttList)return;
+  const stl=S.stuAttList;
+  const s=STUDENTS.find(x=>x.id===stl.sid);
+  if(!s||!s._dbId){stl.rows=[];stl.loading=false;render();return;}
+  let q=cli.from('attendance')
+    .select('id,class_date,class_time,class_type,modality,status,confirmed_by,confirmed_at')
+    .eq('student_id',s._dbId)
+    .in('status',['present','going','absent'])
+    .order('class_date',{ascending:false})
+    .order('class_time',{ascending:false})
+    .limit(500);
+  if(stl.range!=='all'){
+    const lower=new Date(Date.now()-Number(stl.range)*864e5);
+    q=q.gte('class_date',dk(lower));
   }
-  const staffNameByUid=uid=>{
-    if(!uid)return null;
-    const sf=STAFF.find(x=>x._userId===uid);
-    if(!sf)return null;
-    return staffDisplayName(sf,{firstOnly:true});
-  };
-  const pill=st=>{
-    if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
-    if(st==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
-    return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
-  };
-  return '<div class="slbl" style="margin-top:18px">Attendance log</div>'
-    +'<div class="card" style="padding:2px 14px">'
-    +rows.map((r,i)=>{
-      const last=i===rows.length-1;
-      const ins=staffNameByUid(r.confirmedBy);
-      const when=r.confirmedAt?new Date(r.confirmedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):null;
-      let trail='';
-      if(r.status==='present'&&ins)trail='Confirmed by '+ins+(when?' on '+when:'');
-      else if(r.status==='absent')trail='Marked absent'+(ins?' by '+ins:'')+(when?' on '+when:'');
-      else if(r.status==='going')trail='Awaiting confirmation';
-      const ctLabel=r.classType||'class';
-      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
-        +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:500">'+r.classDate+' · '+r.classTime+' <span style="font-size:11px;color:var(--text3);font-weight:400">· '+ctLabel+'</span></div>'
-        +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+trail+'</div>':'')
-        +'</div>'
-        +pill(r.status)
-      +'</div>';
-    }).join('')
+  const r=await q;
+  if(!S.stuAttList||S.stuAttList!==stl)return;
+  if(r&&r.error){console.warn('[mybjj] stuatt fetch:',r.error);stl.rows=[];}
+  else stl.rows=(r&&r.data)||[];
+  stl.loading=false;
+  render();
+}
+function openStuAttList(sid){
+  S.stuAttList={sid,modality:'all',range:30,rows:null,loading:true,page:1};
+  S.sub='stuattlist';
+  render();
+  _fetchStuAtt();
+}
+function closeStuAttList(){S.stuAttList=null;S.sub='stuprof';render();}
+function setStuAttRange(r){
+  if(!S.stuAttList)return;
+  S.stuAttList.range=r;S.stuAttList.rows=null;S.stuAttList.loading=true;S.stuAttList.page=1;
+  render();_fetchStuAtt();
+}
+function setStuAttFilter(m){
+  if(!S.stuAttList)return;
+  S.stuAttList.modality=m;S.stuAttList.page=1;render();
+}
+function loadMoreStuAtt(){
+  if(!S.stuAttList)return;
+  S.stuAttList.page=(S.stuAttList.page||1)+1;render();
+}
+function rStuAttList(){
+  if(!S.stuAttList)return '';
+  const stl=S.stuAttList;
+  const s=STUDENTS.find(x=>x.id===stl.sid);
+  if(!s)return '';
+  const chipBtn=(active,label,onclick)=>'<button onclick="'+onclick+'" style="background:'+(active?'#1A5DAD':'var(--card)')+';color:'+(active?'#fff':'var(--text2)')+';border:1px solid '+(active?'#1A5DAD':'var(--border)')+';border-radius:16px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">'+label+'</button>';
+  const modChips='<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    +chipBtn(stl.modality==='all','All','setStuAttFilter(\'all\')')
+    +chipBtn(stl.modality==='gi','Gi','setStuAttFilter(\'gi\')')
+    +chipBtn(stl.modality==='nogi','No-Gi','setStuAttFilter(\'nogi\')')
     +'</div>';
+  const rngChips='<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    +chipBtn(stl.range===30,'Last 30d','setStuAttRange(30)')
+    +chipBtn(stl.range===90,'Last 90d','setStuAttRange(90)')
+    +chipBtn(stl.range==='all','All time','setStuAttRange(\'all\')')
+    +'</div>';
+  let body='';
+  if(stl.loading||stl.rows===null){
+    body='<div style="padding:40px 0;text-align:center;color:var(--text3);font-size:13px">Loading…</div>';
+  }else{
+    const filtered=(stl.rows||[]).filter(r=>{
+      if(stl.modality==='all')return true;
+      const m=r.modality||_modalityFromType(r.class_type);
+      return m===stl.modality;
+    });
+    if(!filtered.length){
+      body='<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No attendance entries for this filter.</div>';
+    }else{
+      const pageSize=50;
+      const visible=filtered.slice(0,(stl.page||1)*pageSize);
+      const staffNameByUid=uid=>{
+        if(!uid)return null;
+        const sf=STAFF.find(x=>x._userId===uid);
+        if(!sf)return null;
+        return staffDisplayName(sf,{firstOnly:true});
+      };
+      const pill=st=>{
+        if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
+        if(st==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
+        return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
+      };
+      const modBadge=m=>{
+        if(m==='gi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:#1e40af;background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px;margin-left:6px">GI</span>';
+        if(m==='nogi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text2);background:var(--input-bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;margin-left:6px">NO-GI</span>';
+        return '';
+      };
+      body='<div class="card" style="padding:2px 14px">'+visible.map((r,i)=>{
+        const last=i===visible.length-1;
+        const m=r.modality||_modalityFromType(r.class_type);
+        const ins=staffNameByUid(r.confirmed_by);
+        const when=r.confirmed_at?new Date(r.confirmed_at).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):null;
+        let trail='';
+        if(r.status==='present'&&ins)trail='Confirmed by '+ins+(when?' on '+when:'');
+        else if(r.status==='absent')trail='Marked absent'+(ins?' by '+ins:'')+(when?' on '+when:'');
+        else if(r.status==='going')trail='Awaiting confirmation';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-size:13px;color:var(--text);font-weight:500">'+r.class_date+' · '+r.class_time+modBadge(m)+'</div>'
+            +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+trail+'</div>':'')
+          +'</div>'
+          +pill(r.status)
+        +'</div>';
+      }).join('')+'</div>';
+      if(visible.length<filtered.length){
+        body+='<div style="margin-top:12px;text-align:center"><button onclick="loadMoreStuAtt()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 18px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--text2);cursor:pointer">Load more ('+(filtered.length-visible.length)+' left)</button></div>';
+      }
+    }
+  }
+  return '<div class="sub open">'
+    +'<div class="shdr"><button class="sback" onclick="closeStuAttList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Attendance · '+s.name.split(' ')[0]+'</div></div>'
+    +'<div class="sbody">'
+      +'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">'+modChips+rngChips+'</div>'
+      +body
+      +'<div style="height:24px"></div>'
+    +'</div></div>';
+}
+// G16b — Feedback summary card + subview. feedback rows are already in
+// s.feedback (hydrated from public.feedback at startup); no DB roundtrip
+// needed for either surface. Add feedback continues to flow through
+// the existing openFbModal which is already permission-gated.
+function _stuFbSummaryCard(s){
+  const fb=(s.feedback||[]);
+  const canAdd=canEditClassCounts();
+  const latest=fb[0];
+  const addBtn=canAdd?'<button onclick="openFbModal(\''+s.id+'\')" style="background:none;border:1px solid #1A5DAD;color:#1A5DAD;border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">+ Add</button>':'';
+  if(!latest){
+    return '<div class="slbl" style="margin-top:18px">Feedback</div>'
+      +'<div class="card" style="padding:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">'
+      +'<div style="font-size:13px;color:var(--text3)">No feedback yet</div>'
+      +addBtn
+      +'</div>';
+  }
+  const excerpt=String(latest.text||'');
+  const trimmed=excerpt.length>80?excerpt.slice(0,80).trim()+'…':excerpt;
+  const viewAll='<button onclick="openStuFbList(\''+s.id+'\')" style="background:none;border:none;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0">View all '+fb.length+' →</button>';
+  return '<div class="slbl" style="margin-top:18px">Feedback</div>'
+    +'<div class="card" style="padding:14px">'
+    +'<div style="font-size:12px;color:var(--text3)">Latest by <span style="color:var(--text);font-weight:600">'+latest.ins+'</span> · '+latest.date+'</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.5">'+trimmed+'</div>'
+    +'<div style="margin-top:10px;display:flex;align-items:center;justify-content:flex-end;gap:10px">'+addBtn+viewAll+'</div>'
+    +'</div>';
+}
+function openStuFbList(sid){S.stuFbList={sid};S.sub='stufblist';render();}
+function closeStuFbList(){S.stuFbList=null;S.sub='stuprof';render();}
+function rStuFbList(){
+  if(!S.stuFbList)return '';
+  const s=STUDENTS.find(x=>x.id===S.stuFbList.sid);if(!s)return '';
+  const canAdd=canEditClassCounts();
+  const fb=s.feedback||[];
+  const empty=!fb.length?'<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No feedback yet.</div>':'';
+  const list=fb.map((f,i)=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+f.date+'</div>'+(canDeleteFeedback(f)?'<button onclick="deleteFeedback(\''+s.id+'\','+i+')" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>':'')+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('');
+  const addBtn=canAdd?'<button onclick="openFbModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add feedback</button>':'';
+  return '<div class="sub open">'
+    +'<div class="shdr"><button class="sback" onclick="closeStuFbList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Feedback · '+s.name.split(' ')[0]+'</div></div>'
+    +'<div class="sbody">'
+      +(addBtn?'<div style="display:flex;justify-content:flex-end;margin-bottom:12px">'+addBtn+'</div>':'')
+      +empty+list
+      +'<div style="height:24px"></div>'
+    +'</div></div>';
+}
+// G16b — Danger Zone replaces the plain stacked "More" buttons with two
+// red-bordered cards mirroring GitHub's repo Settings pattern: title,
+// muted description of the consequence, outline red action button.
+// canAdmin / ownerView use the same gates the old bottomActions did.
+function _stuDangerZone(s,canAdmin,ownerView){
+  if(!canAdmin)return '';
+  const isActive=s._active!==false;
+  const banner=isActive?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--amber-text)">This student is inactive. They’re hidden from the default Roster.</div>';
+  const card=(title,desc,btnLabel,onclick)=>'<div style="border:1px solid var(--red-border);background:var(--card);border-radius:12px;padding:16px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:160px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px">'+title+'</div><div style="font-size:12px;color:var(--text3);line-height:1.5">'+desc+'</div></div><button onclick="'+onclick+'" style="background:none;border:1px solid var(--red-text);color:var(--red-text);border-radius:8px;padding:8px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">'+btnLabel+'</button></div>';
+  const inactiveCard=isActive
+    ?card('Mark student as inactive','Student will be hidden from the active roster but their attendance and journey history will be preserved.','Mark inactive','markStudentInactive(\''+s.id+'\')')
+    :card('Reactivate student','Student returns to the active roster. Their history is unchanged.','Reactivate','reactivateStudent(\''+s.id+'\')');
+  const deleteCard=ownerView
+    ?'<div style="margin-top:10px">'+card('Delete student','Permanently removes this student profile. This cannot be undone — historical attendance, promotions, and feedback are all removed with it.','Delete','deleteStudent(\''+s.id+'\')')+'</div>'
+    :'';
+  return '<div class="slbl" style="margin-top:20px;color:var(--red-text);border-bottom:1px solid var(--red-border);padding-bottom:6px;letter-spacing:2px">Danger Zone</div>'+banner+inactiveCard+deleteCard;
 }
 
 // Cache reconcile badge — admin / professor only. Compares the cached
@@ -2622,7 +2808,7 @@ function rProgress(){
   // as a numeric reference. gnote text de-conditioned \u2014 it now reads
   // the same regardless of student state.
   var giHint=_giCeremonyHint(s,egd);
-  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">Gi and No-Gi both count toward promotion. Final decision is always the instructor\u2019s.</div></div>`;
+  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
 
@@ -6058,6 +6244,7 @@ function closeStudentProfile(){
   S.viewStu=null;S.sub=null;S.panelOpen=false;
   S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;
   S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;
+  S.showAllJourney=false;S.stuAttList=null;S.stuFbList=null;
   render();
 }
 
