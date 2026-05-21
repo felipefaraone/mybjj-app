@@ -869,7 +869,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'personal',showAllJourney:false,stuAttList:null,stuFbList:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'personal',showAllJourney:false,stuAttList:null,stuFbList:null,profileOrigin:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -1004,7 +1004,7 @@ function rVC(url,title){
 function rAtts(all,cid){
   if(!all.length)return '';const exp=!!S.expanded[cid];const P=3;const rest=all.length-P;
   const ms=sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return null;const m=s.prog==='kids'?BK:BA;const b=m[s.belt]||BA.white;return{s,b,me:sid===S.me.id};};
-  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="achip" onclick="viewStu('${sid}')" style="cursor:pointer;background:${r.me?'#1A5DAD':r.b.bg}20;border:1px solid ${r.me?'#1A5DAD':r.b.bg}40"><div class="acav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'#1A5DAD':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
+  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="achip" onclick="viewStu('${sid}','class')" style="cursor:pointer;background:${r.me?'#1A5DAD':r.b.bg}20;border:1px solid ${r.me?'#1A5DAD':r.b.bg}40"><div class="acav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'#1A5DAD':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
   return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="aav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div>`;}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">${all.length>P?'See all':'Show all'}</span></div></div>`;
 }
 
@@ -1074,7 +1074,7 @@ function rAttsStaff(rows,cid){
     // reads "they were here but it doesn't count toward promotion".
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
 }
 // _fmtJnyDate — journey entries store the date in two formats:
@@ -1247,6 +1247,16 @@ function rMUnits(){
 // details / feedback / more) so students + instructors feel like
 // pages from the same family. Journey is editable by owner; admin
 // edits (belt / role / unit) still go through rEditStaffModal.
+// G17.1.1 — back-button label for rStuProf / rStaffProf. Reads
+// S.profileOrigin first (the navigation source set by viewStu /
+// viewStaff / openMyProfile callers); falls back to S.tab for legacy
+// callers that haven't been threaded with an explicit origin.
+function profileBackLabel(){
+  const originLabels={drawer:'Settings',community:'Members',roster:'Roster',class:'Class'};
+  if(S.profileOrigin&&originLabels[S.profileOrigin])return originLabels[S.profileOrigin];
+  const tabLabels={community:'Members',class:'Class',admin:'Roster'};
+  return tabLabels[S.tab]||'Back';
+}
 function rStaffProf(){
   const s=STAFF.find(x=>x.id===S.viewStaff);if(!s)return '';
   // G17.1 — viewer model matches rStuProf:
@@ -1284,6 +1294,7 @@ function rStaffProf(){
   const editPencil=(canAdmin||isSelf)
     ?'<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStaff(\''+s.id+'\')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:#1A5DAD;border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>'
     :'';
+  const backLbl=profileBackLabel();
   // Danger Zone — owner viewing someone else. Mirrors _stuDangerZone
   // visual pattern. Self-view explicitly does NOT show this.
   const dangerZone=(canRemoveStaffRow(s))
@@ -1295,7 +1306,7 @@ function rStaffProf(){
     :'';
 
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="closeSub()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+staffDisplayName(s)+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+staffDisplayName(s)+'</div></div>'
     +'<div class="sbody">'
     // Header — social context: BJJ title before the clean name.
     +'<div class="card" style="padding:16px">'
@@ -1578,14 +1589,11 @@ function rStuProf(){
   // view a plain display surface avoids the duplicated affordance.
   const photoBlock=avStu(s,52);
 
-  // G11.2 — back-button label reflects WHERE the user came from, not
-  // WHO they are. Non-admin self-view from Members was getting
-  // "Roster" because the previous gate hardcoded the admin label
-  // when isPeer was false; admin from Classes had the same bug
-  // inverted. S.tab is the right signal — the Roster sub-tab lives
-  // under S.tab='admin', so that key carries the Roster label.
-  const _tabLabels={community:'Members',class:'Class',admin:'Roster'};
-  const backLbl=_tabLabels[S.tab]||'Back';
+  // G17.1.1 — back label now reads S.profileOrigin (set by
+  // viewStu/viewStaff/openMyProfile callers) with S.tab fallback for
+  // legacy callers. profileBackLabel() centralizes the mapping so
+  // rStuProf and rStaffProf stay in sync.
+  const backLbl=profileBackLabel();
   // G11 — peer view (non-admin, non-self, non-parent-of-kid): only
   // header card + journey card. Stats / eligibility hint / details /
   // attendance log / instructor feedback / action buttons are gated
@@ -2581,7 +2589,7 @@ function rMembers(){
   const rows=list.map(m=>{
     const isInstr=m._kind==='instructor';
     const av=isInstr?avStaff(m,40):avStu(m,40);
-    const tapHandler=isInstr?"viewStaff('"+m.id+"')":"viewStu('"+m.id+"')";
+    const tapHandler=isInstr?"viewStaff('"+m.id+"','community')":"viewStu('"+m.id+"','community')";
     // Social context — Members tab. Instructors render with their BJJ
     // title prefixed to the clean name; no INSTRUCTOR role chip (that
     // badge lives in admin contexts per the Layer 1 / Layer 2 split).
@@ -2599,7 +2607,7 @@ function rMembers(){
 function setMembersBelt(b){S.membersBelt=b;render();}
 function setMembersSegment(seg){S.membersSegment=seg;S.membersBelt='all';render();}
 function setMembersType(t){S.membersType=t;render();}
-function viewStaff(id){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;render();}
+function viewStaff(id,origin){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;S.profileOrigin=origin||null;render();}
 
 // rParentMembers — parent's Members tab. Shows other kids in the
 // child's unit (excluding own children, no adults — privacy boundary)
@@ -2644,7 +2652,7 @@ function rParentMembers(){
   const rows=list.map(m=>{
     const isInstr=m._kind==='instructor';
     if(isInstr){
-      return '<div class="card" onclick="viewStaff(\''+m.id+'\')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
+      return '<div class="card" onclick="viewStaff(\''+m.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
         +avStaff(m,40)
         +'<div style="flex:1;min-width:0">'
         +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
@@ -2902,7 +2910,7 @@ function evNamedList(ids){
     if(!s)return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text3)">'+id+' (not found)</div>';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
     const isStudent=STUDENTS.indexOf(s)!==-1;
-    const onclick=isStudent?'onclick="viewStu(\''+s.id+'\')"':'';
+    const onclick=isStudent?'onclick="viewStu(\''+s.id+'\',\'roster\')"':'';
     const cursor=isStudent?';cursor:pointer':'';
     const avatar='<div style="width:24px;height:24px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:9px;flex-shrink:0">'+s.initials+'</div>';
     return '<div '+onclick+' style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:var(--text)'+cursor+'">'+avatar+'<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</div></div>';
@@ -3137,7 +3145,7 @@ function rARosterListInner(){
       eligHint='<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:4px">'+eg.message+'</div>';
     }
     const inviteRow=inviteStatusRow(s,s.prog==='kids'?'kidParent':'student');
-    return '<div class="card" style="cursor:pointer" onclick="viewStu(this.dataset.sid)" data-sid="'+s.id+'">'
+    return '<div class="card" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
       +'<div style="display:flex;align-items:center;gap:10px">'+avStu(s,34)
       +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+(isElig?'<span title="Eligible for promotion" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-text)"></span>':'')+s.name+'</div>'
@@ -3221,11 +3229,11 @@ function rStaff(){
     const actions=(showEdit||showRemove)?'<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">'+editBtn+remBtn+'</div>':'';
     const emailLine=s.email?'<div style="font-size:11px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.email+'</div>':'';
     const inviteRow=inviteStatusRow(s,'staff');
-    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid)" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+' · '+b.label+degLbl+' · '+unitName+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
+    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+' · '+b.label+degLbl+' · '+unitName+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
   }).join('');
   return header+rows;
 }
-function viewStaffMember(id){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;render();}
+function viewStaffMember(id,origin){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;S.profileOrigin=origin||null;render();}
 // G17.1 — single canonical entry point for "my profile" from the
 // drawer. Staff land on rStaffProf, students on rStuProf, parents on
 // their first child's profile (no parent self-row exists in the V1
@@ -3236,17 +3244,25 @@ function viewStaffMember(id){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;r
 function openMyProfile(){
   const uid=S.profile&&S.profile.id;
   if(!uid){showSaveToast2('Profile not available');return;}
-  const linkedStaff=STAFF.find(x=>x._userId===uid);
+  // G17.1.1 — staff lookup with email fallback. Dev Admin (and any
+  // staff row whose auto-link via supabase/14_phase7.sql ensure_user
+  // didn't run, e.g. because the staff row was inserted with mismatched
+  // email casing) has staff.user_id = NULL. The email fallback mirrors
+  // the same pattern already used in enrichMeFromHydrate for students.
+  const email=S.profile&&S.profile.email?String(S.profile.email).toLowerCase():null;
+  const linkedStaff=STAFF.find(x=>x._userId===uid)
+    ||(email?STAFF.find(x=>x.email&&String(x.email).toLowerCase()===email):null);
   if(linkedStaff){
-    S.viewStaff=linkedStaff.id;S.sub='staffprof';S.panelOpen=true;S.unitOpen=false;render();return;
+    S.viewStaff=linkedStaff.id;S.sub='staffprof';S.panelOpen=true;S.unitOpen=false;S.profileOrigin='drawer';render();return;
   }
-  const linkedStudent=STUDENTS.find(x=>x._userId===uid);
+  const linkedStudent=STUDENTS.find(x=>x._userId===uid)
+    ||(email?STUDENTS.find(x=>x.email&&String(x.email).toLowerCase()===email):null);
   if(linkedStudent){
-    S.viewStu=linkedStudent.id;S.sub='stuprof';S.panelOpen=true;S.unitOpen=false;render();return;
+    S.viewStu=linkedStudent.id;S.sub='stuprof';S.panelOpen=true;S.unitOpen=false;S.profileOrigin='drawer';render();return;
   }
   const firstKid=STUDENTS.find(x=>x._parentUserId===uid);
   if(firstKid){
-    S.viewStu=firstKid.id;S.sub='stuprof';S.panelOpen=true;S.unitOpen=false;render();return;
+    S.viewStu=firstKid.id;S.sub='stuprof';S.panelOpen=true;S.unitOpen=false;S.profileOrigin='drawer';render();return;
   }
   showSaveToast2('Profile not available');
 }
@@ -6118,7 +6134,7 @@ function rDeleteUnitConfirm(){
     +'</div></div></div>';
 }
 
-function viewStu(idOrEl){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;render();}
+function viewStu(idOrEl,origin){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;S.profileOrigin=origin||null;render();}
 function openFb(sid){S.addFb=sid;render();}
 function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
 function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
@@ -6190,15 +6206,33 @@ ${giField}
 // Student profile helpers (rStuProf restructure)
 // ---------------------------------------------------------------------------
 
-// closeStudentProfile is the Back action from rStuProf. Unlike the global
-// closeSub it also drops the side-panel itself, so the user lands on the
-// underlying Admin → Roster instead of the admin's own profile menu (which
-// was the visible-but-wrong landing for the original BACK button).
+// closeStudentProfile is the Back action from rStuProf. Behavior
+// depends on S.profileOrigin (G17.1.1):
+//   • 'drawer' → drop the sub but KEEP the side-panel open (user
+//     reopened drawer at Profile section, having come in via "View
+//     my profile").
+//   • anything else → close both the sub AND the side-panel so the
+//     user lands back on the originating tab (Members / Roster /
+//     Class).
 function closeStudentProfile(){
-  S.viewStu=null;S.sub=null;S.panelOpen=false;
+  const origin=S.profileOrigin;
+  S.viewStu=null;S.sub=null;
+  S.panelOpen=(origin==='drawer');
   S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;
   S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;
   S.showAllJourney=false;S.stuAttList=null;S.stuFbList=null;
+  S.profileOrigin=null;
+  render();
+}
+// closeStaffProfile — mirror of closeStudentProfile for rStaffProf.
+// Same origin-aware close behavior; sub-state shape is simpler (no
+// journey/attendance helpers to reset).
+function closeStaffProfile(){
+  const origin=S.profileOrigin;
+  S.viewStaff=null;S.sub=null;
+  S.panelOpen=(origin==='drawer');
+  S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;
+  S.profileOrigin=null;
   render();
 }
 
