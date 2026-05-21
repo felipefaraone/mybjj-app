@@ -1720,12 +1720,14 @@ function rJnySection(s,sidKey){
     // would 404 for instructors. Pass null shareSid for the staff
     // sidKey ('staff:<id>') so rTL skips the share affordance.
     const isStaffJourney=sidKey&&sidKey.indexOf('staff:')===0;
-    // G16b — collapsible journey for students. Renders the last 3
-    // milestones by default; "Show all (N) →" link expands inline.
-    // Staff journeys keep full render — those are short enough.
+    // G16b.1 — collapse applies to staff journeys too. The earlier
+    // "staff journeys are short" assumption was wrong (Felipe Silva +
+    // similar veterans accumulate enough milestones to warrant the
+    // same Show-all toggle students get). S.showAllJourney is global
+    // (per-sid is V2 polish).
     const jArr=Array.isArray(s.journey)?s.journey:[];
-    const collapsed=!isStaffJourney && jArr.length>3 && !S.showAllJourney;
-    const showLink=!isStaffJourney && jArr.length>3
+    const collapsed=jArr.length>3 && !S.showAllJourney;
+    const showLink=jArr.length>3
       ? '<div style="padding:10px 16px 12px 16px;text-align:center"><button onclick="toggleShowAllJourney()" style="background:none;border:none;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:#1A5DAD;cursor:pointer;padding:4px 8px">'+(S.showAllJourney?'Show less ↑':'Show all ('+jArr.length+') →')+'</button></div>'
       : '';
     const renderJourney=collapsed?jArr.slice(-3):jArr;
