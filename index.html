@@ -360,18 +360,32 @@ function _modalityFromType(type){
   return null;
 }
 // G16a — social handle platforms. Same array drives:
-//   1. Edit Profile Training tab inputs.
-//   2. Details card icon-button row.
+//   1. Edit Profile Contact tab inputs.
+//   2. Details card icon-button row + peer-view social block.
 //   3. validate + URL-build helpers below.
 const SOCIAL_PLATFORMS=[
-  {key:'instagram', label:'Instagram',  glyph:'IG', placeholder:'@your_handle'},
-  {key:'tiktok',    label:'TikTok',     glyph:'TT', placeholder:'@your_handle'},
-  {key:'facebook',  label:'Facebook',   glyph:'FB', placeholder:'your.handle'},
-  {key:'youtube',   label:'YouTube',    glyph:'YT', placeholder:'@your_channel'},
-  {key:'x',         label:'X',          glyph:'X',  placeholder:'@your_handle'},
-  {key:'spotify',   label:'Spotify',    glyph:'SP', placeholder:'profile URL or handle'},
-  {key:'letterboxd',label:'Letterboxd', glyph:'LB', placeholder:'your_handle'}
+  {key:'instagram', label:'Instagram',  placeholder:'@your_handle'},
+  {key:'tiktok',    label:'TikTok',     placeholder:'@your_handle'},
+  {key:'facebook',  label:'Facebook',   placeholder:'your.handle'},
+  {key:'youtube',   label:'YouTube',    placeholder:'@your_channel'},
+  {key:'x',         label:'X',          placeholder:'@your_handle'},
+  {key:'spotify',   label:'Spotify',    placeholder:'profile URL or handle'},
+  {key:'letterboxd',label:'Letterboxd', placeholder:'your_handle'}
 ];
+// G16a.1 — inline SVG glyphs for each platform, sized for a 36px chip.
+// Monochrome (currentColor) so the chip parent decides the tint. Lucide-
+// style minimal paths; not the licensed brand marks. YouTube triangle
+// and Letterboxd dots use fill="currentColor" so they read as solids;
+// the rest are outline strokes.
+const SOCIAL_GLYPHS={
+  instagram:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>',
+  tiktok:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>',
+  facebook:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>',
+  youtube:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="currentColor" stroke="none"/></svg>',
+  x:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  spotify:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M7 14.5c2.5-1.5 7.5-1.5 10 0"/><path d="M8 11c2-1.2 6-1.2 8 0"/><path d="M9 8c1.5-.8 4.5-.8 6 0"/></svg>',
+  letterboxd:'<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="none"><circle cx="6" cy="12" r="2.6"/><circle cx="12" cy="12" r="2.6"/><circle cx="18" cy="12" r="2.6"/></svg>'
+};
 // External URL for a given platform + handle. Returns null when the
 // handle is empty or the platform isn't known. Spotify accepts a raw
 // URL for handles that already start with http(s):// — otherwise it
@@ -1545,13 +1559,24 @@ function rStuProf(){
   const giOwned=s.hasMybjjGi===true;
   const giOwnedRow=rDetailRow('MyBJJ Gi',giOwned?'<span style="color:var(--green-text)">✓</span>':'<span style="color:var(--text3)">—</span>','');
   const social=s.socialHandles||{};
+  // G16a.1 — chips are now 36px neutral circles with inline SVG glyphs
+  // (SOCIAL_GLYPHS map). Background tints to the surrounding card; the
+  // icon uses currentColor so it inherits text2 contrast.
   const socialChips=SOCIAL_PLATFORMS.map(p=>{
     const url=_socialUrl(p.key,social[p.key]);
     if(!url)return '';
-    return '<a href="'+url+'" target="_blank" rel="noopener noreferrer" title="'+p.label+'" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--blue-tint);color:#1A5DAD;border:1px solid var(--blue-mid);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;text-decoration:none">'+p.glyph+'</a>';
+    const g=SOCIAL_GLYPHS[p.key]||'';
+    return '<a href="'+url+'" target="_blank" rel="noopener noreferrer" title="'+p.label+'" aria-label="'+p.label+'" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none">'+g+'</a>';
   }).join('');
   const socialRow=socialChips
-    ?'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Social</div><div style="flex:1;display:flex;flex-wrap:wrap;gap:6px">'+socialChips+'</div></div>'
+    ?'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Social</div><div style="flex:1;display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div></div>'
+    :'';
+  // G16a.1 — peer-view-lite gets a social card after the journey block
+  // (social handles are public links by nature). Admin/self continue to
+  // see them inside the Details card (above). MyBJJ Gi stays admin/self
+  // only — it's a logistics detail, not a social signal.
+  const peerSocialBlock=(isPeer && socialChips)
+    ?'<div class="card" style="padding:14px;margin-top:12px"><div class="slbl" style="margin:0 0 8px">Social</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div></div>'
     :'';
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
@@ -1649,6 +1674,10 @@ ${statsCard}
 
 <!-- Section 3: Journey — always visible -->
 ${rJnySection(s)}
+
+<!-- Section 3.5: Peer-view social block — only renders for isPeer + at
+     least one handle. Admin/self see social inside the Details card. -->
+${peerSocialBlock}
 
 <!-- Section 4: Details — peer-gated -->
 ${detailsBlock}
@@ -6218,17 +6247,20 @@ function rEditStu(){
 <div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(weightKg)}"/></div>
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
 <div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="toggle ${hasMybjjGi?'on':''}" id="es-hasmybjjgi" onclick="this.classList.toggle('on')"></button></div>
-</div>
-<div class="slbl" style="margin-top:14px">Social</div>
-<div class="ef">${socialInputs}</div>`;
+</div>`;
   // -------- Contact --------
+  // G16a.1 — email row now stacks: value on its own line (ellipsis on
+  // overflow), Change email link below at smaller size. Old layout
+  // crammed input + link on a single row and clipped at 390px width.
   const emailRow=isKids
     ?'<div class="erow"><div class="elbl">Email</div><div class="einput" style="display:flex;align-items:center;color:var(--text3);background:var(--input-bg);font-size:12px">Login is via parent email.</div></div>'
-    :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;display:flex;align-items:center;gap:8px;min-width:0"><input class="einput" type="email" value="'+esc(s.email||'—')+'" disabled style="flex:1;color:var(--text2);background:var(--bg);cursor:not-allowed"/><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:#1A5DAD;font-size:12px;white-space:nowrap;text-decoration:underline">Change email</a></div></div>';
+    :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:#1A5DAD;font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
   const contactTab=`<div class="ef" style="margin-top:8px">${emailRow}
 <div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
 <div class="erow"><div class="elbl">Emergency phone</div><input class="einput" id="es-ecphone" type="tel" placeholder="Optional" value="${esc(ecPhone)}"/></div>
-</div>`;
+</div>
+<div class="slbl" style="margin-top:14px">Social</div>
+<div class="ef">${socialInputs}</div>`;
   // -------- Parent (kids only) --------
   const parentTab=isKids
     ?`<div class="slbl" style="margin-top:8px">Parent 1 / Guardian</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" placeholder="Required" value="${esc(parentPhone)}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" placeholder="Required — gates login" value="${esc(parentEmail)}"/></div></div><div class="slbl" style="margin-top:8px">Parent 2 (secondary)</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Optional. If you fill in their email they'll also be able to log in and see this child.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-p2name" placeholder="Optional" value="${esc(parent2Name)}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-p2phone" type="tel" placeholder="Optional" value="${esc(parent2Phone)}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-p2email" type="email" placeholder="Optional" value="${esc(parent2Email)}"/></div></div>`
