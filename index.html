@@ -869,7 +869,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'personal',showAllJourney:false,stuAttList:null,stuFbList:null,profileOrigin:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',showAllJourney:false,stuAttList:null,stuFbList:null,profileOrigin:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -6324,10 +6324,10 @@ function openEditStu(sid){
   const viewerId=S.profile&&S.profile.id;
   const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
   if(!canEditClassCounts()&&!isSelf)return;
-  S.editStuFor=sid;S.editStuTab='personal';S.editStuDraft={};S.sub='editstu';S.panelOpen=true;
+  S.editStuFor=sid;S.editStuTab='basic';S.editStuDraft={};S.sub='editstu';S.panelOpen=true;
   render();
 }
-function closeEditStu(){S.editStuFor=null;S.editStuTab='personal';S.editStuDraft=null;S.sub=S.viewStu?'stuprof':null;render();}
+function closeEditStu(){S.editStuFor=null;S.editStuTab='basic';S.editStuDraft=null;S.sub=S.viewStu?'stuprof':null;render();}
 function _captureEditStuTab(){
   if(!S.editStuDraft)S.editStuDraft={};
   const D=S.editStuDraft;
@@ -6395,20 +6395,25 @@ function rEditStu(){
   const photoBlock=isSelf
     ?`<div onclick="triggerPhotoUpload('${s.id}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
     :`${avStu(s,72)}`;
-  const tab=['personal','training','contact','parent'].indexOf(S.editStuTab)>=0?S.editStuTab:'personal';
+  // G17.1.2 — tab id 'personal' renamed to 'basic'. DOM input IDs are
+  // unchanged so _captureEditStuTab and saveEditStu still resolve them
+  // regardless of which tab they're rendered under (e.g. es-phone
+  // moved from Basic to Contact in the same change).
+  const tab=['basic','training','contact','parent'].indexOf(S.editStuTab)>=0?S.editStuTab:'basic';
   const tabsHtml='<div class="stabs" style="margin-bottom:12px">'
-    +'<button class="stab '+(tab==='personal'?'active':'')+'" onclick="setEditStuTab(\'personal\')">Personal</button>'
+    +'<button class="stab '+(tab==='basic'?'active':'')+'" onclick="setEditStuTab(\'basic\')">Basic</button>'
     +'<button class="stab '+(tab==='training'?'active':'')+'" onclick="setEditStuTab(\'training\')">Training</button>'
     +'<button class="stab '+(tab==='contact'?'active':'')+'" onclick="setEditStuTab(\'contact\')">Contact</button>'
     +(isKids?'<button class="stab '+(tab==='parent'?'active':'')+'" onclick="setEditStuTab(\'parent\')">Parent</button>':'')
     +'</div>';
-  // -------- Personal --------
-  const personalTab=`<div class="ef" style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:4px;border-bottom:1px solid var(--border)">${photoBlock}</div>
+  // -------- Basic -------- (was "Personal" pre-G17.1.2)
+  // Phone moved out of Basic into Contact (phone is a contact channel,
+  // not identity). DOB / Gender stay here.
+  const basicTab=`<div class="ef" style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:4px;border-bottom:1px solid var(--border)">${photoBlock}</div>
 <div class="ef" style="margin-top:8px">
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}"/></div>
 <div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(phone)}"/></div>
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
 </div>`;
   // -------- Training --------
@@ -6431,6 +6436,7 @@ function rEditStu(){
     ?'<div class="erow"><div class="elbl">Email</div><div class="einput" style="display:flex;align-items:center;color:var(--text3);background:var(--input-bg);font-size:12px">Login is via parent email.</div></div>'
     :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:#1A5DAD;font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
   const contactTab=`<div class="ef" style="margin-top:8px">${emailRow}
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(phone)}"/></div>
 <div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
 <div class="erow"><div class="elbl">Emergency phone</div><input class="einput" id="es-ecphone" type="tel" placeholder="Optional" value="${esc(ecPhone)}"/></div>
 </div>
@@ -6440,13 +6446,19 @@ function rEditStu(){
   const parentTab=isKids
     ?`<div class="slbl" style="margin-top:8px">Parent 1 / Guardian</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" placeholder="Required" value="${esc(parentPhone)}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" placeholder="Required — gates login" value="${esc(parentEmail)}"/></div></div><div class="slbl" style="margin-top:8px">Parent 2 (secondary)</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Optional. If you fill in their email they'll also be able to log in and see this child.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-p2name" placeholder="Optional" value="${esc(parent2Name)}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-p2phone" type="tel" placeholder="Optional" value="${esc(parent2Phone)}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-p2email" type="email" placeholder="Optional" value="${esc(parent2Email)}"/></div></div>`
     :'<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">Parent fields apply to kid profiles only.</div>';
-  const body=tab==='training'?trainingTab:tab==='contact'?contactTab:tab==='parent'?parentTab:personalTab;
-  return `<div class="sub open"><div class="shdr"><button class="sback" onclick="closeEditStu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Cancel</button><div class="stitle">Edit profile</div><button class="ssave" onclick="saveEditStu()">Save</button></div><div class="sbody">
+  const body=tab==='training'?trainingTab:tab==='contact'?contactTab:tab==='parent'?parentTab:basicTab;
+  // G17.1.2 — single save action. Header drops the duplicate top-right
+  // Save (was redundant with the footer button). Footer "Save changes"
+  // becomes position:sticky inside .sbody so it stays in view as the
+  // user scrolls through long forms (kids' parent fields, social
+  // platforms list). Negative margins span the sbody padding so the
+  // sticky band hugs the bottom edge.
+  return `<div class="sub open"><div class="shdr"><button class="sback" onclick="closeEditStu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Cancel</button><div class="stitle">Edit profile</div></div><div class="sbody">
 ${tabsHtml}
 ${body}
 <div id="es-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="es-err-txt"></span></div>
 <div style="height:16px"></div>
-<button class="bblue" style="margin-bottom:24px" onclick="saveEditStu()">Save changes</button>
+<div style="position:sticky;bottom:-16px;margin:8px -16px 0;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 12px rgba(0,0,0,.04)"><button class="bblue" style="width:100%;margin:0" onclick="saveEditStu()">Save changes</button></div>
 </div></div>`;
 }
 
