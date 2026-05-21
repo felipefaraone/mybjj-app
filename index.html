@@ -343,6 +343,22 @@ const PROGRESSION_THRESHOLDS={
   black: {classes_per_stripe:null, min_gi_ratio:null}
 };
 const CT=[{id:'nogi',lbl:'No-Gi',tc:'tn',gi:false},{id:'alev',lbl:'All Levels',tc:'ta',gi:true},{id:'beg',lbl:'Beginner',tc:'tb',gi:true},{id:'adv',lbl:'Advanced',tc:'tv',gi:true},{id:'omat',lbl:'Open Mat',tc:'to',gi:false},{id:'mma',lbl:'MMA',tc:'tm',gi:false},{id:'jun',lbl:'Kids',tc:'tj',gi:true},{id:'jnogi',lbl:'Kids No-Gi',tc:'tn',gi:false},{id:'jmma',lbl:'Kids MMA',tc:'tm',gi:false},{id:'mini',lbl:'Mini Champs',tc:'ti',gi:false}];
+// G13 — gi/no-gi modality derived from class type. The CT.gi boolean
+// is too coarse for promotion math: it groups omat/mma/jmma/mini under
+// "not-gi" but those aren't traditional BJJ practice, so they count
+// toward students.total but NOT toward gi_classes / nogi_classes. The
+// SQL backfill in migration 48 uses the same map.
+//   gi   → alev, beg, adv, jun
+//   nogi → nogi, jnogi
+//   null → omat, mma, jmma, mini (count toward total only)
+const _MODALITY_GI=['alev','beg','adv','jun'];
+const _MODALITY_NOGI=['nogi','jnogi'];
+function _modalityFromType(type){
+  if(!type)return null;
+  if(_MODALITY_GI.indexOf(type)>=0)return 'gi';
+  if(_MODALITY_NOGI.indexOf(type)>=0)return 'nogi';
+  return null;
+}
 const AUD=['Adults','Kids','All'];
 // G9.2 — 5-tier attendance marking. Maps to John's physical-card
 // system: instructor picks the same glyph they'd write on the card,
@@ -467,6 +483,21 @@ function getEligibilityStatus(student){
 // hardcoded 25 / 30 thresholds. studentEligibility itself is kept
 // because the rfNear / rfEligible filters and roster sort still
 // consume it; unifying those is Phase 2 territory.
+// G13 — gi-for-ceremony nudge. Replaces the legacy GI ACTIVE / GI
+// REQUIRED two-state pill. Renders nothing in the common cases
+// (student has at least one gi class, or they're nowhere near
+// eligibility, or eligibility doesn't apply at all). The amber
+// "Gi needed for ceremony" subtle chip only appears for adult
+// students approaching their next marker (>= 70% of classes_target)
+// AND with no gi credit at all. Kids inherit the pending status from
+// _egDisplay → no hint.
+function _giCeremonyHint(student,egd){
+  if(!student||!egd)return '';
+  if((student.giTotal||0)>=1)return '';
+  if(!egd.pct||egd.pct<70)return '';
+  if(egd.isReady||egd.isPending||egd.hide)return '';
+  return '<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">Gi needed for ceremony</span></div>';
+}
 function _egDisplay(student){
   const eg=getEligibilityStatus(student);
   if(!eg)return {hide:true,pct:null,barPct:0,isReady:false,isPending:false,label:null,reason:''};
@@ -1435,10 +1466,11 @@ function rStuProf(){
   const isPeer=!(isSelf||isParentOfKid||isAdminViewer);
   const giSince=Math.max(s.giGrade||0,0);
   const noGiSince=Math.max((s.grade||0)-giSince,0);
-  const noGiOnly=s.hasGi===false;
-  const giTag=(s.hasGi!==false&&s.giTotal>0)
-    ?'<span style="display:inline-flex;align-items:center;gap:3px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;color:var(--green-text);letter-spacing:.5px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>GI</span>'
-    :'<span style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">NO-GI ONLY</span>';
+  // G13 — header GI / NO-GI ONLY chip removed. has_gi as a preference
+  // toggle is gone; gi/no-gi is now an attendance attribute, not a
+  // student attribute. The eligibility-card pill below handles the
+  // "needs Gi for ceremony" nudge when relevant.
+  const giTag='';
   const progChip='<span style="background:'+(isKids?'var(--amber-bg)':'var(--blue-tint)')+';color:'+(isKids?'var(--amber-text)':'#1A5DAD')+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+(isKids?'KIDS':'ADULT')+'</span>';
   // G11.1 — auth-claim status (AWAITING / JOINED) is admin/self-only
   // info; peers don't need to know whether someone has claimed their
@@ -1508,9 +1540,7 @@ function rStuProf(){
   </div>
   ${egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog)}
   ${egd.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${egd.reason}</span></div>`:''}
-  ${(s.hasGi!==false&&s.giTotal>0)
-    ?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>'
-    :'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}
+  ${_giCeremonyHint(s,egd)}
   ${canAdmin?rReconcileBadge(s):''}
 </div>`;
   const detailsBlock=isPeer?'':details;
@@ -2173,7 +2203,7 @@ function rParentChildView(){
     +'<div style="flex:1;text-align:center"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:'+(isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)'))+'">'+(pct==null?'—':pct+'%')+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">'+(isReady?'Ready':'Progress')+'</div></div>'
     +'</div>'+(egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,child.belt,child.prog))
     +(egd.reason?'<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:'+(isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(isReady?'var(--green-border)':'var(--border)')+';font-size:12px;line-height:1.4;color:'+(isReady?'var(--green-text)':'var(--text2)')+';font-family:Barlow Condensed,sans-serif;font-weight:600;letter-spacing:.5px">'+egd.reason+'</div>':'')
-    +(child.hasGi===false?'<div style="margin-top:8px;font-size:11px;color:var(--amber-text)">No-Gi only — Gi training required for IBJJF promotion.</div>':'')
+    +_giCeremonyHint(child,egd)
     +'</div>';
   const journeyCard='<div class="slbl">'+child.name.split(' ')[0]+'\'s journey</div><div class="card" style="padding:12px 16px">'+rTL(child.journey||[])+'</div>';
   const attendanceCard=rParentAttendance(child);
@@ -2442,7 +2472,11 @@ function rProgress(){
     var coachPctHtml=coachEgd.hide||coachEgd.isPending?'<span style="color:var(--text3)">—</span>':(coachEgd.pct+'%');
     var coachBarHtml=coachEgd.hide||coachEgd.isPending?'':pbBelt(coachEgd.barPct,100,s.belt,s.prog||'adult');
     var coachReasonHtml=coachEgd.reason?'<div style="font-size:12px;color:'+(coachEgd.isReady?'var(--green-text)':'var(--text2)')+';margin-top:8px">'+coachEgd.reason+'</div>':'';
-    var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+formatStat(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+formatStat(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">'+((s.hasGi!==false&&s.giTotal>0)?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--amber-text);flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-size:12px;color:var(--amber-text)">Start attending Gi classes to unlock promotion</span></div>')+'All classes count toward promotion</div>'+coachBarHtml+coachReasonHtml+'</div>';
+    // G13 — coach rankTab: legacy "Start attending Gi classes" warning
+    // block removed; gi nudge now flows through _giCeremonyHint which
+    // only fires near eligibility.
+    var coachGiHint=_giCeremonyHint(coachStu,coachEgd);
+    var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+formatStat(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+formatStat(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
     var techsTab=rTechniquesLog(s);
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private coaching notes left for you.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
@@ -2471,8 +2505,7 @@ function rProgress(){
      grade:stu.grade!=null?Number(stu.grade):s.grade,
      total:stu.total!=null?Number(stu.total):s.total,
      giTotal:stu.giTotal!=null?Number(stu.giTotal):s.giTotal,
-     giGrade:stu.giGrade!=null?Number(stu.giGrade):s.giGrade,
-     hasGi:stu.hasGi!==undefined?stu.hasGi:s.hasGi};
+     giGrade:stu.giGrade!=null?Number(stu.giGrade):s.giGrade};
   var bmap=s.prog==='kids'?BK:BA;
   var b=bmap[s.belt]||BA.white;
   // G9 Phase 1 follow-up 2 \u2014 student progress card now reads
@@ -2485,7 +2518,13 @@ function rProgress(){
   var barHtml=egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog);
   var reasonHtml=egd.reason?`<div style="font-size:12px;color:${egd.isReady?'var(--green-text)':'var(--text2)'};margin-top:8px">${egd.reason}</div>`:'';
 
-  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${(s.hasGi!==false&&s.giTotal>0)?'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--green-text)"><polyline points="20 6 9 17 4 12"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--green-text);letter-spacing:.5px">GI ACTIVE</span></div>':'<div style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;padding:4px 10px;margin-top:10px;margin-bottom:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--amber-text)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--amber-text);letter-spacing:.5px">GI REQUIRED</span></div>'}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">${(s.hasGi!==false&&s.giTotal>0)?"Your Gi + No-Gi classes all count toward promotion. Final decision is always the instructor\u2019s.":"Your No-Gi classes are being counted. Once you start attending Gi classes, all your accumulated classes will count toward promotion. Final decision is always the instructor\u2019s."}</div></div>`;
+  // G13 \u2014 plain-student rankTab. GI ACTIVE/REQUIRED two-state pill
+  // replaced by _giCeremonyHint (only fires when student is approaching
+  // eligibility AND has zero gi credit). Gi/No-Gi breakdown card stays
+  // as a numeric reference. gnote text de-conditioned \u2014 it now reads
+  // the same regardless of student state.
+  var giHint=_giCeremonyHint(s,egd);
+  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">Gi and No-Gi both count toward promotion. Final decision is always the instructor\u2019s.</div></div>`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
 
@@ -2813,7 +2852,6 @@ function rARosterListInner(){
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     const giSince=Math.max(s.giGrade||0,0);
     const noGiSince=Math.max((s.grade||0)-giSince,0);
-    const noGiOnly=s.hasGi===false;
     // G9 Phase 1 follow-up — the legacy "X/Y · next degree/promotion ·
     // Z total" line used hardcoded thresholds (25 adults / 30 kids)
     // that didn't match PROMO_CRITERIA, so it conflicted with the new
@@ -2822,8 +2860,9 @@ function rARosterListInner(){
     //     independent of the next-marker math)
     //   - eligHint now leads with "Next: <label>" so users can tell
     //     what the X/Y figures are measuring against.
+    // G13 — "No-Gi only" suffix removed; has_gi flag is gone.
     const totalLine='<div style="font-size:11px;color:var(--text3);margin-top:6px">'+formatStat(s.total||0)+' total</div>';
-    const breakdownLine='<div style="font-size:11px;color:var(--text3);margin-top:4px">Gi: '+giSince+' · No-Gi: '+noGiSince+(noGiOnly?' · <span style="color:var(--amber-text)">No-Gi only — Gi required for IBJJF</span>':'')+'</div>';
+    const breakdownLine='<div style="font-size:11px;color:var(--text3);margin-top:4px">Gi: '+formatStat(giSince)+' · No-Gi: '+formatStat(noGiSince)+'</div>';
     // G9 Phase 1 — eligibility hint driven by PROMO_CRITERIA. Adults
     // only; kids show a "criteria pending" placeholder until Phase 2.
     // Black belts and any null result render nothing.
@@ -3087,11 +3126,11 @@ async function sendInvite(dispatch){
     const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
     const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
     const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
-    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,prog:'kids',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,has_gi:true,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone||null,parent_email:parentEmail}).select('id,legacy_id').single();
+    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,prog:'kids',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone||null,parent_email:parentEmail}).select('id,legacy_id').single();
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email:null,hasGi:true,name:fullName,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email:null,name:fullName,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail});
     }
     const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
     if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
@@ -3118,10 +3157,10 @@ async function sendInvite(dispatch){
       const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'adult';
       const legacy=slug+'_'+Date.now().toString(36).slice(-4);
       const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'AD';
-      const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,email,prog:'adult',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,has_gi:true,journey:initialJourney,feedback:[],unit_id:unitDbId}).select('id,legacy_id').single();
+      const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,email,prog:'adult',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId}).select('id,legacy_id').single();
       if(ins&&ins.error)console.warn('[mybjj] add adult transfer:',ins.error);
       else if(ins&&ins.data){
-        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email,hasGi:true,name:fullName,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null});
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email,name:fullName,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null});
       }
     }
   }
@@ -3388,7 +3427,6 @@ function meFromProfile(p){
     giTotal:0,
     giGrade:0,
     prog:r==='student'||r==='parent'?'adult':'adult',
-    hasGi:true,
     roleTitle:r==='instructor'?'Professor':null,
   };
 }
@@ -3432,7 +3470,6 @@ function enrichMeFromHydrate(){
     S.me.grade=Number(stu.grade||0);
     S.me.giGrade=Number(stu.giGrade||0);
     S.me.prog=stu.prog||S.me.prog;
-    S.me.hasGi=stu.hasGi!==false;
     if(stu.photoUrl)S.me.photoUrl=stu.photoUrl;
   }
 }
@@ -4422,7 +4459,7 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id').order('name'),
-      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,has_gi,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date'),
+      c.from('students').select('id,legacy_id,full_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date'),
       c.from('staff').select('id,legacy_id,full_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
@@ -4458,7 +4495,7 @@ async function hydrateData(){
       // Postgres numeric as String to avoid precision loss; wrap with
       // Number() so downstream math (sort, eligibility, formatStat)
       // compares numerically instead of lexicographically.
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,hasGi:r.has_gi,name:r.full_name,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
@@ -5273,7 +5310,7 @@ async function doCI(id){
   ATTENDANCE.push(local);
   render();
   const cli=initSupabase();if(!cli||!stu._dbId)return;
-  const r=await cli.from('attendance').insert({student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:'going'}).select('id').single();
+  const r=await cli.from('attendance').insert({student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_modalityFromType(t.type),status:'going'}).select('id').single();
   if(r&&r.error){
     // Roll back local
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
@@ -5463,7 +5500,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
     ATTENDANCE.push(local);
     render();
     if(!cli)return;
-    const payload={student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
+    const payload={student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_modalityFromType(t.type),status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
     if(cv!=null)payload.class_value=cv;
     const r=await cli.from('attendance').insert(payload).select('id').single();
     if(r&&r.error){
@@ -5671,6 +5708,7 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
     class_date:c.date,
     class_time:c.time,
     class_type:tt.type||null,
+    modality:_modalityFromType(tt.type),
     status:'present',
     confirmed_by:S.profile&&S.profile.id,
     confirmed_at:nowISO,
@@ -5859,15 +5897,16 @@ function closeEditCounts(){S.editCounts=null;render();}
 function ecRecalc(){
   const s=STUDENTS.find(x=>x.id===S.editCounts);if(!s)return;
   const giEl=document.getElementById('ec-gi'),nogiEl=document.getElementById('ec-nogi'),totEl=document.getElementById('ec-total');
-  const gi=s.hasGi===false?0:(giEl?Math.max(0,Math.floor(Number(giEl.value)||0)):0);
+  // G13 — has_gi gone, so the "no-gi only zeroes the gi input"
+  // short-circuit is gone too. Both inputs read straight from the DOM.
+  const gi=giEl?Math.max(0,Math.floor(Number(giEl.value)||0)):0;
   const nogi=nogiEl?Math.max(0,Math.floor(Number(nogiEl.value)||0)):0;
   if(totEl)totEl.textContent=(gi+nogi)+' class'+(gi+nogi===1?'':'es');
 }
 function saveEditCounts(sid){
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
   const num=(id)=>{const el=document.getElementById(id);const v=el?Number(el.value):NaN;return Number.isFinite(v)?Math.floor(v):NaN;};
-  const noGiOnly=s.hasGi===false;
-  const gi=noGiOnly?0:num('ec-gi');
+  const gi=num('ec-gi');
   const nogi=num('ec-nogi');
   const grade=num('ec-grade');
   const err=document.getElementById('ec-err');const errTxt=document.getElementById('ec-err-txt');
@@ -5885,16 +5924,13 @@ function rEditCounts(){
   if(!S.editCounts)return '';
   const s=STUDENTS.find(x=>x.id===S.editCounts);if(!s)return '';
   const safe=n=>(typeof n==='number'?n:0);
-  const noGiOnly=s.hasGi===false;
-  const initGi=noGiOnly?0:safe(s.giTotal);
+  // G13 — has_gi gone; Gi field is now a plain numeric input for
+  // every student, and the "No-Gi only" notice is removed.
+  const initGi=safe(s.giTotal);
   const initNogi=Math.max(safe(s.total)-safe(s.giTotal),0);
   const initTotal=initGi+initNogi;
-  const giField=noGiOnly?
-    `<div class="erow"><div class="elbl">Gi classes</div><div class="einput" style="display:flex;align-items:center;color:var(--text3);background:var(--input-bg)">0 <span style="font-size:11px;margin-left:8px">(No-Gi only)</span></div></div>`
-    :`<div class="erow"><div class="elbl">Gi classes</div><input class="einput" id="ec-gi" type="number" min="0" step="1" value="${initGi}" oninput="ecRecalc()"/></div>`;
-  const noGiNotice=noGiOnly?
-    `<div class="inv" style="margin-bottom:12px;margin-top:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>This student trains No-Gi only. Promotion is at the professor’s discretion — IBJJF requires Gi training for official rank.</span></div>`
-    :'';
+  const giField=`<div class="erow"><div class="elbl">Gi classes</div><input class="einput" id="ec-gi" type="number" min="0" step="1" value="${initGi}" oninput="ecRecalc()"/></div>`;
+  const noGiNotice='';
   return `<div class="cov" onclick="closeEditCounts()" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:360px;margin:0 auto;padding:22px">
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">Edit class counts</div>
 <div style="font-size:12px;color:var(--text2);margin-bottom:16px">${s.name}</div>
@@ -6033,7 +6069,6 @@ ${isKids?'':`<div class="erow"><div class="elbl">Email</div><input class="einput
 </div>
 <div class="slbl" style="margin-top:8px">Training</div>
 <div class="ef">
-<div class="erow"><div class="elbl">Trains in Gi</div><button class="toggle ${s.hasGi!==false?'on':''}" id="es-hasgi" onclick="this.classList.toggle('on')"></button></div>
 <div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(s.weightKg!=null?s.weightKg:'')}"/></div>
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(s.heightCm!=null?s.heightCm:'')}"/></div>
 </div>
@@ -6063,7 +6098,6 @@ async function saveEditStu(){
   const isKids=s.prog==='kids';
   const dob=val('es-dob')||null;
   const gender=val('es-gender')||null;
-  const hasGi=!!document.getElementById('es-hasgi')?.classList.contains('on');
   const weightKg=val('es-weight')?parseInt(val('es-weight'),10):null;
   const heightCm=val('es-height')?parseInt(val('es-height'),10):null;
   const ecName=val('es-ecname')||null;
@@ -6085,7 +6119,7 @@ async function saveEditStu(){
 
   // Local first (UI snappy), then DB.
   s.name=fullName;s.initials=initials;
-  s.dob=dob;s.phone=phone||null;s.gender=gender;s.hasGi=hasGi;
+  s.dob=dob;s.phone=phone||null;s.gender=gender;
   s.weightKg=weightKg;s.heightCm=heightCm;
   s.ecName=ecName;s.ecPhone=ecPhone;
   if(isKids){
@@ -6097,7 +6131,7 @@ async function saveEditStu(){
 
   if(!s._dbId)return;
   const cli=initSupabase();if(!cli)return;
-  const payload={full_name:fullName,initials,date_of_birth:dob,phone:phone||null,gender,has_gi:hasGi,weight_kg:weightKg,height_cm:heightCm,emergency_contact_name:ecName,emergency_contact_phone:ecPhone};
+  const payload={full_name:fullName,initials,date_of_birth:dob,phone:phone||null,gender,weight_kg:weightKg,height_cm:heightCm,emergency_contact_name:ecName,emergency_contact_phone:ecPhone};
   if(isKids){
     payload.parent_name=parentName;payload.parent_phone=parentPhone;payload.parent_email=parentEmail;
     payload.parent2_name=parent2Name;payload.parent2_phone=parent2Phone;payload.parent2_email=parent2Email;
