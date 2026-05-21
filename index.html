@@ -1012,38 +1012,29 @@ function av(ini,beltKey,sz){
 function beltSVG(belt,deg,prog,width){
   width=width||120;const m=prog==='kids'?BK:BA;const b=m[belt]||BA.white;
   const h2=14;const r=4;const sw=width;const sh=h2*2;
-  const tipW=18;const stripeW=6;const stripeGap=4;
-  // G17.2c — IBJJF black belt rendering: a red rectangular sub-band
-  // sits just left of the tip, and the staff member's degree count
-  // (max 10) renders as evenly-spaced white marks on that red band.
-  // Colored belts (white / blue / purple / brown / kids) keep the
-  // existing 4-stripe layout.
+  const tipW=18;
+  // G17.2c.1 — unified IBJJF graduation bar across all belts. Black
+  // belt: red bar (#B91C1C) with up to 10 white degree marks.
+  // Colored belts (incl. kids compounds): black bar (#1F2937) with
+  // up to 4 white stripe marks. Same band geometry and mark spacing
+  // logic — the only thing that varies is bar colour + mark cap.
   const isBlack=belt==='black';
   const tipBg=belt==='white'?'#9ca3af':b.bg;
-  let stripesSvg='';
-  if(isBlack){
-    const redBandW=Math.min(40,Math.round(sw*0.34));
-    const redX=sw-tipW-redBandW;
-    const dCount=Math.min(deg||0,10);
-    let dotStripes='';
-    if(dCount>0){
-      const spacing=redBandW/(dCount+1);
-      const dotW=Math.max(1.5,Math.min(2.5,spacing*0.45));
-      for(let i=0;i<dCount;i++){
-        const cx=redX+(i+1)*spacing;
-        dotStripes+=`<rect x="${cx-dotW/2}" y="3.5" width="${dotW}" height="${sh-7}" rx="0.5" fill="#ffffff"/>`;
-      }
-    }
-    stripesSvg=`<rect x="${redX}" y="0" width="${redBandW}" height="${sh}" fill="#B91C1C"/>${dotStripes}`;
-  }else{
-    const maxDeg=4;
-    for(let i=0;i<maxDeg;i++){
-      const x=sw-tipW-((i+1)*(stripeW+stripeGap));
-      const col=i<deg?'#111827':'transparent';
-      const strokeCol='rgba(0,0,0,0.2)';
-      stripesSvg+=`<rect x="${x}" y="2" width="${stripeW}" height="${sh-4}" rx="1" fill="${col}" stroke="${strokeCol}" stroke-width="0.5"/>`;
+  const barColor=isBlack?'#B91C1C':'#1F2937';
+  const maxMarks=isBlack?10:4;
+  const bandW=Math.min(40,Math.round(sw*0.34));
+  const bandX=sw-tipW-bandW;
+  const dCount=Math.min(deg||0,maxMarks);
+  let dotStripes='';
+  if(dCount>0){
+    const spacing=bandW/(dCount+1);
+    const dotW=Math.max(1.5,Math.min(2.5,spacing*0.45));
+    for(let i=0;i<dCount;i++){
+      const cx=bandX+(i+1)*spacing;
+      dotStripes+=`<rect x="${cx-dotW/2}" y="3.5" width="${dotW}" height="${sh-7}" rx="0.5" fill="#ffffff"/>`;
     }
   }
+  const stripesSvg=`<rect x="${bandX}" y="0" width="${bandW}" height="${sh}" fill="${barColor}"/>${dotStripes}`;
   const centerKnot=`<rect x="${sw/2-8}" y="1" width="16" height="${sh-2}" rx="2" fill="${belt==='white'?'#d1d5db':isBlack?'#374151':'rgba(0,0,0,0.2)'}"/>`;
   return `<svg width="${sw}" height="${sh}" viewBox="0 0 ${sw} ${sh}" style="display:block;border-radius:${r}px;overflow:hidden">
     <rect x="0" y="0" width="${sw}" height="${sh}" rx="${r}" fill="${b.bg}" ${b.bdr?`stroke="#374151" stroke-width="1"`:``}/>
@@ -1055,7 +1046,14 @@ function beltSVG(belt,deg,prog,width){
 }
 function bb(belt,deg,prog){
   deg=deg||0;const m=prog==='kids'?BK:BA;const b=m[belt]||BA.white;
-  return `<div style="display:inline-flex;flex-direction:column;gap:2px">${beltSVG(belt,deg,prog,110)}<div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:center">${b.label}${deg>0?' · '+deg+(deg===1?' stripe':' stripes'):''}</div></div>`;
+  // G17.2c.1 — IBJJF terminology: "stripe(s)" for colored belts,
+  // "degree(s)" for black belts. Singular when count===1. Container
+  // already uppercases via CSS text-transform.
+  const unit=belt==='black'
+    ?(deg===1?'degree':'degrees')
+    :(deg===1?'stripe':'stripes');
+  const countLabel=deg>0?' · '+deg+' '+unit:'';
+  return `<div style="display:inline-flex;flex-direction:column;gap:2px">${beltSVG(belt,deg,prog,110)}<div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:center">${b.label}${countLabel}</div></div>`;
 }
 function ct(id){const t=CT.find(x=>x.id===id)||CT[0];const giTag=t.gi?'<span class="ctag tgi">GI</span>':'<span class="ctag tnogi-badge">NO-GI</span>';return t.id==='nogi'?giTag:`${giTag}<span class="ctag ${t.tc}">${t.lbl}</span>`;}
 function pb(v,mx,c){const p=Math.min(Math.round(v/mx*100),100);return `<div class="pt"><div class="pf" style="width:${p}%;background:${c}"></div></div>`;}
