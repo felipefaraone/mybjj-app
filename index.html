@@ -1013,24 +1013,44 @@ function beltSVG(belt,deg,prog,width){
   width=width||120;const m=prog==='kids'?BK:BA;const b=m[belt]||BA.white;
   const h2=14;const r=4;const sw=width;const sh=h2*2;
   const tipW=18;const stripeW=6;const stripeGap=4;
-  const maxDeg=4;
-  // tip color: black for belt, white for white belt
-  const tipCol=belt==='black'?'#ffffff':belt==='white'?'#374151':'#111111';
+  // G17.2c — IBJJF black belt rendering: a red rectangular sub-band
+  // sits just left of the tip, and the staff member's degree count
+  // (max 10) renders as evenly-spaced white marks on that red band.
+  // Colored belts (white / blue / purple / brown / kids) keep the
+  // existing 4-stripe layout.
+  const isBlack=belt==='black';
   const tipBg=belt==='white'?'#9ca3af':b.bg;
-  let stripes='';
-  for(let i=0;i<maxDeg;i++){
-    const x=sw-tipW-((i+1)*(stripeW+stripeGap));
-    const col=i<deg?(belt==='black'?'#ffffff':'#111827'):'transparent';
-    const strokeCol=belt==='black'?'rgba(255,255,255,0.3)':'rgba(0,0,0,0.2)';
-    stripes+=`<rect x="${x}" y="2" width="${stripeW}" height="${sh-4}" rx="1" fill="${col}" stroke="${strokeCol}" stroke-width="0.5"/>`;
+  let stripesSvg='';
+  if(isBlack){
+    const redBandW=Math.min(40,Math.round(sw*0.34));
+    const redX=sw-tipW-redBandW;
+    const dCount=Math.min(deg||0,10);
+    let dotStripes='';
+    if(dCount>0){
+      const spacing=redBandW/(dCount+1);
+      const dotW=Math.max(1.5,Math.min(2.5,spacing*0.45));
+      for(let i=0;i<dCount;i++){
+        const cx=redX+(i+1)*spacing;
+        dotStripes+=`<rect x="${cx-dotW/2}" y="3.5" width="${dotW}" height="${sh-7}" rx="0.5" fill="#ffffff"/>`;
+      }
+    }
+    stripesSvg=`<rect x="${redX}" y="0" width="${redBandW}" height="${sh}" fill="#B91C1C"/>${dotStripes}`;
+  }else{
+    const maxDeg=4;
+    for(let i=0;i<maxDeg;i++){
+      const x=sw-tipW-((i+1)*(stripeW+stripeGap));
+      const col=i<deg?'#111827':'transparent';
+      const strokeCol='rgba(0,0,0,0.2)';
+      stripesSvg+=`<rect x="${x}" y="2" width="${stripeW}" height="${sh-4}" rx="1" fill="${col}" stroke="${strokeCol}" stroke-width="0.5"/>`;
+    }
   }
-  const centerKnot=`<rect x="${sw/2-8}" y="1" width="16" height="${sh-2}" rx="2" fill="${belt==='white'?'#d1d5db':belt==='black'?'#374151':'rgba(0,0,0,0.2)'}"/>`;
+  const centerKnot=`<rect x="${sw/2-8}" y="1" width="16" height="${sh-2}" rx="2" fill="${belt==='white'?'#d1d5db':isBlack?'#374151':'rgba(0,0,0,0.2)'}"/>`;
   return `<svg width="${sw}" height="${sh}" viewBox="0 0 ${sw} ${sh}" style="display:block;border-radius:${r}px;overflow:hidden">
     <rect x="0" y="0" width="${sw}" height="${sh}" rx="${r}" fill="${b.bg}" ${b.bdr?`stroke="#374151" stroke-width="1"`:``}/>
     ${centerKnot}
+    ${stripesSvg}
     <rect x="${sw-tipW}" y="0" width="${tipW}" height="${sh}" rx="0" fill="${tipBg}" opacity="0.7"/>
     <line x1="${sw-tipW}" y1="0" x2="${sw-tipW}" y2="${sh}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
-    ${stripes}
   </svg>`;
 }
 function bb(belt,deg,prog){
@@ -1366,14 +1386,15 @@ function rStaffProf(){
   // G17.2a — title surfaces drop the "Professor"/"Coach" prefix. Plain
   // s.name in headers; the inline roleChip carries the title now.
   const cleanName=parseStaffName(s.name||'');
-  // G17.2a.2 — peer view of staff aligns with the student peer-view
-  // privacy from G11: header + journey + social only. Details (email,
-  // unit, role, status), Notes, and Danger Zone all collapse to ''.
-  // Social card uses the shared _socialChipsBlock so chip rendering
-  // matches rStuProf exactly.
+  // G17.2a.2 — peer view of staff aligns with student peer-view-lite:
+  // header + journey + social only. Details / Notes / Danger Zone
+  // collapse to '' when isPeer.
+  // G17.2c — social card now renders for every viewer (admin / self /
+  // peer) so the affordance is consistent. _socialChipsBlock returns
+  // '' when there are no handles, so the empty case stays clean.
   const notesBlock=(!isPeer)?_staffNotesSummaryCard(s,canAdmin):'';
   const detailsBlock=(!isPeer)?details:'';
-  const peerSocialBlock=isPeer?_socialChipsBlock(s.socialHandles):'';
+  const socialBlock=_socialChipsBlock(s.socialHandles);
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
     +'<div class="sbody">'
@@ -1391,9 +1412,9 @@ function rStaffProf(){
     +'</div>'
     // Journey (editable for owner via rJnySection with staff: sidKey).
     +'<div style="margin-top:12px">'+rJnySection(s,sidKey)+'</div>'
-    // Peer-only social card (between journey and the otherwise-empty
-    // remainder for non-peer admin/self).
-    +peerSocialBlock
+    // Social card (G17.2c: visible to admin / self / peer when at
+    // least one handle is set; empty otherwise).
+    +socialBlock
     // Head Instructor Notes summary card (hidden for peer).
     +notesBlock
     // Details summary (hidden for peer — privacy).
@@ -1616,14 +1637,12 @@ function rStuProf(){
     const g=SOCIAL_GLYPHS[p.key]||'';
     return '<a href="'+url+'" target="_blank" rel="noopener noreferrer" title="'+p.label+'" aria-label="'+p.label+'" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none">'+g+'</a>';
   }).join('');
-  const socialRow=socialChips
-    ?'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Social</div><div style="flex:1;display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div></div>'
-    :'';
-  // G16a.1 — peer-view-lite gets a social card after the journey block
-  // (social handles are public links by nature). G17.2a.2 — block
-  // rendering now flows through _socialChipsBlock so rStaffProf peer
-  // view can reuse the exact same output.
-  const peerSocialBlock=isPeer?_socialChipsBlock(social):'';
+  // G17.2c — Social card is now a standalone block for every viewer
+  // (matches rStaffProf). The inline socialRow inside the Details card
+  // is gone so there's a single Social surface, no duplication. peerSocialBlock
+  // renamed → socialBlock; renders whenever at least one handle resolves
+  // to a URL (admin / self / peer) and returns '' otherwise.
+  const socialBlock=_socialChipsBlock(social);
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
     +(isKids?rDetailRow('Parent',s.parentName,''):'')
@@ -1632,7 +1651,6 @@ function rStuProf(){
     +rDetailRow('Unit',unitName,'')
     +rDetailRow('Joined',joinedDate,'')
     +giOwnedRow
-    +socialRow
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:var(--green-text);font-weight:600">Active</div></div>'
     +'</div>';
 
@@ -1709,9 +1727,9 @@ ${statsCard}
      to last 3 + "Show all" link. -->
 ${rJnySection(s)}
 
-<!-- Section 3.5: Peer-view social block — only renders for isPeer + at
-     least one handle. Admin/self see social inside the Details card. -->
-${peerSocialBlock}
+<!-- Section 3.5: Social card — G17.2c: visible to every viewer when
+     at least one handle resolves; empty otherwise. -->
+${socialBlock}
 
 <!-- Section 4: Attendance summary — peer-gated. View all opens
      rStuAttList subview. -->
@@ -1749,7 +1767,18 @@ function toggleShowAllJourney(){S.showAllJourney=!S.showAllJourney;render();}
 // (matches the existing canEditClassCounts gate).
 function rJnySection(s,sidKey){
   sidKey=sidKey||s.id;
-  const canEdit=canEditClassCounts();
+  // G17.2c — Edit pill gate tightened. Self-edit of own journey is
+  // hidden (instructor or student looking at their own profile via
+  // View my profile shouldn't be able to retroactively rewrite their
+  // own progression). Owner keeps full edit access (including own
+  // staff row) so the head instructor can correct anyone's history.
+  // For students, sidKey is the legacy id; for staff it's prefixed
+  // 'staff:<legacy>'. isSelfTarget resolves either case.
+  const isStaffTarget=sidKey&&sidKey.indexOf('staff:')===0;
+  const isSelfTarget=isStaffTarget
+    ? isStaffSelf(s)
+    : !!(s&&s._userId&&S.profile&&s._userId===S.profile.id);
+  const canEdit=canEditClassCounts()&&(isOwner()||!isSelfTarget);
   const isEditing=!!(canEdit&&S.jnyEditFor===sidKey);
   const dirty=isEditing&&jnyHasChanges(s);
   if(!isEditing){
@@ -2135,6 +2164,7 @@ async function saveStaffNoteModal(sid){
   if(r&&r.data&&r.data.feedback){
     s.feedback=r.data.feedback;render();
   }
+  showSaveToast2('Note saved');
 }
 
 // Cache reconcile badge — admin / professor only. Compares the cached
@@ -4582,7 +4612,10 @@ function rEditStaff(){
   const social=Object.assign({},s.socialHandles||{},socialDraft);
   const ownerEdit=isOwner();
   const isSelf=isStaffSelf(s);
-  const ROLE_TITLES=['Head Professor','Professor','Coach','Instructor'];
+  // G17.2c — "Coach" dropped from the dropdown. BJJ-title rendering
+  // still recognises Coach if a staff row carries it from earlier data,
+  // but it's no longer offered as a fresh selection.
+  const ROLE_TITLES=['Head Professor','Professor','Instructor'];
   const BELT_OPTS=['black','brown','purple','blue','white'];
   // Photo block: tap own avatar to upload (same photo_approvals flow
   // students use); admin views static avatar.
