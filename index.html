@@ -2139,9 +2139,14 @@ function rStaffNotesList(){
   // G17.2d — admin gets a trash icon per note. Optimistic-prepended
   // rows that haven't returned from the RPC yet carry no created_at,
   // so they don't expose a delete affordance until the next render.
+  // G17.2d.1 — root cause of the earlier click no-op: JSON.stringify
+  // wrapped the createdAt in double quotes which prematurely closed
+  // the onclick="..." attribute. Switch to single-quoted JS string
+  // literals inside the attribute, with escAttr on the createdAt
+  // value so any embedded quote can't break out either.
   const trashSvg='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
   const trashBtn=(createdAt)=>(canAdmin&&createdAt)
-    ? '<button onclick="askDeleteStaffNote(\''+s.id+'\','+JSON.stringify(createdAt)+')" title="Delete note" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color=\'var(--red-text)\'" onmouseout="this.style.color=\'var(--text3)\'">'+trashSvg+'</button>'
+    ? '<button onclick="askDeleteStaffNote(\''+escAttr(s.id)+'\',\''+escAttr(createdAt)+'\')" title="Delete note" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color=\'var(--red-text)\'" onmouseout="this.style.color=\'var(--text3)\'">'+trashSvg+'</button>'
     : '';
   // G17.2b — `by` is the canonical attribution field (set by add_staff_note RPC);
   // fall back to legacy `ins` for any in-memory rows still using the old shape.
