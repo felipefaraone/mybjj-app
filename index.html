@@ -899,7 +899,7 @@ let UNREAD_COUNT=0;
 // the auth user_id (see enrichMeFromHydrate below).
 const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'});const _sp=_sydneyStr.split('-');const TODAY=new Date(+_sp[0],+_sp[1]-1,+_sp[2]);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -2085,6 +2085,28 @@ function _stuDangerZone(s,canAdmin,ownerView){
 // G17.2b alongside the rEditStaff overhaul. Read path works
 // end-to-end (hydrate → render); writes survive the session but not a
 // page reload.
+// G17.2d — staff note delete. askDeleteStaffNote opens the generic
+// confirm modal; on Confirm it runs deleteStaffNoteAction which calls
+// delete_staff_note RPC (migration 51) and replaces the local
+// s.feedback with the returned row.
+function askDeleteStaffNote(sid,createdAt){
+  if(!isOwner())return;
+  openConfirm({
+    title:'Delete this note?',
+    message:'This action cannot be undone.',
+    dangerLabel:'Delete',
+    onConfirm:()=>deleteStaffNoteAction(sid,createdAt)
+  });
+}
+async function deleteStaffNoteAction(sid,createdAt){
+  const s=STAFF.find(x=>x.id===sid);if(!s||!s._dbId)throw new Error('staff missing');
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');throw new Error('no client');}
+  const r=await cli.rpc('delete_staff_note',{p_staff_id:s._dbId,p_note_created_at:createdAt});
+  if(r&&r.error){showSaveToast2(friendlyMutationError(r.error),'error');throw r.error;}
+  if(r&&r.data&&Array.isArray(r.data.feedback))s.feedback=r.data.feedback;
+  else if(r&&r.data&&r.data.feedback)s.feedback=r.data.feedback;
+  showSaveToast2('Note deleted');
+}
 function _staffNotesSummaryCard(s,canAdmin){
   const fb=(s.feedback||[]);
   const latest=fb[0];
@@ -2114,9 +2136,16 @@ function rStaffNotesList(){
   const canAdmin=isOwner();
   const fb=s.feedback||[];
   const empty=!fb.length?'<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No notes yet.</div>':'';
+  // G17.2d — admin gets a trash icon per note. Optimistic-prepended
+  // rows that haven't returned from the RPC yet carry no created_at,
+  // so they don't expose a delete affordance until the next render.
+  const trashSvg='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+  const trashBtn=(createdAt)=>(canAdmin&&createdAt)
+    ? '<button onclick="askDeleteStaffNote(\''+s.id+'\','+JSON.stringify(createdAt)+')" title="Delete note" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color=\'var(--red-text)\'" onmouseout="this.style.color=\'var(--text3)\'">'+trashSvg+'</button>'
+    : '';
   // G17.2b — `by` is the canonical attribution field (set by add_staff_note RPC);
   // fall back to legacy `ins` for any in-memory rows still using the old shape.
-  const list=fb.map(f=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+(f.by||f.ins||'Unknown')+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('');
+  const list=fb.map(f=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+(f.by||f.ins||'Unknown')+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+f.date+'</div>'+trashBtn(f.created_at)+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('');
   const addBtn=canAdmin?'<button onclick="openStaffNoteModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add note</button>':'';
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+parseStaffName(s.name).split(' ')[0]+'</div></div>'
@@ -2177,6 +2206,45 @@ async function saveStaffNoteModal(sid){
     s.feedback=r.data.feedback;render();
   }
   showSaveToast2('Note saved');
+}
+// G17.2d — generic confirm modal. State shape:
+//   S.confirm = {title, message, dangerLabel, onConfirm(), busy}
+// onConfirm is a function the caller passes; it should return a
+// promise (or be sync). The modal sets busy=true while awaiting it,
+// disables the buttons, then closes on resolution. Errors leave the
+// modal open so the user can retry; the action handler is responsible
+// for its own toast.
+function openConfirm(opts){
+  S.confirm=Object.assign({dangerLabel:'Delete',busy:false},opts||{});
+  render();
+}
+function closeConfirm(){S.confirm=null;render();}
+async function confirmExecute(){
+  if(!S.confirm||S.confirm.busy)return;
+  const fn=S.confirm.onConfirm;
+  S.confirm.busy=true;render();
+  try{
+    if(typeof fn==='function')await fn();
+    S.confirm=null;render();
+  }catch(e){
+    console.warn('[mybjj] confirmExecute error:',e);
+    if(S.confirm){S.confirm.busy=false;render();}
+  }
+}
+function rConfirmModal(){
+  const c=S.confirm;if(!c)return '';
+  const title=String(c.title||'Are you sure?');
+  const message=String(c.message||'');
+  const dangerLabel=String(c.dangerLabel||'Delete');
+  const busy=!!c.busy;
+  return `<div class="cov" onclick="${busy?'':'closeConfirm()'}" style="align-items:center;z-index:300"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:340px;width:calc(100% - 32px);margin:0 16px;padding:22px">
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:6px">${title}</div>
+<div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${message}</div>
+<div style="display:flex;gap:10px">
+<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeConfirm()" ${busy?'disabled':''}>Cancel</button>
+<button style="flex:1;background:var(--red);color:#fff;border:none;border-radius:10px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="confirmExecute()" ${busy?'disabled':''}>${busy?'Working…':dangerLabel}</button>
+</div>
+</div></div>`;
 }
 
 // Cache reconcile badge — admin / professor only. Compares the cached
@@ -3581,7 +3649,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openPanel()" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openPanel()" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div><div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -4029,7 +4097,11 @@ function isStaffOrOwner(){return !!(S.me&&(S.me.role==='instructor'||isOwner()))
 function isProfessor(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt==='black');}
 function isCoach(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt!=='black');}
 function canEditClassCounts(){return isOwner()||isProfessor();}
-function canDeleteFeedback(f){if(isOwner())return true;if(!f)return false;if(S.me&&S.me.role==='instructor')return f.ins===S.me.name;return false;}
+// G17.2d — author check now uses the stable instructor_id (mapped to
+// f.insStaffId at hydrate) instead of comparing display names. Admin
+// keeps full delete authority; instructor sees the trash only on rows
+// they authored.
+function canDeleteFeedback(f){if(isOwner())return true;if(!f)return false;const mine=meStaffDbId();return !!(mine&&f.insStaffId&&mine===f.insStaffId);}
 function friendlyMutationError(err){
   if(!err)return 'Something went wrong. Please try again.';
   let m=''; if(typeof err==='string')m=err; else if(err.message)m=err.message; else m=String(err);
@@ -6375,13 +6447,37 @@ function viewStu(idOrEl,origin){const id=typeof idOrEl==='string'?idOrEl:idOrEl;
 function openFb(sid){S.addFb=sid;render();}
 function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
 function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
+// G17.2d — feedback delete now flows through the generic confirm modal
+// + delete_feedback RPC (migration 51). The RPC cascades a dismiss to
+// any notification(s) keyed to the feedback row so the recipient's
+// bell drops the entry on next refresh. Authority (admin OR original
+// author) is enforced both at the call site (canDeleteFeedback) and
+// inside the RPC.
 function deleteFeedback(sid,idx){
   const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.feedback||!s.feedback[idx])return;
-  if(!confirm("Delete this feedback? This can't be undone."))return;
   const entry=s.feedback[idx];
+  if(!entry||!canDeleteFeedback(entry))return;
+  openConfirm({
+    title:'Delete this feedback?',
+    message:'The student will no longer see it. This action cannot be undone.',
+    dangerLabel:'Delete',
+    onConfirm:()=>deleteFeedbackAction(sid,idx)
+  });
+}
+async function deleteFeedbackAction(sid,idx){
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.feedback||!s.feedback[idx])throw new Error('feedback missing');
+  const entry=s.feedback[idx];
+  // Optimistic local splice; rollback on RPC error.
   s.feedback.splice(idx,1);render();
-  if(s._dbId)withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback after delete');
-  if(entry._dbId)withSb(async(cli)=>{const r=await cli.from('feedback').delete().eq('id',entry._dbId);if(r&&r.error)showSaveToast2(friendlyMutationError(r.error),'error');return r;},'delete feedback');
+  if(!entry._dbId){
+    // Legacy row without a DB id — splice is sufficient; surface as toast.
+    showSaveToast2('Feedback deleted');return;
+  }
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');s.feedback.splice(idx,0,entry);render();throw new Error('no client');}
+  const r=await cli.rpc('delete_feedback',{p_feedback_id:entry._dbId});
+  if(r&&r.error){showSaveToast2(friendlyMutationError(r.error),'error');s.feedback.splice(idx,0,entry);render();throw r.error;}
+  showSaveToast2('Feedback deleted');
 }
 function openEditCounts(sid){S.editCounts=sid;render();}
 function closeEditCounts(){S.editCounts=null;render();}
