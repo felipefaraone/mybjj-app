@@ -3505,74 +3505,102 @@ function setMemberQuery(v){
 }
 function viewStaff(id,origin){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;S.profileOrigin=origin||null;render();}
 
-// rParentMembers — parent's Members tab. Shows other kids in the
-// child's unit (excluding own children, no adults — privacy boundary)
-// PLUS the instructors who teach there so the parent can see who's
-// coaching their kid. Tap on a kid → minimal kid peer view (rKidPeer);
-// tap on an instructor → standard staff profile.
+// Batch 5 — parent kids summary aggregate. Parents cannot SELECT other
+// kids' rows (RLS post-migration 55), so any per-kid listing here is
+// dead. kids_unit_summary() (migration 57, SECURITY DEFINER) returns
+// counts only — total + by_belt distribution — for the caller's unit.
+// Cached on S._kidsSummary; lazy-fetched on render with the standard
+// loading-flag guard so we don't fire repeat RPCs.
+function _fetchKidsSummary(){
+  if(!S._kidsSummary)S._kidsSummary={loaded:false,loading:false,data:null};
+  const slot=S._kidsSummary;
+  if(slot.loaded||slot.loading)return;
+  slot.loading=true;
+  const cli=initSupabase();
+  if(!cli){slot.loading=false;slot.loaded=true;slot.data=null;slot.error='no-client';render();return;}
+  cli.rpc('kids_unit_summary').then(r=>{
+    slot.loading=false;
+    slot.loaded=true;
+    if(r&&r.error){
+      console.warn('[mybjj] kids_unit_summary:',r.error);
+      slot.data=null;slot.error=r.error.message||'error';
+    }else{
+      slot.data=(r&&r.data)||{total:0,by_belt:[]};
+      slot.error=null;
+    }
+    render();
+  });
+}
+function _renderKidsSummaryCard(unitName){
+  if(!S._kidsSummary){_fetchKidsSummary();return '<div class="card" style="padding:18px"><div style="font-size:13px;color:var(--text3)">Loading kids program…</div></div>';}
+  const slot=S._kidsSummary;
+  if(slot.loading){return '<div class="card" style="padding:18px"><div style="font-size:13px;color:var(--text3)">Loading kids program…</div></div>';}
+  const data=slot.data;
+  if(!data){return '';}
+  const total=Number(data.total||0);
+  const byBelt=Array.isArray(data.by_belt)?data.by_belt:[];
+  if(total===0){
+    return '<div class="card" style="padding:18px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text)">No kids enrolled yet</div><div style="font-size:12px;color:var(--text3);margin-top:4px">The kids program at '+(unitName||'this unit')+' has no active members.</div></div>';
+  }
+  // Belt distribution: render each entry as a small chip with the belt
+  // color tinting the background. BK carries the kids-belt palette;
+  // null/unknown belts collapse to an "Unranked" muted chip.
+  const beltChips=byBelt.map(row=>{
+    const beltKey=row&&row.belt?String(row.belt).toLowerCase():'';
+    const count=Number(row&&row.count||0);
+    const meta=BK[beltKey]||null;
+    if(meta){
+      return '<div style="display:inline-flex;align-items:center;gap:6px;background:'+meta.bg+'22;border:1px solid '+meta.bg+'55;color:var(--text);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;padding:4px 10px;border-radius:999px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+meta.bg+'"></span>'+meta.label+' · '+count+'</div>';
+    }
+    return '<div style="display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);color:var(--text2);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;padding:4px 10px;border-radius:999px">Unranked · '+count+'</div>';
+  }).join('');
+  const kidsLbl=total===1?'kid trains':'kids train';
+  return '<div class="card" style="padding:18px">'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:var(--text);letter-spacing:.5px">'+total+' '+kidsLbl+' at '+(unitName||'this unit')+'</div>'
+    +'<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-family:Barlow Condensed,sans-serif;font-weight:700;margin-top:14px;margin-bottom:8px">Belt distribution</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+(beltChips||'<div style="font-size:12px;color:var(--text3)">No belt data.</div>')+'</div>'
+    +'</div>';
+}
+// rParentMembers — parent's Members tab. Post-migration 55 the parent
+// can't SELECT other kids' rows, so the "Kids" list is now a
+// non-identifying aggregate (kids_unit_summary RPC, counts only). The
+// instructors list stays as-is — parents need to know who's coaching
+// their kid; staff rows remain readable. Parent's own kids live in the
+// switcher / Progress, never in this list.
 function rParentMembers(){
   const myKids=parentChildren();
   if(!myKids.length){
     return '<div style="height:16px"></div><div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--text2);line-height:1.5">No linked children yet. Members will appear once your child is added by the academy.</div></div>';
   }
-  const myKidIds=new Set(myKids.map(k=>k.id));
-  // G14.2 Step 3 — scope to the ACTIVE kid's unit (was: union of all
-  // kids' units). With the multi-kid switcher driving context, every
-  // parent tab now follows the active kid; Members shows the other
-  // kids and instructors at the unit the active kid trains at.
+  // Scope to the ACTIVE kid's unit (consistent with G14.2 Step 3 — the
+  // multi-kid switcher drives the unit context for every parent tab).
   const active=parentSelectedChild();
   const activeUnit=active&&active.unit;
   const myUnits=new Set(activeUnit?[activeUnit]:[]);
-  const kids=STUDENTS.filter(s=>s._active!==false&&s.prog==='kids'&&!myKidIds.has(s.id)&&myUnits.has(s.unit)).map(s=>({...s,_kind:'student'}));
-  const instructors=STAFF.filter(st=>st._active!==false&&myUnits.has(st.unit)).map(st=>({...st,_kind:'instructor'}));
-  const typeFilter=S.membersType||'all';
-  let list=typeFilter==='instructors'?instructors:typeFilter==='students'?kids:[...instructors,...kids];
-  const beltsKids=['white','grey','yellow','orange','green'];
-  let beltFilter=S.membersBelt||'all';
-  if(beltFilter!=='all'&&!beltsKids.includes(beltFilter)&&typeFilter!=='instructors'){beltFilter='all';S.membersBelt='all';}
-  if(beltFilter!=='all'&&typeFilter!=='instructors')list=list.filter(s=>s._kind==='instructor'||s.belt===beltFilter);
-  list=list.slice().sort((a,b)=>{
-    if(a._kind!==b._kind)return a._kind==='instructor'?-1:1;
-    return (a.name||'').localeCompare(b.name||'');
-  });
-  const chipBase='border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
-  const beltChip=(value,label)=>{
-    const sel=beltFilter===value;
-    return '<button onclick="setMembersBelt(\''+value+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'#1A5DAD':'var(--border)')+';color:'+(sel?'#1A5DAD':'var(--text3)')+'">'+label+'</button>';
-  };
-  const typeChip=(value,label)=>{
-    const sel=typeFilter===value;
-    return '<button onclick="setMembersType(\''+value+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'#1A5DAD':'var(--border)')+';color:'+(sel?'#1A5DAD':'var(--text3)')+'">'+label+'</button>';
-  };
-  const typeChips='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+typeChip('all','All')+typeChip('students','Kids')+typeChip('instructors','Instructors')+'</div>';
-  const beltChips=typeFilter==='instructors'?'':'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+beltChip('all','All belts')+beltsKids.map(b=>beltChip(b,b.charAt(0).toUpperCase()+b.slice(1))).join('')+'</div>';
-  const unitsLabel=Array.from(myUnits).map(u=>(UNITS.find(x=>x.id===u)||{}).name).filter(Boolean).join(', ');
-  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">At '+(unitsLabel||S.unit)+' · '+list.length+'</div>';
-  if(!list.length){
-    return '<div style="height:16px"></div>'+headline+typeChips+beltChips+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
-  }
-  const rows=list.map(m=>{
-    const isInstr=m._kind==='instructor';
-    if(isInstr){
-      return '<div class="card" onclick="viewStaff(\''+m.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
-        +avStaff(m,40)
-        +'<div style="flex:1;min-width:0">'
-        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
-        +'</div>'
-        +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult','left')+'</div>'
-        +'</div>';
-    }
-    // Kid peer row — privacy-first (first name only).
-    const first=(m.name||'').split(' ')[0]||'';
-    return '<div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer" onclick="openKidPeer(\''+m.id+'\')">'
-      +avStu(m,40)
+  const instructors=STAFF.filter(st=>st._active!==false&&myUnits.has(st.unit))
+    .slice()
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const unitsLabel=Array.from(myUnits).map(u=>(UNITS.find(x=>x.id===u)||{}).name).filter(Boolean).join(', ')||S.unit;
+  // Trigger the lazy fetch; the helper guards against repeat firings
+  // (one RPC per session unless explicitly reset).
+  _fetchKidsSummary();
+  const kidsCard=_renderKidsSummaryCard(unitsLabel);
+  const instructorRows=instructors.map(m=>(
+    '<div class="card" onclick="viewStaff(\''+m.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
+      +avStaff(m,40)
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+first+'</div>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
       +'</div>'
-      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,m.prog,'left')+'</div>'
-      +'</div>';
-  }).join('');
-  return '<div style="height:16px"></div>'+headline+typeChips+beltChips+rows;
+      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult','left')+'</div>'
+      +'</div>'
+  )).join('');
+  const instructorsBlock=instructors.length
+    ?'<div class="slbl" style="margin-top:20px">Instructors</div>'+instructorRows
+    :'<div class="slbl" style="margin-top:20px">Instructors</div><div class="card" style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No instructors at this unit yet.</div>';
+  return '<div style="height:16px"></div>'
+    +'<div class="slbl">Kids program</div>'
+    +kidsCard
+    +instructorsBlock;
 }
 
 // Minimal peer view for parents tapping another kid. No last name,
