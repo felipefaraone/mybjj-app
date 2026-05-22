@@ -1091,6 +1091,15 @@ const BELT_ORDER_K=['white','grey','yellow','orange','green'];
 function pbBelt(v,mx,currentBelt,prog){const p=Math.min(Math.round(v/mx*100),100);const ORD=prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;const ci=ORD.indexOf(currentBelt);const curC=BELT_COLORS[currentBelt]||'#e5e7eb';const nxtC=(ci>=0&&ci<ORD.length-1)?BELT_COLORS[ORD[ci+1]]:'#111827';return `<div class="pt"><div class="pf" style="width:${p}%;background:linear-gradient(to right,${curC},${nxtC})"></div></div>`;}
 function ytId(u){if(!u||typeof u!=='string')return null;const m=u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);return m?m[1]:null;}
 function escAttr(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+// B-edit fix — phone input sanitisation + validation shared across
+// every phone field (parent self-phone, adult own phone, guardian
+// phone, emergency phone). Sanitise strips any character that isn't a
+// digit, leading +, hyphen, space or parenthesis — applied via
+// oninput so typing and paste both clean up live. Validation counts
+// only the digits: empty is OK; otherwise require 8-15 digits to
+// catch typos without locking out short international formats.
+function _phoneSanitize(v){return String(v==null?'':v).replace(/[^\d+\-()\s]/g,'');}
+function _phoneValid(v){const d=String(v==null?'':v).replace(/\D/g,'');return d.length===0||(d.length>=8&&d.length<=15);}
 function urlDisplay(u){try{return new URL(u).hostname.replace(/^www\./,'');}catch(_){return u||'';}}
 function rVC(url,title){
   if(!url)return '';
@@ -1294,7 +1303,7 @@ function rAddStu(){
   var beltOpts=isKids?['White','Grey','Yellow','Orange','Green']:['White','Blue','Purple','Brown','Black'];
   var phoneCC=S._addCC||'+61';
   var ccOptions=[{c:'+61',l:'AU +61'},{c:'+64',l:'NZ +64'},{c:'+81',l:'JP +81'},{c:'+82',l:'KR +82'},{c:'+1',l:'US +1'},{c:'+44',l:'UK +44'},{c:'+55',l:'BR +55'}];
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="email@example.com"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select onchange="S._addCC=this.value" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" placeholder="4xx xxx xxx" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date"/></div></div><div class="slbl" style="margin-top:8px">Program & rank</div><div class="ef"><div class="erow"><div class="elbl">Program</div><div class="seg"><button class="segb ${isKids?'':'on'}" onclick="S._addProg='adult';render()">Adults</button><button class="segb ${isKids?'on':''}" onclick="S._addProg='kids';render()">Kids</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">${UNITS.filter(u=>u.active).map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel">${beltOpts.map(b=>`<option>${b}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Degree</div><select class="esel"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child\\u2019s progress.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" placeholder="Parent or guardian full name"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" placeholder="4xx xxx xxx" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="parent@email.com"/></div></div>`:''}<div class="slbl" style="margin-top:8px">Background</div><div class="ef"><div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb ${isTransfer==='new'?'on':''}" onclick="S._addTransfer='new';render()">New</button><button class="segb ${isTransfer==='transfer'?'on':''}" onclick="S._addTransfer='transfer';render()">Transfer</button><button class="segb ${isTransfer==='returning'?'on':''}" onclick="S._addTransfer='returning';render()">Returning</button></div></div>${isTransfer==='transfer'?`<div class="erow"><div class="elbl">From</div><input class="einput" id="add-from" placeholder="Previous academy name"/></div><div class="erow"><div class="elbl">Since</div><input class="einput" id="add-since" type="date"/></div>`:''}${isTransfer==='returning'?`<div class="erow"><div class="elbl">Left on</div><input class="einput" id="add-left" type="date"/></div><div class="erow"><div class="elbl">Reason</div><select class="esel" id="add-reason"><option>Travel</option><option>Injury</option><option>Personal</option><option>Financial</option><option>Other</option></select></div>`:''}</div>${isTransfer==='transfer'?'<div class="gnote" style="margin-top:4px">Set belt and degree above to match their current rank. Journey will start with a transfer milestone. Head instructor must validate the belt.</div>':''}${isTransfer==='returning'?'<div class="gnote" style="margin-top:4px">Returning student. Their previous data will be preserved and a return milestone will be added to their journey.</div>':''}<div style="height:16px"></div><div style="display:flex;gap:10px;margin-bottom:24px"><button onclick="sendInvite(true)" class="bblue" style="flex:1;padding:12px;font-size:15px">Save & invite</button><button onclick="sendInvite(false)" class="bout" style="flex:1;padding:12px;font-size:15px;border-width:1px;margin-bottom:0">Save only</button></div></div></div>`;
+  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="email@example.com"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select onchange="S._addCC=this.value" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date"/></div></div><div class="slbl" style="margin-top:8px">Program & rank</div><div class="ef"><div class="erow"><div class="elbl">Program</div><div class="seg"><button class="segb ${isKids?'':'on'}" onclick="S._addProg='adult';render()">Adults</button><button class="segb ${isKids?'on':''}" onclick="S._addProg='kids';render()">Kids</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">${UNITS.filter(u=>u.active).map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel">${beltOpts.map(b=>`<option>${b}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Degree</div><select class="esel"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child\\u2019s progress.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" placeholder="Parent or guardian full name"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="parent@email.com"/></div></div>`:''}<div class="slbl" style="margin-top:8px">Background</div><div class="ef"><div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb ${isTransfer==='new'?'on':''}" onclick="S._addTransfer='new';render()">New</button><button class="segb ${isTransfer==='transfer'?'on':''}" onclick="S._addTransfer='transfer';render()">Transfer</button><button class="segb ${isTransfer==='returning'?'on':''}" onclick="S._addTransfer='returning';render()">Returning</button></div></div>${isTransfer==='transfer'?`<div class="erow"><div class="elbl">From</div><input class="einput" id="add-from" placeholder="Previous academy name"/></div><div class="erow"><div class="elbl">Since</div><input class="einput" id="add-since" type="date"/></div>`:''}${isTransfer==='returning'?`<div class="erow"><div class="elbl">Left on</div><input class="einput" id="add-left" type="date"/></div><div class="erow"><div class="elbl">Reason</div><select class="esel" id="add-reason"><option>Travel</option><option>Injury</option><option>Personal</option><option>Financial</option><option>Other</option></select></div>`:''}</div>${isTransfer==='transfer'?'<div class="gnote" style="margin-top:4px">Set belt and degree above to match their current rank. Journey will start with a transfer milestone. Head instructor must validate the belt.</div>':''}${isTransfer==='returning'?'<div class="gnote" style="margin-top:4px">Returning student. Their previous data will be preserved and a return milestone will be added to their journey.</div>':''}<div style="height:16px"></div><div style="display:flex;gap:10px;margin-bottom:24px"><button onclick="sendInvite(true)" class="bblue" style="flex:1;padding:12px;font-size:15px">Save & invite</button><button onclick="sendInvite(false)" class="bout" style="flex:1;padding:12px;font-size:15px;border-width:1px;margin-bottom:0">Save only</button></div></div></div>`;
 }
 
 function rMUnits(){
@@ -1453,7 +1462,7 @@ function rStaffProf(){
 }
 
 function rAddStaff(){
-  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Add Instructor</div><button class="ssave" onclick="closeSub()">Send invite</button></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="instructor@email.com"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" placeholder="+61 4xx xxx xxx"/></div></div><div class="slbl" style="margin-top:8px">Role & rank</div><div class="ef"><div class="erow"><div class="elbl">Role</div><div class="seg"><button class="segb on">Instructor</button><button class="segb">Head Instructor</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">'+UNITS.filter(u=>u.active).map(u=>'<option>'+u.name+'</option>').join('')+'</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel"><option>Brown</option><option>Black</option></select></div><div class="erow"><div class="elbl">Degree</div><select class="esel">'+[0,1,2,3,4,5,6].map(i=>'<option>'+i+'</option>').join('')+'</select></div></div><div class="gnote" style="margin-top:4px">Instructor will receive an invite email. They get access to the admin panel for their assigned unit. Only the head instructor can promote instructors to higher roles.</div><div style="height:24px"></div></div></div>';
+  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Add Instructor</div><button class="ssave" onclick="closeSub()">Send invite</button></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="instructor@email.com"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)"/></div></div><div class="slbl" style="margin-top:8px">Role & rank</div><div class="ef"><div class="erow"><div class="elbl">Role</div><div class="seg"><button class="segb on">Instructor</button><button class="segb">Head Instructor</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">'+UNITS.filter(u=>u.active).map(u=>'<option>'+u.name+'</option>').join('')+'</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel"><option>Brown</option><option>Black</option></select></div><div class="erow"><div class="elbl">Degree</div><select class="esel">'+[0,1,2,3,4,5,6].map(i=>'<option>'+i+'</option>').join('')+'</select></div></div><div class="gnote" style="margin-top:4px">Instructor will receive an invite email. They get access to the admin panel for their assigned unit. Only the head instructor can promote instructors to higher roles.</div><div style="height:24px"></div></div></div>';
 }
 // G17.2a.1 — saveStaffFb / openStaffFb removed (zero callers after
 // the staff-note modal pattern landed). Compose flows through
@@ -3134,33 +3143,55 @@ function rParentProfileArea(){return rProfileArea();}
 function openEditMe(){
   if(!isParent())return;
   const m=S.me||{};const p=S.profile||{};
+  // B-edit fix — prefill first / last from users.first_name +
+  // last_name (migration 54). Legacy rows where both new columns are
+  // still null fall back to parsing full_name on the first token.
+  const fnStored=p.first_name||null;
+  const lnStored=p.last_name||null;
+  const rawName=m.name||p.full_name||'';
+  const parsedFirst=fnStored||((rawName.split(' ')[0])||'');
+  const parsedLast=lnStored!=null?lnStored:(rawName.split(' ').slice(1).join(' ')||'');
   S.editMe={
-    fullName:String(m.name||p.full_name||''),
+    firstName:String(parsedFirst),
+    lastName:String(parsedLast),
     phone:String(p.phone||m.phone||'')
   };
   render();
-  setTimeout(()=>{const el=document.getElementById('em-fullname');if(el)el.focus();},20);
+  setTimeout(()=>{const el=document.getElementById('em-first');if(el)el.focus();},20);
 }
 function closeEditMe(){S.editMe=null;render();}
 async function saveEditMe(){
   if(!S.editMe)return;
-  const fullEl=document.getElementById('em-fullname');
+  const firstEl=document.getElementById('em-first');
+  const lastEl=document.getElementById('em-last');
   const phoneEl=document.getElementById('em-phone');
-  const fullName=String(fullEl?fullEl.value:'').trim();
-  const phone=String(phoneEl?phoneEl.value:'').trim();
-  if(!fullName)return showSaveToast2('Name is required.','error');
-  if(phone&&!/^[\d+\-()\s]{6,}$/.test(phone))return showSaveToast2('Phone format looks off.','error');
+  const first=String(firstEl?firstEl.value:'').trim();
+  const last=String(lastEl?lastEl.value:'').trim();
+  // Sanitise the phone value on the way out too — defence in depth in
+  // case oninput was bypassed (autofill, dev tools paste).
+  const phone=_phoneSanitize(String(phoneEl?phoneEl.value:'').trim());
+  if(!first||!last)return showSaveToast2('First and last name are required.','error');
+  if(first.length>60||last.length>60)return showSaveToast2('Names must be 60 characters or less.','error');
+  if(!_phoneValid(phone))return showSaveToast2('Enter a valid phone number','error');
   const uid=S.profile&&S.profile.id;
   if(!uid){closeEditMe();return;}
-  // Optimistic local merge.
+  // B-edit fix — full_name kept in sync from first + last so anything
+  // still reading users.full_name (drawer header, attribution strings,
+  // notifications) keeps showing the right value.
+  const fullName=(first+' '+last).trim();
   if(S.me)S.me.name=fullName;
-  if(S.profile){S.profile.full_name=fullName;S.profile.phone=phone||null;}
+  if(S.profile){
+    S.profile.full_name=fullName;
+    S.profile.first_name=first;
+    S.profile.last_name=last;
+    S.profile.phone=phone||null;
+  }
   S.editMe=null;render();
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue','error');return;}
-  const r=await cli.from('users').update({full_name:fullName,phone:phone||null}).eq('id',uid);
+  const r=await cli.from('users').update({first_name:first,last_name:last,full_name:fullName,phone:phone||null}).eq('id',uid);
   if(r&&r.error){
-    console.warn('[mybjj] update self users.full_name/phone:',r.error);
+    console.warn('[mybjj] update self users:',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');
     return;
   }
@@ -3174,8 +3205,9 @@ function rEditMeModal(){
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;padding-right:40px">Edit profile</div>
 <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.4">Update your contact details. Photo and email change live elsewhere.</div>
 <div class="ef" style="margin-bottom:0">
-<div class="erow"><div class="elbl">Full name</div><input class="einput" id="em-fullname" maxlength="120" value="${esc(S.editMe.fullName)}"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="em-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(S.editMe.phone)}"/></div>
+<div class="erow"><div class="elbl">First name</div><input class="einput" id="em-first" maxlength="60" value="${esc(S.editMe.firstName)}"/></div>
+<div class="erow"><div class="elbl">Last name</div><input class="einput" id="em-last" maxlength="60" value="${esc(S.editMe.lastName)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="em-phone" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" value="${esc(S.editMe.phone)}"/></div>
 </div>
 <div style="display:flex;gap:10px;margin-top:16px">
 <button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeEditMe()">Cancel</button>
@@ -7287,9 +7319,9 @@ function rEditStu(){
   // overflow), Change email link below at smaller size.
   const emailRowAdult='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:#1A5DAD;font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
   const contactTab=`<div class="ef" style="margin-top:8px">${emailRowAdult}
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(phone)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" value="${esc(phone)}"/></div>
 <div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
-<div class="erow"><div class="elbl">Emergency phone</div><input class="einput" id="es-ecphone" type="tel" placeholder="Optional" value="${esc(ecPhone)}"/></div>
+<div class="erow"><div class="elbl">Emergency phone</div><input class="einput" id="es-ecphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(ecPhone)}"/></div>
 </div>
 <div class="slbl" style="margin-top:14px">Social</div>
 <div class="ef">${socialInputs}</div>`;
@@ -7301,14 +7333,14 @@ function rEditStu(){
   // changes it via the openChangeEmail flow.
   const guardianTab=`<div class="slbl" style="margin-top:8px">Guardian</div><div class="ef">
 <div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" placeholder="Required" value="${esc(parentPhone)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" inputmode="tel" placeholder="Required" oninput="this.value=_phoneSanitize(this.value)" value="${esc(parentPhone)}"/></div>
 <div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(parentEmail||'—')}</div><div style="color:var(--text3);font-size:11px">Login email — change via admin</div></div></div>
 </div>
 <div class="slbl" style="margin-top:14px">Emergency contact</div>
 <div class="ef">
 <div class="erow"><div class="elbl">Same as guardian</div><button class="toggle" id="es-emsame" onclick="_sameAsGuardian(this)"></button></div>
 <div class="erow"><div class="elbl">Name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-ecphone" type="tel" placeholder="Optional" value="${esc(ecPhone)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-ecphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(ecPhone)}"/></div>
 </div>`;
   let body;
   if(isKids){
@@ -7345,8 +7377,12 @@ async function saveEditStu(){
   const last=trim(D.lastName, s.lastName!=null?s.lastName:((s.name||'').split(' ').slice(1).join(' ')||''));
   if(!first||!last)return showErr('First and last name are required.');
   if(first.length>60||last.length>60)return showErr('Names must be 60 characters or less.');
-  const phone=trim(D.phone,s.phone||'');
-  if(phone&&!/^[\d+\-()\s]{6,}$/.test(phone))return showErr('Phone format looks off.');
+  // B-edit fix — sanitise + validate every phone field via the shared
+  // helper. _phoneValid accepts empty (Option-A field) and 8-15 digits
+  // post-strip. Adult own phone (es-phone) here; guardian + emergency
+  // checked further down where they're resolved.
+  const phone=_phoneSanitize(trim(D.phone,s.phone||''));
+  if(!_phoneValid(phone))return showErr('Enter a valid phone number');
   const isKids=s.prog==='kids';
   const dob=D.dob!==undefined?(D.dob||null):(s.dob||null);
   const gender=D.gender!==undefined?(D.gender||null):(s.gender||null);
@@ -7356,10 +7392,12 @@ async function saveEditStu(){
   const heightCm=heightStr?parseInt(heightStr,10):null;
   const hasMybjjGi=D.hasMybjjGi!==undefined?!!D.hasMybjjGi:!!s.hasMybjjGi;
   const ecName=trim(D.ecName,s.ecName||'')||null;
-  const ecPhone=trim(D.ecPhone,s.ecPhone||'')||null;
+  const ecPhone=_phoneSanitize(trim(D.ecPhone,s.ecPhone||''))||null;
+  if(ecPhone&&!_phoneValid(ecPhone))return showErr('Enter a valid emergency phone number');
   // Parent fields only for kids; for adults preserve existing row values.
   const parentName=isKids?(trim(D.parentName,s.parentName||'')||null):s.parentName;
-  const parentPhone=isKids?(trim(D.parentPhone,s.parentPhone||'')||null):s.parentPhone;
+  const parentPhone=isKids?(_phoneSanitize(trim(D.parentPhone,s.parentPhone||''))||null):s.parentPhone;
+  if(isKids&&parentPhone&&!_phoneValid(parentPhone))return showErr('Enter a valid guardian phone number');
   const parentEmail=isKids?((trim(D.parentEmail,s.parentEmail||'').toLowerCase())||null):s.parentEmail;
   const parent2Name=isKids?(trim(D.parent2Name,s.parent2Name||'')||null):s.parent2Name;
   const parent2Phone=isKids?(trim(D.parent2Phone,s.parent2Phone||'')||null):s.parent2Phone;
