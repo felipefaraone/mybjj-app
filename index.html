@@ -1929,22 +1929,44 @@ async function _fetchStuAtt(){
   if(!S.stuAttList)return;
   const stl=S.stuAttList;
   const s=STUDENTS.find(x=>x.id===stl.sid);
-  if(!s||!s._dbId){stl.rows=[];stl.loading=false;render();return;}
-  let q=cli.from('attendance')
-    .select('id,class_date,class_time,class_type,modality,status,confirmed_by,confirmed_at')
-    .eq('student_id',s._dbId)
-    .in('status',['present','going','absent'])
-    .order('class_date',{ascending:false})
-    .order('class_time',{ascending:false})
-    .limit(500);
-  if(stl.range!=='all'){
-    const lower=new Date(Date.now()-Number(stl.range)*864e5);
-    q=q.gte('class_date',dk(lower));
+  if(!s||!s._dbId){stl.rows=[];stl.loading=false;stl.error=null;render();return;}
+  // B3a-fix — pre-existing G16b bug: bare `cli` reference (no scope)
+  // threw ReferenceError before the query, so the awaited promise
+  // never resolved and the loading flag stayed forever. Surface was
+  // only exercised by the parent/admin paths until B3a wired the
+  // student self call site. Use the same initSupabase accessor every
+  // other DB caller uses (saveEditMe / saveStaffNoteModal / etc.).
+  // try/catch wraps the whole fetch so loading clears on any failure
+  // (no client, network error, Supabase row-level rejection).
+  const cli=initSupabase();
+  if(!cli){
+    stl.rows=[];stl.loading=false;stl.error='Connection issue';render();return;
   }
-  const r=await q;
-  if(!S.stuAttList||S.stuAttList!==stl)return;
-  if(r&&r.error){console.warn('[mybjj] stuatt fetch:',r.error);stl.rows=[];}
-  else stl.rows=(r&&r.data)||[];
+  try{
+    let q=cli.from('attendance')
+      .select('id,class_date,class_time,class_type,modality,status,confirmed_by,confirmed_at')
+      .eq('student_id',s._dbId)
+      .in('status',['present','going','absent'])
+      .order('class_date',{ascending:false})
+      .order('class_time',{ascending:false})
+      .limit(500);
+    if(stl.range!=='all'){
+      const lower=new Date(Date.now()-Number(stl.range)*864e5);
+      q=q.gte('class_date',dk(lower));
+    }
+    const r=await q;
+    if(!S.stuAttList||S.stuAttList!==stl)return;
+    if(r&&r.error){
+      console.warn('[mybjj] stuatt fetch:',r.error);
+      stl.rows=[];stl.error="Couldn't load attendance";
+    }else{
+      stl.rows=(r&&r.data)||[];stl.error=null;
+    }
+  }catch(e){
+    console.warn('[mybjj] stuatt fetch exception:',e);
+    if(!S.stuAttList||S.stuAttList!==stl)return;
+    stl.rows=[];stl.error="Couldn't load attendance";
+  }
   stl.loading=false;
   render();
 }
@@ -1976,7 +1998,7 @@ function closeStuAttList(){
 }
 function setStuAttRange(r){
   if(!S.stuAttList)return;
-  S.stuAttList.range=r;S.stuAttList.rows=null;S.stuAttList.loading=true;S.stuAttList.page=1;
+  S.stuAttList.range=r;S.stuAttList.rows=null;S.stuAttList.loading=true;S.stuAttList.page=1;S.stuAttList.error=null;
   render();_fetchStuAtt();
 }
 function setStuAttFilter(m){
@@ -2006,6 +2028,11 @@ function rStuAttList(){
   let body='';
   if(stl.loading||stl.rows===null){
     body='<div style="padding:40px 0;text-align:center;color:var(--text3);font-size:13px">Loading…</div>';
+  }else if(stl.error){
+    // B3a-fix — explicit error state so failed fetches surface a real
+    // message instead of a stuck Loading… or an empty list that's
+    // indistinguishable from "no rows".
+    body='<div style="padding:40px 16px;text-align:center;color:var(--red-text);font-size:13px">'+stl.error+'</div>';
   }else{
     const filtered=(stl.rows||[]).filter(r=>{
       if(stl.modality==='all')return true;
