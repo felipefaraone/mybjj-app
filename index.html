@@ -2867,67 +2867,6 @@ function rTechniquesLog(s){
   return html;
 }
 
-// rParentChildView — parent's Progress tab. Renders the child's view
-// (rank / journey / attendance / promo wall), not the parent's own
-// data. Multi-kid parents get a switcher chip strip at the top.
-// Photo edit is deliberately NOT here — parents change a child's
-// photo from the kid's profile pencil → Edit Profile flow.
-function rParentChildView(){
-  const kids=parentChildren();
-  if(!kids.length){
-    return '<div style="height:16px"></div><div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--text2);line-height:1.5">No linked children yet.<br/>Once your academy admin adds your child with this email as the parent contact, you\'ll see their profile here.</div></div>';
-  }
-  const child=parentSelectedChild();
-  const unitName=(UNITS.find(u=>u.id===child.unit)||{name:'—'}).name;
-  // G9 Phase 1 follow-up 2 — sourced from PROMO_CRITERIA via
-  // _egDisplay. Kids currently resolve to status:'pending' (Phase 2
-  // wires real kids criteria) so the stat shows '—' and the reason
-  // shows "Promotion criteria pending — ask Professor".
-  const egd=_egDisplay(child);
-  const pct=egd.hide||egd.isPending?null:egd.pct;
-  const isReady=egd.isReady;
-  // B1 — Progress is ACTIVITY only. Header slimmed: photo + name +
-  // belt display (read-only). Details card + Edit pencil moved to
-  // the parent profile area (rParentProfileArea). The inline kid
-  // switcher that lived here is gone too — the global
-  // rParentKidSwitcher mounted in rApp above the content is the only
-  // switcher now (was a duplicate stack).
-  const header='<div class="card" style="padding:16px;margin-bottom:12px">'
-    +'<div style="display:flex;align-items:center;gap:14px">'
-    +avStu(child,48)
-    +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;line-height:1.2;color:var(--text)">'+child.name+'</div>'
-    +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(child.belt,child.deg||0,child.prog)+'</div>'
-    +'</div>'
-    +'</div>'
-    +'</div>';
-  const gi=Math.max(child.giGrade||0,0);
-  const ng=Math.max((child.grade||0)-gi,0);
-  // Stats card (same layout as rStuProf G16b: 4-column counts +
-  // progress bar + eligibility reason chip + Gi ceremony hint).
-  const statsCard='<div class="card" style="padding:16px"><div style="display:flex;gap:0;margin-bottom:10px">'
-    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+formatStat(child.total||0)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>'
-    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+formatStat(gi)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>'
-    +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:var(--text)">'+formatStat(ng)+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>'
-    +'<div style="flex:1;text-align:center"><div style="font-family:Barlow Condensed,sans-serif;font-size:20px;font-weight:700;color:'+(isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)'))+'">'+(pct==null?'—':pct+'%')+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">'+(isReady?'Ready':'Progress')+'</div></div>'
-    +'</div>'+(egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,child.belt,child.prog))
-    +(egd.reason?'<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:'+(isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(isReady?'var(--green-border)':'var(--border)')+';font-size:12px;line-height:1.4;color:'+(isReady?'var(--green-text)':'var(--text2)')+';font-family:Barlow Condensed,sans-serif;font-weight:600;letter-spacing:.5px">'+egd.reason+'</div>':'')
-    +_giCeremonyHint(child,egd)
-    +'</div>';
-  // Journey + Attendance + Feedback summary cards — same helpers the
-  // adult rStuProf uses. _stuFbSummaryCard gates "+ Add" on
-  // canEditClassCounts() (false for parent) so no add affordance
-  // shows up here.
-  const journeyCard='<div style="margin-top:12px">'+rJnySection(child)+'</div>';
-  // Tap "View all" should land on a subview that returns to the
-  // parent's Progress tab (not on stuprof which the parent never
-  // sees). Pass fromParent:true so closeStu*List drops the panel.
-  const attendanceCard=_stuAttSummaryCard(child,{fromParent:true});
-  const feedbackCard=_stuFbSummaryCard(child,{fromParent:true});
-  // B1 — Details card removed from Progress. Identity surfaces (Email,
-  // Parent fields, Unit, Joined, MyBJJ Gi, Status, Social) live in the
-  // parent profile area (rParentProfileArea → _renderProfileIdentity).
-  return '<div style="height:16px"></div>'+header+statsCard+journeyCard+attendanceCard+feedbackCard+'<div style="height:24px"></div>';
-}
 
 // G14.1 — rParentAttendance removed. The kid Progress view now uses
 // _stuAttSummaryCard (same as the adult rStuProf path); the View all
@@ -3573,7 +3512,11 @@ function rKidPeer(){
 }
 
 function rProgress(){
-  if(isParent())return rParentChildView();
+  // B3b-2 — parent kid Progress now conforms to the student tabbed
+  // surface (Rank/Journey/Techniques/Wall/Feedback). The parent path
+  // resolves subject = parentSelectedChild() and falls into the same
+  // student-tab render below. Student self path is untouched — its
+  // lookup + S.me overlay are byte-identical to today.
   var s=S.me;
   // The signed-in user's linked students row, if any. Owners and
   // professors often train as students in their own academy, in which
@@ -3628,29 +3571,43 @@ function rProgress(){
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='wall'?rPromoWall():feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
   }
-  // G9.3 follow-up — student self lookup adds an email-fallback so a
-  // broken or missing students.user_id link doesn't drop the Progress
-  // tab back to S.me's meFromProfile defaults (zeros). The legacy
-  // `STUDENTS.find(x.id===s.id)` branch was dead code — s.id is the
-  // auth UUID, x.id is the legacy slug, they never matched. Email is
-  // the stable identifier that survives a missing user_id link.
-  var meEmail=S.profile&&S.profile.email?String(S.profile.email).toLowerCase():null;
-  var stu=(S.profile&&STUDENTS.find(function(x){return x._userId===S.profile.id;}))
-    ||(meEmail?STUDENTS.find(function(x){return x.email&&String(x.email).toLowerCase()===meEmail;}):null)
-    ||s;
-  // Use the linked row's belt/prog/grade/total so progress + journey
-  // both read from the same source instead of half-falling-back to
-  // S.me defaults. Number() wraps protect against String values that
-  // refreshStudentStats may have written during an active session
-  // (it doesn't currently wrap its post-mark fetch — fixed below).
-  s={...s,
-     belt:stu.belt||s.belt,
-     deg:stu.deg!=null?stu.deg:s.deg,
-     prog:stu.prog||s.prog,
-     grade:stu.grade!=null?Number(stu.grade):s.grade,
-     total:stu.total!=null?Number(stu.total):s.total,
-     giTotal:stu.giTotal!=null?Number(stu.giTotal):s.giTotal,
-     giGrade:stu.giGrade!=null?Number(stu.giGrade):s.giGrade};
+  // B3b-2 — parent path resolves subject = active kid and falls
+  // through to the same render below. Empty state when there's no
+  // active kid (e.g. all kids inactive). Student self path stays
+  // exactly as it was — email-fallback lookup + S.me overlay
+  // unchanged.
+  var stu;
+  if(isParent()){
+    stu=parentSelectedChild();
+    if(!stu){
+      return '<div style="height:16px"></div><div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--text2);line-height:1.5">No linked children yet.<br/>Once your academy admin adds your child with this email as the parent contact, you\'ll see their profile here.</div></div>';
+    }
+    s=stu;
+  }else{
+    // G9.3 follow-up — student self lookup adds an email-fallback so a
+    // broken or missing students.user_id link doesn't drop the Progress
+    // tab back to S.me's meFromProfile defaults (zeros). The legacy
+    // `STUDENTS.find(x.id===s.id)` branch was dead code — s.id is the
+    // auth UUID, x.id is the legacy slug, they never matched. Email is
+    // the stable identifier that survives a missing user_id link.
+    var meEmail=S.profile&&S.profile.email?String(S.profile.email).toLowerCase():null;
+    stu=(S.profile&&STUDENTS.find(function(x){return x._userId===S.profile.id;}))
+      ||(meEmail?STUDENTS.find(function(x){return x.email&&String(x.email).toLowerCase()===meEmail;}):null)
+      ||s;
+    // Use the linked row's belt/prog/grade/total so progress + journey
+    // both read from the same source instead of half-falling-back to
+    // S.me defaults. Number() wraps protect against String values that
+    // refreshStudentStats may have written during an active session
+    // (it doesn't currently wrap its post-mark fetch — fixed below).
+    s={...s,
+       belt:stu.belt||s.belt,
+       deg:stu.deg!=null?stu.deg:s.deg,
+       prog:stu.prog||s.prog,
+       grade:stu.grade!=null?Number(stu.grade):s.grade,
+       total:stu.total!=null?Number(stu.total):s.total,
+       giTotal:stu.giTotal!=null?Number(stu.giTotal):s.giTotal,
+       giGrade:stu.giGrade!=null?Number(stu.giGrade):s.giGrade};
+  }
   var bmap=s.prog==='kids'?BK:BA;
   var b=bmap[s.belt]||BA.white;
   // G9 Phase 1 follow-up 2 \u2014 student progress card now reads
@@ -3669,13 +3626,13 @@ function rProgress(){
   // as a numeric reference. gnote text de-conditioned \u2014 it now reads
   // the same regardless of student state.
   var giHint=_giCeremonyHint(s,egd);
-  // B3a \u2014 student self attendance summary + View all subview. Reuses
-  // the shared _stuAttSummaryCard (same component parent uses for
-  // their kid's Progress, and admin uses inside rStuProf). fromSelf
-  // sends close-back to the underlying Progress tab instead of
-  // landing in stuprof. rStuAttList is read-only by construction \u2014
-  // no mark / add / delete affordances ever exposed to the student.
-  var attendanceCard=_stuAttSummaryCard(stu,{fromSelf:true});
+  // B3a / B3b-2 \u2014 attendance summary + View all subview, read-only.
+  // Same shared _stuAttSummaryCard the admin rStuProf uses. The flag
+  // (fromSelf for student self, fromParent for parent viewing kid)
+  // drives the close path: both drop the panel back to the underlying
+  // Progress tab. rStuAttList itself is read-only by construction \u2014
+  // no mark / add / delete affordances ever exposed.
+  var attendanceCard=_stuAttSummaryCard(stu,isParent()?{fromParent:true}:{fromSelf:true});
   var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>${attendanceCard}`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
@@ -4188,7 +4145,7 @@ function rCEdit(){
 //
 // Bottom-nav tabs (all defined in TABS below; filtered in rApp):
 //   class       → rClass       — every role
-//   progress    → rProgress    — every role (parent gets rParentChildView)
+//   progress    → rProgress    — every role (parent renders active kid as subject via the same tabbed surface)
 //   community   → rMembers     — every role (parent gets rParentMembers)
 //   schedule    → rSchedule    — every role
 //   admin       → rAdmin       — owner + admin only (renamed "Manage")
