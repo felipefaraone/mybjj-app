@@ -214,6 +214,7 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:var(--sh)}
 .card.stp{border-color:var(--amber-border);background:var(--amber-bg)}.card.stc{border-color:var(--green-border);background:var(--green-bg)}
 .slbl{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:12px}
+.drow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}.drow:last-child{border-bottom:none}
 .blt{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase}
 .pt{background:var(--border);border-radius:99px;height:7px;overflow:hidden}.pf{height:100%;border-radius:99px}
 .stabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
@@ -1157,14 +1158,24 @@ function rAttsStaff(rows,cid){
   const cf=visible.filter(r=>r.status==='present').length;
   const going=visible.filter(r=>r.status!=='absent').length;
   const locked=isClassLocked(cid);
-  const addBtn=!locked
-    ?'<button class="bsm" onclick="openClassAddStudent(\''+cid+'\')" style="margin-left:auto;padding:6px 10px;font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:#1A5DAD;border:1px solid var(--blue-mid);background:var(--blue-tint);border-radius:6px;cursor:pointer">+ Add student</button>'
+  // Cosmetic — instructor action row promoted from cramped text links to
+  // a real primary + secondary button pair. Primary (Confirm attendance
+  // / Show less) uses brand fill; secondary (+ Add student) uses
+  // tinted outline. "N/M confirmed" sits below as a muted caption so
+  // the action row reads cleanly without competing for emphasis.
+  const primaryLbl=exp?'Show less':'Confirm attendance';
+  const primaryBtn=`<button onclick="toggleExp('${cid}')" style="flex:1;background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">${primaryLbl}</button>`;
+  const secondaryBtn=!locked
+    ?`<button onclick="openClassAddStudent('${cid}')" style="flex-shrink:0;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:9px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">+ Add student</button>`
     :'';
-  const header=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf}/${going} confirmed</span><div style="display:flex;align-items:center;gap:8px">${addBtn}<span class="aexp" onclick="toggleExp('${cid}')">${exp?'Show less':'Confirm attendance'}</span></div></div>`;
+  const caption=`<div style="margin-top:8px;font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf}/${going} confirmed</div>`;
+  const actionRow=`<div style="display:flex;align-items:center;gap:8px">${primaryBtn}${secondaryBtn}</div>${caption}`;
   if(!visible.length){
-    return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}<div style="display:flex;align-items:center;gap:10px;padding:6px 0"><span style="font-size:12px;color:var(--text3)">No check-ins yet</span></div></div>`;
+    // Body empty state when no check-ins yet. Action row still
+    // available so the instructor can add a student manually.
+    return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="text-align:center;padding:10px 0 14px;font-size:13px;color:var(--text3)">No check-ins yet</div>${actionRow}</div>`;
   }
-  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}</div>`;
+  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${actionRow}</div>`;
   const btnFor=(r,s)=>{
     if(locked){
       const lbl=r.status==='present'?'Present':r.status==='absent'?'Absent':'Going';
@@ -1198,7 +1209,7 @@ function rAttsStaff(rows,cid){
     const border=isZero?'var(--border)':(v>1?'var(--blue-mid)':'var(--amber-border)');
     return '<span title="class_value = '+v.toFixed(2)+'" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:'+accent+';background:'+bg+';border:1px solid '+border+';padding:1px 6px;border-radius:4px;margin-left:6px">'+lbl+'</span>';
   };
-  return `<div class="divider" style="margin-top:12px;padding-top:12px">${header}${visible.map(r=>{
+  return `<div class="divider" style="margin-top:12px;padding-top:12px">${actionRow}<div style="height:10px"></div>${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId);if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
     // G9.2 — strikethrough the student name when class_value === 0
@@ -1415,7 +1426,7 @@ function rStaffProf(){
   const fbKey='staff:'+s.id;
   const sidKey='staff:'+s.id;
   const photo=avStaff(s,52);
-  const roleChip='<span style="background:var(--blue-tint);color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+staffTitle(s).toUpperCase()+'</span>';
+  const roleChip='<span style="background:var(--blue-tint);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+staffTitle(s).toUpperCase()+'</span>';
   const isActive=s._active!==false;
   // Section 4 — Details. Same shape as rStuProf so the eye lands in
   // the same spots when switching between profiles.
@@ -1458,17 +1469,38 @@ function rStaffProf(){
   const notesBlock=(!isPeer)?_staffNotesSummaryCard(s,canAdmin):'';
   const detailsBlock=(!isPeer)?details:'';
   const socialBlock=_socialChipsBlock(s.socialHandles);
+  // Cosmetic — belt band split from caption so we can size the caption
+  // up (12–13px) and stack name / badge / band / caption with a clean
+  // 8px vertical rhythm instead of horizontally crowding the badge
+  // against the band.
+  const beltDeg=s.deg||0;
+  const beltMap=BA;
+  const beltLabel=(beltMap[s.belt]||beltMap.white).label;
+  const beltUnit=s.belt==='black'
+    ?(beltDeg===1?'degree':'degrees')
+    :(beltDeg===1?'stripe':'stripes');
+  const beltCaption=beltLabel+(beltDeg>0?' · '+beltDeg+' '+beltUnit:'');
+  // Hide the unit line in single-unit deployments; redundant when every
+  // member trains at the same place.
+  const showUnit=Array.isArray(UNITS)&&UNITS.length>1;
+  const unitLine=showUnit
+    ?'<div style="margin-top:8px;font-size:12px;color:var(--text3)">'+unitName+'</div>'
+    :'';
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
     +'<div class="sbody">'
-    // Header — plain name; role badge inline carries the BJJ title.
+    // Header — left-aligned identity stack with 8px vertical rhythm:
+    // name → role badge → belt band → belt caption. Unit hidden when
+    // there's only one in the org.
     +'<div class="card" style="padding:16px">'
       +'<div style="display:flex;align-items:flex-start;gap:14px">'
         +photo
         +'<div style="flex:1;min-width:0">'
           +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+cleanName+'</div>'
-          +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,'adult')+roleChip+'</div>'
-          +'<div style="margin-top:5px;font-size:11px;color:var(--text3)">'+unitName+'</div>'
+          +'<div style="margin-top:8px">'+roleChip+'</div>'
+          +'<div style="margin-top:8px">'+beltSVG(s.belt,beltDeg,'adult',110)+'</div>'
+          +'<div style="margin-top:6px;font-size:12px;color:var(--text2);font-weight:600">'+beltCaption+'</div>'
+          +unitLine
         +'</div>'
       +'</div>'
       +editPencil
@@ -2793,7 +2825,7 @@ function rClass(){
     }
     else{btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
     const attBlock=isStaffViewer?rAttsStaff(rows,c.id):rAtts(all,c.id);
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${c.time}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud} · ${all.length} going</div></div><div style="flex-shrink:0;padding-top:4px;min-width:96px">${btn}</div></div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
+    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${c.time}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div><div style="flex-shrink:0;padding-top:4px;min-width:96px">${btn}</div></div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
 
 
@@ -7213,7 +7245,9 @@ function inviteChip(userId,email,isParent){
 // "Not set" when missing. actions is a trailing HTML chunk (buttons).
 function rDetailRow(label,value,actions){
   const v=(value!=null&&value!=='')?value:'<span style="color:var(--text3)">Not set</span>';
-  return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">'
+  // Class-based row so .drow:last-child can strip the trailing divider
+  // (a border-bottom on the final row implied a missing item below).
+  return '<div class="drow">'
     +'<div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">'+label+'</div>'
     +'<div style="flex:1;min-width:0;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis">'+v+'</div>'
     +(actions||'')
