@@ -1895,6 +1895,7 @@ function _stuAttSummary(s){
 }
 function _stuAttSummaryCard(s,opts){
   const fromParent=!!(opts&&opts.fromParent);
+  const fromSelf=!!(opts&&opts.fromSelf);
   const sum=_stuAttSummary(s);
   const totalLifetime=Number(s.total||0);
   const modBadge=m=>{
@@ -1910,7 +1911,10 @@ function _stuAttSummaryCard(s,opts){
     :(totalLifetime>0
       ?'<div style="font-size:13px;color:var(--text3)">No attendance in the last 21 days</div>'
       :'<div style="font-size:13px;color:var(--text3)">No attendance recorded yet</div>');
-  const openArg=fromParent?',{fromParent:true}':'';
+  // B3a — only one of fromParent / fromSelf should be set; the helper
+  // preserves the caller-provided semantics so the close path reads
+  // the right flag.
+  const openArg=fromSelf?',{fromSelf:true}':(fromParent?',{fromParent:true}':'');
   const viewAll=totalLifetime>0
     ?'<div style="margin-top:10px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+s.id+'\''+openArg+')" style="background:none;border:none;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0">View all '+formatStat(totalLifetime)+' →</button></div>'
     :'';
@@ -1951,17 +1955,22 @@ async function _fetchStuAtt(){
 // Progress tab) or restore the stuprof sub (admin/self case).
 function openStuAttList(sid,opts){
   const wasOpen=!!S.panelOpen;
-  S.stuAttList={sid,modality:'all',range:30,rows:null,loading:true,page:1,fromParent:!!(opts&&opts.fromParent),_prevPanelOpen:wasOpen};
+  // B3a — fromSelf has the same close semantics as fromParent (return
+  // to the underlying tab, not to stuprof). Both flags mean "opened
+  // from a top-level Progress tab, not from inside an admin/peer
+  // stuprof sub". Kept as two flags so the caller's intent stays
+  // legible at the call site (parent kid view vs student self).
+  S.stuAttList={sid,modality:'all',range:30,rows:null,loading:true,page:1,fromParent:!!(opts&&opts.fromParent),fromSelf:!!(opts&&opts.fromSelf),_prevPanelOpen:wasOpen};
   S.sub='stuattlist';
   S.panelOpen=true;
   render();
   _fetchStuAtt();
 }
 function closeStuAttList(){
-  const fromParent=!!(S.stuAttList&&S.stuAttList.fromParent);
+  const dropPanel=!!(S.stuAttList&&(S.stuAttList.fromParent||S.stuAttList.fromSelf));
   const prev=!!(S.stuAttList&&S.stuAttList._prevPanelOpen);
   S.stuAttList=null;
-  if(fromParent){S.sub=null;S.panelOpen=prev;}
+  if(dropPanel){S.sub=null;S.panelOpen=prev;}
   else{S.sub=S.viewStu?'stuprof':null;}
   render();
 }
@@ -3574,7 +3583,14 @@ function rProgress(){
   // as a numeric reference. gnote text de-conditioned \u2014 it now reads
   // the same regardless of student state.
   var giHint=_giCeremonyHint(s,egd);
-  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>`;
+  // B3a \u2014 student self attendance summary + View all subview. Reuses
+  // the shared _stuAttSummaryCard (same component parent uses for
+  // their kid's Progress, and admin uses inside rStuProf). fromSelf
+  // sends close-back to the underlying Progress tab instead of
+  // landing in stuprof. rStuAttList is read-only by construction \u2014
+  // no mark / add / delete affordances ever exposed to the student.
+  var attendanceCard=_stuAttSummaryCard(stu,{fromSelf:true});
+  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>${attendanceCard}`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
 
