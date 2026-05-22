@@ -1323,7 +1323,7 @@ function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/<
 function rInbox(){
   const ur=UNREAD_COUNT|0;
   const IBACK=`<button class="sback" onclick="closeInbox()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;
-  const empty=`<div style="padding:48px 16px;text-align:center;color:var(--text3)"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="opacity:.5;margin-bottom:8px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><div style="font-size:13px">No notifications</div></div>`;
+  const empty=`<div style="padding:48px 16px;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No notifications</div><div style="font-size:12px;color:var(--text3);line-height:1.5">You're all caught up.</div></div>`;
   const list=NOTIFS.map(n=>{
     const isRead=!!n.read_at;
     const titleHtml=escHtml(n.title||'');
@@ -2853,7 +2853,6 @@ function rTechniquesLog(s){
   // MOCK-FIX — empty state when programme_weeks has no rows yet.
   if(!allTechs.length){
     return '<div class="card" style="text-align:center;padding:32px 20px">'
-      +'<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:6px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No curriculum yet</div>'
       +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Your academy hasn’t published the weekly programme yet.</div>'
       +'</div>';
@@ -3313,9 +3312,9 @@ function rEditMeModal(){
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;padding-right:40px">Edit profile</div>
 <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.4">Update your contact details. Photo and email change live elsewhere.</div>
 <div class="ef" style="margin-bottom:0">
-<div class="erow"><div class="elbl">First name</div><input class="einput" id="em-first" maxlength="60" value="${esc(S.editMe.firstName)}"/></div>
-<div class="erow"><div class="elbl">Last name</div><input class="einput" id="em-last" maxlength="60" value="${esc(S.editMe.lastName)}"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="em-phone" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" value="${esc(S.editMe.phone)}"/></div>
+<div class="erow"><div class="elbl">First name</div><input class="einput" id="em-first" maxlength="60" value="${esc(S.editMe.firstName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Last name</div><input class="einput" id="em-last" maxlength="60" value="${esc(S.editMe.lastName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="em-phone" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" value="${esc(S.editMe.phone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
 </div>
 <div style="display:flex;gap:10px;margin-top:16px">
 <button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeEditMe()">Cancel</button>
@@ -3454,7 +3453,10 @@ function rMembers(){
   // clear (×) affordance appears only when there's text to clear.
   const qVal=String(S.memberQuery||'').replace(/"/g,'&quot;');
   const clearBtn=qVal?'<button onclick="setMemberQuery(\'\')" aria-label="Clear search" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;padding:4px 8px">×</button>':'';
-  const searchHtml='<div style="position:relative;margin-bottom:14px"><input type="search" id="members-search" placeholder="Search members…" value="'+qVal+'" oninput="setMemberQuery(this.value)" style="width:100%;padding:10px 36px 10px 12px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/>'+clearBtn+'</div>';
+  // Left-anchored magnifying glass — standard search affordance.
+  // Pointer-events disabled so taps go through to the input.
+  const searchIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+  const searchHtml='<div style="position:relative;margin-bottom:14px">'+searchIcon+'<input type="search" id="members-search" placeholder="Search members…" value="'+qVal+'" oninput="setMemberQuery(this.value)" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/>'+clearBtn+'</div>';
   const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · '+list.length+'</div>';
   if(!list.length)return '<div style="height:16px"></div>'+headline+segHtml+typeChips+beltChips+searchHtml+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
   const rows=list.map(m=>{
@@ -3784,7 +3786,6 @@ function rSchedule(){
     // MOCK-FIX — programme_weeks has no rows yet; render empty state
     // instead of a blank body when the user lands on a stale week id.
     bodyHtml='<div class="card" style="text-align:center;padding:32px 20px">'
-      +'<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:6px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No curriculum yet</div>'
       +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Your academy hasn’t published the weekly programme yet.</div>'
       +'</div>';
@@ -3890,7 +3891,6 @@ function rEvents(isA){
   // MOCK-FIX — empty state for events feed. Triggered when EVENTS is
   // empty OR when the filter (current unit) hides every row.
   const emptyState=rows.length?'':'<div class="card" style="text-align:center;padding:32px 20px">'
-    +'<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:6px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No events yet</div>'
     +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Upcoming tournaments and seminars will show here.</div>'
     +'</div>';
@@ -5382,9 +5382,9 @@ function rEditStaff(){
     :`<div class="erow"><div class="elbl">Role title</div><div style="flex:1;font-size:13px;color:var(--text2);text-align:right">${esc(roleTitle||'—')}</div></div>`;
   const basicTab=`<div class="ef" style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:4px;border-bottom:1px solid var(--border)">${photoBlock}</div>
 <div class="ef" style="margin-top:8px">
-<div class="erow"><div class="elbl">First name</div><input class="einput" id="esf-first" maxlength="60" value="${esc(first)}"/></div>
-<div class="erow"><div class="elbl">Last name</div><input class="einput" id="esf-last" maxlength="60" value="${esc(last)}"/></div>
-<div class="erow"><div class="elbl">Initials</div><input class="einput" id="esf-initials" maxlength="3" value="${esc(initials)}"/></div>
+<div class="erow"><div class="elbl">First name</div><input class="einput" id="esf-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Last name</div><input class="einput" id="esf-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Initials</div><input class="einput" id="esf-initials" maxlength="3" value="${esc(initials)}" autocomplete="off" autocorrect="off" autocapitalize="characters" data-1p-ignore="true" data-lpignore="true"/></div>
 ${roleField}
 </div>`;
   // -------- Training --------
@@ -5668,7 +5668,7 @@ function rPhotoQueue(){
   if(!canEditClassCounts())return '<div style="padding:24px;text-align:center;color:var(--text3)">Not authorised.</div>';
   if(S.photoQueueLoading&&!S.photoQueue)return '<div style="padding:24px;text-align:center;color:var(--text3)">Loading…</div>';
   const q=S.photoQueue||[];
-  if(!q.length)return '<div style="padding:32px;text-align:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg><div style="margin-top:8px;color:var(--text3);font-size:14px">No pending photos.</div></div>';
+  if(!q.length)return '<div class="card" style="text-align:center;padding:32px 20px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No pending photos</div><div style="font-size:12px;color:var(--text3);line-height:1.5">New submissions will appear here.</div></div>';
   return q.map(r=>{
     const name=(r.student&&r.student.full_name)||(r.staff&&r.staff.full_name)||'Profile photo';
     const src=photoSrc(r.photo_url);
@@ -7465,8 +7465,8 @@ function rEditStu(){
   // not identity). DOB / Gender stay here.
   const basicTab=`<div class="ef" style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:4px;border-bottom:1px solid var(--border)">${photoBlock}</div>
 <div class="ef" style="margin-top:8px">
-<div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}"/></div>
-<div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}"/></div>
+<div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
 </div>`;
@@ -7487,9 +7487,9 @@ function rEditStu(){
   // overflow), Change email link below at smaller size.
   const emailRowAdult='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:#1A5DAD;font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
   const contactTab=`<div class="ef" style="margin-top:8px">${emailRowAdult}
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" value="${esc(phone)}"/></div>
-<div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
-<div class="erow"><div class="elbl">Emergency phone</div><input class="einput" id="es-ecphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(ecPhone)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" value="${esc(phone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Emergency phone</div><input class="einput" id="es-ecphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(ecPhone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
 </div>
 <div class="slbl" style="margin-top:14px">Social</div>
 <div class="ef">${socialInputs}</div>`;
@@ -7500,15 +7500,15 @@ function rEditStu(){
   // email is read-only because it's the login gate; admin still
   // changes it via the openChangeEmail flow.
   const guardianTab=`<div class="slbl" style="margin-top:8px">Guardian</div><div class="ef">
-<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" inputmode="tel" placeholder="Required" oninput="this.value=_phoneSanitize(this.value)" value="${esc(parentPhone)}"/></div>
+<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" inputmode="tel" placeholder="Required" oninput="this.value=_phoneSanitize(this.value)" value="${esc(parentPhone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(parentEmail||'—')}</div><div style="color:var(--text3);font-size:11px">Login email — change via admin</div></div></div>
 </div>
 <div class="slbl" style="margin-top:14px">Emergency contact</div>
 <div class="ef">
 <div class="erow"><div class="elbl">Same as guardian</div><button class="toggle" id="es-emsame" onclick="_sameAsGuardian(this)"></button></div>
-<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-ecphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(ecPhone)}"/></div>
+<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-ecphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(ecPhone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
 </div>`;
   let body;
   if(isKids){
