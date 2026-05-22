@@ -913,7 +913,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me'};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -2922,8 +2922,13 @@ function _renderProfileIdentity(s,opts){
   // B2 — kind branches Student vs Staff rendering. Student: kid/adult
   // chip + parent fields when kids + MyBJJ Gi. Staff: role_title chip
   // + role row, no parent fields, no MyBJJ Gi in Details.
+  // B-edit — opts.selfView strips admin-oriented Details rows (STATUS
+  // row, green JOINED tag under email) when the signed-in person is
+  // viewing their own Me — those are admin chrome that doesn't add
+  // anything for the subject themselves.
   const kind=opts.kind==='staff'?'staff':'student';
   const isStaff=kind==='staff';
+  const selfView=!!opts.selfView;
   const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
   const isKids=!isStaff&&s.prog==='kids';
   const editLabel=opts.editLabel||'Edit Profile';
@@ -2948,14 +2953,17 @@ function _renderProfileIdentity(s,opts){
     +'</div>'
     +'</div>'
     +'</div>';
-  const emailVal=s.email
-    ?(s.email+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
-    :'<span style="color:var(--text3)">—</span>';
+  // B-edit — JOINED tag hidden in selfView (admin signal only). Plain
+  // email otherwise; the green JOINED chip helps admins eyeball who's
+  // claimed their account.
+  const joinedTag=(s._userId&&!selfView)?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':'';
+  const emailVal=s.email?(s.email+joinedTag):'<span style="color:var(--text3)">—</span>';
   const parentEmailVal=isKids?(s.parentEmail
-    ?(s.parentEmail+(s._parentUserId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
+    ?(s.parentEmail+((s._parentUserId&&!selfView)?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null):null;
   const joinedDate=((s.journey||[]).find(m=>m.done)||{}).date||null;
-  const statusRow='<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:'+(isActive?'var(--green-text)':'var(--amber-text)')+';font-weight:600">'+(isActive?'Active':'Inactive')+'</div></div>';
+  // B-edit — STATUS row hidden in selfView (admin chrome).
+  const statusRow=selfView?'':'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:'+(isActive?'var(--green-text)':'var(--amber-text)')+';font-weight:600">'+(isActive?'Active':'Inactive')+'</div></div>';
   let detailsBody;
   if(isStaff){
     detailsBody=rDetailRow('Email',emailVal,'')
@@ -2975,7 +2983,10 @@ function _renderProfileIdentity(s,opts){
       +statusRow;
   }
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'+detailsBody+'</div>';
-  const socialBlock=_socialChipsBlock(s.socialHandles);
+  // B-edit — kids never show the Social card (no public socials in the
+  // V1 kid model). Adults and staff keep the chips when handles
+  // resolve to URLs; empty handles render an empty string anyway.
+  const socialBlock=(!isStaff&&isKids)?'':_socialChipsBlock(s.socialHandles);
   const editBtn='<div style="margin-top:18px"><button onclick="'+editHandler+'" style="width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">'+editLabel+'</button></div>';
   return header+details+socialBlock+editBtn;
 }
@@ -3047,25 +3058,34 @@ function rProfileArea(){
       ||(email?STUDENTS.find(x=>x.email&&String(x.email).toLowerCase()===email):null);
     let identityCard='';
     if(isP){
-      // Parent identity — NO belt, "Parent of X, Y" subtitle.
+      // Parent identity — NO belt, "Parent of X, Y" subtitle. Edit
+      // pencil opens rEditMeModal (name + phone).
       const parentFirstNames=kids.map(k=>(k.name||'').split(' ')[0]).filter(Boolean).join(', ');
       const subtitle=parentFirstNames?'Parent of '+parentFirstNames:'Parent';
-      const meHeader='<div class="card" style="padding:16px;display:flex;align-items:center;gap:14px">'
-        +avMe(64,'upload')
-        +'<div style="flex:1;min-width:0">'
-          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+(parseStaffName(m.name||'')||'Parent')+'</div>'
-          +'<div style="margin-top:5px;font-size:12px;color:var(--text3)">'+subtitle+'</div>'
+      const meHeader='<div class="card" style="padding:16px">'
+        +'<div style="display:flex;align-items:center;gap:14px">'
+          +avMe(64,'upload')
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+(parseStaffName(m.name||'')||'Parent')+'</div>'
+            +'<div style="margin-top:5px;font-size:12px;color:var(--text3)">'+subtitle+'</div>'
+          +'</div>'
         +'</div>'
-        +'</div>';
+        +'<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditMe()" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:#1A5DAD;border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>'
+      +'</div>';
       const emailDisplay=(S.profile&&S.profile.email)||m.email||'—';
-      const emailRow='<div class="slbl" style="margin-top:18px">Account</div>'
-        +'<div class="card" style="padding:14px"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+emailDisplay+'</div>'
-        +'<a href="#" onclick="event.preventDefault();showSaveToast2(\'Change-email flow coming soon.\');" style="color:#1A5DAD;font-size:12px;text-decoration:underline;align-self:flex-start;margin-top:2px">Change email</a></div></div>';
-      identityCard=meHeader+emailRow;
+      const phoneRaw=(S.profile&&S.profile.phone)||m.phone||'';
+      const phoneDisplay=phoneRaw?String(phoneRaw):'<span style="color:var(--text3)">Not set</span>';
+      const accountCard='<div class="slbl" style="margin-top:18px">Account</div>'
+        +'<div class="card" style="padding:14px;display:flex;flex-direction:column;gap:12px">'
+          +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+emailDisplay+'</div>'
+            +'<a href="#" onclick="event.preventDefault();showSaveToast2(\'Change-email flow coming soon.\');" style="color:#1A5DAD;font-size:12px;text-decoration:underline;display:inline-block;margin-top:4px">Change email</a></div>'
+          +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Phone</div><div style="font-size:14px;color:var(--text2)">'+phoneDisplay+'</div></div>'
+        +'</div>';
+      identityCard=meHeader+accountCard;
     }else if(linkedStaff){
-      identityCard=_renderProfileIdentity(linkedStaff,{kind:'staff',editHandler:"openEditStaff('"+linkedStaff.id+"')"});
+      identityCard=_renderProfileIdentity(linkedStaff,{kind:'staff',selfView:true,editHandler:"openEditStaff('"+linkedStaff.id+"')"});
     }else if(linkedStudent){
-      identityCard=_renderProfileIdentity(linkedStudent,{editHandler:"openEditStu('"+linkedStudent.id+"')"});
+      identityCard=_renderProfileIdentity(linkedStudent,{selfView:true,editHandler:"openEditStu('"+linkedStudent.id+"')"});
     }else{
       // Dev-admin / owner without a STAFF row (or staff row not yet
       // linked via user_id / email). Minimal identity using the users
@@ -3106,6 +3126,63 @@ function rProfileArea(){
 }
 // B1 alias for the old name (rApp template still references this).
 function rParentProfileArea(){return rProfileArea();}
+// B-edit — parent self-edit (name + phone). Stores in public.users via
+// direct UPDATE (RLS already allows own-row update by auth.uid()).
+// Phone column lands via migration 53; if the column isn't there yet
+// the UPDATE will throw, the modal stays open and the toast surfaces
+// the error.
+function openEditMe(){
+  if(!isParent())return;
+  const m=S.me||{};const p=S.profile||{};
+  S.editMe={
+    fullName:String(m.name||p.full_name||''),
+    phone:String(p.phone||m.phone||'')
+  };
+  render();
+  setTimeout(()=>{const el=document.getElementById('em-fullname');if(el)el.focus();},20);
+}
+function closeEditMe(){S.editMe=null;render();}
+async function saveEditMe(){
+  if(!S.editMe)return;
+  const fullEl=document.getElementById('em-fullname');
+  const phoneEl=document.getElementById('em-phone');
+  const fullName=String(fullEl?fullEl.value:'').trim();
+  const phone=String(phoneEl?phoneEl.value:'').trim();
+  if(!fullName)return showSaveToast2('Name is required.','error');
+  if(phone&&!/^[\d+\-()\s]{6,}$/.test(phone))return showSaveToast2('Phone format looks off.','error');
+  const uid=S.profile&&S.profile.id;
+  if(!uid){closeEditMe();return;}
+  // Optimistic local merge.
+  if(S.me)S.me.name=fullName;
+  if(S.profile){S.profile.full_name=fullName;S.profile.phone=phone||null;}
+  S.editMe=null;render();
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const r=await cli.from('users').update({full_name:fullName,phone:phone||null}).eq('id',uid);
+  if(r&&r.error){
+    console.warn('[mybjj] update self users.full_name/phone:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    return;
+  }
+  showSaveToast2('Profile updated');
+}
+function rEditMeModal(){
+  if(!S.editMe)return '';
+  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  return `<div class="cov" onclick="closeEditMe()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px">
+<button onclick="closeEditMe()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;padding-right:40px">Edit profile</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.4">Update your contact details. Photo and email change live elsewhere.</div>
+<div class="ef" style="margin-bottom:0">
+<div class="erow"><div class="elbl">Full name</div><input class="einput" id="em-fullname" maxlength="120" value="${esc(S.editMe.fullName)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="em-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(S.editMe.phone)}"/></div>
+</div>
+<div style="display:flex;gap:10px;margin-top:16px">
+<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeEditMe()">Cancel</button>
+<button class="bblue" style="flex:1;padding:12px" onclick="saveEditMe()">Save</button>
+</div>
+</div></div>`;
+}
 // G14.2 — Add-a-child contact modal. Parents cannot self-register kids
 // in V1; the academy enrols them. The modal resolves the unit from the
 // parent's active kid (parentSelectedChild → kid.unit → UNITS row) and
@@ -4012,7 +4089,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -7112,6 +7189,20 @@ function _captureEditStuTab(){
   });
 }
 function setEditStuTab(t){_captureEditStuTab();S.editStuTab=t;render();}
+// B-edit — "Same as guardian" toggle on the Guardian tab. When ON,
+// copies guardian name/phone into emergency inputs so the parent
+// doesn't have to retype. Off leaves whatever's there.
+function _sameAsGuardian(btn){
+  btn.classList.toggle('on');
+  if(btn.classList.contains('on')){
+    const pname=document.getElementById('es-pname');
+    const pphone=document.getElementById('es-pphone');
+    const ecn=document.getElementById('es-ecname');
+    const ecp=document.getElementById('es-ecphone');
+    if(ecn&&pname)ecn.value=pname.value;
+    if(ecp&&pphone)ecp.value=pphone.value;
+  }
+}
 
 function rEditStu(){
   const sid=S.editStuFor||S.viewStu;
@@ -7151,16 +7242,23 @@ function rEditStu(){
   const photoBlock=isSelf
     ?`<div onclick="triggerPhotoUpload('${s.id}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
     :`${avStu(s,72)}`;
-  // G17.1.2 — tab id 'personal' renamed to 'basic'. DOM input IDs are
-  // unchanged so _captureEditStuTab and saveEditStu still resolve them
-  // regardless of which tab they're rendered under (e.g. es-phone
-  // moved from Basic to Contact in the same change).
-  const tab=['basic','training','contact','parent'].indexOf(S.editStuTab)>=0?S.editStuTab:'basic';
+  // B-edit — tab set diverges by subject prog:
+  //   kids  → Basic / Training / Guardian (Guardian merges parent +
+  //           emergency fields; no Social, no kid email/phone).
+  //   adult → Basic / Training / Contact (Contact carries email +
+  //           phone + emergency + Social; unchanged from G17.1.2).
+  const tabKeysKids=['basic','training','guardian'];
+  const tabKeysAdult=['basic','training','contact'];
+  const tabKeys=isKids?tabKeysKids:tabKeysAdult;
+  // Backward-compat: legacy 'contact' / 'parent' values map to the
+  // current default ('guardian' for kids, 'contact' for adults).
+  let tab=S.editStuTab||'basic';
+  if(tabKeys.indexOf(tab)<0)tab='basic';
+  const tabBtn=(key,label)=>'<button class="stab '+(tab===key?'active':'')+'" onclick="setEditStuTab(\''+key+'\')">'+label+'</button>';
   const tabsHtml='<div class="stabs" style="margin-bottom:12px">'
-    +'<button class="stab '+(tab==='basic'?'active':'')+'" onclick="setEditStuTab(\'basic\')">Basic</button>'
-    +'<button class="stab '+(tab==='training'?'active':'')+'" onclick="setEditStuTab(\'training\')">Training</button>'
-    +'<button class="stab '+(tab==='contact'?'active':'')+'" onclick="setEditStuTab(\'contact\')">Contact</button>'
-    +(isKids?'<button class="stab '+(tab==='parent'?'active':'')+'" onclick="setEditStuTab(\'parent\')">Parent</button>':'')
+    +tabBtn('basic','Basic')
+    +tabBtn('training','Training')
+    +(isKids?tabBtn('guardian','Guardian'):tabBtn('contact','Contact'))
     +'</div>';
   // -------- Basic -------- (was "Personal" pre-G17.1.2)
   // Phone moved out of Basic into Contact (phone is a contact channel,
@@ -7184,25 +7282,40 @@ function rEditStu(){
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
 <div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="toggle ${hasMybjjGi?'on':''}" id="es-hasmybjjgi" onclick="this.classList.toggle('on')"></button></div>
 </div>`;
-  // -------- Contact --------
-  // G16a.1 — email row now stacks: value on its own line (ellipsis on
-  // overflow), Change email link below at smaller size. Old layout
-  // crammed input + link on a single row and clipped at 390px width.
-  const emailRow=isKids
-    ?'<div class="erow"><div class="elbl">Email</div><div class="einput" style="display:flex;align-items:center;color:var(--text3);background:var(--input-bg);font-size:12px">Login is via parent email.</div></div>'
-    :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:#1A5DAD;font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
-  const contactTab=`<div class="ef" style="margin-top:8px">${emailRow}
+  // -------- Contact (adult only) --------
+  // G16a.1 — email row stacks: value on its own line (ellipsis on
+  // overflow), Change email link below at smaller size.
+  const emailRowAdult='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:#1A5DAD;font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
+  const contactTab=`<div class="ef" style="margin-top:8px">${emailRowAdult}
 <div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" placeholder="+61 4xx xxx xxx" value="${esc(phone)}"/></div>
 <div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
 <div class="erow"><div class="elbl">Emergency phone</div><input class="einput" id="es-ecphone" type="tel" placeholder="Optional" value="${esc(ecPhone)}"/></div>
 </div>
 <div class="slbl" style="margin-top:14px">Social</div>
 <div class="ef">${socialInputs}</div>`;
-  // -------- Parent (kids only) --------
-  const parentTab=isKids
-    ?`<div class="slbl" style="margin-top:8px">Parent 1 / Guardian</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" placeholder="Required" value="${esc(parentPhone)}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" placeholder="Required — gates login" value="${esc(parentEmail)}"/></div></div><div class="slbl" style="margin-top:8px">Parent 2 (secondary)</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Optional. If you fill in their email they'll also be able to log in and see this child.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="es-p2name" placeholder="Optional" value="${esc(parent2Name)}"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-p2phone" type="tel" placeholder="Optional" value="${esc(parent2Phone)}"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" id="es-p2email" type="email" placeholder="Optional" value="${esc(parent2Email)}"/></div></div>`
-    :'<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">Parent fields apply to kid profiles only.</div>';
-  const body=tab==='training'?trainingTab:tab==='contact'?contactTab:tab==='parent'?parentTab:basicTab;
+  // -------- Guardian (kids only) --------
+  // B-edit — merges the old Contact + Parent tabs into one tab for
+  // kids. Drops the kid's own email + own phone (login flows through
+  // guardian email; kid's solo phone isn't useful in V1). Guardian
+  // email is read-only because it's the login gate; admin still
+  // changes it via the openChangeEmail flow.
+  const guardianTab=`<div class="slbl" style="margin-top:8px">Guardian</div><div class="ef">
+<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" placeholder="Required" value="${esc(parentPhone)}"/></div>
+<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(parentEmail||'—')}</div><div style="color:var(--text3);font-size:11px">Login email — change via admin</div></div></div>
+</div>
+<div class="slbl" style="margin-top:14px">Emergency contact</div>
+<div class="ef">
+<div class="erow"><div class="elbl">Same as guardian</div><button class="toggle" id="es-emsame" onclick="_sameAsGuardian(this)"></button></div>
+<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-ecphone" type="tel" placeholder="Optional" value="${esc(ecPhone)}"/></div>
+</div>`;
+  let body;
+  if(isKids){
+    body=tab==='training'?trainingTab:tab==='guardian'?guardianTab:basicTab;
+  }else{
+    body=tab==='training'?trainingTab:tab==='contact'?contactTab:basicTab;
+  }
   // G17.1.2 — single save action. Header drops the duplicate top-right
   // Save (was redundant with the footer button). Footer "Save changes"
   // becomes position:sticky inside .sbody so it stays in view as the
