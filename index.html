@@ -505,24 +505,78 @@ const PROMO_CRITERIA={
     {belt:'brown', marker:'3rd_stripe',label:'3rd stripe', classes:60,months:4},
     {belt:'brown', marker:'4th_stripe',label:'4th stripe', classes:60,months:4},
     {belt:'brown', marker:'promotion', label:'Black belt', classes:40,months:4}
+  ],
+  // B3b-1 — Kids criteria transcribed verbatim from
+  // documentation/07-promotion-criteria.md "Completo (dados do John)"
+  // table (John Luhr, 18 May 2026). Belt keys match students.belt
+  // lowercase (compound belts use the slash form). Only the eight
+  // complete belts are listed here — orange / orange/black /
+  // green/white / green / green/black stay omitted on purpose so
+  // those kids continue to surface the "Promotion criteria pending"
+  // state until John + Mario sign off the remaining numbers.
+  kids:[
+    {belt:'white',        marker:'1st_stripe',label:'1st stripe',         classes:6, months:1},
+    {belt:'white',        marker:'2nd_stripe',label:'2nd stripe',         classes:8, months:2},
+    {belt:'white',        marker:'3rd_stripe',label:'3rd stripe',         classes:10,months:2},
+    {belt:'white',        marker:'4th_stripe',label:'4th stripe',         classes:10,months:2},
+    {belt:'white',        marker:'promotion', label:'Grey/White belt',    classes:10,months:2},
+    {belt:'grey/white',   marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'grey/white',   marker:'2nd_stripe',label:'2nd stripe',         classes:12,months:1},
+    {belt:'grey/white',   marker:'3rd_stripe',label:'3rd stripe',         classes:12,months:2},
+    {belt:'grey/white',   marker:'4th_stripe',label:'4th stripe',         classes:12,months:2},
+    {belt:'grey/white',   marker:'promotion', label:'Grey belt',          classes:12,months:2},
+    {belt:'grey',         marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'grey',         marker:'2nd_stripe',label:'2nd stripe',         classes:24,months:1},
+    {belt:'grey',         marker:'3rd_stripe',label:'3rd stripe',         classes:24,months:2},
+    {belt:'grey',         marker:'4th_stripe',label:'4th stripe',         classes:24,months:2},
+    {belt:'grey',         marker:'promotion', label:'Grey/Black belt',    classes:20,months:2},
+    {belt:'grey/black',   marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'grey/black',   marker:'2nd_stripe',label:'2nd stripe',         classes:24,months:1},
+    {belt:'grey/black',   marker:'3rd_stripe',label:'3rd stripe',         classes:24,months:2},
+    {belt:'grey/black',   marker:'4th_stripe',label:'4th stripe',         classes:24,months:2},
+    {belt:'grey/black',   marker:'promotion', label:'Yellow/White belt',  classes:20,months:2},
+    {belt:'yellow/white', marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'yellow/white', marker:'2nd_stripe',label:'2nd stripe',         classes:24,months:1},
+    {belt:'yellow/white', marker:'3rd_stripe',label:'3rd stripe',         classes:24,months:2},
+    {belt:'yellow/white', marker:'4th_stripe',label:'4th stripe',         classes:24,months:2},
+    {belt:'yellow/white', marker:'promotion', label:'Yellow belt',        classes:20,months:2},
+    {belt:'yellow',       marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'yellow',       marker:'2nd_stripe',label:'2nd stripe',         classes:24,months:1},
+    {belt:'yellow',       marker:'3rd_stripe',label:'3rd stripe',         classes:24,months:2},
+    {belt:'yellow',       marker:'4th_stripe',label:'4th stripe',         classes:24,months:2},
+    {belt:'yellow',       marker:'promotion', label:'Yellow/Black belt',  classes:20,months:2},
+    {belt:'yellow/black', marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'yellow/black', marker:'2nd_stripe',label:'2nd stripe',         classes:24,months:1},
+    {belt:'yellow/black', marker:'3rd_stripe',label:'3rd stripe',         classes:24,months:2},
+    {belt:'yellow/black', marker:'4th_stripe',label:'4th stripe',         classes:24,months:2},
+    {belt:'yellow/black', marker:'promotion', label:'Orange/White belt',  classes:20,months:2},
+    {belt:'orange/white', marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'orange/white', marker:'2nd_stripe',label:'2nd stripe',         classes:26,months:1},
+    {belt:'orange/white', marker:'3rd_stripe',label:'3rd stripe',         classes:26,months:2},
+    {belt:'orange/white', marker:'4th_stripe',label:'4th stripe',         classes:26,months:2},
+    {belt:'orange/white', marker:'promotion', label:'Orange belt',        classes:20,months:2}
   ]
 };
 // getNextMarker — looks up the row in PROMO_CRITERIA the student is
 // working toward. Returns null for black belt (no further markers)
-// and for kids (Phase 2). Reads student.deg (in-memory degree slot;
-// hydrate maps students.degree → deg).
+// and for kid belts that don't yet have published criteria (orange,
+// orange/black, green/white, green, green/black). Reads student.deg
+// (in-memory degree slot; hydrate maps students.degree → deg).
+// B3b-1 — prog-aware path selection. Adults path unchanged; kids
+// belts (including compound IBJJF slash keys like 'grey/white') now
+// resolve against PROMO_CRITERIA.kids transcribed from John's table.
 function getNextMarker(student){
   if(!student)return null;
-  if(student.prog!=='adult')return null;
   if(student.belt==='black')return null;
-  const path=PROMO_CRITERIA.adults;
-  const belt=student.belt;
+  const path=student.prog==='kids'?PROMO_CRITERIA.kids:PROMO_CRITERIA.adults;
+  if(!path)return null;
+  const belt=String(student.belt||'').toLowerCase();
   const degree=student.deg||0;
   if(degree<4){
     const markerKey=['1st_stripe','2nd_stripe','3rd_stripe','4th_stripe'][degree];
-    return path.find(p=>p.belt===belt&&p.marker===markerKey);
+    return path.find(p=>p.belt===belt&&p.marker===markerKey)||null;
   }
-  return path.find(p=>p.belt===belt&&p.marker==='promotion');
+  return path.find(p=>p.belt===belt&&p.marker==='promotion')||null;
 }
 function monthsBetween(from,to){
   const f=new Date(from);const t=new Date(to);
@@ -540,14 +594,19 @@ function getLastMarkerDate(student){
 }
 function getEligibilityStatus(student){
   if(!student)return null;
-  if(student.prog==='kids'){
-    // TODO Phase 2 — kids belts use compound stripe+grade encoding;
-    // wire up real criteria when that schema lands.
-    return {status:'pending',message:'Promotion criteria pending — ask Professor'};
-  }
   if(student.belt==='black')return null;
+  // B3b-1 — kids no longer short-circuit to pending. getNextMarker
+  // returns a row for any kid belt with published criteria; the
+  // pending state is reserved for the kid belts John hasn't sent
+  // numbers for yet (orange, orange/black, green/white, green,
+  // green/black).
   const next=getNextMarker(student);
-  if(!next)return null;
+  if(!next){
+    if(student.prog==='kids'){
+      return {status:'pending',message:'Promotion criteria pending — ask Professor'};
+    }
+    return null;
+  }
   const lastDate=getLastMarkerDate(student);
   const classesDone=student.grade||0;
   const monthsDone=monthsBetween(lastDate,new Date());
