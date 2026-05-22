@@ -3747,7 +3747,24 @@ function rProgress(){
   // Progress tab. rStuAttList itself is read-only by construction \u2014
   // no mark / add / delete affordances ever exposed.
   var attendanceCard=_stuAttSummaryCard(stu,isParent()?{fromParent:true}:{fromSelf:true});
-  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:#1A5DAD">${formatStat(s.grade)}</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>${attendanceCard}`;
+  // Batch 7a \u2014 Current Rank box decluttered:
+  //   - belt graduation band stays
+  //   - "<Belt> belt \u00b7 N stripe(s)" / "Black belt \u00b7 N degree(s)" label
+  //   - ONE big number: "X total classes" (lifetime)
+  //   - "Since last promotion" big-number block removed (redundant \u2014
+  //      the Next-belt card below carries that signal via % / "N more
+  //      classes" / Gi-NoGi split)
+  // The duplicated "All classes count toward promotion" subtitle on
+  // the Next-belt card is gone too; the .gnote footer at the bottom
+  // remains as the single home for that copy.
+  const _beltMap=s.prog==='kids'?BK:BA;
+  const _beltMeta=_beltMap[s.belt]||BA.white;
+  const _beltDeg=s.deg||0;
+  const _beltUnit=s.belt==='black'
+    ?(_beltDeg===1?'degree':'degrees')
+    :(_beltDeg===1?'stripe':'stripes');
+  const _beltLine=_beltMeta.label+' belt'+(_beltDeg>0?' \u00b7 '+_beltDeg+' '+_beltUnit:'');
+  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="margin-top:6px;font-size:13px;color:var(--text2);font-weight:600">${_beltLine}</div><div style="margin-top:18px"><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div></div><div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>${attendanceCard}`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
 
@@ -5923,6 +5940,11 @@ async function refreshAppState(){
       }
     }catch(e){ok=false;console.warn('[mybjj] refresh profile',e);}
     try{
+      // Batch 7a — clear the kids-aggregate cache before re-hydrating so
+      // the parent Members view re-fetches kids_unit_summary on the next
+      // render (the count + belt distribution can shift any time the
+      // academy adds / removes / re-belts a kid).
+      S._kidsSummary=null;
       await hydrateData();
     }catch(e){ok=false;console.warn('[mybjj] refresh hydrate',e);}
     if(canEditClassCounts()){
