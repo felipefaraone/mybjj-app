@@ -4270,7 +4270,15 @@ function avStaff(s,size){
 function isParent(){return !!(S.me&&S.me.role==='parent');}
 function parentChildren(){
   if(!isParent()||!S.profile||!S.profile.id) return [];
-  return STUDENTS.filter(s=>s._parentUserId===S.profile.id);
+  // G14.2 Step 3 follow-up — hide inactive kids from every parent
+  // surface. STUDENTS rows carry _active (mapped from students.active
+  // at hydrate, ~line 5089); inactive kids should not appear in the
+  // switcher, should not count toward the 2+ gating, and must not be
+  // selectable as the active kid. parentSelectedChild's empty-array
+  // path returns null, which every parent renderer (rParentChildView,
+  // rParentMembers, rParentKidSwitcher) already handles with a safe
+  // empty state, and myStudentRow → doCI already null-guards.
+  return STUDENTS.filter(s=>s._parentUserId===S.profile.id&&s._active!==false);
 }
 function parentSelectedChild(){
   const kids=parentChildren();
