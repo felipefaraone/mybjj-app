@@ -1113,6 +1113,22 @@ function bb(belt,deg,prog){
   return `<div style="display:inline-flex;flex-direction:column;gap:2px">${beltSVG(belt,deg,prog,110)}<div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:center">${b.label}${countLabel}</div></div>`;
 }
 function ct(id){const t=CT.find(x=>x.id===id)||CT[0];const giTag=t.gi?'<span class="ctag tgi">GI</span>':'<span class="ctag tnogi-badge">NO-GI</span>';return t.id==='nogi'?giTag:`${giTag}<span class="ctag ${t.tc}">${t.lbl}</span>`;}
+// Class times are stored as 24h "HH:MM" on the DB; display uses
+// 12h am/pm in Australian lowercase style ("7:30am", "6:00pm"). Pass
+// through anything that doesn't match the HH:MM shape so callers can
+// stay defensive against missing/empty times.
+function fmtT12(t){
+  if(t==null)return '';
+  const s=String(t);
+  const m=s.match(/^(\d{1,2}):(\d{2})/);
+  if(!m)return s;
+  let h=parseInt(m[1],10);
+  const mm=m[2];
+  if(isNaN(h))return s;
+  const ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  return h+':'+mm+ap;
+}
 function pb(v,mx,c){const p=Math.min(Math.round(v/mx*100),100);return `<div class="pt"><div class="pf" style="width:${p}%;background:${c}"></div></div>`;}
 const BELT_COLORS={white:'#e5e7eb',blue:'#1A5DAD',purple:'#7e22ce',brown:'#7c2d12',black:'#111827',grey:'#9ca3af',yellow:'#ca8a04',orange:'#ea580c',green:'#15803d'};
 const BELT_ORDER_A=['white','blue','purple','brown','black'];
@@ -1134,11 +1150,30 @@ function rVC(url,title){
   if(!url)return '';
   return inlineLinkHtml(url,title||'Open link');
 }
+// Single stack-avatar tile. Reuses the .aav circle (26px, --card
+// border for stack separation) and embeds either the student photo
+// or their belt-color initials. Self viewer keeps the brand-blue
+// highlight so the user can spot themselves in the stack.
+function _stkAv(s,isMe){
+  const m=(s.prog==='kids')?BK:BA;
+  const b=m[s.belt]||BA.white;
+  const bg=isMe?'var(--blue)':b.bg;
+  const fg=isMe?'#fff':b.fg;
+  if(s.photoUrl){
+    return `<div class="aav" style="background:${bg};overflow:hidden;padding:0"><img src="${photoSrc(s.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display='none'"/></div>`;
+  }
+  return `<div class="aav" style="background:${bg};color:${fg}">${s.initials||'?'}</div>`;
+}
 function rAtts(all,cid){
-  if(!all.length)return '';const exp=!!S.expanded[cid];const P=3;const rest=all.length-P;
+  if(!all.length)return '';
+  const exp=!!S.expanded[cid];
+  // Cap visible avatars at 6; overflow becomes "+N" chip in the stack
+  // so the row stays a fixed width whether 1 or 50 going.
+  const P=6;
+  const rest=all.length-P;
   const ms=sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return null;const m=s.prog==='kids'?BK:BA;const b=m[s.belt]||BA.white;return{s,b,me:sid===S.me.id};};
-  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="achip" onclick="viewStu('${sid}','class')" style="cursor:pointer;background:${r.me?'#1A5DAD':r.b.bg}20;border:1px solid ${r.me?'#1A5DAD':r.b.bg}40"><div class="acav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'#1A5DAD':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
-  return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="aav" style="background:${r.me?'#1A5DAD':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div>`;}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">${all.length>P?'See all':'Show all'}</span></div></div>`;
+  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';return `<div class="achip" onclick="viewStu('${sid}','class')" style="cursor:pointer;background:${r.me?'var(--blue-tint)':r.b.bg+'20'};border:1px solid ${r.me?'var(--blue-mid)':r.b.bg+'40'}"><div class="acav" style="background:${r.me?'var(--blue)':r.b.bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div><span style="color:${r.me?'var(--blue)':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
+  return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return _stkAv(r.s,r.me);}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">Show all</span></div></div>`;
 }
 
 // Staff variant of rAtts — shown when an admin / owner / instructor
@@ -1158,24 +1193,34 @@ function rAttsStaff(rows,cid){
   const cf=visible.filter(r=>r.status==='present').length;
   const going=visible.filter(r=>r.status!=='absent').length;
   const locked=isClassLocked(cid);
-  // Cosmetic — instructor action row promoted from cramped text links to
-  // a real primary + secondary button pair. Primary (Confirm attendance
-  // / Show less) uses brand fill; secondary (+ Add student) uses
-  // tinted outline. "N/M confirmed" sits below as a muted caption so
-  // the action row reads cleanly without competing for emphasis.
+  // Action row: brand-fill primary (Confirm attendance / Show less) +
+  // tinted-outline secondary (+ Add student). "X of N confirmed" sits
+  // below as a muted caption — the only place the confirmed count
+  // appears (top of card carries the going pill, not confirmed).
   const primaryLbl=exp?'Show less':'Confirm attendance';
   const primaryBtn=`<button onclick="toggleExp('${cid}')" style="flex:1;background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">${primaryLbl}</button>`;
   const secondaryBtn=!locked
     ?`<button onclick="openClassAddStudent('${cid}')" style="flex-shrink:0;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:9px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">+ Add student</button>`
     :'';
-  const caption=`<div style="margin-top:8px;font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf}/${going} confirmed</div>`;
+  const caption=`<div style="margin-top:8px;font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf} of ${going} confirmed</div>`;
   const actionRow=`<div style="display:flex;align-items:center;gap:8px">${primaryBtn}${secondaryBtn}</div>${caption}`;
+  // Avatar stack body: shows the going attendees as overlapping circles
+  // with belt-color initials (or photo when present), capped at 6 with
+  // "+N" overflow. "Show all" toggles the per-student management list.
+  // Only rendered when there's at least one going row so the empty
+  // state below stays clean.
+  const goingRows=visible.filter(r=>r.status!=='absent');
+  const P=6;
+  const restG=goingRows.length-P;
+  const stackHtml=goingRows.length
+    ?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div class="ast">${goingRows.slice(0,P).map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId);return s?_stkAv(s,false):'';}).join('')}${restG>0?`<div class="amor">+${restG}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${goingRows.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">${exp?'Show less':'Show all'}</span></div>`
+    :'';
   if(!visible.length){
-    // Body empty state when no check-ins yet. Action row still
-    // available so the instructor can add a student manually.
+    // Empty state when no check-ins. Action row still available so the
+    // instructor can add a student manually.
     return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="text-align:center;padding:10px 0 14px;font-size:13px;color:var(--text3)">No check-ins yet</div>${actionRow}</div>`;
   }
-  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${actionRow}</div>`;
+  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${stackHtml}${actionRow}</div>`;
   const btnFor=(r,s)=>{
     if(locked){
       const lbl=r.status==='present'?'Present':r.status==='absent'?'Absent':'Going';
@@ -1209,7 +1254,7 @@ function rAttsStaff(rows,cid){
     const border=isZero?'var(--border)':(v>1?'var(--blue-mid)':'var(--amber-border)');
     return '<span title="class_value = '+v.toFixed(2)+'" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:'+accent+';background:'+bg+';border:1px solid '+border+';padding:1px 6px;border-radius:4px;margin-left:6px">'+lbl+'</span>';
   };
-  return `<div class="divider" style="margin-top:12px;padding-top:12px">${actionRow}<div style="height:10px"></div>${visible.map(r=>{
+  return `<div class="divider" style="margin-top:12px;padding-top:12px">${stackHtml}${actionRow}<div style="height:10px"></div>${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId);if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
     // G9.2 — strikethrough the student name when class_value === 0
@@ -2131,7 +2176,7 @@ function rStuAttList(){
         else if(r.status==='going')trail='Awaiting confirmation';
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
           +'<div style="flex:1;min-width:0">'
-            +'<div style="font-size:13px;color:var(--text);font-weight:500">'+r.class_date+' · '+r.class_time+modBadge(m)+'</div>'
+            +'<div style="font-size:13px;color:var(--text);font-weight:500">'+r.class_date+' · '+fmtT12(r.class_time)+modBadge(m)+'</div>'
             +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+trail+'</div>':'')
           +'</div>'
           +pill(r.status)
@@ -2784,7 +2829,7 @@ function rClass(){
     const endMin=startMin+(c.dur||60);
     const isEnded=isT&&_now!=null&&_now>endMin;
     let cc='card';let btn='';
-    if(isStaffViewer){btn=`<div style="font-size:11px;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700">${all.length} going</div>`;}
+    if(isStaffViewer){btn=`<div style="display:flex;justify-content:flex-end"><span style="display:inline-flex;align-items:center;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;padding:3px 10px;border-radius:999px">${all.length} going</span></div>`;}
     else if(isCf){cc='card stc';btn=`<button class="bconf"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Present</button>`;}
     else if(isIn){
       cc='card stp';
@@ -2825,7 +2870,7 @@ function rClass(){
     }
     else{btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
     const attBlock=isStaffViewer?rAttsStaff(rows,c.id):rAtts(all,c.id);
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${c.time}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div><div style="flex-shrink:0;padding-top:4px;min-width:96px">${btn}</div></div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
+    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div><div style="flex-shrink:0;min-width:96px">${btn}</div></div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
 
 
@@ -4160,7 +4205,7 @@ function rManage(){
   const header=`<div style="margin-bottom:12px"><div style="font-size:13px;color:var(--text2)">Editing the weekly timetable. Changes apply to all future weeks.</div></div>`;
   const renderCard=(c,dow)=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];
-    return `<div class="citem"><div class="cit">${c.time}</div><div class="cii"><div class="cin">${t.lbl}</div><div class="cim"><span>${c.ins.replace('Prof. ','')}</span><span>·</span><span>${c.dur}min</span><span>·</span><span class="ctag ${t.tc}" style="font-size:10px;padding:1px 5px">${c.aud}</span></div></div><div style="display:flex;gap:6px"><button class="bedit" onclick="openEditCls('${c.id}',${dow})">Edit</button><button class="bedit" style="color:var(--red-text);border-color:var(--red-border)" onclick="reqDel('${c.id}',${dow})">Delete</button></div></div>`;
+    return `<div class="citem"><div class="cit">${fmtT12(c.time)}</div><div class="cii"><div class="cin">${t.lbl}</div><div class="cim"><span>${c.ins.replace('Prof. ','')}</span><span>·</span><span>${c.dur}min</span><span>·</span><span class="ctag ${t.tc}" style="font-size:10px;padding:1px 5px">${c.aud}</span></div></div><div style="display:flex;gap:6px"><button class="bedit" onclick="openEditCls('${c.id}',${dow})">Edit</button><button class="bedit" style="color:var(--red-text);border-color:var(--red-border)" onclick="reqDel('${c.id}',${dow})">Delete</button></div></div>`;
   };
   const dayBlocks=[1,2,3,4,5,6,0].map(dow=>{
     const cls=(TT[dow]||[]).slice().sort((a,b)=>a.time.localeCompare(b.time));
@@ -6780,7 +6825,7 @@ function rMarkPSheet(){
   if(!s||!c)return '';
   const d=new Date(c.date+'T00:00:00');
   const dayLbl=DL[d.getDay()];
-  const headerLbl='Mark '+s.name.split(' ')[0]+' — '+dayLbl+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' · '+c.time;
+  const headerLbl='Mark '+s.name.split(' ')[0]+' — '+dayLbl+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' · '+fmtT12(c.time);
   const rows=CLASS_VALUE_TIERS.map(tier=>{
     const isDefault=!!tier.isDefault;
     const accent=isDefault?'#1A5DAD':'var(--text2)';
@@ -6871,7 +6916,7 @@ function rClassAddStudentModal(){
   return `<div class="cov" onclick="closeClassAddStudent()" style="align-items:center;justify-content:center;z-index:280;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:460px;width:100%;margin:0 auto;padding:18px;max-height:calc(100vh - 32px);overflow:hidden;display:flex;flex-direction:column">
 <button onclick="closeClassAddStudent()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px;padding-right:40px">Add student to class</div>
-<div style="font-size:12px;color:var(--text2);margin-bottom:12px">${ctLabel} · ${c.date} · ${c.time}</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:12px">${ctLabel} · ${c.date} · ${fmtT12(c.time)}</div>
 <div style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 12px;margin-bottom:10px">
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
   <input id="cas-input" value="${(q||'').replace(/"/g,'&quot;')}" oninput="setClassAddQ(this.value)" placeholder="Search by name…" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)" autocomplete="off"/>
