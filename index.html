@@ -1101,16 +1101,20 @@ function beltSVG(belt,deg,prog,width){
     <line x1="${sw-tipW}" y1="0" x2="${sw-tipW}" y2="${sh}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
   </svg>`;
 }
-function bb(belt,deg,prog){
+function bb(belt,deg,prog,align){
   deg=deg||0;const m=prog==='kids'?BK:BA;const b=m[belt]||BA.white;
   // G17.2c.1 — IBJJF terminology: "stripe(s)" for colored belts,
   // "degree(s)" for black belts. Singular when count===1. Container
   // already uppercases via CSS text-transform.
+  // Batch 4 — optional align ('left' | 'center'). Default centred; list-row
+  // cards pass 'left' so the caption sits flush with the band's left edge
+  // (centred caption read as noise next to the asymmetric SVG markings).
   const unit=belt==='black'
     ?(deg===1?'degree':'degrees')
     :(deg===1?'stripe':'stripes');
   const countLabel=deg>0?' · '+deg+' '+unit:'';
-  return `<div style="display:inline-flex;flex-direction:column;gap:2px">${beltSVG(belt,deg,prog,110)}<div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:center">${b.label}${countLabel}</div></div>`;
+  const ta=align==='left'?'left':'center';
+  return `<div style="display:inline-flex;flex-direction:column;gap:2px">${beltSVG(belt,deg,prog,110)}<div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:${ta}">${b.label}${countLabel}</div></div>`;
 }
 function ct(id){const t=CT.find(x=>x.id===id)||CT[0];const giTag=t.gi?'<span class="ctag tgi">GI</span>':'<span class="ctag tnogi-badge">NO-GI</span>';return t.id==='nogi'?giTag:`${giTag}<span class="ctag ${t.tc}">${t.lbl}</span>`;}
 // Class times are stored as 24h "HH:MM" on the DB; display uses
@@ -3434,8 +3438,14 @@ function rMembers(){
     if(a._kind!==b._kind)return a._kind==='instructor'?-1:1;
     return (a.name||'').localeCompare(b.name||'');
   });
+  // Batch 4 — Kids always renders so the toggle reads as a real two-way
+  // control. Non-admin viewers (students) see Kids in a disabled state
+  // (muted text, not-allowed cursor, no onclick) — the segment makes
+  // sense without granting kid access.
   const segAdultBtn='<div class="rseg '+(segment==='adult'?'active':'')+'" onclick="setMembersSegment(\'adult\')">Adults</div>';
-  const segKidsBtn=canSeeKids?'<div class="rseg '+(segment==='kids'?'active':'')+'" onclick="setMembersSegment(\'kids\')">Kids</div>':'';
+  const segKidsBtn=canSeeKids
+    ?'<div class="rseg '+(segment==='kids'?'active':'')+'" onclick="setMembersSegment(\'kids\')">Kids</div>'
+    :'<div class="rseg" aria-disabled="true" style="cursor:not-allowed;color:var(--text3);background:var(--bg);border-color:var(--border);opacity:.6">Kids</div>';
   const segHtml='<div class="rsw">'+segAdultBtn+segKidsBtn+'</div>';
   const chipBase='border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
   const beltChip=(value,label)=>{
@@ -3478,7 +3488,7 @@ function rMembers(){
       +'<div style="flex:1;min-width:0">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+displayName+'</div>'
       +'</div>'
-      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog)+'</div>'
+      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog,'left')+'</div>'
       +'</div>';
   }).join('');
   return '<div style="height:16px"></div>'+headline+segHtml+typeChips+beltChips+searchHtml+rows;
@@ -3549,7 +3559,7 @@ function rParentMembers(){
         +'<div style="flex:1;min-width:0">'
         +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
         +'</div>'
-        +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult')+'</div>'
+        +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult','left')+'</div>'
         +'</div>';
     }
     // Kid peer row — privacy-first (first name only).
@@ -3559,7 +3569,7 @@ function rParentMembers(){
       +'<div style="flex:1;min-width:0">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+first+'</div>'
       +'</div>'
-      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,m.prog)+'</div>'
+      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,m.prog,'left')+'</div>'
       +'</div>';
   }).join('');
   return '<div style="height:16px"></div>'+headline+typeChips+beltChips+rows;
@@ -4086,7 +4096,7 @@ function rARosterListInner(){
       +'<div style="display:flex;align-items:center;gap:10px">'+avStu(s,34)
       +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+(isElig?'<span title="Eligible for promotion" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-text)"></span>':'')+s.name+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div></div></div>'
-      +bb(s.belt,s.deg||0,s.prog)+'</div>'
+      +bb(s.belt,s.deg||0,s.prog,'left')+'</div>'
       +totalLine
       +breakdownLine
       +eligHint
