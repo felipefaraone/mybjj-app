@@ -697,23 +697,12 @@ const GICO=`<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4"
 const CHV=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><polyline points="9 18 15 12 9 6"/></svg>`;
 const BACK=`<button class="sback" onclick="closeSub()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;
 
-let UNITS=[
-  {id:'nb',  name:'Neutral Bay',      country:'AU',city:'Sydney',   active:true, address:'120 Military Rd, Neutral Bay NSW'},
-  {id:'hq',  name:'Camperdown HQ',    country:'AU',city:'Sydney',   active:true, address:'119-125 Parramatta Rd, Camperdown NSW'},
-  {id:'lid', name:'Lidcombe',         country:'AU',city:'Sydney',   active:true, address:'19/21 East St, Lidcombe NSW'},
-  {id:'7h',  name:'Seven Hills',      country:'AU',city:'Sydney',   active:true, address:'36 Abbott Rd, Seven Hills NSW'},
-  {id:'mud', name:'Mudgee',           country:'AU',city:'Mudgee',   active:true, address:'64 Sydney Rd, Mudgee NSW'},
-  {id:'cc',  name:'Central Coast',    country:'AU',city:'Woy Woy',  active:true, address:'27 Bowden Rd, Woy Woy NSW'},
-  {id:'mel', name:'Melbourne',        country:'AU',city:'Melbourne',active:false,address:'Coming soon'},
-  {id:'nls', name:'Nelson',           country:'NZ',city:'Nelson',   active:true, address:'76 Vanguard St, Nelson NZ'},
-  {id:'wgr', name:'Whangarei',        country:'NZ',city:'Whangarei',active:true, address:'273 Port Rd, Whangarei NZ'},
-  {id:'jpn', name:'Japan HQ',         country:'JP',city:'Aichi',    active:true, address:'Toyoake Danchi, Aichi'},
-  {id:'ngo', name:'Nagoya',           country:'JP',city:'Nagoya',   active:true, address:'Motoshio Community Centre, Nagoya'},
-  {id:'okz', name:'Okazaki',          country:'JP',city:'Okazaki',  active:true, address:'Idashin-machi 9-1, Okazaki'},
-  {id:'kor', name:'Busan (Sajik)',     country:'KR',city:'Busan',    active:true, address:'Sajikbuk-ro, Dongnae-gu, Busan'},
-  {id:'kor2',name:'Busan (Myeongji)', country:'KR',city:'Busan',    active:true, address:'Myeongjigukje 2-ro, Gangseo-gu, Busan'},
-  {id:'usa', name:'USA',              country:'US',city:'TBD',      active:false,address:'Coming soon'},
-];
+// MOCK-FIX — UNITS is hydrated from public.units (see hydrateData).
+// Empty on boot; if hydrate returns no rows or errors, UNITS stays
+// empty and unit-aware surfaces handle the empty case (UNITS.find
+// returns undefined throughout — call sites already defensively
+// chain with ||{...} fallbacks).
+let UNITS=[];
 // Etapa 1 — schedule lives in public.classes now. Hydrate populates
 // CLASSES (raw rows for every unit) and rebuildTT() projects them
 // into the legacy-shape TT object keyed by day_of_week (0..6) for the
@@ -762,28 +751,11 @@ function rebuildTT(){
   for(const k of Object.keys(next))next[k].sort((a,b)=>a.time.localeCompare(b.time));
   TT=next;
 }
-let SCHED=[
-  {week:1,theme:'Closed Guard',color:'#1A5DAD',
-   programs:['Fundamentals','Mixed','Advanced','Kids'],
-   standUp:[{t:'Te-Waza (Arm Throws)',video:''},{t:'Koshi-Waza (Hip Throws)',video:'https://www.youtube.com/watch?v=dQw4w9WgXcQ'},{t:'Ashi-Waza (Leg Sweeps)',video:''},{t:'Sutemi-Waza (Sacrifice Throws)',video:''}],
-   ground:[{t:'Guard — Armbar',video:''},{t:'Guard — Triangle Choke',video:''},{t:'Guard — Guillotine',video:''},{t:'Hip Escape (Shrimp)',video:''}],
-   notes:'Revision week. Entry to throws from clinch. Ground focus: attack sequences from closed guard.',video:''},
-  {week:2,theme:'Guard Passing',color:'#7e22ce',
-   programs:['Fundamentals','Mixed','Advanced'],
-   standUp:[{t:'Uchi-Mata (Inner Thigh Throw)',video:''},{t:'O-Uchi-Gari (Major Inner Reap)',video:''},{t:'Ko-Uchi-Gari (Minor Inner Reap)',video:''}],
-   ground:[{t:'Torreando Pass',video:''},{t:'Knee Slice Pass',video:''},{t:'Stack Pass',video:''},{t:'Leg Weave',video:''}],
-   notes:'Maintain posture throughout. Drill each pass 10 reps each side. Beginners: torreando only.',video:''},
-  {week:3,theme:'Takedowns — Revision',color:'#b45309',
-   programs:['Fundamentals','Mixed','Advanced','Kids'],
-   standUp:[{t:'Single Leg Takedown',video:''},{t:'Double Leg Takedown',video:''},{t:'O-Goshi (Hip Throw)',video:''},{t:'De-Ashi-Barai (Foot Sweep)',video:''}],
-   ground:[{t:'Side Control — Maintaining Position',video:''},{t:'Side Control — Kimura',video:''},{t:'Mount — Americana',video:''},{t:'Mount — Armbar',video:''}],
-   notes:'Revision of all standing techniques this month. Ground: dominant positions and fundamental submissions.',video:''},
-  {week:4,theme:'Back Control',color:'#15803d',
-   programs:['Mixed','Advanced'],
-   standUp:[{t:'Back Take from Clinch',video:''},{t:'Suplex Entry',video:''}],
-   ground:[{t:'Taking the Back from Guard',video:''},{t:'Rear Naked Choke (RNC)',video:''},{t:'Body Lock — Back Control',video:''},{t:'Seat Belt Grip',video:'https://www.instagram.com/mybjj'}],
-   notes:'Back control is the highest value position in BJJ. Focus on RNC finish and body lock entries.',video:''},
-];
+// MOCK-FIX — SCHED is hydrated from public.programme_weeks (see
+// hydrateData). Empty on boot; if hydrate returns no rows or errors,
+// SCHED stays empty and the curriculum surfaces render the empty state
+// instead of mock weeks.
+let SCHED=[];
 
 const SOCIAL={
   website:'https://mybjj.com.au/',
@@ -944,13 +916,10 @@ function staffDisplayName(s,opts){
 // triggers the "No promotions yet" empty state in rPromoWall.
 let PROMOTION_LOG=[];
 
-let EVENTS=[
-  {id:'e1',title:'Grappling Industries',date:'22 Mar 2026',type:'competition',desc:'Brock, Jack and Diggaj competing. Come support the team!',link:'',competing:['jac','dan','dig'],supporting:['ff','lia'],units:['nb']},
-  {id:'e2',title:'Sydney Cup MMA Grappling',date:'28-29 Mar 2026',type:'competition',desc:'Open registration. Great comp for all levels.',link:'https://aus-grappling-federation.smoothcomp.com/en/event/28312',competing:['mar','dan'],supporting:['eri'],units:['nb']},
-  {id:'e3',title:'Pacheco vs myBJJ',date:'25 Apr 2026',type:'social',desc:'Porrada Club. Brazilian Cultural Centre, 142 Victoria Rd Marrickville. 2pm start.',link:'',competing:['ff','jam'],supporting:['adm','anna','lia'],units:['nb']},
-  {id:'e4',title:'NSWBJJF Autumn Cup',date:'24 May 2026',type:'competition',desc:'Season highlight. Register early via SmoothComp.',link:'https://smoothcomp.com/event/30587',competing:['dio','jac'],supporting:[],units:['nb']},
-  {id:'e5',title:'Subversion XX',date:'25 Jul 2026',type:'social',desc:'Annual team event. Details TBC.',link:'',competing:[],supporting:[],units:['nb']},
-];
+// MOCK-FIX — EVENTS is hydrated from public.events (see hydrateData).
+// Empty on boot; if hydrate returns no rows or errors, EVENTS stays
+// empty and the events feed renders the empty state.
+let EVENTS=[];
 // G1-B — NOTIFS hydrates from public.notifications via list_my_notifications.
 // Empty on boot; loadNotifications() populates after auth + hydrate. No
 // mock fallback — if the RPC errors, the inbox renders its empty state.
@@ -2798,18 +2767,19 @@ function rClass(){
 
 
 function rTechniquesLog(s){
-  // Techniques are logged from now onwards — no historical backfill
-  var now=new Date(2026,2,31);
-  var periods=[{label:'Mar 2026',key:'2-2026'}];
-  // Future months will be added as the app is used
-  
+  // MOCK-FIX — period derived from the real current month rather than
+  // a hard-coded Mar 2026. MS is the global month-name array. Future
+  // months will accumulate as historical curriculum is logged.
+  var now=new Date();
+  var periods=[{label:MS[now.getMonth()]+' '+now.getFullYear(),key:now.getMonth()+'-'+now.getFullYear()}];
+
   // Default to latest period
   var selPeriod=S._techPeriod||periods[periods.length-1].key;
   // Ensure selPeriod is valid
   if(!periods.find(function(p){return p.key===selPeriod;})) selPeriod=periods[periods.length-1].key;
 
   var allTechs=[];
-  SCHED.forEach(function(w){
+  (SCHED||[]).forEach(function(w){
     var group={theme:w.theme,color:w.color,week:w.week,techs:[]};
     (w.standUp||[]).forEach(function(t){
       var tv=typeof t==='object'?t:{t:t,video:''};
@@ -2821,6 +2791,15 @@ function rTechniquesLog(s){
     });
     allTechs.push(group);
   });
+
+  // MOCK-FIX — empty state when programme_weeks has no rows yet.
+  if(!allTechs.length){
+    return '<div class="card" style="text-align:center;padding:32px 20px">'
+      +'<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:6px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No curriculum yet</div>'
+      +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Your academy hasn’t published the weekly programme yet.</div>'
+      +'</div>';
+  }
 
   var html='<div class="card"><div class="slbl" style="margin-bottom:4px">Techniques log</div>';
   html+='<div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.5">Curriculum techniques by period. Tap any technique to find tutorials on YouTube.</div>';
@@ -3684,12 +3663,17 @@ function rPromoWall(){
 function rSchedule(){
   const isA=isStaffOrOwner();
   const showEv=S.sweek===0;const w=SCHED.find(x=>x.week===S.sweek);
+  // MOCK-FIX — hide the week tab row entirely when no curriculum is
+  // published yet; the empty-state card below explains the gap.
+  const weekTabs=SCHED.length
+    ?('<div class="stabs" style="margin-bottom:16px">'
+        +SCHED.map(x=>'<button class="stab '+(S.sweek===x.week&&!showEv?'active':'')+'" onclick="setSweek('+x.week+')">Wk '+x.week+'</button>').join('')
+      +'</div>')
+    :'';
   const tabsHtml='<div class="stabs" style="margin-bottom:6px">'
     +'<button class="stab '+(showEv?'active':'')+'" onclick="setSweek(0)">Events</button>'
     +'</div>'
-    +'<div class="stabs" style="margin-bottom:16px">'
-    +SCHED.map(x=>'<button class="stab '+(S.sweek===x.week&&!showEv?'active':'')+'" onclick="setSweek('+x.week+')">Wk '+x.week+'</button>').join('')
-    +'</div>';
+    +weekTabs;
 
   function techRow(tech,idx,cat){
     const tv=typeof tech==='object'?tech:{t:tech,video:''};
@@ -3701,6 +3685,15 @@ function rSchedule(){
 
   let bodyHtml='';
   if(showEv){bodyHtml=rEvents(isA);}
+  else if(!SCHED.length){
+    // MOCK-FIX — programme_weeks has no rows yet; render empty state
+    // instead of a blank body when the user lands on a stale week id.
+    bodyHtml='<div class="card" style="text-align:center;padding:32px 20px">'
+      +'<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:6px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No curriculum yet</div>'
+      +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Your academy hasn’t published the weekly programme yet.</div>'
+      +'</div>';
+  }
   else if(w){
     const progCols={Fundamentals:'#1A5DAD',Mixed:'#7e22ce',Advanced:'#dc2626',Kids:'#15803d'};
     // Programme badges: only show to admins in view mode (students don't need to know which class type)
@@ -3799,7 +3792,14 @@ function rEvents(isA){
       +'</div>';
   });
   const addBtn=isA?'<button class="badd" style="margin-top:4px" onclick="openAddEv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add event</button>':'';
-  return rows.join('')+addBtn;
+  // MOCK-FIX — empty state for events feed. Triggered when EVENTS is
+  // empty OR when the filter (current unit) hides every row.
+  const emptyState=rows.length?'':'<div class="card" style="text-align:center;padding:32px 20px">'
+    +'<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:6px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No events yet</div>'
+    +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Upcoming tournaments and seminars will show here.</div>'
+    +'</div>';
+  return emptyState+rows.join('')+addBtn;
 }
 function rEEdit(){
   const isNew=!S.editEv;
@@ -5609,11 +5609,13 @@ async function hydrateData(){
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
     const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),cl=get(7),fb=get(8);
     const uMap={};
-    if(u.data&&u.data.length){
+    if(u.data){
+      // MOCK-FIX — empty array clears UNITS so an empty DB doesn't
+      // present stale mock units as real.
       u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
       UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active,_ownerUserId:r.owner_user_id||null,phone:r.phone||null,mobilePhone:r.mobile_phone||null,email:r.email||null}));
       touched=true;
-    }else if(u.error)console.warn('[mybjj] hydrate units:',u.error);
+    }else if(u.error){console.warn('[mybjj] hydrate units:',u.error);UNITS=[];}
     if(st.data&&st.data.length){
       // Etapa 5 — students.feedback JSONB is no longer the source of
       // truth. Initialize each STUDENTS row with feedback:[]; the
@@ -5680,14 +5682,18 @@ async function hydrateData(){
       console.warn('[mybjj] hydrate promotions:',pm.error);
       PROMOTION_LOG=[];
     }
-    if(ev.data&&ev.data.length){
+    if(ev.data){
+      // MOCK-FIX — empty array clears EVENTS so the feed empty state
+      // renders instead of a stale mock seed.
       EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]}));
       touched=true;
-    }else if(ev.error)console.warn('[mybjj] hydrate events:',ev.error);
-    if(pw.data&&pw.data.length){
+    }else if(ev.error){console.warn('[mybjj] hydrate events:',ev.error);EVENTS=[];}
+    if(pw.data){
+      // MOCK-FIX — empty array clears SCHED so the curriculum empty
+      // state renders instead of a stale mock seed.
       SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,theme:r.theme,color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
       touched=true;
-    }else if(pw.error)console.warn('[mybjj] hydrate programme_weeks:',pw.error);
+    }else if(pw.error){console.warn('[mybjj] hydrate programme_weeks:',pw.error);SCHED=[];}
     if(at.data){
       ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,classValue:r.class_value!=null?Number(r.class_value):1}));
       touched=true;
