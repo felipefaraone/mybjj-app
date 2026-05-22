@@ -1470,8 +1470,6 @@ function rStaffProf(){
   const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
   const fbKey='staff:'+s.id;
   const sidKey='staff:'+s.id;
-  const photo=avStaff(s,52);
-  const roleChip='<span style="background:var(--blue-tint);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+staffTitle(s).toUpperCase()+'</span>';
   const isActive=s._active!==false;
   // Section 4 — Details. Same shape as rStuProf so the eye lands in
   // the same spots when switching between profiles.
@@ -1488,7 +1486,7 @@ function rStaffProf(){
   // Pencil "Edit Profile" header button. Matches rStuProf G16a style
   // so the entry point is identical between staff and student profiles.
   const editPencil=(canAdmin||isSelf)
-    ?'<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStaff(\''+s.id+'\')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:#1A5DAD;border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>'
+    ?'<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStaff(\''+s.id+'\')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>'
     :'';
   const backLbl=profileBackLabel();
   // Danger Zone — owner viewing someone else. canRemoveStaffRow is
@@ -1514,42 +1512,12 @@ function rStaffProf(){
   const notesBlock=(!isPeer)?_staffNotesSummaryCard(s,canAdmin):'';
   const detailsBlock=(!isPeer)?details:'';
   const socialBlock=_socialChipsBlock(s.socialHandles);
-  // Cosmetic — belt band split from caption so we can size the caption
-  // up (12–13px) and stack name / badge / band / caption with a clean
-  // 8px vertical rhythm instead of horizontally crowding the badge
-  // against the band.
-  const beltDeg=s.deg||0;
-  const beltMap=BA;
-  const beltLabel=(beltMap[s.belt]||beltMap.white).label;
-  const beltUnit=s.belt==='black'
-    ?(beltDeg===1?'degree':'degrees')
-    :(beltDeg===1?'stripe':'stripes');
-  const beltCaption=beltLabel+(beltDeg>0?' · '+beltDeg+' '+beltUnit:'');
-  // Hide the unit line in single-unit deployments; redundant when every
-  // member trains at the same place.
-  const showUnit=Array.isArray(UNITS)&&UNITS.length>1;
-  const unitLine=showUnit
-    ?'<div style="margin-top:8px;font-size:12px;color:var(--text3)">'+unitName+'</div>'
-    :'';
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
     +'<div class="sbody">'
-    // Header — left-aligned identity stack with 8px vertical rhythm:
-    // name → role badge → belt band → belt caption. Unit hidden when
-    // there's only one in the org.
-    +'<div class="card" style="padding:16px">'
-      +'<div style="display:flex;align-items:flex-start;gap:14px">'
-        +photo
-        +'<div style="flex:1;min-width:0">'
-          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+cleanName+'</div>'
-          +'<div style="margin-top:8px">'+roleChip+'</div>'
-          +'<div style="margin-top:8px">'+beltSVG(s.belt,beltDeg,'adult',110)+'</div>'
-          +'<div style="margin-top:6px;font-size:12px;color:var(--text2);font-weight:600">'+beltCaption+'</div>'
-          +unitLine
-        +'</div>'
-      +'</div>'
-      +editPencil
-    +'</div>'
+    // Batch 2 — header routed through _renderProfileHeader. Edit pencil
+    // appended inside the card via opts.editPencilHtml.
+    +_renderProfileHeader(s,{kind:'staff',editPencilHtml:editPencil})
     // Journey (editable for owner via rJnySection with staff: sidKey).
     +'<div style="margin-top:12px">'+rJnySection(s,sidKey)+'</div>'
     // Social card (G17.2c: visible to admin / self / peer when at
@@ -1741,17 +1709,10 @@ function rStuProf(){
   const isPeer=!(isSelf||isParentOfKid||isAdminViewer);
   const giSince=Math.max(s.giGrade||0,0);
   const noGiSince=Math.max((s.grade||0)-giSince,0);
-  // G13 — header GI / NO-GI ONLY chip removed. has_gi as a preference
-  // toggle is gone; gi/no-gi is now an attendance attribute, not a
-  // student attribute. The eligibility-card pill below handles the
-  // "needs Gi for ceremony" nudge when relevant.
-  const giTag='';
-  const progChip='<span style="background:'+(isKids?'var(--amber-bg)':'var(--blue-tint)')+';color:'+(isKids?'var(--amber-text)':'#1A5DAD')+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+(isKids?'KIDS':'ADULT')+'</span>';
-  // G11.1 — auth-claim status (AWAITING / JOINED) is admin/self-only
-  // info; peers don't need to know whether someone has claimed their
-  // account. The NO-GI ONLY pill on the line above stays (it's a
-  // training-status signal, not auth) — slated for G13 removal when
-  // has_gi drops.
+  // Batch 2 — KIDS/ADULT and belt band are built by _renderProfileHeader.
+  // The auth-claim chip (AWAITING / JOINED) is admin/self-only info; we
+  // append it after the default subject badge via opts.extraBadges so it
+  // shares the row instead of overlapping the name.
   const headerBadge=isPeer?'':inviteChip(s._userId,s.email,false);
 
   // Section 4 — Details
@@ -1800,11 +1761,9 @@ function rStuProf(){
   // zone (red border + muted description + outline red button).
   const bottomActions=_stuDangerZone(s,canAdmin,ownerView);
 
-  // Photo edit is intentionally NOT here. Admin / owner / professor
-  // changes a student photo through "Edit full profile"; the student
-  // themselves edits via Edit profile in the side panel. Keeping this
-  // view a plain display surface avoids the duplicated affordance.
-  const photoBlock=avStu(s,52);
+  // Batch 2 — photo lives inside _renderProfileHeader (avStu 64px). The
+  // local was the old 52px inline avatar in the bespoke header card;
+  // it's gone now that the helper owns the layout.
 
   // G17.1.1 — back label now reads S.profileOrigin (set by
   // viewStu/viewStaff/openMyProfile callers) with S.tab fallback for
@@ -1834,23 +1793,14 @@ function rStuProf(){
   const feedbackBlock=isPeer?'':_stuFbSummaryCard(s);
   const bottomBlock=isPeer?'':bottomActions;
   const adminActionsBlock=(isPeer||!canAdmin)?'':rAdminActionRow(s);
+  const editPencilHtml=(isAdminViewer||isSelf)
+    ?`<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStu('${s.id}')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>`
+    :'';
   return `<div class="sub open">
 <div class="shdr"><button class="sback" onclick="closeStudentProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> ${backLbl}</button><div class="stitle">${s.name}</div></div>
 <div class="sbody">
 
-<!-- Header -->
-<div class="card" style="padding:16px">
-  <div style="display:flex;align-items:flex-start;gap:14px;position:relative">
-    ${photoBlock}
-    <div style="flex:1;min-width:0;padding-right:96px">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">${s.name}</div>
-      <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${bb(s.belt,s.deg||0,s.prog)}${progChip}${giTag}</div>
-      <div style="margin-top:5px;font-size:11px;color:var(--text3)">${unitName}</div>
-    </div>
-    <div style="position:absolute;top:0;right:0">${headerBadge}</div>
-  </div>
-  ${(isAdminViewer||isSelf)?`<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStu('${s.id}')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:#1A5DAD;border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>`:''}
-</div>
+${_renderProfileHeader(s,{kind:'student',extraBadges:headerBadge?[headerBadge]:[],editPencilHtml:editPencilHtml})}
 
 <!-- Section 1: Admin actions (owner/professor) — peer-gated -->
 ${adminActionsBlock}
@@ -3046,6 +2996,57 @@ function closeParentProfileArea(){return closeProfileArea();}
 // belt strip + unit + program) + Details card + Edit button for a
 // students-shaped row. Wired here for parent's kid subjects; B2 will
 // reuse for student/instructor self-identity.
+// Batch 2 — canonical identity HEADER, used by every profile that
+// opens (rStuProf, rStaffProf, rProfileArea Me / kid). Layout:
+// avatar LEFT | right column = name wraps naturally, then a row
+// [belt band + badge slot]. No belt caption, no unit line.
+// Badge slot is an extensible array so a future OWNER badge (backlog
+// Item 19) can slot in without re-touching the helper.
+//   opts.kind          'staff' | 'student' (default 'student')
+//   opts.badges        optional array<HTML> overriding the default
+//                      subject badge. When omitted, defaults to the
+//                      role-title badge (staff) or KIDS / ADULT badge
+//                      (student) so every header has at least one.
+//   opts.extraBadges   appended after the default badge — lets callers
+//                      add chips (e.g. inviteChip for admin-viewing
+//                      students) without rebuilding the defaults.
+//   opts.editPencilHtml  optional HTML appended inside the header card
+//                        (used by rStuProf / rStaffProf for the inline
+//                        "Edit Profile" pencil).
+function _renderProfileHeader(s,opts){
+  if(!s)return '';
+  opts=opts||{};
+  const isStaff=opts.kind==='staff';
+  const isKids=!isStaff&&s.prog==='kids';
+  const cleanName=isStaff?parseStaffName(s.name||''):(s.name||'');
+  const avatar=isStaff?avStaff(s,64):avStu(s,64);
+  const prog=isStaff?'adult':(s.prog||'adult');
+  // Default subject badge: role title for staff, program for students.
+  // Both render via the same chip vocabulary (blue tint, brand text) so
+  // a future OWNER badge can be appended in the same row consistently.
+  const defaultBadge=isStaff
+    ?'<span style="background:var(--blue-tint);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px">'+staffTitle(s).toUpperCase()+'</span>'
+    :'<span style="background:'+(isKids?'var(--amber-bg)':'var(--blue-tint)')+';color:'+(isKids?'var(--amber-text)':'var(--blue)')+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px">'+(isKids?'KIDS':'ADULT')+'</span>';
+  const badges=(Array.isArray(opts.badges)?opts.badges:[defaultBadge])
+    .concat(Array.isArray(opts.extraBadges)?opts.extraBadges:[]);
+  const editPencilHtml=opts.editPencilHtml||'';
+  // Name wraps naturally (word-break:break-word) and is never truncated
+  // — long names like "Head Professor Mario Yokoyama" or
+  // "Aaron NeedsLastName" can take two lines without overflowing.
+  return '<div class="card" style="padding:16px">'
+    +'<div style="display:flex;align-items:flex-start;gap:14px">'
+      +avatar
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.2;color:var(--text);word-break:break-word">'+cleanName+'</div>'
+        +'<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+          +beltSVG(s.belt,s.deg||0,prog,110)
+          +badges.join('')
+        +'</div>'
+      +'</div>'
+    +'</div>'
+    +editPencilHtml
+  +'</div>';
+}
 function _renderProfileIdentity(s,opts){
   if(!s)return '';
   opts=opts||{};
@@ -3066,23 +3067,9 @@ function _renderProfileIdentity(s,opts){
     ?('openEditStaff(\''+s.id+'\')')
     :('openEditStu(\''+s.id+'\')'));
   const isActive=s._active!==false;
-  const cleanName=isStaff?parseStaffName(s.name||''):(s.name||'');
-  const avatar=isStaff?avStaff(s,64):avStu(s,64);
-  // Chip next to the belt strip — KIDS/ADULT for students, role_title
-  // for staff (matches the rStaffProf header pattern).
-  const chip=isStaff
-    ?'<span style="background:var(--blue-tint);color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+staffTitle(s).toUpperCase()+'</span>'
-    :'<span style="background:'+(isKids?'var(--amber-bg)':'var(--blue-tint)')+';color:'+(isKids?'var(--amber-text)':'#1A5DAD')+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">'+(isKids?'KIDS':'ADULT')+'</span>';
-  const header='<div class="card" style="padding:16px">'
-    +'<div style="display:flex;align-items:flex-start;gap:14px">'
-    +avatar
-    +'<div style="flex:1;min-width:0">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+cleanName+'</div>'
-      +'<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,isStaff?'adult':s.prog)+chip+'</div>'
-      +'<div style="margin-top:5px;font-size:11px;color:var(--text3)">'+unitName+'</div>'
-    +'</div>'
-    +'</div>'
-    +'</div>';
+  // Batch 2 — header card delegated to _renderProfileHeader; details +
+  // social + edit-button surfaces below stay owned by this helper.
+  const header=_renderProfileHeader(s,{kind:kind});
   // B-edit — JOINED tag hidden in selfView (admin signal only). Plain
   // email otherwise; the green JOINED chip helps admins eyeball who's
   // claimed their account.
@@ -3117,7 +3104,7 @@ function _renderProfileIdentity(s,opts){
   // V1 kid model). Adults and staff keep the chips when handles
   // resolve to URLs; empty handles render an empty string anyway.
   const socialBlock=(!isStaff&&isKids)?'':_socialChipsBlock(s.socialHandles);
-  const editBtn='<div style="margin-top:18px"><button onclick="'+editHandler+'" style="width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">'+editLabel+'</button></div>';
+  const editBtn='<div style="margin-top:18px"><button onclick="'+editHandler+'" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">'+editLabel+'</button></div>';
   return header+details+socialBlock+editBtn;
 }
 // Parent profile area renderer. Mounted at rApp root alongside rPanel.
