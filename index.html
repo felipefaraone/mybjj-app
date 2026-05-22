@@ -2652,13 +2652,17 @@ function rClass(){
     else if(isCf){cc='card stc';btn=`<button class="bconf"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Present</button>`;}
     else if(isIn){
       cc='card stp';
-      if(isT){
-        // Today — keep the existing "Checked in / undo" affordance.
+      // G16-new follow-up — interactive "Checked in / undo" now extends
+      // to tomorrow, matching the widened doCI / undoCI window. Past
+      // days stay static-disabled (no retroactive uncheck).
+      const skSd=dk(sd);
+      const canUndo=skSd===dk(TODAY)||skSd===dk(TOMORROW);
+      if(canUndo){
         btn=`<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;
       } else {
-        // Past/future day — static read-only "Checked in". undoCI is
-        // guarded server-side too; this just stops the UI offering an
-        // affordance we'd refuse anyway.
+        // Past day — static read-only "Checked in". undoCI is guarded
+        // both client-side (window) and server-side; this stops the UI
+        // offering an affordance we'd refuse anyway.
         btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text2);cursor:default;width:100%">Checked in</button>`;
       }
     }
