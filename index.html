@@ -2195,41 +2195,71 @@ function _stuDangerZone(s,canAdmin,ownerView){
     :'';
   return '<div class="slbl" style="margin-top:20px;color:var(--red-text);border-bottom:1px solid var(--red-border);padding-bottom:6px;letter-spacing:2px">Danger Zone</div>'+banner+inactiveCard+deleteCard;
 }
-// G17.2a — Head Instructor Notes summary card + subview, mirroring
-// the rStuFbList G16b feedback pattern. Data source is the in-memory
-// STAFF row's `feedback` jsonb (already hydrated from public.staff at
-// startup; see hydrate select at line ~4698). G17.2a.1 wired Add to a
-// proper modal (rStaffNoteModal) instead of an inline textarea, and
-// the modal save still goes in-memory only — DB persistence ships in
-// G17.2b alongside the rEditStaff overhaul. Read path works
-// end-to-end (hydrate → render); writes survive the session but not a
-// page reload.
-// G17.2d — staff note delete. askDeleteStaffNote opens the generic
-// confirm modal; on Confirm it runs deleteStaffNoteAction which calls
-// delete_staff_note RPC (migration 51) and replaces the local
-// s.feedback with the returned row.
-function askDeleteStaffNote(sid,createdAt){
+// RLS-2 — Head Instructor Notes now live in public.staff_notes (owner-
+// only RLS). Reads go through cli.from('staff_notes')... cached on the
+// STAFF row as `_notes` (null=unfetched, []=fetched empty, [..]=loaded).
+// Render functions fire _fetchStaffNotes(s) lazily; the guard on
+// _notesLoading keeps re-renders idempotent. Non-owner viewers never
+// reach the card render path (gated on canAdmin upstream), so they
+// never trigger the RLS-empty fetch either.
+// Note row shape: {id, staff_id, author_id, author_name, text, created_at}.
+function _fmtNoteDate(iso){
+  if(!iso)return '';
+  const d=new Date(iso);
+  if(isNaN(d))return String(iso);
+  return d.toLocaleDateString('en-AU',{month:'short',year:'numeric'});
+}
+function _fetchStaffNotes(s){
+  if(!s||!s._dbId)return;
+  if(s._notesLoading)return;
+  s._notesLoading=true;
+  const cli=initSupabase();
+  if(!cli){s._notesLoading=false;s._notes=[];render();return;}
+  cli.from('staff_notes')
+    .select('id,staff_id,author_id,author_name,text,created_at')
+    .eq('staff_id',s._dbId)
+    .order('created_at',{ascending:false})
+    .then(r=>{
+      s._notesLoading=false;
+      if(r&&r.error){
+        console.warn('[mybjj] staff_notes fetch:',r.error);
+        s._notes=[];render();return;
+      }
+      s._notes=(r&&r.data)||[];
+      render();
+    });
+}
+function askDeleteStaffNote(sid,noteId){
   if(!isOwner())return;
   openConfirm({
     title:'Delete this note?',
     message:'This action cannot be undone.',
     dangerLabel:'Delete',
-    onConfirm:()=>deleteStaffNoteAction(sid,createdAt)
+    onConfirm:()=>deleteStaffNoteAction(sid,noteId)
   });
 }
-async function deleteStaffNoteAction(sid,createdAt){
+async function deleteStaffNoteAction(sid,noteId){
   const s=STAFF.find(x=>x.id===sid);if(!s||!s._dbId)throw new Error('staff missing');
   const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');throw new Error('no client');}
-  const r=await cli.rpc('delete_staff_note',{p_staff_id:s._dbId,p_note_created_at:createdAt});
+  // RLS-2 — RPC signature is (p_staff_id, p_note_id) and RETURNS setof
+  // staff_notes (the remaining notes, newest first).
+  const r=await cli.rpc('delete_staff_note',{p_staff_id:s._dbId,p_note_id:noteId});
   if(r&&r.error){showSaveToast2(friendlyMutationError(r.error),'error');throw r.error;}
-  if(r&&r.data&&Array.isArray(r.data.feedback))s.feedback=r.data.feedback;
-  else if(r&&r.data&&r.data.feedback)s.feedback=r.data.feedback;
+  s._notes=Array.isArray(r&&r.data)?r.data:[];
   showSaveToast2('Note deleted');
 }
 function _staffNotesSummaryCard(s,canAdmin){
-  const fb=(s.feedback||[]);
-  const latest=fb[0];
-  const addBtn=canAdmin?'<button onclick="openStaffNoteModal(\''+s.id+'\')" style="background:none;border:1px solid #1A5DAD;color:#1A5DAD;border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">+ Add</button>':'';
+  // RLS-2 — Owner-only surface. Non-owners see nothing (no card, no
+  // empty state) because RLS makes the data invisible to them anyway.
+  if(!canAdmin)return '';
+  if(s._notes==null){
+    _fetchStaffNotes(s);
+    return '<div class="slbl" style="margin-top:18px">Head Instructor Notes</div>'
+      +'<div class="card" style="padding:14px"><div style="font-size:13px;color:var(--text3)">Loading…</div></div>';
+  }
+  const notes=s._notes;
+  const latest=notes[0];
+  const addBtn='<button onclick="openStaffNoteModal(\''+s.id+'\')" style="background:none;border:1px solid #1A5DAD;color:#1A5DAD;border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">+ Add</button>';
   if(!latest){
     return '<div class="slbl" style="margin-top:18px">Head Instructor Notes</div>'
       +'<div class="card" style="padding:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">'
@@ -2239,10 +2269,10 @@ function _staffNotesSummaryCard(s,canAdmin){
   }
   const excerpt=String(latest.text||'');
   const trimmed=excerpt.length>80?excerpt.slice(0,80).trim()+'…':excerpt;
-  const viewAll='<button onclick="openStaffNotesList(\''+s.id+'\')" style="background:none;border:none;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0">View all '+fb.length+' →</button>';
+  const viewAll='<button onclick="openStaffNotesList(\''+s.id+'\')" style="background:none;border:none;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0">View all '+notes.length+' →</button>';
   return '<div class="slbl" style="margin-top:18px">Head Instructor Notes</div>'
     +'<div class="card" style="padding:14px">'
-    +'<div style="font-size:12px;color:var(--text3)">Latest by <span style="color:var(--text);font-weight:600">'+(latest.by||latest.ins||'Unknown')+'</span> · '+latest.date+'</div>'
+    +'<div style="font-size:12px;color:var(--text3)">Latest by <span style="color:var(--text);font-weight:600">'+(latest.author_name||'Unknown')+'</span> · '+_fmtNoteDate(latest.created_at)+'</div>'
     +'<div style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.5">'+trimmed+'</div>'
     +'<div style="margin-top:10px;display:flex;align-items:center;justify-content:flex-end;gap:10px">'+addBtn+viewAll+'</div>'
     +'</div>';
@@ -2253,28 +2283,31 @@ function rStaffNotesList(){
   if(!S.staffNotesList)return '';
   const s=STAFF.find(x=>x.id===S.staffNotesList.sid);if(!s)return '';
   const canAdmin=isOwner();
-  const fb=s.feedback||[];
-  const empty=!fb.length?'<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No notes yet.</div>':'';
-  // G17.2d — admin gets a trash icon per note. Optimistic-prepended
-  // rows that haven't returned from the RPC yet carry no created_at,
-  // so they don't expose a delete affordance until the next render.
-  // G17.2d.1 — root cause of the earlier click no-op: JSON.stringify
-  // wrapped the createdAt in double quotes which prematurely closed
-  // the onclick="..." attribute. Switch to single-quoted JS string
-  // literals inside the attribute, with escAttr on the createdAt
-  // value so any embedded quote can't break out either.
+  // RLS-2 — owner-only. A non-owner with a stale deep-link should land
+  // back on the staff profile rather than seeing a hollow shell.
+  if(!canAdmin){closeStaffNotesList();return '';}
+  if(s._notes==null){
+    _fetchStaffNotes(s);
+    return '<div class="sub open">'
+      +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+parseStaffName(s.name).split(' ')[0]+'</div></div>'
+      +'<div class="sbody"><div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">Loading…</div></div>'
+      +'</div>';
+  }
+  const notes=s._notes;
+  const empty=!notes.length?'<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No notes yet.</div>':'';
   const trashSvg='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
-  const trashBtn=(createdAt)=>(canAdmin&&createdAt)
-    ? '<button onclick="askDeleteStaffNote(\''+escAttr(s.id)+'\',\''+escAttr(createdAt)+'\')" title="Delete note" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color=\'var(--red-text)\'" onmouseout="this.style.color=\'var(--text3)\'">'+trashSvg+'</button>'
+  // RLS-2 — trash icon keyed on note.id (was created_at). Optimistic
+  // rows that haven't returned from the RPC yet carry no id, so they
+  // don't expose a delete affordance until re-render.
+  const trashBtn=(noteId)=>noteId
+    ? '<button onclick="askDeleteStaffNote(\''+escAttr(s.id)+'\',\''+escAttr(noteId)+'\')" title="Delete note" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color=\'var(--red-text)\'" onmouseout="this.style.color=\'var(--text3)\'">'+trashSvg+'</button>'
     : '';
-  // G17.2b — `by` is the canonical attribution field (set by add_staff_note RPC);
-  // fall back to legacy `ins` for any in-memory rows still using the old shape.
-  const list=fb.map(f=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+(f.by||f.ins||'Unknown')+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+f.date+'</div>'+trashBtn(f.created_at)+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('');
-  const addBtn=canAdmin?'<button onclick="openStaffNoteModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add note</button>':'';
+  const list=notes.map(n=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+(n.author_name||'Unknown')+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+_fmtNoteDate(n.created_at)+'</div>'+trashBtn(n.id)+'</div></div><div class="fbtxt">'+n.text+'</div></div>').join('');
+  const addBtn='<button onclick="openStaffNoteModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add note</button>';
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+parseStaffName(s.name).split(' ')[0]+'</div></div>'
     +'<div class="sbody">'
-      +(addBtn?'<div style="display:flex;justify-content:flex-end;margin-bottom:12px">'+addBtn+'</div>':'')
+      +'<div style="display:flex;justify-content:flex-end;margin-bottom:12px">'+addBtn+'</div>'
       +empty+list
       +'<div style="height:24px"></div>'
     +'</div></div>';
@@ -2302,33 +2335,31 @@ function rStaffNoteModal(){
 </div>
 </div></div>`;
 }
-// G17.2b — saveStaffNoteModal now persists via add_staff_note RPC.
-// Optimistic local prepend so the summary card reflects the note
-// immediately; the RPC returns the canonical row and we replace
-// s.feedback with whatever the DB recorded (handles any server-side
-// date/author normalization). On RPC error, rollback the optimistic
-// entry and surface the message.
+// RLS-2 — saveStaffNoteModal persists via add_staff_note RPC. RPC now
+// RETURNS setof staff_notes (the full list, newest first) so we can
+// replace s._notes directly with the returned array. Optimistic
+// prepend uses the new shape {author_name, text, created_at} so the
+// summary card renders correctly before the RPC settles.
 async function saveStaffNoteModal(sid){
   const txt=((document.getElementById('sn-modal-input')||{}).value||'').trim();
   if(!txt){closeStaffNoteModal();return;}
   const s=STAFF.find(x=>x.id===sid);if(!s)return;
   if(!s._dbId){showSaveToast2('Cannot save note: staff row missing DB id.','error');return;}
-  const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});
-  const insName=(S.me&&S.me.name)||'Head Instructor';
-  const optimistic={by:insName,date:dateLbl,text:txt,_optimistic:true};
-  s.feedback=[optimistic].concat(s.feedback||[]);
+  const authorName=(S.me&&S.me.name)||'Head Instructor';
+  const optimistic={author_name:authorName,text:txt,created_at:new Date().toISOString(),_optimistic:true};
+  const prevNotes=Array.isArray(s._notes)?s._notes.slice():null;
+  s._notes=[optimistic].concat(prevNotes||[]);
   S.staffNoteModalFor=null;render();
   const cli=initSupabase();
-  if(!cli){showSaveToast2('Connection issue','error');s.feedback=(s.feedback||[]).filter(x=>x!==optimistic);render();return;}
+  if(!cli){showSaveToast2('Connection issue','error');s._notes=prevNotes;render();return;}
   const r=await cli.rpc('add_staff_note',{p_staff_id:s._dbId,p_text:txt});
   if(r&&r.error){
     console.warn('[mybjj] add_staff_note:',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');
-    s.feedback=(s.feedback||[]).filter(x=>x!==optimistic);render();return;
+    s._notes=prevNotes;render();return;
   }
-  if(r&&r.data&&r.data.feedback){
-    s.feedback=r.data.feedback;render();
-  }
+  s._notes=Array.isArray(r&&r.data)?r.data:[];
+  render();
   showSaveToast2('Note saved');
 }
 // G17.2d — generic confirm modal. State shape:
@@ -5082,7 +5113,7 @@ async function saveAddStaff(){
   console.log('[mybjj] add staff OK');
   if(r&&r.data){
     const u=UNITS.find(x=>x.id===unitLegacy);
-    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,email:r.data.email||email,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:'instructor',roleTitle:r.data.role_title||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],feedback:[]});
+    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,email:r.data.email||email,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:'instructor',roleTitle:r.data.role_title||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],_notes:null});
   }
   S.addStaff=false;render();
   showSaveToast2("Staff member added. They'll get access on next sign-in with "+email+".");
@@ -5589,7 +5620,10 @@ async function hydrateData(){
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email').order('name'),
       c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles'),
-      c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,feedback,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi'),
+      // RLS-2 — staff.feedback dropped from the select; Head Instructor
+      // Notes now live in public.staff_notes and are fetched lazily per
+      // STAFF row by _fetchStaffNotes when the owner opens the profile.
+      c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
@@ -5642,7 +5676,10 @@ async function hydrateData(){
         // Professor' vs 'Professor' for BJJ-title rendering.
         // Batch 2B: nickname column dropped; _rawFullName dropped because
         // migration 34 cleans the staff.full_name source data.
-        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,firstName:r.first_name||null,lastName:r.last_name||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],feedback:r.feedback||[],photoUrl:r.photo_url||null,socialHandles:r.social_handles||{},hasMybjjGi:!!r.has_mybjj_gi};
+        // RLS-2 — _notes:null marks "not fetched yet" for the lazy
+        // staff_notes loader. feedback field removed (column unused
+        // post-migration 56; notes live in public.staff_notes).
+        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,firstName:r.first_name||null,lastName:r.last_name||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],_notes:null,photoUrl:r.photo_url||null,socialHandles:r.social_handles||{},hasMybjjGi:!!r.has_mybjj_gi};
       });
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
