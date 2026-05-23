@@ -4497,31 +4497,48 @@ async function sendInvite(dispatch){
     if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
     else console.log('[mybjj] parent whitelist OK');
   } else {
-    // Adult path: whitelist + try to link the new email to an existing student row by name match
+    // Batch 8b — Adult invite. Always whitelist + always materialise a
+    // students row (was: students row only for the name-match / Background
+    // paths; default branch was whitelist-only and produced the visibility
+    // gap reported in the prior audit). claim_profile auto-links by
+    // lower(email) when user_id IS NULL, so the pre-inserted row picks up
+    // its user_id on first sign-in — no duplicate, no migration needed
+    // (see supabase/28_phase8_kid_secondary_parent.sql:75-78, 138-141).
     await cli.from('whitelist').upsert({email,role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'}).then(r=>r&&r.error?console.warn('[mybjj] whitelist invite:',r.error):console.log('[mybjj] whitelist invite OK'));
+    // Priority dedupe (no DB-level uniqueness on students.email — guard
+    // lives in the client):
+    //   1. email-match in this unit → update that row in place
+    //   2. exactly-one name-match → link the new email onto it (legacy
+    //      behaviour for admins typing a known name first)
+    //   3. otherwise → insert a fresh row with email + active defaults
+    const emailLower=String(email||'').toLowerCase();
+    const emailMatch=emailLower
+      ?STUDENTS.find(s=>s.unit===unitLegacy&&String(s.email||'').toLowerCase()===emailLower)
+      :null;
     const lowerName=fullName.toLowerCase();
-    const matches=STUDENTS.filter(s=>s.unit===unitLegacy&&(s.name||'').trim().toLowerCase()===lowerName);
-    if(matches.length===1){
-      const m=matches[0];m.email=email;
+    const nameMatches=emailMatch?[]:STUDENTS.filter(s=>s.unit===unitLegacy&&(s.name||'').trim().toLowerCase()===lowerName);
+    if(emailMatch){
+      const m=emailMatch;m.email=email;m.name=fullName;m.firstName=fname;m.lastName=lname;
+      const patch={email,full_name:fullName,first_name:fname,last_name:lname};
+      if(initialJourney.length&&!(m.journey&&m.journey.length)){
+        patch.journey=initialJourney;m.journey=initialJourney;
+      }
+      withSb(c=>c.from('students').update(patch).eq('legacy_id',m.id),'update student by email match');
+    } else if(nameMatches.length===1){
+      const m=nameMatches[0];m.email=email;
       const patch={email};
-      // If this is a transfer/returning re-add, fold the Background
-      // journey entries onto the existing student row so their timeline
-      // reflects it. We don't overwrite an existing non-empty journey.
       if(initialJourney.length&&!(m.journey&&m.journey.length)){
         patch.journey=initialJourney;m.journey=initialJourney;
       }
       withSb(c=>c.from('students').update(patch).eq('legacy_id',m.id),'link student email');
-    } else if(initialJourney.length){
-      // No existing row to attach to — but Background was filled in, so
-      // create a real students row instead of just leaving the whitelist
-      // entry. The first sign-in will then auto-link by email.
+    } else {
       const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'adult';
       const legacy=slug+'_'+Date.now().toString(36).slice(-4);
       const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'AD';
-      const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,email,prog:'adult',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId}).select('id,legacy_id').single();
-      if(ins&&ins.error)console.warn('[mybjj] add adult transfer:',ins.error);
-      else if(ins&&ins.data){
-        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email,name:fullName,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null});
+      const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,email,prog:'adult',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId}).select('id,legacy_id').single();
+      if(ins&&ins.error){console.warn('[mybjj] add adult invite:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
+      if(ins&&ins.data){
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null});
       }
     }
   }
@@ -4938,7 +4955,8 @@ function inviteStatusRow(target,kind){
     label=isParent?'Parent joined':'Joined';
     bg='var(--green-bg)';fg='var(--green-text)';
   } else if(email){
-    label=isParent?'Parent awaiting':'Awaiting';
+    // Batch 8b — explicit "sign-in" copy (was just "Awaiting").
+    label=isParent?'Parent awaiting sign-in':'Awaiting sign-in';
     bg='var(--input-bg)';fg='var(--text2)';
     if(canAct){
       action='<button onclick="event.stopPropagation();resend'+fnSuffix+'(\''+target.id+'\')" style="'+btnStyle+'">Send invite</button>';
@@ -7417,8 +7435,11 @@ function closeStaffProfile(){
 // than the misleading "Invited" — that one implied an email was sent.
 function inviteChip(userId,email,isParent){
   let label,bg,fg;
+  // Batch 8b — "Awaiting" → "Awaiting sign-in" (and parent variant). The
+  // older one-word label was ambiguous (awaiting what?); the longer copy
+  // makes it explicit + matches the new pre-inserted-adult invite flow.
   if(userId){label=isParent?'Parent joined':'Joined';bg='var(--green-bg)';fg='var(--green-text)';}
-  else if(email){label=isParent?'Parent awaiting':'Awaiting';bg='var(--input-bg)';fg='var(--text2)';}
+  else if(email){label=isParent?'Parent awaiting sign-in':'Awaiting sign-in';bg='var(--input-bg)';fg='var(--text2)';}
   else{label=isParent?'No parent email':'No email';bg='var(--red-bg)';fg='var(--red-text)';}
   return '<span style="background:'+bg+';color:'+fg+';font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:4px;white-space:nowrap">'+label+'</span>';
 }
