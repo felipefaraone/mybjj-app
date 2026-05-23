@@ -1101,6 +1101,84 @@ function beltSVG(belt,deg,prog,width){
     <line x1="${sw-tipW}" y1="0" x2="${sw-tipW}" y2="${sh}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
   </svg>`;
 }
+// Batch 7b — shared "Current rank" component. Returns ONE card with:
+//   - .slbl "Current rank"
+//   - belt graduation band (beltSVG, no caption)
+//   - text label below ("White belt · 4 stripes" / "Black belt · 2 degrees")
+//   - inline stats row with thin vertical-bar separator
+// Used by student, parent kid, coach, and staff-with-STAFF-row Progress
+// surfaces. Replaces three divergent rank-box renders.
+//   opts.kind        'staff' | 'student' (default 'student')
+//   opts.footerHtml  optional HTML appended inside the card (e.g. the
+//                    "Degree progression is recognised by the Head
+//                    Professor." caption shown to non-owner staff)
+function _memberSince(s){
+  // Format any of the supported "joined" sources to a compact "Mon ’YY".
+  // Order of preference:
+  //   1. row._createdAt — DB created_at (students always; staff after
+  //      the migration-58 select tweak)
+  //   2. first done journey milestone date
+  let iso=s&&s._createdAt;
+  if(!iso&&s&&Array.isArray(s.journey)){
+    const m=s.journey.find(x=>x&&x.done&&x.date);
+    if(m)iso=m.date;
+  }
+  if(!iso)return null;
+  const str=String(iso);
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // ISO 'YYYY-MM' or 'YYYY-MM-DD' / 'YYYY-MM-DDTHH:MM:SSZ'
+  const isoMatch=str.match(/^(\d{4})-(\d{2})/);
+  if(isoMatch){
+    const mo=parseInt(isoMatch[2],10);
+    if(mo<1||mo>12)return str;
+    return months[mo-1]+'’'+String(isoMatch[1]).slice(2);
+  }
+  // Legacy free-text 'May 2024' or 'Mar 2026' fallback
+  const yrMatch=str.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if(yrMatch)return yrMatch[1]+' ’'+yrMatch[2].slice(2);
+  return str;
+}
+function _renderRankBox(s,opts){
+  if(!s)return '';
+  opts=opts||{};
+  const isStaff=opts.kind==='staff';
+  const prog=isStaff?'adult':(s.prog||'adult');
+  const m=(prog==='kids')?BK:BA;
+  const beltMeta=m[s.belt]||BA.white;
+  const deg=s.deg||0;
+  const unit=(s.belt==='black')
+    ?(deg===1?'degree':'degrees')
+    :(deg===1?'stripe':'stripes');
+  const beltLine=beltMeta.label+' belt'+(deg>0?' · '+deg+' '+unit:'');
+  // Stat shape: [{value, label}] — value rendered as Barlow Condensed
+  // bold; label muted. Helper builds defaults per kind; opts.stats can
+  // override entirely.
+  const stats=Array.isArray(opts.stats)?opts.stats.slice():[];
+  if(!opts.stats){
+    if(!isStaff){
+      // Student / kid: lifetime total + member-since (when known).
+      stats.push({value:formatStat(s.total||0),label:'total classes'});
+    }
+    const since=_memberSince(s);
+    if(since)stats.push({value:since,label:'member since',prefix:true});
+  }
+  const sep='<div aria-hidden="true" style="width:1px;align-self:stretch;background:var(--border)"></div>';
+  const statHtml=stats.map(st=>{
+    const num='<span style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:18px;color:var(--text);line-height:1">'+st.value+'</span>';
+    const lbl='<span style="font-size:11px;color:var(--text2);text-transform:lowercase;letter-spacing:.3px">'+st.label+'</span>';
+    return '<div style="display:inline-flex;align-items:baseline;gap:6px">'+(st.prefix?lbl+num:num+lbl)+'</div>';
+  });
+  const statsRow=statHtml.length
+    ?'<div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+statHtml.join(sep)+'</div>'
+    :'';
+  return '<div class="card">'
+    +'<div class="slbl" style="margin-bottom:10px">Current rank</div>'
+    +'<div>'+beltSVG(s.belt,deg,prog,110)+'</div>'
+    +'<div style="margin-top:6px;font-size:13px;color:var(--text2);font-weight:600">'+beltLine+'</div>'
+    +statsRow
+    +(opts.footerHtml||'')
+  +'</div>';
+}
 function bb(belt,deg,prog,align){
   deg=deg||0;const m=prog==='kids'?BK:BA;const b=m[belt]||BA.white;
   // G17.2c.1 — IBJJF terminology: "stripe(s)" for colored belts,
@@ -3652,7 +3730,16 @@ function rProgress(){
       // "Joined myBJJ app" or stripe promotions land where the user
       // looks for them.
       var sJourney=(myStu&&myStu.journey&&myStu.journey.length?myStu.journey:staff.journey)||[];
-      var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,'adult')+(isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>')+'</div>';
+      // Batch 7b — staff rank box uses the shared component. Stat is
+      // member-since only (staff don't promote by class count; the
+      // staff.total_classes column isn't surfaced as "classes taught"
+      // anywhere else, so we don't render it here). Non-owner staff
+      // get the degree-progression caption as the helper's footer.
+      // Pass the STAFF row directly — it carries _createdAt (hydrate
+      // pulls staff.created_at) and belt/deg are already in sync with
+      // S.me via enrichMeFromHydrate.
+      var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>';
+      var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter});
       var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney)+'</div>';
       var techsTab=rTechniquesLog(s);
       var iContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:rPromoWall();
@@ -3678,7 +3765,16 @@ function rProgress(){
     // block removed; gi nudge now flows through _giCeremonyHint which
     // only fires near eligibility.
     var coachGiHint=_giCeremonyHint(coachStu,coachEgd);
-    var rankTab='<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>'+bb(s.belt,s.deg||0,s.prog||'adult')+'<div style="display:flex;gap:24px;margin-top:18px"><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:var(--text)">'+formatStat(coachStu.total||0)+'</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div><div><div style="font-family:Bebas Neue,sans-serif;font-size:38px;line-height:1;color:#1A5DAD">'+formatStat(coachStu.grade||0)+'</div><div style="font-size:11px;color:var(--text2)">Since last promotion</div></div></div></div><div class="card"><div class="row" style="margin-bottom:4px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div><div style="font-size:11px;color:var(--text3);margin-bottom:10px">All classes count toward promotion</div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
+    // Batch 7b — coach (admin without STAFF row) rank box routed
+    // through the shared component. Two-number Total/Since-last block
+    // collapses to the standard student stats (total classes +
+    // member-since). The duplicate "All classes count toward
+    // promotion" subtitle on the Next-belt card is also dropped here
+    // (the .gnote at the bottom of the student path is the single
+    // home; this branch doesn't render a .gnote, so the line is just
+    // gone — same scope discipline as the L3787 student path).
+    var rankTab=_renderRankBox(coachStu,{kind:'student'})
+      +'<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
     var techsTab=rTechniquesLog(s);
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
@@ -3747,24 +3843,12 @@ function rProgress(){
   // Progress tab. rStuAttList itself is read-only by construction \u2014
   // no mark / add / delete affordances ever exposed.
   var attendanceCard=_stuAttSummaryCard(stu,isParent()?{fromParent:true}:{fromSelf:true});
-  // Batch 7a \u2014 Current Rank box decluttered:
-  //   - belt graduation band stays
-  //   - "<Belt> belt \u00b7 N stripe(s)" / "Black belt \u00b7 N degree(s)" label
-  //   - ONE big number: "X total classes" (lifetime)
-  //   - "Since last promotion" big-number block removed (redundant \u2014
-  //      the Next-belt card below carries that signal via % / "N more
-  //      classes" / Gi-NoGi split)
-  // The duplicated "All classes count toward promotion" subtitle on
-  // the Next-belt card is gone too; the .gnote footer at the bottom
-  // remains as the single home for that copy.
-  const _beltMap=s.prog==='kids'?BK:BA;
-  const _beltMeta=_beltMap[s.belt]||BA.white;
-  const _beltDeg=s.deg||0;
-  const _beltUnit=s.belt==='black'
-    ?(_beltDeg===1?'degree':'degrees')
-    :(_beltDeg===1?'stripe':'stripes');
-  const _beltLine=_beltMeta.label+' belt'+(_beltDeg>0?' \u00b7 '+_beltDeg+' '+_beltUnit:'');
-  var rankTab=`<div class="card"><div class="slbl" style="margin-bottom:10px">Current rank</div>${bb(s.belt,s.deg||0,s.prog)}<div style="margin-top:6px;font-size:13px;color:var(--text2);font-weight:600">${_beltLine}</div><div style="margin-top:18px"><div style="font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:11px;color:var(--text2)">Total classes</div></div></div><div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>${attendanceCard}`;
+  // Batch 7b \u2014 Current Rank routed through the shared _renderRankBox.
+  // We pass `stu` (the underlying STUDENTS row) so the helper sees
+  // _createdAt for the "member since" stat \u2014 the merged `s` overlay
+  // above doesn't copy that field.
+  var rankTab=_renderRankBox(stu,{kind:'student'})
+    +`<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#1A5DAD">${pctHtml}</div></div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>${attendanceCard}`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
 
@@ -5748,7 +5832,7 @@ async function hydrateData(){
       // RLS-2 — staff.feedback dropped from the select; Head Instructor
       // Notes now live in public.staff_notes and are fetched lazily per
       // STAFF row by _fetchStaffNotes when the owner opens the profile.
-      c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi'),
+      c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi,created_at'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
@@ -5804,7 +5888,7 @@ async function hydrateData(){
         // RLS-2 — _notes:null marks "not fetched yet" for the lazy
         // staff_notes loader. feedback field removed (column unused
         // post-migration 56; notes live in public.staff_notes).
-        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,firstName:r.first_name||null,lastName:r.last_name||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],_notes:null,photoUrl:r.photo_url||null,socialHandles:r.social_handles||{},hasMybjjGi:!!r.has_mybjj_gi};
+        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,firstName:r.first_name||null,lastName:r.last_name||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],_notes:null,photoUrl:r.photo_url||null,socialHandles:r.social_handles||{},hasMybjjGi:!!r.has_mybjj_gi,_createdAt:r.created_at||null};
       });
       touched=true;
     }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
