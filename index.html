@@ -4819,7 +4819,24 @@ async function bootAuth(){
   }catch(e){console.warn('[mybjj] bootAuth',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
 }
 
+// Batch 9-fix Item 2 — onAuthed-once guard. Fix A in batch 9 moved
+// onAuthStateChange registration BEFORE await getSession(), which (a)
+// fixed the recovery loop (good) but (b) opened a race: on a fresh
+// magic-link sign-in, supabase-js fires SIGNED_IN AND getSession()
+// resolves with the same session, so both call sites call onAuthed()
+// in parallel. Each runs claim_profile + kicks hydrate, racing each
+// other. Suspected cause of the "first click doesn't sign in, second
+// click works" symptom — the first parallel pair landed in a state
+// where one render() raced ahead of S.profile being set.
+//
+// Idempotency strategy: a busy flag short-circuits concurrent entries.
+// Recovery semantics preserved — the recovery onAuthed call is allowed
+// through whether or not it's the first; the guard only short-circuits
+// when another pass is already in flight.
+let _onAuthedBusy=false;
 async function onAuthed(){
+  if(_onAuthedBusy){console.log('[mybjj] onAuthed: already in flight, skipping');return;}
+  _onAuthedBusy=true;
   try{
     const c=initSupabase();
     const{data,error}=await c.rpc('claim_profile');
@@ -4852,6 +4869,7 @@ async function onAuthed(){
     else S.authState='pending';
     render();
   }catch(e){console.warn('[mybjj] onAuthed',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
+  finally{_onAuthedBusy=false;}
 }
 
 
@@ -6560,21 +6578,40 @@ async function requestPasswordReset(){
   render();
 }
 
+// Batch 9-fix Item 1 — single source of truth for password strength.
+// Used by both the strength meter (updatePwdStrength) and the client-
+// side validation in saveSetPassword so the meter and the inline error
+// can never contradict each other ("Strength: Strong" + "not strong
+// enough" was the bug).
+//   score 0 → empty / too short / no minimum length
+//   score 1 → Weak     (length>=8 only)
+//   score 2 → Okay     (8 chars + one of: mixed case / digit / symbol)
+//   score 3 → Good     (length>=12 + one criterion, OR 8 + two criteria)
+//   score 4 → Strong
+//   score 5 → Strong   (all five criteria)
+function _pwdScore(v){
+  v=String(v||'');
+  if(!v)return -1;
+  if(v.length<8)return 0;
+  let s=0;
+  if(v.length>=8)s++;
+  if(v.length>=12)s++;
+  if(/[A-Z]/.test(v)&&/[a-z]/.test(v))s++;
+  if(/\d/.test(v))s++;
+  if(/[^A-Za-z0-9]/.test(v))s++;
+  return s;
+}
+const _PWD_LABELS=['Too short','Weak','Okay','Good','Strong','Strong'];
+const _PWD_COLORS=['var(--red-text)','var(--red-text)','var(--amber-text)','var(--green-text)','var(--green-text)','var(--green-text)'];
 function updatePwdStrength(){
   const v=(document.getElementById('sp-new')||{}).value||'';
   const el=document.getElementById('sp-strength');
   if(!el)return;
   if(!v){el.textContent='';el.style.color='var(--text3)';return;}
-  let score=0;
-  if(v.length>=8)score++;
-  if(v.length>=12)score++;
-  if(/[A-Z]/.test(v)&&/[a-z]/.test(v))score++;
-  if(/\d/.test(v))score++;
-  if(/[^A-Za-z0-9]/.test(v))score++;
-  const labels=['Too short','Weak','Okay','Good','Strong','Strong'];
-  const colors=['var(--red-text)','var(--red-text)','var(--amber-text)','var(--green-text)','var(--green-text)','var(--green-text)'];
-  el.textContent='Strength: '+labels[score];
-  el.style.color=colors[score];
+  const score=_pwdScore(v);
+  const i=Math.max(0,score);
+  el.textContent='Strength: '+_PWD_LABELS[i];
+  el.style.color=_PWD_COLORS[i];
 }
 
 async function saveSetPassword(){
@@ -6655,12 +6692,30 @@ async function saveSetPassword(){
     if(error){
       console.warn('[mybjj] updateUser error:',error);
       const status=error.status||0;
+      const code=String(error.code||'').toLowerCase();
       const msg=(error.message||'').toLowerCase();
-      // Spec error mapping. New-password rejections stay on the
-      // field; session / network / unknown failures use the banner
-      // so they can't be wiped by an unrelated autofill event.
-      if(status===422||msg.includes('weak')||msg.includes('leaked')||msg.includes('pwned')){
-        _spShowField('new','This password isn’t strong enough. Try a longer one with mixed characters.');
+      // Batch 9-fix Item 1 — accurate password error mapping.
+      // The 8FE branch unconditionally treated every 422 as "not strong
+      // enough", which mis-labelled `same_password` (the actual error
+      // Supabase Auth returns when the new password matches the old)
+      // even when the strength meter was reading "Strong" — the bug
+      // Felipe saw with 9527@Mybjjapp. Check the specific code first
+      // (same_password → its own copy), then the weak-password family,
+      // then fall through with the server's message verbatim so we
+      // never invent a reason.
+      if(code==='same_password'||msg.includes('should be different')||msg.includes('different from')){
+        _spShowField('new','Your new password must be different from your current one.');
+        return;
+      }
+      if(code==='weak_password'||msg.includes('weak')||msg.includes('leaked')||msg.includes('pwned')){
+        // Surface server-side weak reasons if Supabase included
+        // weakPassword.reasons (HIBP / character class / length). Falls
+        // back to a friendly generic when the array is missing.
+        const reasons=(error&&error.weakPassword&&Array.isArray(error.weakPassword.reasons))?error.weakPassword.reasons:null;
+        const reasonMsg=reasons&&reasons.length
+          ?('Password rejected: '+reasons.join(', ')+'.')
+          :'That password isn’t strong enough. Try a longer one with mixed characters.';
+        _spShowField('new',reasonMsg);
         return;
       }
       if(status===401||msg.includes('jwt')||msg.includes('expired')||msg.includes('not authenticated')){
@@ -6685,7 +6740,13 @@ async function saveSetPassword(){
         _spBanner('error','Re-authentication needed. Type your current password and try again.');
         return;
       }
-      _spBanner('error','Couldn’t update password. Check your connection and try again.');
+      // Batch 9-fix Item 1 — surface the server's actual message for
+      // anything we didn't recognise above, instead of always falling
+      // back to "Check your connection". The verbatim Supabase string
+      // is usually accurate; only fall back to the generic when we
+      // genuinely have no message (timeout, abort, etc).
+      const serverMsg=error&&error.message?String(error.message):'';
+      _spBanner('error',serverMsg||'Couldn’t update password. Check your connection and try again.');
       return;
     }
     console.log('[mybjj] updateUser success');
