@@ -441,56 +441,84 @@ function _socialUrl(platform,handle){
 //   opts.size      chip diameter px (default 36)
 //   opts.stopProp  add onclick="event.stopPropagation()" so the chip
 //                  doesn't trigger an outer card's tap-to-open-profile
-// Batch social-layout Item 3 — viewport-aware fit count for the
-// social chip row. iconSize + gap drives spacing; reservedRight is
-// the Edit-button column on the profile card. Floors to 1 so the
-// "+N" button always has a slot when many platforms exist.
-function _socialFitCount(iconSize,gap,reservedRight){
-  const vw=(typeof window!=='undefined'&&window.innerWidth)||360;
-  const sideMargins=32;   // app shell horizontal padding (8px each side ~= the .content gutter)
-  const cardPadding=28;   // .card horizontal padding 14*2
-  const reserved=reservedRight||0;
-  const avail=Math.max(vw-sideMargins-cardPadding-reserved,iconSize);
-  return Math.max(1,Math.floor((avail+gap)/(iconSize+gap)));
-}
+// Batch social-overflow-fix — _socialIconsRow now emits the FULL chip
+// list + a hidden "+N" button inside a single .social-row wrapper.
+// Fit is applied AFTER render() by _applySocialFit, which measures
+// the wrapper's actual clientWidth. The prior batch's
+// _socialFitCount (window.innerWidth minus hardcoded margins) is
+// gone — it produced wrong counts on the profile card (reservedRight
+// was a guess that didn't match the actual layout, so all icons
+// rendered inside an absolute-Edit-overlapped row) and on Members
+// rows (sideMargins / cardPadding assumed). Real measurement is the
+// only correct answer.
+//   opts.size       chip diameter (default 36; Members rows use 32)
+//   opts.stopProp   add onclick stopPropagation so chips/+N don't
+//                   trigger an outer card's tap-to-open
 function _socialIconsRow(socialHandles,opts){
   if(!socialHandles)return '';
   opts=opts||{};
   const size=opts.size||36;
   const fontSize=Math.round(size*.36);
-  const gap=8;
   const stop=opts.stopProp?'onclick="event.stopPropagation()" ':'';
+  const moreStopAttr=opts.stopProp?'event.stopPropagation();':'';
   // Filter to platforms with a resolvable URL.
   const items=SOCIAL_PLATFORMS.map(p=>{
     const url=_socialUrl(p.key,socialHandles[p.key]);
     if(!url)return null;
-    return{key:p.key,label:p.label,url,glyph:SOCIAL_GLYPHS[p.key]||''};
+    // Drop the glyph from the serialised payload — re-resolved at
+    // popover render time via SOCIAL_GLYPHS[key]. Keeps data-items
+    // small for Members lists with many rows.
+    return{key:p.key,label:p.label,url};
   }).filter(Boolean);
   if(!items.length)return '';
-  // Batch social-layout Item 3 — overflow into a "+N" button. fitCount
-  // uses the viewport width minus the card padding minus any reserved
-  // column (Item 2: Edit button on the profile card). When more
-  // platforms exist than fit, last slot becomes the "+N" button.
-  const reserved=opts.reservedRight||0;
-  const fit=opts.maxVisible||_socialFitCount(size,gap,reserved);
-  const overflow=items.length>fit;
-  const visible=overflow?items.slice(0,fit-1):items;
-  const hidden=overflow?items.slice(fit-1):[];
   const chipStyle='display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none;font-size:'+fontSize+'px;flex-shrink:0';
-  const chips=visible.map(it=>(
-    '<a '+stop+'href="'+it.url+'" target="_blank" rel="noopener noreferrer" title="'+it.label+'" aria-label="'+it.label+'" style="'+chipStyle+'">'+it.glyph+'</a>'
+  const chips=items.map(it=>(
+    '<a data-chip '+stop+'href="'+it.url+'" target="_blank" rel="noopener noreferrer" title="'+it.label+'" aria-label="'+it.label+'" style="'+chipStyle+'">'+(SOCIAL_GLYPHS[it.key]||'')+'</a>'
   )).join('');
-  let moreBtn='';
-  if(hidden.length){
-    // "+N" visual: same circle as the chips but with a numeric label
-    // (Barlow Condensed bold). Distinct from the letterboxd 3-dot
-    // glyph by virtue of the number — no ambiguity.
-    const payload=escAttr(JSON.stringify(hidden));
-    const moreStyle='display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:'+Math.round(size*.36)+'px;cursor:pointer;padding:0;flex-shrink:0';
-    const stopAttr=opts.stopProp?'event.stopPropagation();':'';
-    moreBtn='<button type="button" data-more="'+payload+'" onclick="'+stopAttr+'_openSocialMore(this)" aria-label="Show '+hidden.length+' more" title="More" style="'+moreStyle+'">+'+hidden.length+'</button>';
-  }
-  return chips+moreBtn;
+  // "+N" button: hidden by default; _applySocialFit reveals it (and
+  // populates its data-more payload) when measurement says overflow.
+  const moreStyle='display:none;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:'+fontSize+'px;cursor:pointer;padding:0;flex-shrink:0';
+  const moreBtn='<button type="button" data-more-btn data-more="[]" onclick="'+moreStopAttr+'_openSocialMore(this)" aria-label="Show more" title="More" style="'+moreStyle+'">+0</button>';
+  // Container carries data-items so _applySocialFit can read the
+  // full list back out for fit math + +N payload. flex-wrap:nowrap
+  // + overflow:hidden ensures clientWidth measures the CONTENT box
+  // and chips never visually leak past the wrapper.
+  const itemsAttr=escAttr(JSON.stringify(items));
+  return '<div class="social-row" data-social-row data-size="'+size+'" data-items="'+itemsAttr+'" style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0;overflow:hidden">'+chips+moreBtn+'</div>';
+}
+// Batch social-overflow-fix — measure each .social-row's actual
+// clientWidth post-render and apply the fit. Hidden chips get
+// display:none; the +N button is revealed with the hidden-payload
+// stamped onto its data-more. Called from render() inside an rAF so
+// layout has been computed.
+function _applySocialFit(){
+  const rows=document.querySelectorAll('[data-social-row]');
+  rows.forEach(row=>{
+    let items=null;
+    try{items=JSON.parse(row.dataset.items||'[]');}catch(_){return;}
+    if(!Array.isArray(items)||!items.length)return;
+    const size=parseInt(row.dataset.size||'36',10);
+    const gap=8;
+    const containerW=row.clientWidth;
+    if(containerW<=0)return; // not yet laid out
+    const fit=Math.max(1,Math.floor((containerW+gap)/(size+gap)));
+    const chips=Array.from(row.querySelectorAll('[data-chip]'));
+    const moreBtn=row.querySelector('[data-more-btn]');
+    if(items.length<=fit){
+      chips.forEach(c=>{c.style.display='';});
+      if(moreBtn)moreBtn.style.display='none';
+    } else {
+      const visibleCount=Math.max(0,fit-1);
+      chips.forEach((c,i)=>{c.style.display=i<visibleCount?'':'none';});
+      if(moreBtn){
+        const hidden=items.slice(visibleCount);
+        moreBtn.style.display='inline-flex';
+        moreBtn.dataset.more=JSON.stringify(hidden);
+        moreBtn.textContent='+'+hidden.length;
+        moreBtn.setAttribute('aria-label','Show '+hidden.length+' more');
+      }
+    }
+  });
 }
 // Batch social-layout Item 3 — overflow popover. State holds the
 // already-resolved {key,label,url,glyph} list for the hidden items
@@ -640,30 +668,27 @@ function _socialChipsBlock(socialHandles,opts){
   opts=opts||{};
   const subj=opts.subject||null;
   const canEdit=_canEditSocial(subj);
-  // Batch social-layout Item 2 — when the Edit button is present we
-  // must reserve its column on the chip row so the icons never sit
-  // under it. ~60px = Edit pill width (~48px) + gap (~12px). Item 3
-  // (overflow): the fit count for the chip row also subtracts this
-  // reserved width so the "+N" button slots correctly.
-  const reservedRight=canEdit?60:0;
-  const chips=_socialIconsRow(socialHandles,{reservedRight});
-  // Hide card entirely for read-only viewers when there's no handle.
-  if(!chips&&!canEdit)return '';
+  const row=_socialIconsRow(socialHandles,{});
+  if(!row&&!canEdit)return '';
   const subjectKey=subj?(subj.kind+':'+subj.s.id):'';
+  // Batch social-overflow-fix — Edit button is now a FLEX SIBLING of
+  // the icons cell, not absolute-positioned. The prior absolute
+  // placement plus a 60px right-padding "reservation" was a guess
+  // that didn't survive measurement: icons rendered into the full
+  // width and overlapped the Edit pill. Flex structurally enforces
+  // the boundary — Edit's column is reserved by `flex-shrink:0` on
+  // its cell, the icons cell is `flex:1;min-width:0;overflow:hidden`,
+  // so its clientWidth is exactly the space available to the chips
+  // and _applySocialFit can compute the right +N.
   const editBtn=canEdit&&subjectKey
-    ?'<button onclick="openSocialEditor(\''+subjectKey+'\')" title="Edit social" style="position:absolute;top:10px;right:10px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:6px;padding:4px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">Edit</button>'
+    ?'<button onclick="openSocialEditor(\''+subjectKey+'\')" title="Edit social" style="background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:6px;padding:4px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">Edit</button>'
     :'';
-  // Padding-right on the chip wrapper carves out the same reserved
-  // column inside the card so flex wrapping understands the boundary
-  // even on viewports wider than the fit estimate.
-  const rowStyle='display:flex;flex-wrap:nowrap;gap:8px;align-items:center'+(reservedRight?';padding-right:'+reservedRight+'px':'');
-  const body=chips
-    ?'<div style="'+rowStyle+'">'+chips+'</div>'
-    :'<div style="font-size:13px;color:var(--text3);padding:6px 0">No social handles yet. Tap Edit to add.</div>';
+  const iconsCell=row||'<div style="font-size:13px;color:var(--text3);padding:6px 0">No social handles yet. Tap Edit to add.</div>';
+  const iconsWrap='<div style="flex:1;min-width:0;overflow:hidden">'+iconsCell+'</div>';
+  const editWrap=editBtn?'<div style="flex-shrink:0">'+editBtn+'</div>':'';
   return '<div class="slbl" style="margin-top:18px">Social</div>'
-    +'<div class="card" style="padding:14px;position:relative">'
-      +editBtn
-      +body
+    +'<div class="card" style="padding:14px">'
+      +'<div style="display:flex;align-items:center;gap:10px">'+iconsWrap+editWrap+'</div>'
     +'</div>';
 }
 function _validHandle(platform,v){
@@ -3864,8 +3889,12 @@ function rMembers(){
     // prevents an icon tap from also firing the card's tap-to-open.
     const showSocial=isInstr||segment==='adult';
     const socialChips=showSocial?_socialIconsRow(m.socialHandles,{size:32,stopProp:true}):'';
+    // Batch social-overflow-fix — outer wrapper carries the divider
+    // only; the inner .social-row (emitted by _socialIconsRow) owns
+    // flex layout + overflow. Dropping the outer's own flex avoids a
+    // nested-flex conflict that would have masked the inner's width.
     const socialRow=socialChips
-      ?'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div>'
+      ?'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">'+socialChips+'</div>'
       :'';
     return '<div class="card" onclick="'+tapHandler+'" style="padding:10px 14px;margin-bottom:8px;overflow:hidden;cursor:pointer">'
       +'<div style="display:flex;align-items:center;gap:12px;min-height:60px">'
@@ -5017,6 +5046,11 @@ function render(){
     // of the empty rApp until hydrateData clears S.hydrating.
     if(!S.hydrating)hideSplash();
     initPullToRefresh();
+    // Batch social-overflow-fix — measure each .social-row's actual
+    // clientWidth and apply the fit (chips that overflow hide; "+N"
+    // button reveals with its hidden-payload). rAF guarantees layout
+    // has been computed before we read clientWidth.
+    requestAnimationFrame(_applySocialFit);
     return;
   }
   if(S.authState==='pending'||S.authState==='rejected'){app.innerHTML=rPending();hideSplash();return;}
