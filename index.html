@@ -4730,6 +4730,15 @@ function render(){
   let prevScroll=null;
   const prevContent=document.querySelector('.content');
   if(prevContent)prevScroll=prevContent.scrollTop;
+  // Batch 9-fix-2 — recovery wins over every other render path. As
+  // long as S.passwordRecovery is true the user sees the standalone
+  // reset form — never home (even if onAuthed somehow ran), never
+  // the login screen.
+  if(S.passwordRecovery){
+    app.innerHTML=rRecoveryShell();
+    hideSplash();
+    return;
+  }
   if(S.loggedIn){
     app.innerHTML=rApp();
     if(prevScroll!=null){
@@ -4781,8 +4790,62 @@ function friendlyAuthError(err){
   return 'Something went wrong. Please try again or contact your academy admin.';
 }
 
+// Batch 9-fix-2 — synchronously detect a password-recovery URL.
+// Returns:
+//   'recovery' → fragment carries type=recovery (active token)
+//   'expired'  → fragment carries an error that ties back to recovery
+//                (expired / used otp, access_denied during recovery)
+//   null       → no recovery context
+// Recovery context can appear in either the hash (`#type=recovery&…`)
+// or the search string (some Supabase Auth flows put it there). Both
+// are checked.
+function _detectHashRecovery(){
+  try{
+    const hash=String(window.location.hash||'').replace(/^#/,'');
+    const search=String(window.location.search||'').replace(/^\?/,'');
+    const hParams=new URLSearchParams(hash);
+    const sParams=new URLSearchParams(search);
+    const type=hParams.get('type')||sParams.get('type');
+    if(type==='recovery')return 'recovery';
+    const err=hParams.get('error')||sParams.get('error')||'';
+    const errCode=hParams.get('error_code')||sParams.get('error_code')||'';
+    const errDesc=hParams.get('error_description')||sParams.get('error_description')||'';
+    if(err||errCode||errDesc){
+      const blob=(err+' '+errCode+' '+errDesc).toLowerCase();
+      // Heuristic: only treat the error as a recovery-link failure
+      // when it explicitly mentions recovery or otp_expired. Avoids
+      // false positives on unrelated magic-link errors.
+      if(blob.includes('recovery')||blob.includes('otp_expired')||(blob.includes('access_denied')&&blob.includes('expired')))return 'expired';
+    }
+  }catch(_){/* no-op — defensive parse */}
+  return null;
+}
+
 async function bootAuth(){
-  if(location.hash&&location.hash.indexOf('error')!==-1){
+  // Batch 9-fix-2 — synchronous URL parse FIRST. Before any listener
+  // is attached, before getSession(), before any onAuthed can run.
+  // If the URL carries a recovery token we mark S.passwordRecovery
+  // immediately; every downstream gate (the SIGNED_IN listener
+  // short-circuit, the getSession onAuthed skip, render()'s top
+  // branch) sees recovery from tick zero. This is the only way to
+  // guarantee that a logged-in user clicking a reset link lands on
+  // the reset form instead of racing the cached session's onAuthed.
+  const _recoveryHash=_detectHashRecovery();
+  if(_recoveryHash==='recovery'){
+    S.passwordRecovery=true;
+    S.authState='recovery';
+    render();
+  } else if(_recoveryHash==='expired'){
+    // Clear the failed-recovery fragment so a refresh doesn't keep
+    // re-firing the same error; surface a clear copy on the login
+    // screen with the existing forgot-password reachable underneath.
+    S.passwordRecovery=false;
+    S.authState='unauthenticated';
+    S.authMsg='That recovery link has expired or already been used. Tap "Forgot password" to request a new one.';
+    try{history.replaceState(null,'',location.pathname+location.search);}catch(_){}
+    render();
+  } else if(location.hash&&location.hash.indexOf('error')!==-1){
+    // Non-recovery fragment error (unchanged from prior behaviour).
     try{
       const p=new URLSearchParams(location.hash.replace(/^#/,''));
       const ed=p.get('error_description')||p.get('error');
@@ -4790,29 +4853,29 @@ async function bootAuth(){
     }catch(_){}
   }
   const c=initSupabase();
-  if(!c){S.authState='unauthenticated';render();return;}
-  // Batch 9 Fix A — register the listener BEFORE awaiting getSession()
-  // so a PASSWORD_RECOVERY event emitted by supabase-js during the
-  // on-load URL-fragment parse can't fire-and-vanish before anyone
-  // is listening. supabase-js v2 buffers initial events for newly
-  // attached listeners only if the listener exists at parse time;
-  // attaching after the await dropped the event entirely, which is
-  // why every reset-password link bounced the user back to home with
-  // the suggest banner still showing instead of into rSetPwd.
+  if(!c){
+    if(!S.passwordRecovery){S.authState='unauthenticated';render();}
+    return;
+  }
+  // Listener attached BEFORE getSession (Batch 9 Fix A). The
+  // PASSWORD_RECOVERY handler no longer calls onAuthed — recovery
+  // routing happens via render()'s top gate on S.passwordRecovery.
+  // No claim_profile, no hydrate; the recovery session that supabase-js
+  // establishes from the fragment is enough for updateUser({password}).
   c.auth.onAuthStateChange((ev)=>{
     if(ev==='PASSWORD_RECOVERY'){
-      // Pre-recovery sticky flag. onAuthed reads S.passwordRecovery
-      // and routes to the set-password sub-panel.
+      // Belt-and-suspenders alongside the synchronous hash parse: if
+      // somehow the URL slipped past _detectHashRecovery (e.g. a hash
+      // shape supabase-js handles that the parser doesn't recognise),
+      // the event handler still locks the recovery flag and renders
+      // the recovery shell.
       S.passwordRecovery=true;
-      onAuthed();
+      S.authState='recovery';
+      render();
     }
-    // Recovery-wins guard: if a SIGNED_IN event arrives AFTER we've
-    // already flagged a recovery (supabase-js fires both during the
-    // same URL-fragment parse — recovery first, then signed-in for
-    // the resulting session), don't kick off another onAuthed pass.
-    // The recovery onAuthed has the right routing; a second pass
-    // would just no-op or, worse, race with hydrate.
     else if(ev==='SIGNED_IN'){
+      // Recovery wins. supabase-js also fires SIGNED_IN for the
+      // recovery session; we must not bounce into home/hydrate.
       if(S.passwordRecovery)return;
       onAuthed();
     }
@@ -4820,12 +4883,12 @@ async function bootAuth(){
   });
   try{
     const{data:{session}}=await c.auth.getSession();
+    // Recovery wins over any pre-existing session. Skip onAuthed and
+    // let the recovery shell stand — the reset form runs against the
+    // recovery session that supabase-js installs from the URL.
+    if(S.passwordRecovery)return;
     if(session){
-      // Recovery-wins guard on the initial path too: the listener may
-      // have already set S.passwordRecovery before this await resolves,
-      // in which case its onAuthed call is the canonical one and we
-      // skip the duplicate here.
-      if(!S.passwordRecovery)await onAuthed();
+      await onAuthed();
     } else {
       S.authState='unauthenticated';render();
     }
@@ -6419,6 +6482,17 @@ async function forgotPassword(){
 
 // Set-password sub-panel — used for first-time setup, "Change password"
 // in the side panel, and the post-recovery flow.
+// Batch 9-fix-2 — standalone recovery screen. Renders the same
+// rSetPwd output (recovery branch) but as a fixed full-viewport
+// container instead of inside the .panel slide. Bypasses rApp (no
+// S.me required, no claim_profile, no hydrate) so a user who clicked
+// a reset link reaches the form regardless of whether a pre-existing
+// session was cached.
+function rRecoveryShell(){
+  return '<div style="position:fixed;inset:0;background:var(--bg);overflow-y:auto;display:flex;flex-direction:column;z-index:1">'
+    +rSetPwd()
+  +'</div>';
+}
 function rSetPwd(){
   const recovery=!!S.passwordRecovery;
   const hasPwd=!!(S.profile&&S.profile.has_password);
@@ -6482,7 +6556,12 @@ function rSetPwd(){
     ? `<div style="margin-top:12px;padding:10px 12px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;font-size:12px;color:var(--amber-text);line-height:1.5">Forgot it? <a href="#" onclick="event.preventDefault();requestPasswordReset();" style="color:var(--amber-text);font-weight:700;text-decoration:underline">Send a reset link</a> and use it to choose a new password.</div>`
     : '';
   const submitLbl=recovery?'Save & sign in':(hasPwd?'Update password':'Save password');
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">${title}</div></div><div class="sbody">
+  // Batch 9-fix-2 — recovery mode renders in the standalone shell
+  // (rRecoveryShell), where there's no panel to go back to. Hide BACK
+  // so the user isn't tempted to dismiss the form and orphan the
+  // recovery session.
+  const headerBack=recovery?'':BACK;
+  return `<div class="sub open"><div class="shdr">${headerBack}<div class="stitle">${title}</div></div><div class="sbody">
 <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${intro}</div>
 <div id="sp-banner" style="display:none;margin-bottom:12px"></div>
 <div class="ef">
@@ -6773,9 +6852,19 @@ async function saveSetPassword(){
     try{await cli.rpc('mark_password_set');}catch(e){console.warn('[mybjj] mark_password_set',e);}
     if(S.profile)S.profile.has_password=true;
     showSaveToast2(wasRecovery?'Password set — you’re signed in.':(hasPwd?'Password updated':'Password saved'));
-    // Slight delay so the user catches the success toast before the
-    // panel slides away.
-    setTimeout(()=>{S.sub=null;render();},500);
+    if(wasRecovery){
+      // Batch 9-fix-2 — recovery completion. The standalone shell
+      // bypassed the normal onAuthed pass on load, so no claim_profile
+      // / hydrate has run for the recovery user yet. Kick onAuthed now
+      // so they land on home as themselves (the token's user) rather
+      // than bouncing to the login screen with the recovery flag
+      // cleared and S.loggedIn still false.
+      setTimeout(()=>{onAuthed();},500);
+    } else {
+      // Slight delay so the user catches the success toast before the
+      // panel slides away.
+      setTimeout(()=>{S.sub=null;render();},500);
+    }
   }catch(e){
     console.warn('[mybjj] saveSetPassword threw:',e);
     _spBanner('error','Couldn’t update password. Check your connection and try again.');
