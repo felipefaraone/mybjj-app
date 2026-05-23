@@ -428,14 +428,29 @@ function _socialUrl(platform,handle){
 // resolved to a valid URL. Used by:
 //   • rStuProf  — peer view (G16a.1 path)
 //   • rStaffProf — peer view (G17.2a.2 path)
-function _socialChipsBlock(socialHandles){
+// Single source of truth for the social-chip row markup. Returns the
+// concatenated <a> chips (one per platform with a resolvable URL), or
+// '' when no handle is populated. Used by both the profile SOCIAL
+// section AND the Members list cards (Batch member-social Item 1).
+//   opts.size      chip diameter px (default 36)
+//   opts.stopProp  add onclick="event.stopPropagation()" so the chip
+//                  doesn't trigger an outer card's tap-to-open-profile
+function _socialIconsRow(socialHandles,opts){
   if(!socialHandles)return '';
+  opts=opts||{};
+  const size=opts.size||36;
+  const fontSize=Math.round(size*.36);
+  const stop=opts.stopProp?'onclick="event.stopPropagation()" ':'';
   const chips=SOCIAL_PLATFORMS.map(p=>{
     const url=_socialUrl(p.key,socialHandles[p.key]);
     if(!url)return '';
     const g=SOCIAL_GLYPHS[p.key]||'';
-    return '<a href="'+url+'" target="_blank" rel="noopener noreferrer" title="'+p.label+'" aria-label="'+p.label+'" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none">'+g+'</a>';
+    return '<a '+stop+'href="'+url+'" target="_blank" rel="noopener noreferrer" title="'+p.label+'" aria-label="'+p.label+'" style="display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none;font-size:'+fontSize+'px">'+g+'</a>';
   }).join('');
+  return chips;
+}
+function _socialChipsBlock(socialHandles){
+  const chips=_socialIconsRow(socialHandles);
   if(!chips)return '';
   return '<div class="card" style="padding:14px;margin-top:12px"><div class="slbl" style="margin:0 0 8px">Social</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+chips+'</div></div>';
 }
@@ -2575,11 +2590,14 @@ function rReconcileBadge(s){
   // with truncation.
   const mismatch=presentCount>(s.total||0);
   if(!mismatch){
-    return '<div style="margin-top:8px;font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;letter-spacing:.5px;text-align:center">Cache OK · '+formatStat(s.total||0)+' total / '+presentCount+' confirmed in last 21d</div>';
+    // Batch member-social Item 2 — strip the "Cache OK · " diagnostic
+    // prefix. The recency line keeps the same numeric content; "last
+    // 21d" expanded to "last 21 days" for readable copy.
+    return '<div style="margin-top:8px;font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;letter-spacing:.5px;text-align:center">'+formatStat(s.total||0)+' total · '+presentCount+' confirmed in the last 21 days</div>';
   }
   // Fire-and-forget recompute. The badge will refresh on the next render.
   refreshStudentStats(s._dbId);
-  return '<div style="margin-top:8px;padding:6px 10px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;font-size:11px;color:var(--amber-text);text-align:center">Cache mismatch detected, refreshing…</div>';
+  return '<div style="margin-top:8px;padding:6px 10px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:6px;font-size:11px;color:var(--amber-text);text-align:center">Refreshing attendance data…</div>';
 }
 
 // Feedback modal (Phase 8 v2). Replaces the inline + Add note input that
@@ -3616,12 +3634,24 @@ function rMembers(){
     // most signal — students browsing a list of names want to spot
     // instructors at a glance.
     const displayName=isInstr?staffDisplayName(m):m.name;
-    return '<div class="card" onclick="'+tapHandler+'" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
-      +av
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+displayName+'</div>'
+    // Batch member-social Item 1 — social icon row on adults +
+    // instructor cards (never kids — that toggle ships its own
+    // privacy-first card via rParentMembers, untouched here). stopProp
+    // prevents an icon tap from also firing the card's tap-to-open.
+    const showSocial=isInstr||segment==='adult';
+    const socialChips=showSocial?_socialIconsRow(m.socialHandles,{size:32,stopProp:true}):'';
+    const socialRow=socialChips
+      ?'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div>'
+      :'';
+    return '<div class="card" onclick="'+tapHandler+'" style="padding:10px 14px;margin-bottom:8px;overflow:hidden;cursor:pointer">'
+      +'<div style="display:flex;align-items:center;gap:12px;min-height:60px">'
+        +av
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+displayName+'</div>'
+        +'</div>'
+        +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog,'left')+'</div>'
       +'</div>'
-      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog,'left')+'</div>'
+      +socialRow
       +'</div>';
   }).join('');
   return '<div style="height:16px"></div>'+headline+segHtml+typeChips+beltChips+searchHtml+rows;
@@ -3726,15 +3756,25 @@ function rParentMembers(){
   // (one RPC per session unless explicitly reset).
   _fetchKidsSummary();
   const kidsCard=_renderKidsSummaryCard(unitsLabel);
-  const instructorRows=instructors.map(m=>(
-    '<div class="card" onclick="viewStaff(\''+m.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:8px;min-height:60px;overflow:hidden;cursor:pointer">'
-      +avStaff(m,40)
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
+  const instructorRows=instructors.map(m=>{
+    // Batch member-social Item 1 — match the rMembers instructor card
+    // shape: thin divider + monochrome social row when handles exist;
+    // omitted entirely when the instructor has no social handles.
+    const socialChips=_socialIconsRow(m.socialHandles,{size:32,stopProp:true});
+    const socialRow=socialChips
+      ?'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div>'
+      :'';
+    return '<div class="card" onclick="viewStaff(\''+m.id+'\',\'community\')" style="padding:10px 14px;margin-bottom:8px;overflow:hidden;cursor:pointer">'
+      +'<div style="display:flex;align-items:center;gap:12px;min-height:60px">'
+        +avStaff(m,40)
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
+        +'</div>'
+        +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult','left')+'</div>'
       +'</div>'
-      +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult','left')+'</div>'
-      +'</div>'
-  )).join('');
+      +socialRow
+      +'</div>';
+  }).join('');
   const instructorsBlock=instructors.length
     ?'<div class="slbl" style="margin-top:20px">Instructors</div>'+instructorRows
     :'<div class="slbl" style="margin-top:20px">Instructors</div><div class="card" style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No instructors at this unit yet.</div>';
