@@ -215,16 +215,16 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .card.stp{border-color:var(--amber-border);background:var(--amber-bg)}.card.stc{border-color:var(--green-border);background:var(--green-bg)}
 .slbl{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:12px}
 .drow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}.drow:last-child{border-bottom:none}
-/* Batch social-icon-fix Bug A — every glyph inside a social chip or
-   the "+N" button is forced to 16px and rendered as a block element.
-   SVG attribute widths ("width=16") are presentational hints that
-   some flex / overflow contexts ignore (notably after the
-   _socialIconsRow rewrite in 98e043c — the chips were sized 36px but
-   the SVGs visibly spilled). The CSS rule is the authoritative size
-   cap; overflow:hidden on the chip is the safety net. Same rules
-   apply to the popover icon circles via .social-more-row. */
-.social-row a,.social-row button{overflow:hidden}
-.social-row a>svg,.social-row button>svg,.social-more-row span>svg{width:16px;height:16px;display:block;flex-shrink:0}
+/* Batch social-icon-fix-3 — one source of truth for social-chip
+   containment. Every social chip across every surface (profile SOCIAL
+   card, Members card row, +N popover row) carries class="social-chip"
+   on its outer pill (and on the popover's icon-circle span). The CSS
+   uses a descendant combinator so any nesting works, plus !important
+   on the size to defeat the SVG presentational width/height
+   attributes that the v101 child-combinator selector failed to
+   override in some flex contexts. overflow:hidden is the safety net. */
+.social-chip{overflow:hidden}
+.social-chip svg{width:16px !important;height:16px !important;max-width:16px;max-height:16px;display:block;overflow:hidden}
 .blt{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase}
 .pt{background:var(--border);border-radius:99px;height:7px;overflow:hidden}.pf{height:100%;border-radius:99px}
 .stabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
@@ -483,12 +483,12 @@ function _socialIconsRow(socialHandles,opts){
   if(!items.length)return '';
   const chipStyle='display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none;font-size:'+fontSize+'px;flex-shrink:0';
   const chips=items.map(it=>(
-    '<a data-chip '+stop+'href="'+it.url+'" target="_blank" rel="noopener noreferrer" title="'+it.label+'" aria-label="'+it.label+'" style="'+chipStyle+'">'+(SOCIAL_GLYPHS[it.key]||'')+'</a>'
+    '<a class="social-chip" data-chip '+stop+'href="'+it.url+'" target="_blank" rel="noopener noreferrer" title="'+it.label+'" aria-label="'+it.label+'" style="'+chipStyle+'">'+(SOCIAL_GLYPHS[it.key]||'')+'</a>'
   )).join('');
   // "+N" button: hidden by default; _applySocialFit reveals it (and
   // populates its data-more payload) when measurement says overflow.
   const moreStyle='display:none;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:'+fontSize+'px;cursor:pointer;padding:0;flex-shrink:0';
-  const moreBtn='<button type="button" data-more-btn data-more="[]" onclick="'+moreStopAttr+'_openSocialMore(this)" aria-label="Show more" title="More" style="'+moreStyle+'">+0</button>';
+  const moreBtn='<button class="social-chip" type="button" data-more-btn data-more="[]" onclick="'+moreStopAttr+'_openSocialMore(this)" aria-label="Show more" title="More" style="'+moreStyle+'">+0</button>';
   // Container carries data-items so _applySocialFit can read the
   // full list back out for fit math + +N payload. flex-wrap:nowrap
   // + overflow:hidden ensures clientWidth measures the CONTENT box
@@ -554,7 +554,7 @@ function rSocialMorePopover(){
   const rows=list.map(it=>{
     const glyph=SOCIAL_GLYPHS[it.key]||'';
     return '<a class="social-more-row" href="'+it.url+'" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();closeSocialMore()" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--input-bg);border:1px solid var(--border);color:var(--text);text-decoration:none;margin-bottom:8px">'
-      +'<span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--card);color:var(--text2);border:1px solid var(--border);flex-shrink:0;overflow:hidden">'+glyph+'</span>'
+      +'<span class="social-chip" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--card);color:var(--text2);border:1px solid var(--border);flex-shrink:0">'+glyph+'</span>'
       +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.3px">'+it.label+'</span>'
     +'</a>';
   }).join('');
