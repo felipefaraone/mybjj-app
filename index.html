@@ -4778,23 +4778,45 @@ async function bootAuth(){
   }
   const c=initSupabase();
   if(!c){S.authState='unauthenticated';render();return;}
-  try{
-    const{data:{session}}=await c.auth.getSession();
-    if(session) await onAuthed(); else {S.authState='unauthenticated';render();}
-  }catch(e){console.warn('[mybjj] bootAuth',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
+  // Batch 9 Fix A — register the listener BEFORE awaiting getSession()
+  // so a PASSWORD_RECOVERY event emitted by supabase-js during the
+  // on-load URL-fragment parse can't fire-and-vanish before anyone
+  // is listening. supabase-js v2 buffers initial events for newly
+  // attached listeners only if the listener exists at parse time;
+  // attaching after the await dropped the event entirely, which is
+  // why every reset-password link bounced the user back to home with
+  // the suggest banner still showing instead of into rSetPwd.
   c.auth.onAuthStateChange((ev)=>{
     if(ev==='PASSWORD_RECOVERY'){
-      // User just clicked a reset-password email. They have a session
-      // but we want them to choose a new password before doing
-      // anything else. Stash a flag; once onAuthed runs and S.loggedIn
-      // is true, the side panel opens straight on the "Set password"
-      // sub-panel.
+      // Pre-recovery sticky flag. onAuthed reads S.passwordRecovery
+      // and routes to the set-password sub-panel.
       S.passwordRecovery=true;
       onAuthed();
     }
-    else if(ev==='SIGNED_IN') onAuthed();
+    // Recovery-wins guard: if a SIGNED_IN event arrives AFTER we've
+    // already flagged a recovery (supabase-js fires both during the
+    // same URL-fragment parse — recovery first, then signed-in for
+    // the resulting session), don't kick off another onAuthed pass.
+    // The recovery onAuthed has the right routing; a second pass
+    // would just no-op or, worse, race with hydrate.
+    else if(ev==='SIGNED_IN'){
+      if(S.passwordRecovery)return;
+      onAuthed();
+    }
     else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;render();}
   });
+  try{
+    const{data:{session}}=await c.auth.getSession();
+    if(session){
+      // Recovery-wins guard on the initial path too: the listener may
+      // have already set S.passwordRecovery before this await resolves,
+      // in which case its onAuthed call is the canonical one and we
+      // skip the duplicate here.
+      if(!S.passwordRecovery)await onAuthed();
+    } else {
+      S.authState='unauthenticated';render();
+    }
+  }catch(e){console.warn('[mybjj] bootAuth',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
 }
 
 async function onAuthed(){
@@ -6315,6 +6337,34 @@ function useEmailLink(){
   signInMagic();
 }
 
+// Batch 9 Item 5 — show/hide eye toggle for every password input.
+// _pwdEye(id) returns an absolutely-positioned button (44x44 tap area,
+// lucide-style icon, no autofocus / no submit) that flips the named
+// input between type=password and type=text. Each toggle is
+// independent — clicking one doesn't affect siblings. Caller is
+// responsible for wrapping the input in a position:relative parent
+// (already true for .erow rows after our small CSS tweak, and we set
+// it inline on .lf for the auth form).
+function _eyeIcon(shown){
+  // lucide eye (hidden state, will show password when clicked) vs
+  // eye-off (currently shown, click hides).
+  return shown
+    ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+    :'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+}
+function _pwdEye(id){
+  return '<button type="button" tabindex="-1" aria-label="Show password" onclick="_togglePwdVis(\''+id+'\',this)" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:44px;height:44px;background:none;border:none;cursor:pointer;color:var(--text3);display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:6px">'+_eyeIcon(false)+'</button>';
+}
+function _togglePwdVis(id,btn){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const shown=el.type==='text';
+  el.type=shown?'password':'text';
+  if(btn){
+    btn.setAttribute('aria-label',shown?'Show password':'Hide password');
+    btn.innerHTML=_eyeIcon(!shown);
+  }
+}
 // Forgot-password — sends a recovery email that drops the user back into
 // the app with a recovery session. bootAuth's onAuthStateChange handler
 // catches PASSWORD_RECOVERY and routes to the reset form.
@@ -6341,53 +6391,60 @@ async function forgotPassword(){
 function rSetPwd(){
   const recovery=!!S.passwordRecovery;
   const hasPwd=!!(S.profile&&S.profile.has_password);
-  // Supabase Auth's "Require current password when updating" rejects
-  // any updateUser({password}) call that doesn't first re-auth with
-  // the existing password. Three distinct flows:
+  // Batch 9 Fix B — first-time set is now INLINE (no email loop). The
+  // three modes:
   //
-  //   recovery=true            → user came in via a reset link.
-  //                              Recovery session bypasses the
-  //                              requirement server-side; show form
-  //                              with no Current row.
-  //   hasPwd=true, !recovery   → "Change password". Need Current row
-  //                              + re-auth via signInWithPassword
+  //   recovery=true            → reset link return. Recovery session
+  //                              bypasses re-auth; New + Confirm only.
+  //   hasPwd=false, !recovery  → first-time set on a fresh magic-link
+  //                              session. Same inline form. The Supabase
+  //                              project's "Require current password
+  //                              when updating" setting is OFF (and
+  //                              "Secure password change" only needs a
+  //                              session <24h, which a magic-link sign-
+  //                              in satisfies), so updateUser({password})
+  //                              works directly. If it ever fails with a
+  //                              stale-session error, the inline-fallback
+  //                              banner offers requestPasswordReset.
+  //   hasPwd=true, !recovery   → "Change password". Needs the Current
+  //                              row + signInWithPassword reauth
   //                              before updateUser.
-  //   hasPwd=false, !recovery  → "Set a password" first-time. Can NOT
-  //                              use updateUser at all (no current
-  //                              password to re-auth with). Send a
-  //                              reset email; the user clicks the
-  //                              link, returns with recovery=true,
-  //                              completes via the first branch.
+  //
+  // The legacy "Setup link sent" confirmation surface is retained as a
+  // sentReset fallback (still reachable via the existing 3-failed-
+  // attempts forgot-link path), so requestPasswordReset is not deleted.
   const sentReset=!!S.pwdResetSent;
-  if(!hasPwd&&!recovery){
+  if(!hasPwd&&!recovery&&sentReset){
     const userEmail=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
     return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Set a password</div></div><div class="sbody">
-${sentReset
-  ?`<div style="background:var(--green-bg);border:1px solid var(--green-border);border-radius:10px;padding:14px 16px;margin-bottom:14px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:var(--green-text);margin-bottom:4px">Setup link sent</div><div style="font-size:12px;color:var(--green-text);line-height:1.5">Open the email we just sent to <strong>${userEmail||'your address'}</strong> and click the link on this device to choose your password.</div></div><button class="bsm" style="width:100%;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Done</button>`
-  :`<div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">For your first password we'll email you a one-time setup link. Open the link on this device, then choose your password.</div>
-<div class="ef" style="margin-bottom:14px"><div class="erow"><div class="elbl">Email</div><div style="flex:1;text-align:right;font-size:14px;color:var(--text2)">${userEmail||'—'}</div></div></div>
-<div id="sp-err" class="inv" style="display:none;margin-top:0;margin-bottom:14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="sp-err-txt"></span></div>
-<div style="display:flex;gap:10px;margin-top:8px">
-  <button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Cancel</button>
-  <button class="bblue" style="flex:1;padding:12px" onclick="requestPasswordReset()">Email me the setup link</button>
-</div>`}
+<div style="background:var(--green-bg);border:1px solid var(--green-border);border-radius:10px;padding:14px 16px;margin-bottom:14px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:var(--green-text);margin-bottom:4px">Setup link sent</div><div style="font-size:12px;color:var(--green-text);line-height:1.5">Open the email we just sent to <strong>${userEmail||'your address'}</strong> and click the link on this device to choose your password.</div></div>
+<button class="bsm" style="width:100%;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Done</button>
 <div style="height:24px"></div></div></div>`;
   }
   const needCurrent=hasPwd&&!recovery;
+  const firstTime=!hasPwd&&!recovery;
   const attempts=S.pwdReauthAttempts||0;
   const showForgot=attempts>=3;
   const title=recovery?'Set new password':(hasPwd?'Change password':'Set a password');
   const intro=recovery
     ? 'Choose a new password to finish resetting your account.'
-    : 'Enter your current password, then choose a new one.';
+    : (firstTime
+        ? 'Set a password so you can sign in without an email link next time.'
+        : 'Enter your current password, then choose a new one.');
   // Random suffix on the field id/name discourages browser autofill —
   // Chrome on macOS ignores autocomplete="off" on password inputs
   // tied to a known field id. New id per render is the simplest
   // belt-and-suspenders defence.
   const curName='sp-curr-'+Math.random().toString(36).slice(2,8);
   const fieldErrStyle='font-size:12px;color:var(--red-text);padding:4px 14px 0;text-align:right;line-height:1.4';
+  // Batch 9 Item 5 — every password input gets a show/hide eye toggle.
+  // Inputs wrap in a position:relative .erow so the absolute-positioned
+  // button anchors to the row's right edge (the .einput is text-align:
+  // right, padding-right reserves room for the 44px tap target so the
+  // typed text never sits underneath the eye).
+  const inputPadStyle='padding-right:44px';
   const currentRow=needCurrent
-    ? `<div class="erow"><div class="elbl">Current</div><input id="sp-current" name="${curName}" class="einput" type="password" autocomplete="off" data-form-type="other" data-lpignore="true" spellcheck="false" placeholder="Your current password" oninput="clearPwdFieldErr('current')"/></div>
+    ? `<div class="erow" style="position:relative"><div class="elbl">Current</div><input id="sp-current" name="${curName}" class="einput" type="password" autocomplete="off" data-form-type="other" data-lpignore="true" spellcheck="false" placeholder="Your current password" oninput="clearPwdFieldErr('current')" style="${inputPadStyle}"/>${_pwdEye('sp-current')}</div>
 <div id="sp-err-current" style="display:none;${fieldErrStyle}"></div>`
     : '';
   const forgotRow=showForgot
@@ -6399,9 +6456,9 @@ ${sentReset
 <div id="sp-banner" style="display:none;margin-bottom:12px"></div>
 <div class="ef">
 ${currentRow}
-<div class="erow"><div class="elbl">New password</div><input id="sp-new" class="einput" type="password" autocomplete="new-password" placeholder="At least 8 characters" oninput="updatePwdStrength();clearPwdFieldErr('new')"/></div>
+<div class="erow" style="position:relative"><div class="elbl">New password</div><input id="sp-new" class="einput" type="password" autocomplete="new-password" placeholder="At least 8 characters" oninput="updatePwdStrength();clearPwdFieldErr('new')" style="${inputPadStyle}"/>${_pwdEye('sp-new')}</div>
 <div id="sp-err-new" style="display:none;${fieldErrStyle}"></div>
-<div class="erow"><div class="elbl">Confirm</div><input id="sp-confirm" class="einput" type="password" autocomplete="new-password" placeholder="Re-enter the password" oninput="clearPwdFieldErr('confirm')"/></div>
+<div class="erow" style="position:relative"><div class="elbl">Confirm</div><input id="sp-confirm" class="einput" type="password" autocomplete="new-password" placeholder="Re-enter the password" oninput="clearPwdFieldErr('confirm')" style="${inputPadStyle}"/>${_pwdEye('sp-confirm')}</div>
 <div id="sp-err-confirm" style="display:none;${fieldErrStyle}"></div>
 </div>
 <div id="sp-strength" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px"></div>
@@ -6607,7 +6664,18 @@ async function saveSetPassword(){
         return;
       }
       if(status===401||msg.includes('jwt')||msg.includes('expired')||msg.includes('not authenticated')){
-        _spBanner('error','Your session expired. Please sign in again.','Sign in again','_spReauthExpired()');
+        // Batch 9 Fix B — first-time set fallback. Supabase's "Secure
+        // password change" rejects updateUser on a session older than
+        // 24h. The recovery-email round-trip starts a brand-new
+        // session, so it works as a fallback. Offer it directly here
+        // for first-time users so they don't have to re-sign-in just
+        // to get back to this screen.
+        const firstTime=!hasPwd&&!recovery;
+        if(firstTime){
+          _spBanner('error','Your sign-in is too old to set a password directly. Send a one-time setup link instead?','Email setup link','requestPasswordReset()');
+        } else {
+          _spBanner('error','Your session expired. Please sign in again.','Sign in again','_spReauthExpired()');
+        }
         return;
       }
       // The "current password required" string only appears if the
@@ -6657,7 +6725,7 @@ function rPasswordSuggest(){
   let dismissed=false;
   try{dismissed=!!sessionStorage.getItem('mybjj.pwdPrompt.dismissed');}catch(_){}
   if(dismissed)return '';
-  return '<div style="background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px">'
+  return '<div style="background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;padding:12px 14px;margin-top:16px;margin-bottom:12px;display:flex;align-items:center;gap:12px">'
     +'<div style="flex:1;font-size:13px;color:var(--text);line-height:1.4">Set a password for faster sign-in next time? <span style="color:var(--text3)">Optional — sign-in links still work.</span></div>'
     +'<button onclick="openPwdFromBanner()" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">Set up</button>'
     +'<button onclick="dismissPwdPrompt()" title="Dismiss" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;display:flex;align-items:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
@@ -6706,7 +6774,7 @@ ${msg}
   // Step 2A — has password. Sign in + Forgot + email-link fallback.
   const formStep2A=`${emailHeader}
 <div class="fg">
-<div class="lf"><div class="li">${LOCK}</div><input id="auth-pwd" class="linput" type="password" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')signInWithEmail()" autofocus/></div>
+<div class="lf" style="position:relative"><div class="li">${LOCK}</div><input id="auth-pwd" class="linput" type="password" autocomplete="current-password" placeholder="Password" onkeydown="if(event.key==='Enter')signInWithEmail()" style="padding-right:44px" autofocus/>${_pwdEye('auth-pwd')}</div>
 </div>
 ${msg}
 <button onclick="signInWithEmail()" ${busy} style="${PRIMARY_STYLE};margin-top:14px">Sign in</button>
