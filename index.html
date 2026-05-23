@@ -1464,12 +1464,62 @@ function rANotify(){
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Send notification</div></div><div class="sbody"><div class="slbl">Audience</div><div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">${chips}</div><div class="slbl">Message</div><div class="ef"><div class="erow"><div class="elbl">Title</div><input class="einput" id="na-title" maxlength="80" placeholder="e.g. Class cancelled"/></div><textarea class="fbta" id="na-body" maxlength="500" style="border-top:1px solid var(--border)" placeholder="Write your message (optional)…"></textarea></div><div style="font-size:11px;color:var(--text3);padding:4px 14px 12px">Title up to 80 characters · body up to 500.</div><button class="bblue" style="margin-bottom:24px" onclick="sendN()" ${S.naSending?'disabled':''}>${btnLbl}</button></div></div>`;
 }
 function rAddStu(){
-  var isKids=S._addProg==='kids';
-  var isTransfer=S._addTransfer||'new';
-  var beltOpts=isKids?['White','Grey','Yellow','Orange','Green']:['White','Blue','Purple','Brown','Black'];
-  var phoneCC=S._addCC||'+61';
-  var ccOptions=[{c:'+61',l:'AU +61'},{c:'+64',l:'NZ +64'},{c:'+81',l:'JP +81'},{c:'+82',l:'KR +82'},{c:'+1',l:'US +1'},{c:'+44',l:'UK +44'},{c:'+55',l:'BR +55'}];
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="email@example.com"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select onchange="S._addCC=this.value" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Date of birth</div><input class="einput" type="date"/></div></div><div class="slbl" style="margin-top:8px">Program & rank</div><div class="ef"><div class="erow"><div class="elbl">Program</div><div class="seg"><button class="segb ${isKids?'':'on'}" onclick="S._addProg='adult';render()">Adults</button><button class="segb ${isKids?'on':''}" onclick="S._addProg='kids';render()">Kids</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">${UNITS.filter(u=>u.active).map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel">${beltOpts.map(b=>`<option>${b}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Degree</div><select class="esel"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child\\u2019s progress.</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" placeholder="Parent or guardian full name"/></div><div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1"><select style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">${ccOptions.map(o=>`<option value="${o.c}" ${o.c===phoneCC?'selected':''}>${o.l}</option>`).join('')}</select><input class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" style="text-align:left"/></div></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="parent@email.com"/></div></div>`:''}<div class="slbl" style="margin-top:8px">Background</div><div class="ef"><div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb ${isTransfer==='new'?'on':''}" onclick="S._addTransfer='new';render()">New</button><button class="segb ${isTransfer==='transfer'?'on':''}" onclick="S._addTransfer='transfer';render()">Transfer</button><button class="segb ${isTransfer==='returning'?'on':''}" onclick="S._addTransfer='returning';render()">Returning</button></div></div>${isTransfer==='transfer'?`<div class="erow"><div class="elbl">From</div><input class="einput" id="add-from" placeholder="Previous academy name"/></div><div class="erow"><div class="elbl">Since</div><input class="einput" id="add-since" type="date"/></div>`:''}${isTransfer==='returning'?`<div class="erow"><div class="elbl">Left on</div><input class="einput" id="add-left" type="date"/></div><div class="erow"><div class="elbl">Reason</div><select class="esel" id="add-reason"><option>Travel</option><option>Injury</option><option>Personal</option><option>Financial</option><option>Other</option></select></div>`:''}</div>${isTransfer==='transfer'?'<div class="gnote" style="margin-top:4px">Set belt and degree above to match their current rank. Journey will start with a transfer milestone. Head instructor must validate the belt.</div>':''}${isTransfer==='returning'?'<div class="gnote" style="margin-top:4px">Returning student. Their previous data will be preserved and a return milestone will be added to their journey.</div>':''}<div style="height:16px"></div><div style="display:flex;gap:10px;margin-bottom:24px"><button onclick="sendInvite(true)" class="bblue" style="flex:1;padding:12px;font-size:15px">Save & invite</button><button onclick="sendInvite(false)" class="bout" style="flex:1;padding:12px;font-size:15px;border-width:1px;margin-bottom:0">Save only</button></div></div></div>`;
+  // Batch 8b-fix — every form input is now state-bound to S._addForm.
+  // Render() can no longer wipe typed data because the new mount reads
+  // the value from state. Each input writes back via oninput / onchange
+  // (no render() on keystroke — selectionRange survives). IDs are
+  // explicit so sendInvite reads by id instead of querySelectorAll
+  // position (the old position-based reader silently dropped phone +
+  // dob + belt + degree — they're <select>s and unkeyed <input>s in
+  // shifting positions).
+  if(!S._addForm)S._addForm={cc:'+61',parentCc:'+61'};
+  const F=S._addForm;
+  const isKids=S._addProg==='kids';
+  const isTransfer=S._addTransfer||'new';
+  const beltOpts=isKids?['white','grey','yellow','orange','green']:['white','blue','purple','brown','black'];
+  const beltDefault=isKids?'white':'white';
+  if(F.belt&&!beltOpts.includes(String(F.belt).toLowerCase()))F.belt=beltDefault;
+  const belt=String(F.belt||beltDefault).toLowerCase();
+  const degree=F.degree!=null?String(F.degree):'0';
+  const ccOptions=[{c:'+61',l:'AU +61'},{c:'+64',l:'NZ +64'},{c:'+81',l:'JP +81'},{c:'+82',l:'KR +82'},{c:'+1',l:'US +1'},{c:'+44',l:'UK +44'},{c:'+55',l:'BR +55'}];
+  const phoneCC=F.cc||'+61';
+  const parentCC=F.parentCc||'+61';
+  const v=(k)=>escAttr(F[k]==null?'':F[k]);
+  const ccSelect=(idAttr,handler,selected)=>'<select id="'+idAttr+'" onchange="'+handler+'" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">'+ccOptions.map(o=>'<option value="'+o.c+'" '+(o.c===selected?'selected':'')+'>'+o.l+'</option>').join('')+'</select>';
+  const unitSel=UNITS.filter(u=>u.active).map(u=>'<option value="'+u.name+'" '+(u.name===(F.unit||S.unit)?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
+  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody">
+<div class="slbl">Personal info</div>
+<div class="ef">
+<div class="erow"><div class="elbl">First name</div><input id="add-first" class="einput" placeholder="First name" value="${v('first')}" oninput="S._addForm.first=this.value" autocomplete="off"/></div>
+<div class="erow"><div class="elbl">Last name</div><input id="add-last" class="einput" placeholder="Last name" value="${v('last')}" oninput="S._addForm.last=this.value" autocomplete="off"/></div>
+<div class="erow"><div class="elbl">Email</div><input id="add-email" class="einput" type="email" placeholder="email@example.com" value="${v('email')}" oninput="S._addForm.email=this.value" autocomplete="off"/></div>
+<div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-cc','S._addForm.cc=this.value',phoneCC)}<input id="add-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('phone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.phone=this.value" style="text-align:left" autocomplete="off"/></div></div>
+<div class="erow"><div class="elbl">Date of birth</div><input id="add-dob" class="einput" type="date" value="${v('dob')}" oninput="S._addForm.dob=this.value"/></div>
+</div>
+<div class="slbl" style="margin-top:8px">Program & rank</div>
+<div class="ef">
+<div class="erow"><div class="elbl">Program</div><div class="seg"><button class="segb ${isKids?'':'on'}" onclick="S._addProg='adult';render()">Adults</button><button class="segb ${isKids?'on':''}" onclick="S._addProg='kids';render()">Kids</button></div></div>
+<div class="erow"><div class="elbl">Unit</div><select id="add-unit" class="esel" onchange="S._addForm.unit=this.value">${unitSel}</select></div>
+<div class="erow"><div class="elbl">Belt</div><select id="add-belt" class="esel" onchange="S._addForm.belt=this.value">${beltOpts.map(b=>'<option value="'+b+'" '+(b===belt?'selected':'')+'>'+b.charAt(0).toUpperCase()+b.slice(1)+'</option>').join('')}</select></div>
+<div class="erow"><div class="elbl">Degree</div><select id="add-degree" class="esel" onchange="S._addForm.degree=this.value">${[0,1,2,3,4].map(i=>'<option value="'+i+'" '+(String(i)===degree?'selected':'')+'>'+i+'</option>').join('')}</select></div>
+</div>
+${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child’s progress.</div>
+<div class="ef">
+<div class="erow"><div class="elbl">Name</div><input id="add-p-name" class="einput" placeholder="Parent or guardian full name" value="${v('parentName')}" oninput="S._addForm.parentName=this.value" autocomplete="off"/></div>
+<div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-p-cc','S._addForm.parentCc=this.value',parentCC)}<input id="add-p-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('parentPhone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.parentPhone=this.value" style="text-align:left" autocomplete="off"/></div></div>
+<div class="erow"><div class="elbl">Email</div><input id="add-p-email" class="einput" type="email" placeholder="parent@email.com" value="${v('parentEmail')}" oninput="S._addForm.parentEmail=this.value" autocomplete="off"/></div>
+</div>`:''}
+<div class="slbl" style="margin-top:8px">Background</div>
+<div class="ef">
+<div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb ${isTransfer==='new'?'on':''}" onclick="S._addTransfer='new';render()">New</button><button class="segb ${isTransfer==='transfer'?'on':''}" onclick="S._addTransfer='transfer';render()">Transfer</button><button class="segb ${isTransfer==='returning'?'on':''}" onclick="S._addTransfer='returning';render()">Returning</button></div></div>
+${isTransfer==='transfer'?`<div class="erow"><div class="elbl">From</div><input class="einput" id="add-from" placeholder="Previous academy name" value="${v('xferFrom')}" oninput="S._addForm.xferFrom=this.value" autocomplete="off"/></div><div class="erow"><div class="elbl">Since</div><input class="einput" id="add-since" type="date" value="${v('xferSince')}" oninput="S._addForm.xferSince=this.value"/></div>`:''}
+${isTransfer==='returning'?`<div class="erow"><div class="elbl">Left on</div><input class="einput" id="add-left" type="date" value="${v('retLeft')}" oninput="S._addForm.retLeft=this.value"/></div><div class="erow"><div class="elbl">Reason</div><select class="esel" id="add-reason" onchange="S._addForm.retReason=this.value">${['Travel','Injury','Personal','Financial','Other'].map(r=>'<option value="'+r+'" '+(r===F.retReason?'selected':'')+'>'+r+'</option>').join('')}</select></div>`:''}
+</div>
+${isTransfer==='transfer'?'<div class="gnote" style="margin-top:4px">Set belt and degree above to match their current rank. Journey will start with a transfer milestone. Head instructor must validate the belt.</div>':''}
+${isTransfer==='returning'?'<div class="gnote" style="margin-top:4px">Returning student. Their previous data will be preserved and a return milestone will be added to their journey.</div>':''}
+<div style="height:16px"></div>
+<div style="display:flex;gap:10px;margin-bottom:24px"><button onclick="sendInvite(true)" class="bblue" style="flex:1;padding:12px;font-size:15px">Save & invite</button><button onclick="sendInvite(false)" class="bout" style="flex:1;padding:12px;font-size:15px;border-width:1px;margin-bottom:0">Save only</button></div>
+</div></div>`;
 }
 
 function rMUnits(){
@@ -4428,10 +4478,18 @@ function showSaveToast(){const t=document.createElement('div');t.textContent='\u
 async function sendInvite(dispatch){
   // dispatch: true → Save & invite (fires send-magic-link); false → Save only
   if(dispatch===undefined)dispatch=true;
-  const inputs=document.querySelectorAll('.sbody .einput');
-  const fname=inputs[0]?inputs[0].value.trim():'';
-  const lname=inputs[1]?inputs[1].value.trim():'';
-  const email=inputs[2]?inputs[2].value.trim().toLowerCase():'';
+  // Batch 8b-fix — read EVERY form field from S._addForm (state-bound).
+  // The old reader used document.querySelectorAll('.sbody .einput') and
+  // indexed positions, which:
+  //   (a) lost typed data whenever a re-render rebuilt the form's DOM
+  //       (the new inputs were empty until the user re-typed); and
+  //   (b) silently dropped phone, DOB, belt, degree because phone/DOB
+  //       are sometimes indexed off-by-one and belt/degree are <select>s
+  //       (not .einput) so they never appeared in the NodeList at all.
+  const F=S._addForm||{};
+  const fname=String(F.first||'').trim();
+  const lname=String(F.last||'').trim();
+  const email=String(F.email||'').trim().toLowerCase();
   const status=S._addTransfer||'new';
   const isKids=S._addProg==='kids';
   if(!fname||!lname){
@@ -4441,113 +4499,154 @@ async function sendInvite(dispatch){
   if(!isKids&&!email)return showSaveToast2('Missing: email','error');
   if(email&&!/^\S+@\S+\.\S+$/.test(email))return showSaveToast2('Please enter a valid email address.','error');
   if(status==='transfer'){
-    const fromAcad=document.getElementById('add-from')?.value?.trim()||'';
-    if(!fromAcad)return showSaveToast2('Missing: previous academy','error');
+    if(!String(F.xferFrom||'').trim())return showSaveToast2('Missing: previous academy','error');
   }
-  // Kids-specific parent fields. The form always lays them out at indices
-  // 5/6/7 (after the 5 base personal fields, before any optional
-  // transfer/returning extras), so reading by fixed position is safer
-  // than length-N which would shift when transfer/returning fields appear.
-  const parentName=isKids&&inputs[5]?inputs[5].value.trim():'';
-  const parentPhone=isKids&&inputs[6]?inputs[6].value.trim():'';
-  const parentEmail=isKids&&inputs[7]?inputs[7].value.trim().toLowerCase():'';
+  const parentName=isKids?String(F.parentName||'').trim():'';
+  const parentPhoneRaw=isKids?String(F.parentPhone||'').trim():'';
+  const parentEmail=isKids?String(F.parentEmail||'').trim().toLowerCase():'';
+  const parentCC=F.parentCc||'+61';
   if(isKids){
     if(!parentEmail)return showSaveToast2('Parent email is required for kids students.','error');
     if(!/^\S+@\S+\.\S+$/.test(parentEmail))return showSaveToast2('Please enter a valid parent email.','error');
   }
-  const curU=UNITS.find(u=>u.name===S.unit);
+  const curU=UNITS.find(u=>u.name===(F.unit||S.unit));
   const unitLegacy=curU?curU.id:null;
   const unitDbId=meUnitDbId();
   if(!unitLegacy||!unitDbId)return showSaveToast2('Unit not set. Pick a unit first.','error');
   const fullName=(fname+' '+lname).trim();
   const cli=initSupabase();
   if(!cli)return showSaveToast2('Connection issue','error');
-  // Bug 7 — Background section. For transfer/returning we seed the
-  // student's journey with the appropriate milestone so it shows in
-  // their timeline on day one. The same seed_student_journey_if_empty
-  // pass that runs on first sign-in will also add the "Joined myBJJ
-  // app" milestone — so we deliberately stop short of that here.
+  // Compose phone with CC prefix when both present, leave bare when the
+  // user already typed a leading +. Empty phone → null (no falsy '' on
+  // the column).
+  const _composePhone=(raw,cc)=>{
+    const r=String(raw||'').trim();
+    if(!r)return null;
+    if(r.startsWith('+'))return r;
+    return (cc?cc+' ':'')+r;
+  };
+  const phone=_composePhone(F.phone,F.cc||'+61');
+  const parentPhone=_composePhone(parentPhoneRaw,parentCC);
+  // Form-driven belt + degree. Validated against the active prog's
+  // belt set so a stale value (e.g. user toggled Adults→Kids→Adults
+  // mid-edit) can't write 'grey' to an adult row.
+  const adultBeltOpts=['white','blue','purple','brown','black'];
+  const kidsBeltOpts=['white','grey','yellow','orange','green'];
+  const beltOptsForProg=isKids?kidsBeltOpts:adultBeltOpts;
+  const formBeltRaw=String(F.belt||'white').toLowerCase();
+  const formBelt=beltOptsForProg.includes(formBeltRaw)?formBeltRaw:'white';
+  const formDegree=Number.isFinite(parseInt(F.degree,10))?parseInt(F.degree,10):0;
+  const formDob=String(F.dob||'').trim()||null;
+  // Background seeds (transfer / returning). Belt/degree are NOT
+  // overridden by Background — admin's rank picks above are an
+  // independent signal from how the student joined.
   const initialJourney=[];
   if(status==='transfer'){
-    const fromAcad=(document.getElementById('add-from')&&document.getElementById('add-from').value||'').trim();
-    const sinceVal=document.getElementById('add-since')&&document.getElementById('add-since').value||null;
+    const fromAcad=String(F.xferFrom||'').trim();
+    const sinceVal=String(F.xferSince||'').trim()||null;
     initialJourney.push({label:'Transferred to myBJJ',date:sinceVal||new Date().toISOString().slice(0,10),done:true,xfer:true,prev:fromAcad||null,classes:null,belt:null});
   } else if(status==='returning'){
-    const leftVal=document.getElementById('add-left')&&document.getElementById('add-left').value||null;
-    const reason=document.getElementById('add-reason')&&document.getElementById('add-reason').value||null;
+    const leftVal=String(F.retLeft||'').trim()||null;
+    const reason=F.retReason||null;
     if(leftVal)initialJourney.push({label:'Left academy'+(reason?(' · '+reason):''),date:leftVal,done:true,classes:null,belt:null});
     initialJourney.push({label:'Returned to myBJJ',date:new Date().toISOString().slice(0,10),done:true,classes:null,belt:null});
   }
-  // The address we'll send the magic link to (parent for kids, student otherwise).
   const inviteEmail=isKids?parentEmail:email;
+  let saved=false;
   if(isKids){
-    // Uniqueness: parent_email must not equal an existing student.email in this unit
+    // Uniqueness: parent_email must not equal an existing student.email in this unit.
     const dup=await cli.from('students').select('id,full_name').eq('unit_id',unitDbId).eq('email',parentEmail).limit(1);
     if(dup&&dup.data&&dup.data.length){return showSaveToast2("That email already belongs to a student in this unit. Use a different parent email.",'error');}
     const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
     const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
     const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
-    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,prog:'kids',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone||null,parent_email:parentEmail}).select('id,legacy_id').single();
+    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob}).select('id,legacy_id').single();
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,email:null,name:fullName,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,dob:formDob});
+      saved=true;
     }
     const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
     if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
     else console.log('[mybjj] parent whitelist OK');
   } else {
-    // Batch 8b — Adult invite. Always whitelist + always materialise a
-    // students row (was: students row only for the name-match / Background
-    // paths; default branch was whitelist-only and produced the visibility
-    // gap reported in the prior audit). claim_profile auto-links by
-    // lower(email) when user_id IS NULL, so the pre-inserted row picks up
-    // its user_id on first sign-in — no duplicate, no migration needed
-    // (see supabase/28_phase8_kid_secondary_parent.sql:75-78, 138-141).
+    // Adult invite (Batch 8b base + 8b-fix field persistence). Always
+    // whitelist; always materialise a students row. Dedup priority:
+    //   1. email-match in this unit  → update in place
+    //   2. exactly-one name-match    → link email onto it
+    //   3. otherwise                 → insert a fresh row
+    // claim_profile auto-links by lower(email) on first sign-in
+    // (supabase/28_phase8_kid_secondary_parent.sql:75-78, 138-141).
     await cli.from('whitelist').upsert({email,role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'}).then(r=>r&&r.error?console.warn('[mybjj] whitelist invite:',r.error):console.log('[mybjj] whitelist invite OK'));
-    // Priority dedupe (no DB-level uniqueness on students.email — guard
-    // lives in the client):
-    //   1. email-match in this unit → update that row in place
-    //   2. exactly-one name-match → link the new email onto it (legacy
-    //      behaviour for admins typing a known name first)
-    //   3. otherwise → insert a fresh row with email + active defaults
     const emailLower=String(email||'').toLowerCase();
     const emailMatch=emailLower
       ?STUDENTS.find(s=>s.unit===unitLegacy&&String(s.email||'').toLowerCase()===emailLower)
       :null;
     const lowerName=fullName.toLowerCase();
     const nameMatches=emailMatch?[]:STUDENTS.filter(s=>s.unit===unitLegacy&&(s.name||'').trim().toLowerCase()===lowerName);
+    // Editable payload shared by the update branches and the insert.
+    // The form is the source of truth for belt/degree/phone/dob too —
+    // admins are explicitly setting them, so the email-match path
+    // overwrites the existing row's values rather than preserving them.
+    const editable={
+      email,full_name:fullName,first_name:fname,last_name:lname,
+      belt:formBelt,degree:formDegree,
+      phone:phone,date_of_birth:formDob
+    };
     if(emailMatch){
-      const m=emailMatch;m.email=email;m.name=fullName;m.firstName=fname;m.lastName=lname;
-      const patch={email,full_name:fullName,first_name:fname,last_name:lname};
+      const m=emailMatch;
+      m.email=email;m.name=fullName;m.firstName=fname;m.lastName=lname;
+      m.belt=formBelt;m.deg=formDegree;m.phone=phone;m.dob=formDob;
+      const patch=Object.assign({},editable);
       if(initialJourney.length&&!(m.journey&&m.journey.length)){
         patch.journey=initialJourney;m.journey=initialJourney;
       }
       withSb(c=>c.from('students').update(patch).eq('legacy_id',m.id),'update student by email match');
+      saved=true;
     } else if(nameMatches.length===1){
-      const m=nameMatches[0];m.email=email;
-      const patch={email};
+      const m=nameMatches[0];
+      m.email=email;m.firstName=fname;m.lastName=lname;
+      m.belt=formBelt;m.deg=formDegree;m.phone=phone;m.dob=formDob;
+      const patch=Object.assign({},editable);
       if(initialJourney.length&&!(m.journey&&m.journey.length)){
         patch.journey=initialJourney;m.journey=initialJourney;
       }
       withSb(c=>c.from('students').update(patch).eq('legacy_id',m.id),'link student email');
+      saved=true;
     } else {
       const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'adult';
       const legacy=slug+'_'+Date.now().toString(36).slice(-4);
       const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'AD';
-      const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,email,prog:'adult',belt:'white',degree:0,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId}).select('id,legacy_id').single();
+      const ins=await cli.from('students').insert(Object.assign(
+        {legacy_id:legacy},
+        editable,
+        {prog:'adult',total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId}
+      )).select('id,legacy_id').single();
       if(ins&&ins.error){console.warn('[mybjj] add adult invite:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
+      console.log('[mybjj] add adult invite OK');
       if(ins&&ins.data){
-        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null});
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob});
+        saved=true;
       }
     }
   }
-  closeSub();
+  // Batch 8b-fix — fire the success toast BEFORE closeSub so any
+  // render race can't pre-empt it; the toast lives in document.body
+  // anyway, but ordering it first removes ambiguity. The 8b version
+  // toasted AFTER closeSub + an awaited sendMagicLink, which together
+  // produced an apparent "no toast" symptom when the user dismissed
+  // the panel before the magic-link round-trip resolved.
+  if(!saved)return;
   if(!dispatch){
     showSaveToast2(fullName+' added. They can sign in anytime by entering their email at mybjj-app.com.');
+    S._addForm={cc:'+61',parentCc:'+61'};
+    closeSub();
     return;
   }
-  // Dispatch the magic-link email.
+  showSaveToast2(fullName+' added. Sending sign-in link…');
+  S._addForm={cc:'+61',parentCc:'+61'};
+  closeSub();
   const r=await sendMagicLink(inviteEmail);
   if(r.ok){
     showSaveToast2(fullName+' added. Sign-in link sent to '+inviteEmail+'.');
@@ -6658,6 +6757,14 @@ function openSub(s){
   // session's failed-attempt counter or "reset sent" banner doesn't
   // bleed into the new visit.
   if(s==='setpwd'){S.pwdReauthAttempts=0;S.pwdResetSent=false;}
+  // Batch 8b-fix — reset the Add Student form on open. Form values
+  // are now lifted into S._addForm (state-bound inputs) so re-renders
+  // preserve typed data; we wipe the cache here so reopening starts
+  // blank instead of reading the previous submission's leftovers.
+  if(s==='addstu'){
+    S._addForm={cc:'+61',parentCc:'+61'};
+    S._addProg='adult';S._addTransfer='new';
+  }
   render();
   // Defensive autofill clear — Chrome / Safari often inject a stale
   // saved password into the Current field on mount despite all the
