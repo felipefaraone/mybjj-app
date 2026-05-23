@@ -441,19 +441,84 @@ function _socialUrl(platform,handle){
 //   opts.size      chip diameter px (default 36)
 //   opts.stopProp  add onclick="event.stopPropagation()" so the chip
 //                  doesn't trigger an outer card's tap-to-open-profile
+// Batch social-layout Item 3 — viewport-aware fit count for the
+// social chip row. iconSize + gap drives spacing; reservedRight is
+// the Edit-button column on the profile card. Floors to 1 so the
+// "+N" button always has a slot when many platforms exist.
+function _socialFitCount(iconSize,gap,reservedRight){
+  const vw=(typeof window!=='undefined'&&window.innerWidth)||360;
+  const sideMargins=32;   // app shell horizontal padding (8px each side ~= the .content gutter)
+  const cardPadding=28;   // .card horizontal padding 14*2
+  const reserved=reservedRight||0;
+  const avail=Math.max(vw-sideMargins-cardPadding-reserved,iconSize);
+  return Math.max(1,Math.floor((avail+gap)/(iconSize+gap)));
+}
 function _socialIconsRow(socialHandles,opts){
   if(!socialHandles)return '';
   opts=opts||{};
   const size=opts.size||36;
   const fontSize=Math.round(size*.36);
+  const gap=8;
   const stop=opts.stopProp?'onclick="event.stopPropagation()" ':'';
-  const chips=SOCIAL_PLATFORMS.map(p=>{
+  // Filter to platforms with a resolvable URL.
+  const items=SOCIAL_PLATFORMS.map(p=>{
     const url=_socialUrl(p.key,socialHandles[p.key]);
-    if(!url)return '';
-    const g=SOCIAL_GLYPHS[p.key]||'';
-    return '<a '+stop+'href="'+url+'" target="_blank" rel="noopener noreferrer" title="'+p.label+'" aria-label="'+p.label+'" style="display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none;font-size:'+fontSize+'px">'+g+'</a>';
+    if(!url)return null;
+    return{key:p.key,label:p.label,url,glyph:SOCIAL_GLYPHS[p.key]||''};
+  }).filter(Boolean);
+  if(!items.length)return '';
+  // Batch social-layout Item 3 — overflow into a "+N" button. fitCount
+  // uses the viewport width minus the card padding minus any reserved
+  // column (Item 2: Edit button on the profile card). When more
+  // platforms exist than fit, last slot becomes the "+N" button.
+  const reserved=opts.reservedRight||0;
+  const fit=opts.maxVisible||_socialFitCount(size,gap,reserved);
+  const overflow=items.length>fit;
+  const visible=overflow?items.slice(0,fit-1):items;
+  const hidden=overflow?items.slice(fit-1):[];
+  const chipStyle='display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none;font-size:'+fontSize+'px;flex-shrink:0';
+  const chips=visible.map(it=>(
+    '<a '+stop+'href="'+it.url+'" target="_blank" rel="noopener noreferrer" title="'+it.label+'" aria-label="'+it.label+'" style="'+chipStyle+'">'+it.glyph+'</a>'
+  )).join('');
+  let moreBtn='';
+  if(hidden.length){
+    // "+N" visual: same circle as the chips but with a numeric label
+    // (Barlow Condensed bold). Distinct from the letterboxd 3-dot
+    // glyph by virtue of the number — no ambiguity.
+    const payload=escAttr(JSON.stringify(hidden));
+    const moreStyle='display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:'+Math.round(size*.36)+'px;cursor:pointer;padding:0;flex-shrink:0';
+    const stopAttr=opts.stopProp?'event.stopPropagation();':'';
+    moreBtn='<button type="button" data-more="'+payload+'" onclick="'+stopAttr+'_openSocialMore(this)" aria-label="Show '+hidden.length+' more" title="More" style="'+moreStyle+'">+'+hidden.length+'</button>';
+  }
+  return chips+moreBtn;
+}
+// Batch social-layout Item 3 — overflow popover. State holds the
+// already-resolved {key,label,url,glyph} list for the hidden items
+// (handles having been turned into URLs at chip-render time, so
+// _socialUrl doesn't run twice).
+function _openSocialMore(btn){
+  if(!btn||!btn.dataset||!btn.dataset.more)return;
+  let list=null;
+  try{list=JSON.parse(btn.dataset.more);}catch(_){return;}
+  if(!Array.isArray(list)||!list.length)return;
+  S._socialMore=list;
+  render();
+}
+function closeSocialMore(){S._socialMore=null;render();}
+function rSocialMorePopover(){
+  const list=S._socialMore;if(!Array.isArray(list)||!list.length)return '';
+  const rows=list.map(it=>{
+    const glyph=it.glyph||'';
+    return '<a href="'+it.url+'" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();closeSocialMore()" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--input-bg);border:1px solid var(--border);color:var(--text);text-decoration:none;margin-bottom:8px">'
+      +'<span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--card);color:var(--text2);border:1px solid var(--border);flex-shrink:0">'+glyph+'</span>'
+      +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.3px">'+it.label+'</span>'
+    +'</a>';
   }).join('');
-  return chips;
+  return `<div class="cov" onclick="closeSocialMore()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:360px;width:100%;margin:0 auto;padding:18px">
+<button onclick="closeSocialMore()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-bottom:12px;padding-right:36px">More links</div>
+${rows}
+</div></div>`;
 }
 // Batch social-edit Change 5 — inline social-handles editor.
 // subjectKey is "<kind>:<legacy_id>", parsed back into the subject row.
@@ -575,15 +640,25 @@ function _socialChipsBlock(socialHandles,opts){
   opts=opts||{};
   const subj=opts.subject||null;
   const canEdit=_canEditSocial(subj);
-  const chips=_socialIconsRow(socialHandles);
+  // Batch social-layout Item 2 — when the Edit button is present we
+  // must reserve its column on the chip row so the icons never sit
+  // under it. ~60px = Edit pill width (~48px) + gap (~12px). Item 3
+  // (overflow): the fit count for the chip row also subtracts this
+  // reserved width so the "+N" button slots correctly.
+  const reservedRight=canEdit?60:0;
+  const chips=_socialIconsRow(socialHandles,{reservedRight});
   // Hide card entirely for read-only viewers when there's no handle.
   if(!chips&&!canEdit)return '';
   const subjectKey=subj?(subj.kind+':'+subj.s.id):'';
   const editBtn=canEdit&&subjectKey
     ?'<button onclick="openSocialEditor(\''+subjectKey+'\')" title="Edit social" style="position:absolute;top:10px;right:10px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:6px;padding:4px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">Edit</button>'
     :'';
+  // Padding-right on the chip wrapper carves out the same reserved
+  // column inside the card so flex wrapping understands the boundary
+  // even on viewports wider than the fit estimate.
+  const rowStyle='display:flex;flex-wrap:nowrap;gap:8px;align-items:center'+(reservedRight?';padding-right:'+reservedRight+'px':'');
   const body=chips
-    ?'<div style="display:flex;flex-wrap:wrap;gap:8px">'+chips+'</div>'
+    ?'<div style="'+rowStyle+'">'+chips+'</div>'
     :'<div style="font-size:13px;color:var(--text3);padding:6px 0">No social handles yet. Tap Edit to add.</div>';
   return '<div class="slbl" style="margin-top:18px">Social</div>'
     +'<div class="card" style="padding:14px;position:relative">'
@@ -1099,7 +1174,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,_socialMore:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -3400,7 +3475,13 @@ function _renderProfileIdentity(s,opts){
   // resolve to URLs; empty handles render an empty string anyway.
   const socialBlock=(!isStaff&&isKids)?'':_socialChipsBlock(s.socialHandles,{subject:{kind:isStaff?'staff':'student',s}});
   const editBtn='<div style="margin-top:18px"><button onclick="'+editHandler+'" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">'+editLabel+'</button></div>';
-  return header+details+socialBlock+editBtn;
+  // Batch social-layout Item 1 — self-view order:
+  //   header → details → Edit Profile button → SOCIAL → SETTINGS
+  // SETTINGS lives in rProfileArea (this helper's caller) and renders
+  // after whatever identityCard returns, so moving SOCIAL after editBtn
+  // here is the only place to touch. rStuProf / rStaffProf (peer /
+  // read-only paths) build their own structure and aren't affected.
+  return header+details+editBtn+socialBlock;
 }
 // Parent profile area renderer. Mounted at rApp root alongside rPanel.
 // Slide-in panel — reuses .ov + .panel CSS so the slide animation
@@ -4661,7 +4742,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMorePopover()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -4947,6 +5028,18 @@ function render(){
   hideSplash();
 }
 
+// Batch social-layout Item 3 — recompute the social-chip fit count on
+// resize / orientationchange. Debounced so the re-render isn't
+// hammered during a continuous drag. Only fires after the breakpoint
+// stops moving for 200ms.
+(function(){
+  if(typeof window==='undefined'||window._mybjjResizeWired)return;
+  let t=null;
+  const onResize=()=>{if(t)clearTimeout(t);t=setTimeout(()=>{try{render();}catch(_){/* no-op */}},200);};
+  window.addEventListener('resize',onResize,{passive:true});
+  window.addEventListener('orientationchange',onResize,{passive:true});
+  window._mybjjResizeWired=true;
+})();
 // Etapa 3 — doLogin demo helper deleted. Real auth lives entirely in
 // signInGoogle / signInMagic / signInWithEmail and the email-step
 // flow in rAuth.
