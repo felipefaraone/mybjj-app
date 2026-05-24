@@ -4322,19 +4322,20 @@ function rEvents(isA){
 }
 function rEEdit(){
   const isNew=!S.editEv;
-  const e=S.editEv||{title:'',date:'',type:'competition',desc:'',link:''};
+  const e=S.editEv||{title:'',_dateIso:'',type:'competition',desc:'',link:''};
   const typeOpts=[['competition','Competition'],['social','Social']].map(([v,l])=>'<option value="'+v+'"'+(e.type===v?' selected':'')+'>'+l+'</option>').join('');
-  // Batch events-persist — Options checkboxes (Competing/Supporting)
-  // removed: that toggle wrote to e.options, a column that doesn't
-  // exist on public.events and never came back through hydrate, so
-  // the choice silently reset on every refresh. Feed renderer falls
-  // back to showing both RSVP buttons when e.options is absent.
+  // Batch events-form-polish — Date is now a native calendar picker
+  // (type=date), prefilled from the ISO column (events.date, NOT NULL).
+  // Description textarea overrides .einput's text-align:right (a rule
+  // designed for the single-line value-on-the-right form layout) so
+  // multi-line typing flows LTR.
+  const dateVal=e._dateIso||'';
   return '<div class="sub open" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeEEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+(isNew?'Add event':'Edit event')+'</div><button class="ssave" onclick="saveEv()">Save</button></div>'
     +'<div class="sbody"><div class="ef">'
     +'<div class="erow"><div class="elbl">Title</div><input class="einput" id="ev-title" value="'+e.title+'" placeholder="Event name"/></div>'
-    +'<div class="erow"><div class="elbl">Date</div><input class="einput" id="ev-date" value="'+e.date+'" placeholder="e.g. 25 Apr 2026"/></div>'
+    +'<div class="erow"><div class="elbl">Date</div><input class="einput" id="ev-date" type="date" required value="'+dateVal+'"/></div>'
     +'<div class="erow"><div class="elbl">Type</div><select class="esel" id="ev-type">'+typeOpts+'</select></div>'
-    +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4">'+e.desc+'</textarea></div>'
+    +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" dir="ltr" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4;text-align:left;direction:ltr">'+e.desc+'</textarea></div>'
     +'<div class="erow"><div class="elbl">Link</div><input class="einput" id="ev-link" value="'+(e.link||'')+'" placeholder="https://... (optional)"/></div>'
     +'</div>'
     +(!isNew?'<button class="bdel" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px" onclick="delEv(\''+e.id+'\')">Delete event</button>':'')
@@ -6376,7 +6377,7 @@ async function hydrateData(){
     if(ev.data){
       // MOCK-FIX — empty array clears EVENTS so the feed empty state
       // renders instead of a stale mock seed.
-      EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]}));
+      EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,_dateIso:r.date||'',type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]}));
       touched=true;
     }else if(ev.error){console.warn('[mybjj] hydrate events:',ev.error);EVENTS=[];}
     if(pw.data){
@@ -8729,42 +8730,32 @@ function closeEEdit(){S.editEv=null;S.addEv=false;render();}
 //   form type   → events.type             ('competition' | 'social')
 //   form desc   → events.description
 //   form link   → events.link             (null when blank)
-//   form date   → events.date + events.date_text  (see _evDateColumns)
+//   form date   → events.date             (YYYY-MM-DD from native picker;
+//                                          date_text always cleared since
+//                                          events-form-polish — free-text
+//                                          ranges are no longer supported)
 //   current unit→ events.unit_legacy_ids  ([uid])
 // New rows seed competing/supporting arrays + a generated legacy_id so
 // the local id stays stable. The local-only `options` field was dropped
 // (no DB column; UI fallback at rEvents shows both RSVP buttons when
 // e.options is absent).
-function _evDateColumns(raw){
-  // The Date input is free text ("June 1-3", "28-29 Mar 2026"). The
-  // events.date column is NOT NULL, so we always supply an ISO value
-  // (sorted by .order('date')) and stash the raw label in date_text.
-  // Hydrate at line ~6377 prefers (date_text||date), so the UI keeps
-  // showing the raw label.
-  const dt=String(raw||'').trim();
-  if(/^\d{4}-\d{2}-\d{2}$/.test(dt))return{date:dt,date_text:null};
-  if(!dt)return{date:dk(new Date()),date_text:null};
-  const parsed=new Date(dt);
-  const iso=isNaN(parsed.getTime())?dk(new Date()):dk(parsed);
-  return{date:iso,date_text:dt};
-}
 function _evRowToLocal(r){
-  return{id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]};
+  return{id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,_dateIso:r.date||'',type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]};
 }
 async function saveEv(){
   const title=((document.getElementById('ev-title')||{}).value||'').trim();
-  const dateRaw=(document.getElementById('ev-date')||{}).value||'';
+  const dateIso=(document.getElementById('ev-date')||{}).value||'';
   const type=(document.getElementById('ev-type')||{}).value||'competition';
   const desc=(document.getElementById('ev-desc')||{}).value||'';
   const link=((document.getElementById('ev-link')||{}).value||'').trim();
   if(!title){alert('Title is required.');return;}
+  if(!dateIso){alert('Date is required.');return;}
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue','error');return;}
   const curUnit=UNITS.find(u=>u.name===S.unit);const uid=curUnit?curUnit.id:null;
-  const dateCols=_evDateColumns(dateRaw);
   const payload={
     title,type,description:desc,link:link||null,
-    date:dateCols.date,date_text:dateCols.date_text,
+    date:dateIso,date_text:null,
     unit_legacy_ids:uid?[uid]:[]
   };
   if(S.addEv){
@@ -8792,7 +8783,7 @@ async function saveEv(){
       // Preserve competing/supporting RSVPs (toggled by a separate code
       // path) — only refresh the fields the editor controls.
       const fresh=_evRowToLocal(r.data);
-      EVENTS[idx]={...EVENTS[idx],title:fresh.title,date:fresh.date,type:fresh.type,desc:fresh.desc,link:fresh.link,units:fresh.units};
+      EVENTS[idx]={...EVENTS[idx],title:fresh.title,date:fresh.date,_dateIso:fresh._dateIso,type:fresh.type,desc:fresh.desc,link:fresh.link,units:fresh.units};
     }
   }
   closeEEdit();
