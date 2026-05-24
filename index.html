@@ -4323,9 +4323,12 @@ function rEvents(isA){
 function rEEdit(){
   const isNew=!S.editEv;
   const e=S.editEv||{title:'',date:'',type:'competition',desc:'',link:''};
-  const eOpts=e.options||['competing','supporting'];
   const typeOpts=[['competition','Competition'],['social','Social']].map(([v,l])=>'<option value="'+v+'"'+(e.type===v?' selected':'')+'>'+l+'</option>').join('');
-  const chkStyle='display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2);cursor:pointer;font-family:Barlow,sans-serif';
+  // Batch events-persist — Options checkboxes (Competing/Supporting)
+  // removed: that toggle wrote to e.options, a column that doesn't
+  // exist on public.events and never came back through hydrate, so
+  // the choice silently reset on every refresh. Feed renderer falls
+  // back to showing both RSVP buttons when e.options is absent.
   return '<div class="sub open" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeEEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+(isNew?'Add event':'Edit event')+'</div><button class="ssave" onclick="saveEv()">Save</button></div>'
     +'<div class="sbody"><div class="ef">'
     +'<div class="erow"><div class="elbl">Title</div><input class="einput" id="ev-title" value="'+e.title+'" placeholder="Event name"/></div>'
@@ -4333,7 +4336,6 @@ function rEEdit(){
     +'<div class="erow"><div class="elbl">Type</div><select class="esel" id="ev-type">'+typeOpts+'</select></div>'
     +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4">'+e.desc+'</textarea></div>'
     +'<div class="erow"><div class="elbl">Link</div><input class="einput" id="ev-link" value="'+(e.link||'')+'" placeholder="https://... (optional)"/></div>'
-    +'<div class="erow"><div class="elbl">Options</div><div style="display:flex;gap:14px"><label style="'+chkStyle+'"><input type="checkbox" id="ev-opt-competing"'+(eOpts.includes('competing')?' checked':'')+'>Competing</label><label style="'+chkStyle+'"><input type="checkbox" id="ev-opt-supporting"'+(eOpts.includes('supporting')?' checked':'')+'>Supporting</label></div></div>'
     +'</div>'
     +(!isNew?'<button class="bdel" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px" onclick="delEv(\''+e.id+'\')">Delete event</button>':'')
     +'<div style="height:24px"></div></div></div>';
@@ -8721,31 +8723,107 @@ function toggleEv(id,intent){
 function openAddEv(){S.addEv=true;S.editEv=null;render();}
 function openEditEv(id){const e=EVENTS.find(x=>x.id===id);if(!e)return;S.editEv={...e};S.addEv=false;render();}
 function closeEEdit(){S.editEv=null;S.addEv=false;render();}
-function saveEv(){
-  const title=(document.getElementById('ev-title')||{}).value||'';
-  const date=(document.getElementById('ev-date')||{}).value||'';
+// Batch events-persist — saveEv writes to public.events (was local-only,
+// changes evaporated on refresh). Column mapping:
+//   form title  → events.title
+//   form type   → events.type             ('competition' | 'social')
+//   form desc   → events.description
+//   form link   → events.link             (null when blank)
+//   form date   → events.date + events.date_text  (see _evDateColumns)
+//   current unit→ events.unit_legacy_ids  ([uid])
+// New rows seed competing/supporting arrays + a generated legacy_id so
+// the local id stays stable. The local-only `options` field was dropped
+// (no DB column; UI fallback at rEvents shows both RSVP buttons when
+// e.options is absent).
+function _evDateColumns(raw){
+  // The Date input is free text ("June 1-3", "28-29 Mar 2026"). The
+  // events.date column is NOT NULL, so we always supply an ISO value
+  // (sorted by .order('date')) and stash the raw label in date_text.
+  // Hydrate at line ~6377 prefers (date_text||date), so the UI keeps
+  // showing the raw label.
+  const dt=String(raw||'').trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(dt))return{date:dt,date_text:null};
+  if(!dt)return{date:dk(new Date()),date_text:null};
+  const parsed=new Date(dt);
+  const iso=isNaN(parsed.getTime())?dk(new Date()):dk(parsed);
+  return{date:iso,date_text:dt};
+}
+function _evRowToLocal(r){
+  return{id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]};
+}
+async function saveEv(){
+  const title=((document.getElementById('ev-title')||{}).value||'').trim();
+  const dateRaw=(document.getElementById('ev-date')||{}).value||'';
   const type=(document.getElementById('ev-type')||{}).value||'competition';
   const desc=(document.getElementById('ev-desc')||{}).value||'';
-  const link=(document.getElementById('ev-link')||{}).value||'';
-  if(!title.trim()){alert('Title is required.');return;}
-  const opts=[];
-  if(document.getElementById('ev-opt-competing')?.checked)opts.push('competing');
-  if(document.getElementById('ev-opt-supporting')?.checked)opts.push('supporting');
-  const options=opts.length?opts:['competing','supporting'];
-  const curUnit=UNITS.find(u=>u.name===S.unit);const uid=curUnit?curUnit.id:'nb';
+  const link=((document.getElementById('ev-link')||{}).value||'').trim();
+  if(!title){alert('Title is required.');return;}
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const curUnit=UNITS.find(u=>u.name===S.unit);const uid=curUnit?curUnit.id:null;
+  const dateCols=_evDateColumns(dateRaw);
+  const payload={
+    title,type,description:desc,link:link||null,
+    date:dateCols.date,date_text:dateCols.date_text,
+    unit_legacy_ids:uid?[uid]:[]
+  };
   if(S.addEv){
-    EVENTS.push({id:'ev'+Date.now(),title,date,type,desc,link,options,competing:[],supporting:[],units:[uid]});
+    payload.legacy_id='ev'+Date.now();
+    payload.competing_legacy_ids=[];
+    payload.supporting_legacy_ids=[];
+    const r=await cli.from('events').insert(payload).select().single();
+    if(r.error||!r.data){
+      console.warn('[mybjj] saveEv insert:',r.error);
+      showSaveToast2(r.error?friendlyMutationError(r.error):"Couldn't save event",'error');
+      return;
+    }
+    EVENTS.push(_evRowToLocal(r.data));
   } else if(S.editEv){
-    const idx=EVENTS.findIndex(x=>x.id===S.editEv.id);
-    if(idx>=0)EVENTS[idx]={...EVENTS[idx],title,date,type,desc,link,options};
+    const dbId=S.editEv._dbId;
+    if(!dbId){showSaveToast2("Couldn't save event",'error');return;}
+    const r=await cli.from('events').update(payload).eq('id',dbId).select().single();
+    if(r.error||!r.data){
+      console.warn('[mybjj] saveEv update:',r.error);
+      showSaveToast2(r.error?friendlyMutationError(r.error):"Couldn't save event",'error');
+      return;
+    }
+    const idx=EVENTS.findIndex(x=>x._dbId===dbId);
+    if(idx>=0){
+      // Preserve competing/supporting RSVPs (toggled by a separate code
+      // path) — only refresh the fields the editor controls.
+      const fresh=_evRowToLocal(r.data);
+      EVENTS[idx]={...EVENTS[idx],title:fresh.title,date:fresh.date,type:fresh.type,desc:fresh.desc,link:fresh.link,units:fresh.units};
+    }
   }
   closeEEdit();
+  showSaveToast2('Event saved.');
 }
-function delEv(id){
+async function delEv(id){
   if(!confirm('Delete this event?'))return;
-  const idx=EVENTS.findIndex(x=>x.id===id);
+  const e=EVENTS.find(x=>x.id===id);
+  if(!e){closeEEdit();return;}
+  if(!e._dbId){
+    // Local-only ghost (shouldn't happen after this batch but defensive).
+    const idx=EVENTS.findIndex(x=>x.id===id);
+    if(idx>=0)EVENTS.splice(idx,1);
+    closeEEdit();
+    return;
+  }
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  // .select() after delete returns the removed rows. If RLS hides the
+  // row, the delete is a silent no-op (no error, no rows) — checking
+  // r.data.length catches that and refuses to mutate the local array.
+  const r=await cli.from('events').delete().eq('id',e._dbId).select();
+  if(r.error||!r.data||!r.data.length){
+    console.warn('[mybjj] delEv:',r.error);
+    showSaveToast2(r.error?friendlyMutationError(r.error):"Couldn't delete event",'error');
+    return;
+  }
+  const idx=EVENTS.findIndex(x=>x._dbId===e._dbId);
   if(idx>=0)EVENTS.splice(idx,1);
   closeEEdit();
+  showSaveToast2('Event deleted.');
 }
 function editTechVideo(week,techIdx){
   const w=SCHED.find(x=>x.week===week);if(!w)return;
