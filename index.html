@@ -7458,6 +7458,15 @@ async function refreshStudentStats(dbId){
 // class_value only for present rows). For status==='going' the value
 // is ignored on the wire — we don't write it on the going-undo path
 // to avoid clobbering whatever was on the previous present row.
+//
+// Batch attendance-cv-fix — class_value is now ALWAYS written on
+// present writes (was: `if(cv!=null)`, which let the DB default of
+// 1.00 win whenever the payload omitted the key — and any silent
+// no-op from the update path left the DB at 1.00 while the local
+// row pretended the new tier had landed). UPDATE now uses .select()
+// to surface RLS-hidden rows (zero rowcount → toast + local
+// rollback), same idiom we use for events-persist; classValue gets
+// Number()-coerced so a string slips through to a real numeric.
 async function _setAttStatus(cid,sid,newStatus,classValue){
   const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
@@ -7467,15 +7476,20 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
   const unit=UNITS.find(u=>u.id===s.unit);
   const confirmed=newStatus==='going'?null:(S.profile&&S.profile.id);
   const confirmedAt=newStatus==='going'?null:new Date().toISOString();
-  const cv=(newStatus==='present'&&typeof classValue==='number')?classValue:null;
+  // For status==='present' we always write a numeric class_value.
+  // For other statuses (going / absent) we never write it (preserves
+  // whatever tier the prior present row carried).
+  const isPresent=newStatus==='present';
+  const cvNum=Number(classValue);
+  const cv=isPresent?(Number.isFinite(cvNum)?cvNum:1):null;
   const cli=initSupabase();
   if(!row){
-    const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:newStatus,confirmedBy:confirmed,confirmedAt,classValue:cv!=null?cv:1};
+    const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:newStatus,confirmedBy:confirmed,confirmedAt,classValue:isPresent?cv:1};
     ATTENDANCE.push(local);
     render();
     if(!cli)return;
     const payload={student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_modalityFromType(t.type),status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
-    if(cv!=null)payload.class_value=cv;
+    if(isPresent)payload.class_value=cv;
     const r=await cli.from('attendance').insert(payload).select('id').single();
     if(r&&r.error){
       const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
@@ -7488,16 +7502,24 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
   }
   const prev={status:row.status,classValue:row.classValue};
   row.status=newStatus;row.confirmedBy=confirmed;row.confirmedAt=confirmedAt;
-  if(cv!=null)row.classValue=cv;
+  if(isPresent)row.classValue=cv;
   render();
   if(!cli||String(row._dbId).startsWith('local-'))return;
   const updatePayload={status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
-  if(cv!=null)updatePayload.class_value=cv;
-  const r=await cli.from('attendance').update(updatePayload).eq('id',row._dbId);
+  if(isPresent)updatePayload.class_value=cv;
+  // .select() returns the modified rows. RLS-hidden rows give 0
+  // rowcount with no error — rolling back keeps local state in sync
+  // with the DB instead of lying to the instructor.
+  const r=await cli.from('attendance').update(updatePayload).eq('id',row._dbId).select('id');
   if(r&&r.error){
     row.status=prev.status;row.classValue=prev.classValue;
     console.warn('[mybjj] update attendance ('+newStatus+'):',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');render();return;
+  }
+  if(!r||!r.data||!r.data.length){
+    row.status=prev.status;row.classValue=prev.classValue;
+    console.warn('[mybjj] update attendance ('+newStatus+'): 0 rows affected (RLS or stale id)');
+    showSaveToast2("Couldn't save attendance",'error');render();return;
   }
   showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
   await refreshStudentStats(s._dbId);render();
@@ -7523,7 +7545,11 @@ function closeMarkPSheet(){
 }
 async function confirmMarkPresent(value){
   const m=S.markP;if(!m)return;
-  const v=typeof value==='number'?value:1;
+  // Batch attendance-cv-fix — Number() coercion so a stringly-typed
+  // value (e.g. if a future caller uses 'data-value' indirection)
+  // doesn't sneak past the typeof check downstream.
+  const vNum=Number(value);
+  const v=Number.isFinite(vNum)?vNum:1;
   const cid=m.cid, sid=m.sid, walkin=!!m.walkin;
   S.markP=null;render();
   if(walkin) return _doAddStudentToClass(cid,sid,v);
