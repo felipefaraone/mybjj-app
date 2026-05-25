@@ -980,20 +980,18 @@ function _monthSelectHTML(id,options,selKey,onchange){
     return '<option value="'+p.key+'"'+sel+'>'+p.label+suffix+'</option>';
   }).join('');
   const idAttr=id?' id="'+id+'"':'';
-  // Batch month-filter-chevron — appearance:none + inline-SVG chevron
-  // background. Previous attempt used `data:image/svg+xml;utf8,` with
-  // literal `<` / `>` in the SVG payload; that combo doesn't render in
-  // iOS Safari (the chevron silently dropped to nothing). Fixed by:
-  //  - `data:image/svg+xml,` (no non-standard `;utf8,`)
-  //  - URL-encoding `<` `>` as `%3C` `%3E`
-  //  - explicit `background-color`/`background-image` (the `background:`
-  //    shorthand resets background-image, so the order on the inline
-  //    style was fragile).
-  // Stroke is `#6b7280` (matches light-mode --text2; still readable on
-  // dark --bg #0d0d0d). background-size pins the chevron to its SVG
-  // intrinsic size so it can't stretch.
-  const chevron="url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='1.5 1.5 6 6 10.5 1.5'/%3E%3C/svg%3E\")";
-  const style="width:100%;height:var(--ctrl-h);box-sizing:border-box;background-color:var(--bg);background-image:"+chevron+";background-repeat:no-repeat;background-position:right 12px center;background-size:12px 8px;border:1px solid var(--border);border-radius:8px;padding:0 34px 0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer;line-height:1;-webkit-appearance:none;-moz-appearance:none;appearance:none";
+  // Batch month-filter-chevron-2 — double up/down chevron (the "select"
+  // indicator) in muted gray, identical in Chrome and Safari. Previous
+  // single chevron rendered fine in Chrome but Safari still drew its
+  // own native black double-arrow on top because -webkit-appearance
+  // wasn't fully stripping the indicator. All three appearance forms
+  // (-webkit, -moz, standard) are set; background-image is split from
+  // the `background` shorthand (which resets background-image to none).
+  // Data URI uses the plain `data:image/svg+xml,` prefix and URL-
+  // encoded `<` `>` (the non-standard `;utf8,` form silently dropped
+  // on iOS in the previous batch).
+  const chevron="url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='14' viewBox='0 0 12 14' fill='none' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='2 5 6 1 10 5'/%3E%3Cpolyline points='2 9 6 13 10 9'/%3E%3C/svg%3E\")";
+  const style="width:100%;height:var(--ctrl-h);box-sizing:border-box;background-color:var(--bg);background-image:"+chevron+";background-repeat:no-repeat;background-position:right 12px center;background-size:12px 14px;border:1px solid var(--border);border-radius:8px;padding:0 34px 0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer;line-height:1;-webkit-appearance:none !important;-moz-appearance:none !important;appearance:none !important";
 
   return '<select'+idAttr+' onchange="'+onchange+'" style="'+style+'">'+opts+'</select>';
 }
