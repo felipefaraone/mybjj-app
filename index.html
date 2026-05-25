@@ -980,13 +980,20 @@ function _monthSelectHTML(id,options,selKey,onchange){
     return '<option value="'+p.key+'"'+sel+'>'+p.label+suffix+'</option>';
   }).join('');
   const idAttr=id?' id="'+id+'"':'';
-  // Batch programme-fixup-2 — appearance:none + inline-SVG chevron
-  // (positioned at `right 12px center`) so the arrow has clear
-  // breathing room from the edge. Native arrows can't be repositioned
-  // and rendered flush on iOS. padding-right reserves space so the
-  // option label can never overlap the chevron.
-  const chevron="url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%239ca3af' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><polyline points='1.5 1.5 6 6 10.5 1.5'/></svg>\")";
-  const style="width:100%;height:var(--ctrl-h);box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 34px 0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer;line-height:1;-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:"+chevron+";background-repeat:no-repeat;background-position:right 12px center";
+  // Batch month-filter-chevron — appearance:none + inline-SVG chevron
+  // background. Previous attempt used `data:image/svg+xml;utf8,` with
+  // literal `<` / `>` in the SVG payload; that combo doesn't render in
+  // iOS Safari (the chevron silently dropped to nothing). Fixed by:
+  //  - `data:image/svg+xml,` (no non-standard `;utf8,`)
+  //  - URL-encoding `<` `>` as `%3C` `%3E`
+  //  - explicit `background-color`/`background-image` (the `background:`
+  //    shorthand resets background-image, so the order on the inline
+  //    style was fragile).
+  // Stroke is `#6b7280` (matches light-mode --text2; still readable on
+  // dark --bg #0d0d0d). background-size pins the chevron to its SVG
+  // intrinsic size so it can't stretch.
+  const chevron="url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='1.5 1.5 6 6 10.5 1.5'/%3E%3C/svg%3E\")";
+  const style="width:100%;height:var(--ctrl-h);box-sizing:border-box;background-color:var(--bg);background-image:"+chevron+";background-repeat:no-repeat;background-position:right 12px center;background-size:12px 8px;border:1px solid var(--border);border-radius:8px;padding:0 34px 0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer;line-height:1;-webkit-appearance:none;-moz-appearance:none;appearance:none";
 
   return '<select'+idAttr+' onchange="'+onchange+'" style="'+style+'">'+opts+'</select>';
 }
