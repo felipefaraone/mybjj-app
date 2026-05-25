@@ -873,6 +873,58 @@ function _egDisplay(student){
 }
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MFULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
+// Batch programme-redesign — shared date helpers used by rSchedule
+// (Programme tab) and rTechniquesLog (Progress→Techniques). Both views
+// group programme_weeks by their week_start month and label rows
+// "Week N" (week_index). week_start is always a Monday.
+function _parseISODate(s){
+  // Parse 'YYYY-MM-DD' at local midnight so getDay()/getMonth() reflect
+  // the calendar date instead of drifting through UTC interpretation.
+  if(!s)return null;
+  const m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m)return null;
+  return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
+}
+function _snapToMonday(date){
+  if(!date)return null;
+  const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());
+  const dow=d.getDay(); // 0=Sun..6=Sat
+  const offset=dow===0?-6:1-dow; // Sun → -6, Mon → 0, Tue → -1, ...
+  d.setDate(d.getDate()+offset);
+  return d;
+}
+function _addDays(date,n){const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());d.setDate(d.getDate()+n);return d;}
+function _monthKey(date){return date?date.getMonth()+'-'+date.getFullYear():'';}
+function _monthLabel(monthIdx,year){return MFULL[monthIdx]+' '+year;}
+function _currentMonthKey(){const n=new Date();return n.getMonth()+'-'+n.getFullYear();}
+function _parseMonthKey(k){const m=String(k||'').match(/^(\d+)-(\d{4})$/);return m?{monthIdx:Number(m[1]),year:Number(m[2])}:null;}
+// Build distinct month options from SCHED week_starts + the current
+// month, sorted newest first (matches the existing rTechniquesLog
+// dropdown convention).
+function _buildSchedPeriods(sched){
+  const seen={};
+  const cur=_currentMonthKey();
+  seen[cur]=true;
+  (sched||[]).forEach(w=>{
+    if(w&&w.weekStart){
+      const d=_parseISODate(w.weekStart);
+      if(d)seen[_monthKey(d)]=true;
+    }
+  });
+  return Object.keys(seen).map(k=>{
+    const p=_parseMonthKey(k);
+    return{key:k,monthIdx:p.monthIdx,year:p.year,label:_monthLabel(p.monthIdx,p.year)};
+  }).sort((a,b)=>(b.year*12+b.monthIdx)-(a.year*12+a.monthIdx));
+}
+function _weekRangeLabel(weekStart){
+  const m=_parseISODate(weekStart);if(!m)return '';
+  const end=_addDays(m,6);
+  if(m.getMonth()===end.getMonth()){
+    return MS[m.getMonth()]+' '+m.getDate()+'–'+end.getDate();
+  }
+  return MS[m.getMonth()]+' '+m.getDate()+'–'+MS[end.getMonth()]+' '+end.getDate();
+}
 // Etapa 3 — INS hardcoded instructor list deleted. Dropdowns now read
 // the hydrated STAFF array (filtered to active rows) and render each
 // option via staffDisplayName() so the "Prof. X" legacy text never
@@ -1146,7 +1198,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:1,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'programme',schedPeriod:null,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -3159,33 +3211,30 @@ function rClass(){
 
 
 function rTechniquesLog(s){
-  // MOCK-FIX — period derived from the real current month rather than
-  // a hard-coded Mar 2026. MS is the global month-name array. Future
-  // months will accumulate as historical curriculum is logged.
-  var now=new Date();
-  var periods=[{label:MS[now.getMonth()]+' '+now.getFullYear(),key:now.getMonth()+'-'+now.getFullYear()}];
+  // Batch programme-redesign — read view now shares period grouping
+  // with the Programme tab: same _buildSchedPeriods (distinct months
+  // in SCHED week_starts + current month), same "Week N" labels
+  // (week_index), chronological per month.
+  var periods=_buildSchedPeriods(SCHED);
+  var selPeriod=periods.find(function(p){return p.key===S._techPeriod;})?S._techPeriod:_currentMonthKey();
+  var periodObj=periods.find(function(p){return p.key===selPeriod;})||periods[0];
 
-  // Default to latest period
-  var selPeriod=S._techPeriod||periods[periods.length-1].key;
-  // Ensure selPeriod is valid
-  if(!periods.find(function(p){return p.key===selPeriod;})) selPeriod=periods[periods.length-1].key;
+  var weeksThisPeriod=(SCHED||[])
+    .filter(function(w){return !w._draft && w.weekStart;})
+    .filter(function(w){var d=_parseISODate(w.weekStart);return d && _monthKey(d)===periodObj.key;})
+    .sort(function(a,b){return (a.weekStart||'').localeCompare(b.weekStart||'');});
 
-  var allTechs=[];
-  (SCHED||[]).forEach(function(w){
-    var group={theme:w.theme,color:w.color,week:w.week,techs:[]};
-    (w.standUp||[]).forEach(function(t){
-      var tv=typeof t==='object'?t:{t:t,video:''};
-      group.techs.push({t:tv.t,video:tv.video,cat:'Stand Up'});
-    });
-    (w.ground||[]).forEach(function(t){
-      var tv=typeof t==='object'?t:{t:t,video:''};
-      group.techs.push({t:tv.t,video:tv.video,cat:'Ground'});
-    });
-    allTechs.push(group);
+  var allTechs=weeksThisPeriod.map(function(w){
+    var g={theme:w.theme,color:w.color,week:w.week,weekStart:w.weekStart,techs:[]};
+    (w.standUp||[]).forEach(function(t){var tv=typeof t==='object'?t:{t:t,video:''};g.techs.push({t:tv.t,video:tv.video,cat:'Stand Up'});});
+    (w.ground||[]).forEach(function(t){var tv=typeof t==='object'?t:{t:t,video:''};g.techs.push({t:tv.t,video:tv.video,cat:'Ground'});});
+    return g;
   });
 
-  // MOCK-FIX — empty state when programme_weeks has no rows yet.
-  if(!allTechs.length){
+  var anyCommitted=(SCHED||[]).filter(function(w){return !w._draft;}).length>0;
+
+  // Empty state when programme_weeks has no rows yet.
+  if(!anyCommitted){
     return '<div class="card" style="text-align:center;padding:32px 20px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No curriculum yet</div>'
       +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Your academy hasn’t published the weekly programme yet.</div>'
@@ -3193,28 +3242,30 @@ function rTechniquesLog(s){
   }
 
   var html='<div class="card"><div class="slbl" style="margin-bottom:4px">Techniques log</div>';
-  html+='<div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.5">Curriculum techniques by period. Tap any technique to find tutorials on YouTube.</div>';
+  html+='<div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.5">Curriculum techniques by month. Tap any technique to find tutorials on YouTube.</div>';
 
-  // Period selector
+  // Period selector \u2014 shared options via _buildSchedPeriods.
   html+='<div style="margin-bottom:14px"><select onchange="S._techPeriod=this.value;render()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text);outline:none;cursor:pointer">';
-  // Show periods in reverse (newest first)
-  for(var pi=periods.length-1;pi>=0;pi--){
-    var p=periods[pi];
-    var isSel=p.key===selPeriod;
-    html+='<option value="'+p.key+'"'+(isSel?' selected':'')+'>'+p.label+(pi===periods.length-1?' (current)':'')+'</option>';
-  }
-  html+='</select>';
-  
-  html+='</div>';
+  periods.forEach(function(p){
+    var isSel=p.key===periodObj.key;
+    html+='<option value="'+p.key+'"'+(isSel?' selected':'')+'>'+p.label+(p.key===_currentMonthKey()?' (current)':'')+'</option>';
+  });
+  html+='</select></div>';
 
-  // Show weeks for selected period (always show all 4 curriculum weeks)
+  if(!allTechs.length){
+    html+='<div style="text-align:center;padding:24px 8px;font-size:13px;color:var(--text3)">No programme for '+periodObj.label+' yet.</div></div>';
+    return html;
+  }
+
+  // Chronological "Week N" rows for the selected month.
   allTechs.forEach(function(g){
     var isOpen=S.techWeek===g.week;
+    var dateRange=_weekRangeLabel(g.weekStart);
     html+='<div style="margin-bottom:6px">';
     html+='<div onclick="S.techWeek=S.techWeek==='+g.week+'?0:'+g.week+';render()" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer">';
-    html+='<div style="width:3px;height:16px;background:'+g.color+';border-radius:2px;flex-shrink:0"></div>';
-    html+='<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:13px;font-weight:700;color:var(--text)">Wk '+g.week+' \u2014 '+g.theme+'</div>';
-    html+='<div style="font-size:10px;color:var(--text3)">'+g.techs.length+' techniques</div></div>';
+    html+='<div style="width:3px;height:16px;background:'+(g.color||'#1A5DAD')+';border-radius:2px;flex-shrink:0"></div>';
+    html+='<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:13px;font-weight:700;color:var(--text)">Week '+g.week+(g.theme?' \u2014 '+g.theme:'')+'</div>';
+    html+='<div style="font-size:10px;color:var(--text3)">'+(dateRange?dateRange+' \u00b7 ':'')+g.techs.length+' technique'+(g.techs.length===1?'':'s')+'</div></div>';
     html+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--text3);transition:transform .2s;transform:rotate('+(isOpen?'180':'0')+'deg)"><polyline points="6 9 12 15 18 9"/></svg>';
     html+='</div>';
     if(isOpen){
@@ -3232,7 +3283,7 @@ function rTechniquesLog(s){
   });
 
   var totalAll=allTechs.reduce(function(a,g){return a+g.techs.length;},0);
-  html+='<div style="font-size:11px;color:var(--text3);text-align:center;padding-top:4px;line-height:1.5">'+totalAll+' techniques across '+allTechs.length+' weeks</div>';
+  html+='<div style="font-size:11px;color:var(--text3);text-align:center;padding-top:4px;line-height:1.5">'+totalAll+' technique'+(totalAll===1?'':'s')+' across '+allTechs.length+' week'+(allTechs.length===1?'':'s')+'</div>';
   html+='</div>';
   return html;
 }
@@ -4177,81 +4228,106 @@ function rPromoWall(){
 }
 function rSchedule(){
   const isA=isStaffOrOwner();
-  // Batch events-discoverability — Events is the default view when no
-  // curriculum has been published yet (SCHED empty). When SCHED has
-  // rows, default sweek=1 wins as before; users still reach Events via
-  // its tab.
-  const showEv=S.sweek===0||!SCHED.length;const w=SCHED.find(x=>x.week===S.sweek);
-  // MOCK-FIX — hide the week tab row entirely when no curriculum is
-  // published yet; the empty-state card below explains the gap.
-  const weekTabs=SCHED.length
-    ?('<div class="stabs" style="margin-bottom:16px">'
-        +SCHED.map(x=>'<button class="stab '+(S.sweek===x.week&&!showEv?'active':'')+'" onclick="setSweek('+x.week+')">Wk '+x.week+'</button>').join('')
+  // Batch programme-redesign — two-mode IA. [Programme] is the default
+  // and is anchored to a calendar month (the same one rTechniquesLog
+  // uses), with chronological "Week N" tabs. [Events] is the old feed
+  // verbatim — switching modes just shows/hides; everything inside is
+  // untouched.
+  const mode=S.schedMode==='events'?'events':'programme';
+  const segBtn=(key,lbl)=>{
+    const on=mode===key;
+    return '<button onclick="setSchedMode(\''+key+'\')" style="flex:1;background:'+(on?'var(--card)':'transparent')+';color:'+(on?'var(--text)':'var(--text3)')+';border:none;border-radius:8px;padding:9px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">'+lbl+'</button>';
+  };
+  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:14px">'+segBtn('programme','Programme')+segBtn('events','Events')+'</div>';
+
+  if(mode==='events'){
+    const evEditor=(S.editEv||S.addEv)?rEEdit():'';
+    return '<div style="height:16px"></div>'+segHtml+rEvents(isA)+'<div style="height:16px"></div>'+evEditor;
+  }
+
+  // Programme mode
+  const periods=_buildSchedPeriods(SCHED);
+  const selPeriodKey=periods.find(p=>p.key===S.schedPeriod)?S.schedPeriod:_currentMonthKey();
+  const selPeriod=periods.find(p=>p.key===selPeriodKey)||periods[0];
+  const periodSelect='<div style="margin-bottom:14px"><select onchange="setSchedPeriod(this.value)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text);outline:none;cursor:pointer">'
+    +periods.map(p=>'<option value="'+p.key+'"'+(p.key===selPeriod.key?' selected':'')+'>'+p.label+(p.key===_currentMonthKey()?' (current)':'')+'</option>').join('')
+    +'</select></div>';
+
+  // Weeks in the selected period (committed rows only — the in-flight
+  // draft is excluded from tabs and only surfaces through rWEditor).
+  const weeksThisPeriod=SCHED
+    .filter(x=>!x._draft&&x.weekStart)
+    .filter(x=>{const d=_parseISODate(x.weekStart);return d&&_monthKey(d)===selPeriod.key;})
+    .sort((a,b)=>(a.weekStart||'').localeCompare(b.weekStart||''));
+
+  const draft=SCHED.find(x=>x._draft);
+  const inDraftEdit=draft&&S.editWeek===draft._localId;
+  const draftEditor=inDraftEdit?rWEditor(draft):'';
+
+  // Pick a selected week: prefer S.sweek (now a _localId) when it
+  // matches a row in the current period; otherwise fall back to the
+  // first week in the period so the view is never blank when weeks
+  // exist. Storing the _localId (UUID) instead of the week_index makes
+  // the lookup unambiguous even when two rows share a week_index
+  // (allowed since the DB doesn't UNIQUE on week_index).
+  let selW=weeksThisPeriod.find(x=>x._localId===S.sweek)||weeksThisPeriod[0]||null;
+
+  const addBtn=isA?'<button class="badd" style="margin-top:0;margin-bottom:12px" onclick="addWeek()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add week</button>':'';
+
+  const weekTabsHtml=weeksThisPeriod.length
+    ?('<div class="stabs" style="margin-bottom:14px;flex-wrap:wrap">'
+        +weeksThisPeriod.map(x=>'<button class="stab '+(selW&&selW._localId===x._localId?'active':'')+'" onclick="setSelectedWeek(\''+x._localId+'\')">Week '+x.week+'</button>').join('')
       +'</div>')
     :'';
-  // Batch curriculum-crud — "+ Week" admin button always reachable, so
-  // an empty SCHED is no longer a dead-end. INSERT happens in addWeek;
-  // on success it sets sweek + editWeek so the new row opens for edit.
-  const addWeekBtn=isA?'<button class="stab" onclick="addWeek()" title="Add a programme week" aria-label="Add a programme week" style="background:var(--blue-tint);color:#1A5DAD;border:1.5px solid var(--blue-mid);font-weight:700">+ Week</button>':'';
-  const tabsHtml='<div class="stabs" style="margin-bottom:6px">'
-    +'<button class="stab '+(showEv?'active':'')+'" onclick="setSweek(0)">Events</button>'
-    +addWeekBtn
-    +'</div>'
-    +weekTabs;
 
-  function techRow(tech,idx,cat){
+  function techRow(tech,idx,cat,wRef){
     const tv=typeof tech==='object'?tech:{t:tech,video:''};
     const hasVideo=!!(tv.video);
     const linkSibling=hasVideo?'<a href="'+escAttr(tv.video)+'" target="_blank" rel="noopener" title="'+escAttr('Open '+(tv.t||'video'))+'" style="display:inline-flex;align-items:center;color:#1A5DAD;text-decoration:none;flex-shrink:0">'+LINK_ICON+'</a>':'';
-    const editBtn=isA?'<button onclick="editTechVideo2('+w.week+',\''+cat+'\','+idx+')" title="Edit video link" aria-label="Edit video link" style="background:none;border:none;cursor:pointer;padding:0;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;opacity:'+(hasVideo?'1':'0.4')+';color:'+(hasVideo?'#1A5DAD':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
+    const editBtn=isA?'<button onclick="editTechVideo2(\''+wRef._localId+'\',\''+cat+'\','+idx+')" title="Edit video link" aria-label="Edit video link" style="background:none;border:none;cursor:pointer;padding:0;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;opacity:'+(hasVideo?'1':'0.4')+';color:'+(hasVideo?'#1A5DAD':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
     return '<div style="margin-bottom:7px"><div style="background:var(--bg);border-radius:7px;padding:0 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border);min-height:38px;max-width:100%;overflow:hidden'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'"><div title="'+escAttr(tv.t||'')+'" style="flex:1;min-width:0;font-size:12px;color:var(--text);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(tv.t||'')+'</div>'+linkSibling+editBtn+'</div></div>';
   }
 
   let bodyHtml='';
-  if(showEv){bodyHtml=rEvents(isA);}
-  else if(!SCHED.length){
-    // MOCK-FIX — programme_weeks has no rows yet; render empty state
-    // instead of a blank body when the user lands on a stale week id.
-    bodyHtml='<div class="card" style="text-align:center;padding:32px 20px">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No curriculum yet</div>'
-      +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Your academy hasn’t published the weekly programme yet.</div>'
+  if(!weeksThisPeriod.length){
+    bodyHtml='<div class="card" style="text-align:center;padding:28px 20px">'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No programme for '+selPeriod.label+' yet</div>'
+      +(isA?'':'<div style="font-size:12px;color:var(--text3);line-height:1.5">Your academy hasn’t published this month’s programme yet.</div>')
       +'</div>';
-  }
-  else if(w){
+  } else if(selW){
+    const w=selW;
     const progCols={Fundamentals:'#1A5DAD',Mixed:'#7e22ce',Advanced:'#dc2626',Kids:'#15803d'};
-    // Programme badges: only show to admins in view mode (students don't need to know which class type)
     const badges=isA?(w.programs||[]).map(p=>{const c=progCols[p]||'#6b7280';return '<span style="background:'+c+'20;color:'+c+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+p+'</span>';}).join(' '):'';
-    const editBtn=isA?('<button class="bedit" onclick="editW('+w.week+')">Edit</button>'):'';
-    const shareWeekBtn=shareBtnHtml('shareWeek('+w.week+')');
+    const dateRange=_weekRangeLabel(w.weekStart);
+    const editBtn=isA?('<button class="bedit" onclick="editW(\''+w._localId+'\')">Edit</button>'):'';
+    const shareWeekBtn=shareBtnHtml('shareWeek(\''+w._localId+'\')');
     const topWeekActions='<div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0;align-self:flex-start">'+(editBtn||'')+shareWeekBtn+'</div>';
-    const suRows=(w.standUp||[]).map((t,i)=>techRow(t,i,'standUp')).join('');
-    const grRows=(w.ground||[]).map((t,i)=>techRow(t,i,'ground')).join('');
-
-    // Admin edit mode banner
-    const editBanner=S.editWeek===w.week?'<div style="background:#1A5DAD15;border:1.5px solid #1A5DAD;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-family:Barlow Condensed,sans-serif;font-size:12px;font-weight:700;color:#1A5DAD;letter-spacing:.5px">✏️ EDITING WEEK '+w.week+' — changes save immediately</div>':'';
-
+    const suRows=(w.standUp||[]).map((t,i)=>techRow(t,i,'standUp',w)).join('');
+    const grRows=(w.ground||[]).map((t,i)=>techRow(t,i,'ground',w)).join('');
     bodyHtml='<div class="card">'
-      +editBanner
       +'<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">'
-      +'<div style="width:4px;min-height:44px;background:'+w.color+';border-radius:2px;flex-shrink:0;margin-top:2px"></div>'
-      +'<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);margin-bottom:2px">WEEK '+w.week+' · PROGRAMME</div>'
-      +'<div style="font-family:Bebas Neue,sans-serif;font-size:25px;color:var(--text);line-height:1.05;margin-bottom:'+(badges?'6px':'2px')+'">'+w.theme.toUpperCase()+'</div>'
+      +'<div style="width:4px;min-height:44px;background:'+(w.color||'#1A5DAD')+';border-radius:2px;flex-shrink:0;margin-top:2px"></div>'
+      +'<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);margin-bottom:2px">WEEK '+w.week+(dateRange?' · '+dateRange.toUpperCase():'')+'</div>'
+      +'<div style="font-family:Bebas Neue,sans-serif;font-size:25px;color:var(--text);line-height:1.05;margin-bottom:'+(badges?'6px':'2px')+'">'+(w.theme||'').toUpperCase()+'</div>'
       +(badges?'<div style="display:flex;gap:4px;flex-wrap:wrap">'+badges+'</div>':'')+'</div>'+topWeekActions+'</div>'
       +(w.notes?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.5;font-style:italic">'+w.notes+'</div>':'')
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0">'
       +'<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Stand Up</div>'+suRows+'</div>'
       +'<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Ground</div>'+grRows+'</div>'
       +'</div></div>'
-      +(S.editWeek===S.sweek?rWEditor(w):'');
+      +(S.editWeek===w._localId?rWEditor(w):'');
   }
-  const evEditor=(S.editEv||S.addEv)?rEEdit():'';
-  // Batch 6 — header derives the current month/year from new Date() via
-  // the global MS[] month-name array (sibling fix to the rTechniquesLog
-  // Mar 2026 hardcode killed in MOCK-FIX). Unit suffix dropped; the top
-  // brand area already shows the active unit.
+
   const _now=new Date();
   const headerLbl=MS[_now.getMonth()]+' '+_now.getFullYear()+' programme';
-  return '<div style="height:16px"></div><div class="slbl">'+headerLbl+'</div>'+tabsHtml+bodyHtml+'<div style="height:16px"></div>'+evEditor;
+  return '<div style="height:16px"></div><div class="slbl">'+headerLbl+'</div>'+segHtml+periodSelect+addBtn+weekTabsHtml+bodyHtml+'<div style="height:16px"></div>'+draftEditor;
+}
+function setSchedMode(m){S.schedMode=m==='events'?'events':'programme';S.editWeek=false;render();}
+function setSchedPeriod(k){S.schedPeriod=k;S.sweek=null;render();}
+function setSelectedWeek(lid){
+  S.sweek=lid||null;
+  S.editWeek=false;
+  render();
 }
 
 function evStack(ids){
@@ -4354,54 +4430,69 @@ function rEEdit(){
 }
 
 function rWEditor(w){
+  const isDraft=!!w._draft;
+  const lid=w._localId;
   const allProgs=['Fundamentals','Mixed','Advanced','Kids'];
   const progCols={Fundamentals:'#1A5DAD',Mixed:'#7e22ce',Advanced:'#dc2626',Kids:'#15803d'};
   const progToggles=allProgs.map(p=>{
     const on=(w.programs||[]).includes(p);const c=progCols[p];
-    return '<div onclick="toggleProg('+w.week+',\''+p+'\')" style="cursor:pointer;padding:5px 9px;border-radius:6px;border:1.5px solid '+(on?c:'var(--border)')+';background:'+(on?c+'20':'var(--bg)')+';display:inline-flex;align-items:center;gap:5px;margin-right:5px;margin-bottom:5px"><div style="width:8px;height:8px;border-radius:50%;background:'+(on?c:'var(--border)')+'"></div><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:'+(on?c:'var(--text3)')+'">'+p+'</span></div>';
+    return '<div onclick="toggleProg(\''+lid+'\',\''+p+'\')" style="cursor:pointer;padding:5px 9px;border-radius:6px;border:1.5px solid '+(on?c:'var(--border)')+';background:'+(on?c+'20':'var(--bg)')+';display:inline-flex;align-items:center;gap:5px;margin-right:5px;margin-bottom:5px"><div style="width:8px;height:8px;border-radius:50%;background:'+(on?c:'var(--border)')+'"></div><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:'+(on?c:'var(--text3)')+'">'+p+'</span></div>';
   }).join('');
-  // Batch curriculum-crud — color swatches drive w.color (saveW persists
-  // it now). The brand blue is the default; the four program tints match
-  // progCols so the picker reads as "same palette as the toggles".
   const colorSwatches=['#1A5DAD','#7e22ce','#dc2626','#15803d','#b45309','#475569'];
   const curColor=w.color||'#1A5DAD';
   const colorPicker=colorSwatches.map(c=>{
     const sel=curColor.toLowerCase()===c.toLowerCase();
-    return '<button type="button" onclick="setWeekColor('+w.week+',\''+c+'\')" title="'+c+'" aria-label="Color '+c+'" style="width:28px;height:28px;border-radius:50%;background:'+c+';border:'+(sel?'3px solid var(--text)':'1px solid var(--border)')+';cursor:pointer;padding:0;flex-shrink:0"></button>';
+    return '<button type="button" onclick="setWeekColor(\''+lid+'\',\''+c+'\')" title="'+c+'" aria-label="Color '+c+'" style="width:28px;height:28px;border-radius:50%;background:'+c+';border:'+(sel?'3px solid var(--text)':'1px solid var(--border)')+';cursor:pointer;padding:0;flex-shrink:0"></button>';
   }).join('');
   function techFields(list,cat){
     const arr=list||[];
     return arr.map((t,i)=>{
       const tv=typeof t==='object'?t:{t:t,video:''};
       const isLast=i===arr.length-1;
-      const handle='<span class="tech-drag-handle" draggable="true" ondragstart="_dragTechStart(event,'+w.week+',\''+cat+'\','+i+')" ondragend="_dragTechEnd()" title="Drag to reorder" style="cursor:grab;color:var(--text3);flex-shrink:0;display:inline-flex;align-items:center;width:20px;height:24px;justify-content:center;user-select:none;touch-action:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>';
+      const handle='<span class="tech-drag-handle" draggable="true" ondragstart="_dragTechStart(event,\''+lid+'\',\''+cat+'\','+i+')" ondragend="_dragTechEnd()" title="Drag to reorder" style="cursor:grab;color:var(--text3);flex-shrink:0;display:inline-flex;align-items:center;width:20px;height:24px;justify-content:center;user-select:none;touch-action:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>';
       const arrowBtnStyle='background:none;border:none;color:var(--text3);cursor:pointer;width:24px;height:24px;padding:0;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border-radius:4px';
-      const upBtn=i===0?'<span style="width:24px;height:24px;flex-shrink:0"></span>':'<button onclick="bumpTech('+w.week+',\''+cat+'\','+i+',-1)" title="Move up" aria-label="Move up" style="'+arrowBtnStyle+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg></button>';
-      const downBtn=isLast?'<span style="width:24px;height:24px;flex-shrink:0"></span>':'<button onclick="bumpTech('+w.week+',\''+cat+'\','+i+',1)" title="Move down" aria-label="Move down" style="'+arrowBtnStyle+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>';
-      return '<div ondragover="_dragTechOver(event,'+w.week+',\''+cat+'\')" ondrop="_dragTechDrop(event,'+w.week+',\''+cat+'\','+i+')" style="background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid var(--border);max-width:100%;overflow:hidden">'
+      const upBtn=i===0?'<span style="width:24px;height:24px;flex-shrink:0"></span>':'<button onclick="bumpTech(\''+lid+'\',\''+cat+'\','+i+',-1)" title="Move up" aria-label="Move up" style="'+arrowBtnStyle+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg></button>';
+      const downBtn=isLast?'<span style="width:24px;height:24px;flex-shrink:0"></span>':'<button onclick="bumpTech(\''+lid+'\',\''+cat+'\','+i+',1)" title="Move down" aria-label="Move down" style="'+arrowBtnStyle+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>';
+      return '<div ondragover="_dragTechOver(event,\''+lid+'\',\''+cat+'\')" ondrop="_dragTechDrop(event,\''+lid+'\',\''+cat+'\','+i+')" style="background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid var(--border);max-width:100%;overflow:hidden">'
         +'<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;min-width:0">'
         +handle
-        +'<input value="'+(tv.t||'').replace(/"/g,'&quot;')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'t\',this.value)" placeholder="Technique name" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:12px;color:var(--text);min-width:0;height:24px"/>'
+        +'<input value="'+(tv.t||'').replace(/"/g,'&quot;')+'" oninput="updateTech(\''+lid+'\',\''+cat+'\','+i+',\'t\',this.value)" placeholder="Technique name" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:12px;color:var(--text);min-width:0;height:24px"/>'
         +upBtn+downBtn
-        +'<button onclick="removeTech('+w.week+',\''+cat+'\','+i+')" title="Remove" aria-label="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;width:24px;height:24px;padding:0;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center">×</button>'
+        +'<button onclick="removeTech(\''+lid+'\',\''+cat+'\','+i+')" title="Remove" aria-label="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;width:24px;height:24px;padding:0;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center">×</button>'
         +'</div>'
-        +'<input value="'+(tv.video||'').replace(/"/g,'&quot;')+'" oninput="updateTech('+w.week+',\''+cat+'\','+i+',\'video\',this.value)" placeholder="Video URL (YouTube or Instagram)..." style="width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:11px;color:var(--text3);min-width:0"/>'
+        +'<input value="'+(tv.video||'').replace(/"/g,'&quot;')+'" oninput="updateTech(\''+lid+'\',\''+cat+'\','+i+',\'video\',this.value)" placeholder="Video URL (YouTube or Instagram)..." style="width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:11px;color:var(--text3);min-width:0"/>'
         +'</div>';
     }).join('');
   }
+  const headerTxt=isDraft?'Add week':('Edit Week '+w.week);
+  // we-date input on every change snaps to Monday so week_start can only
+  // ever be a Monday (matches the UNIQUE (unit_id, week_start) anchor).
+  const weekStartVal=w.weekStart||'';
   return '<div class="cov" style="align-items:flex-end;justify-content:center;overflow-x:hidden"><div class="csheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto;overflow-x:hidden;max-width:min(480px,100%);margin:0 auto">'
-    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;margin-bottom:14px">Edit Week '+w.week+'</div>'
-    +'<div class="slbl">Theme</div><div class="ef" style="margin-bottom:12px"><div class="erow"><input id="we-theme" value="'+w.theme+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/></div></div>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;margin-bottom:14px">'+headerTxt+'</div>'
+    +'<div class="ef" style="margin-bottom:12px">'
+      +'<div class="erow"><div class="elbl">Week #</div><input id="we-week-idx" type="number" min="1" value="'+(w.week||1)+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);text-align:right"/></div>'
+      +'<div class="erow"><div class="elbl">Week of</div><input id="we-date" type="date" value="'+weekStartVal+'" onchange="_snapWeekDateInput(this)"/></div>'
+    +'</div>'
+    +'<div class="slbl">Theme</div><div class="ef" style="margin-bottom:12px"><div class="erow"><input id="we-theme" value="'+(w.theme||'').replace(/"/g,'&quot;')+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/></div></div>'
     +'<div class="slbl">Programmes</div><div style="display:flex;flex-wrap:wrap;margin-bottom:14px">'+progToggles+'</div>'
-    +'<div class="slbl">Notes</div><div class="ef" style="margin-bottom:12px"><textarea id="we-notes" style="width:100%;min-height:60px;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);padding:12px;resize:none">'+( w.notes||'')+'</textarea></div>'
+    +'<div class="slbl">Notes</div><div class="ef" style="margin-bottom:12px"><textarea id="we-notes" dir="ltr" style="width:100%;min-height:60px;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);padding:12px;resize:none;text-align:left;direction:ltr">'+(w.notes||'')+'</textarea></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;min-width:0">'
-    +'<div style="min-width:0"><div class="slbl">Stand Up</div>'+techFields(w.standUp,'standUp')+'<button onclick="addTech('+w.week+',\'standUp\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
-    +'<div style="min-width:0"><div class="slbl">Ground</div>'+techFields(w.ground,'ground')+'<button onclick="addTech('+w.week+',\'ground\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
+    +'<div style="min-width:0"><div class="slbl">Stand Up</div>'+techFields(w.standUp,'standUp')+'<button onclick="addTech(\''+lid+'\',\'standUp\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
+    +'<div style="min-width:0"><div class="slbl">Ground</div>'+techFields(w.ground,'ground')+'<button onclick="addTech(\''+lid+'\',\'ground\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
     +'</div>'
     +'<div class="slbl">Accent colour</div><div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+colorPicker+'</div>'
-    +'<div style="display:flex;gap:10px;margin-bottom:10px"><button onclick="closeWE()" style="flex:1;background:var(--bg);color:var(--text2);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Cancel</button><button onclick="saveW('+w.week+')" style="flex:1;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Save</button></div>'
-    +'<button onclick="delWeekConfirm('+w.week+')" style="width:100%;background:none;color:var(--red);border:1px solid var(--red-border);border-radius:10px;padding:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer">Delete week</button>'
+    +'<div style="display:flex;gap:10px;margin-bottom:10px"><button onclick="closeWE()" style="flex:1;background:var(--bg);color:var(--text2);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Cancel</button><button onclick="saveW(\''+lid+'\')" style="flex:1;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Save</button></div>'
+    +(isDraft?'':'<button onclick="delWeekConfirm(\''+lid+'\')" style="width:100%;background:none;color:var(--red);border:1px solid var(--red-border);border-radius:10px;padding:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer">Delete week</button>')
     +'</div></div>';
+}
+// Snap the we-date input back to the Monday of its week so the
+// (unit_id, week_start) UNIQUE anchor stays meaningful no matter which
+// day the user picks.
+function _snapWeekDateInput(el){
+  const d=_parseISODate(el.value);
+  if(!d)return;
+  el.value=dk(_snapToMonday(d));
 }
 
 function rAdmin(){
@@ -5705,8 +5796,10 @@ function shareWeekText(w){
   else parts.push(appShareUrl());
   return parts.join(' ').replace(/\s+/g,' ').trim();
 }
-function shareWeek(weekId){
-  const w=SCHED.find(x=>x.week===weekId);if(!w)return;
+function shareWeek(lid){
+  // lid is now the SCHED entry's _localId (UUID), not the week_index —
+  // see Batch programme-redesign for why a week_index can repeat.
+  const w=SCHED.find(x=>x._localId===lid);if(!w)return;
   shareNative(shareWeekText(w),'myBJJ programme');
 }
 
@@ -6302,7 +6395,7 @@ async function hydrateData(){
       c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi,created_at'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
-      c.from('programme_weeks').select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').order('week_index'),
+      c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
       c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
       // Etapa 1 — schedule lives in public.classes. Join staff so we
       // can render the instructor's clean display name without a
@@ -6404,7 +6497,8 @@ async function hydrateData(){
     if(pw.data){
       // MOCK-FIX — empty array clears SCHED so the curriculum empty
       // state renders instead of a stale mock seed.
-      SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,theme:r.theme,color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
+      SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,_localId:r.id,weekStart:r.week_start,unitId:r.unit_id,theme:r.theme||'',color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
+      SCHED.sort((a,b)=>(a.weekStart||'').localeCompare(b.weekStart||''));
       touched=true;
     }else if(pw.error){console.warn('[mybjj] hydrate programme_weeks:',pw.error);SCHED=[];}
     if(at.data){
@@ -7351,7 +7445,6 @@ async function undoCI(id){
   await refreshStudentStats(stu._dbId);
 }
 function setAtab(t){S.atab=t;render();if(t==='photos'&&canEditClassCounts())loadPhotoQueue();}
-function setSweek(w){S.sweek=w;S.editWeek=false;render();}
 function setPtab(t){S.ptab=t;render();}
 function setRseg(s){S.rseg=s;render();}
 function setPresUnit(u){S.presUnit=u;render();}
@@ -8731,33 +8824,45 @@ async function confDel(){
   showSaveToast2('Class deleted.');
 }
 function cancelDel(){if(S.clsSaving)return;S.cdel=null;render();}
-function editW(w){S.editWeek=w;render();}
-function closeWE(){S.editWeek=false;render();}
-function updateTech(week,cat,idx,field,val){const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;if(typeof w[cat][idx]==='string')w[cat][idx]={t:w[cat][idx],video:''};w[cat][idx][field]=val;}
+// Batch programme-redesign — editW/handlers now take _localId (UUID for
+// committed rows, 'draft' for the in-flight create row) so a week_index
+// collision (allowed since the DB doesn't UNIQUE on week_index) can't
+// silently route mutations to the wrong row via SCHED.find(x.week===N).
+function editW(lid){S.editWeek=lid;render();}
+function closeWE(){
+  // If closing a draft (form-first create that hasn't been INSERT-ed
+  // yet), discard the in-memory row so it doesn't leak into tabs.
+  const idx=SCHED.findIndex(x=>x._draft);
+  if(idx>=0)SCHED.splice(idx,1);
+  S.editWeek=false;
+  render();
+}
+function _findWk(lid){return SCHED.find(x=>x._localId===lid);}
+function updateTech(lid,cat,idx,field,val){const w=_findWk(lid);if(!w||!w[cat])return;if(typeof w[cat][idx]==='string')w[cat][idx]={t:w[cat][idx],video:''};w[cat][idx][field]=val;}
 let _dragTech=null;
-function _dragTechStart(ev,week,cat,idx){_dragTech={week,cat,idx};try{ev.dataTransfer.setData('text/plain',cat+':'+idx);ev.dataTransfer.effectAllowed='move';}catch(_){}}
-function _dragTechOver(ev,week,cat){if(!_dragTech||_dragTech.week!==week||_dragTech.cat!==cat)return;ev.preventDefault();try{ev.dataTransfer.dropEffect='move';}catch(_){}}
-function _dragTechDrop(ev,week,cat,idx){if(!_dragTech||_dragTech.week!==week||_dragTech.cat!==cat){_dragTech=null;return;}ev.preventDefault();const from=_dragTech.idx;_dragTech=null;if(from===idx)return;moveTech(week,cat,from,idx);}
+function _dragTechStart(ev,lid,cat,idx){_dragTech={lid,cat,idx};try{ev.dataTransfer.setData('text/plain',cat+':'+idx);ev.dataTransfer.effectAllowed='move';}catch(_){}}
+function _dragTechOver(ev,lid,cat){if(!_dragTech||_dragTech.lid!==lid||_dragTech.cat!==cat)return;ev.preventDefault();try{ev.dataTransfer.dropEffect='move';}catch(_){}}
+function _dragTechDrop(ev,lid,cat,idx){if(!_dragTech||_dragTech.lid!==lid||_dragTech.cat!==cat){_dragTech=null;return;}ev.preventDefault();const from=_dragTech.idx;_dragTech=null;if(from===idx)return;moveTech(lid,cat,from,idx);}
 function _dragTechEnd(){_dragTech=null;}
-function moveTech(week,cat,fromIdx,toIdx){
-  const w=SCHED.find(x=>x.week===week);if(!w)return;
+function moveTech(lid,cat,fromIdx,toIdx){
+  const w=_findWk(lid);if(!w)return;
   const list=w[cat];if(!list||fromIdx<0||fromIdx>=list.length||toIdx<0||toIdx>=list.length)return;
   if(fromIdx===toIdx)return;
   const item=list.splice(fromIdx,1)[0];
   list.splice(toIdx,0,item);
   render();
 }
-function bumpTech(week,cat,idx,dir){
-  const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;
+function bumpTech(lid,cat,idx,dir){
+  const w=_findWk(lid);if(!w||!w[cat])return;
   const newIdx=idx+dir;
   if(newIdx<0||newIdx>=w[cat].length)return;
-  moveTech(week,cat,idx,newIdx);
+  moveTech(lid,cat,idx,newIdx);
 }
-function addTech(week,cat){const w=SCHED.find(x=>x.week===week);if(!w){return;}if(!w[cat])w[cat]=[];w[cat].push({t:'New technique',video:''});render();}
-function removeTech(week,cat,idx){const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;w[cat].splice(idx,1);render();}
-function toggleProg(week,prog){const w=SCHED.find(x=>x.week===week);if(!w)return;if(!w.programs)w.programs=[];const i=w.programs.indexOf(prog);if(i>=0)w.programs.splice(i,1);else w.programs.push(prog);render();}
-function setWeekColor(week,color){const w=SCHED.find(x=>x.week===week);if(!w)return;w.color=color;render();}
-function editTechVideo2(week,cat,idx){const w=SCHED.find(x=>x.week===week);if(!w)return;const list=w[cat]||[];const tech=list[idx];if(!tech)return;const tv=typeof tech==='object'?tech:{t:tech,video:''};const url=prompt('Video URL for "'+tv.t+'" (YouTube or Instagram):',tv.video||'');if(url===null)return;if(typeof list[idx]==='string')list[idx]={t:list[idx],video:url};else list[idx].video=url;render();}
+function addTech(lid,cat){const w=_findWk(lid);if(!w)return;if(!w[cat])w[cat]=[];w[cat].push({t:'New technique',video:''});render();}
+function removeTech(lid,cat,idx){const w=_findWk(lid);if(!w||!w[cat])return;w[cat].splice(idx,1);render();}
+function toggleProg(lid,prog){const w=_findWk(lid);if(!w)return;if(!w.programs)w.programs=[];const i=w.programs.indexOf(prog);if(i>=0)w.programs.splice(i,1);else w.programs.push(prog);render();}
+function setWeekColor(lid,color){const w=_findWk(lid);if(!w)return;w.color=color;render();}
+function editTechVideo2(lid,cat,idx){const w=_findWk(lid);if(!w)return;const list=w[cat]||[];const tech=list[idx];if(!tech)return;const tv=typeof tech==='object'?tech:{t:tech,video:''};const url=prompt('Video URL for "'+tv.t+'" (YouTube or Instagram):',tv.video||'');if(url===null)return;if(typeof list[idx]==='string')list[idx]={t:list[idx],video:url};else list[idx].video=url;render();}
 function toggleEv(id,intent){
   const e=EVENTS.find(x=>x.id===id);if(!e)return;
   if(!e.competing)e.competing=[];if(!e.supporting)e.supporting=[];
@@ -8874,26 +8979,72 @@ function editTechVideo(week,techIdx){
   else tech.video=url;
   render();
 }
-// Batch curriculum-crud — saveW now persists EVERY field the editor
-// exposes (was theme/notes/stand_up/ground only — programs and color
-// were drop-on-the-floor before, plus the dead we-vid field that had
-// no DB column). Uses the same rowcount-guard idiom as the attendance
-// picker fix so an RLS-hidden row can't silently no-op.
-async function saveW(week){
-  const w=SCHED.find(x=>x.week===week);if(!w||!w._dbId)return;
-  const prev={theme:w.theme,notes:w.notes,programs:[...(w.programs||[])],color:w.color,standUp:w.standUp,ground:w.ground};
-  const theme=(document.getElementById('we-theme')||{}).value||w.theme||'';
-  const notes=(document.getElementById('we-notes')||{}).value||'';
-  // standUp / ground / programs / color are mutated in place by the
-  // editor's inline handlers (updateTech, toggleProg, setWeekColor,
-  // addTech, removeTech, moveTech) so we read them straight off w.
-  w.theme=theme;w.notes=notes;
+// Batch programme-redesign — saveW dispatches INSERT vs UPDATE based on
+// whether the editor is in create mode (w._draft) or edit mode (real
+// _dbId). Both paths persist EVERY editor field: theme, notes,
+// stand_up, ground, programs, color PLUS week_index and week_start
+// (new in this batch — the editor now lets the user set both). UNIQUE
+// (unit_id, week_start) collisions surface as a clean toast instead of
+// the raw "duplicate key" error.
+async function saveW(lid){
+  const w=SCHED.find(x=>x._localId===lid);if(!w)return;
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue','error');return;}
-  const payload={theme,notes,stand_up:w.standUp||[],ground:w.ground||[],programs:w.programs||[],color:w.color||'#1A5DAD'};
-  const r=await cli.from('programme_weeks').update(payload).eq('id',w._dbId).select('id');
+  const theme=((document.getElementById('we-theme')||{}).value||'').trim();
+  const notes=(document.getElementById('we-notes')||{}).value||'';
+  const weekIdxRaw=Number((document.getElementById('we-week-idx')||{}).value||0);
+  const weekIdx=Number.isFinite(weekIdxRaw)&&weekIdxRaw>=1?Math.floor(weekIdxRaw):1;
+  let weekStart=(document.getElementById('we-date')||{}).value||w.weekStart||'';
+  // Snap any picked date back to Monday so the (unit_id, week_start)
+  // anchor is always a Monday, no matter what the picker submitted.
+  const wsDate=_parseISODate(weekStart);
+  if(wsDate)weekStart=dk(_snapToMonday(wsDate));
+  if(!weekStart){showSaveToast2('Pick a week date','error');return;}
+  const payload={
+    week_index:weekIdx,
+    week_start:weekStart,
+    theme,notes,
+    stand_up:w.standUp||[],
+    ground:w.ground||[],
+    programs:w.programs||[],
+    color:w.color||'#1A5DAD'
+  };
+  const isConflict=(err)=>{const m=String((err&&err.message)||err||'').toLowerCase();return m.includes('duplicate key')||m.includes('unique')||m.includes('23505');};
+  if(w._draft){
+    // CREATE — INSERT and replace the draft with the returned row.
+    const curUnit=UNITS.find(u=>u.name===S.unit);
+    if(!curUnit||!curUnit._dbId){showSaveToast2('No unit selected','error');return;}
+    payload.unit_id=curUnit._dbId;
+    const r=await cli.from('programme_weeks').insert(payload).select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').single();
+    if(r&&r.error||!r||!r.data){
+      if(r&&r.error&&isConflict(r.error)){showSaveToast2('A week already exists for that date — pick another.','error');return;}
+      console.warn('[mybjj] saveW insert:',r&&r.error);
+      showSaveToast2(r&&r.error?friendlyMutationError(r.error):"Couldn't add week",'error');return;
+    }
+    const row=r.data;
+    // Replace the draft in SCHED with the persisted row.
+    const dIdx=SCHED.findIndex(x=>x._draft);
+    const fresh={week:row.week_index,_dbId:row.id,_localId:row.id,weekStart:row.week_start,unitId:row.unit_id,theme:row.theme||'',color:row.color||'#1A5DAD',programs:row.programs||[],standUp:row.stand_up||[],ground:row.ground||[],notes:row.notes||'',video:''};
+    if(dIdx>=0)SCHED.splice(dIdx,1,fresh);else SCHED.push(fresh);
+    SCHED.sort((a,b)=>(a.weekStart||'').localeCompare(b.weekStart||''));
+    // Switch the period filter + selection to the new week so the
+    // editor's create→view transition lands on the right row.
+    const newPeriod=_monthKey(_parseISODate(fresh.weekStart));
+    S.schedPeriod=newPeriod;
+    S.sweek=fresh._localId;
+    S.editWeek=false;
+    render();
+    showSaveToast2('Week '+fresh.week+' added.');
+    return;
+  }
+  // EDIT — UPDATE existing row. Snapshot for rollback so an RLS silent
+  // no-op or a UNIQUE conflict can't leave the UI lying.
+  const prev={week:w.week,weekStart:w.weekStart,theme:w.theme,notes:w.notes,programs:[...(w.programs||[])],color:w.color,standUp:w.standUp,ground:w.ground};
+  w.week=weekIdx;w.weekStart=weekStart;w.theme=theme;w.notes=notes;
+  const r=await cli.from('programme_weeks').update(payload).eq('id',w._dbId).select('id,week_index,week_start');
   if(r&&r.error){
     Object.assign(w,prev);
+    if(isConflict(r.error)){showSaveToast2('A week already exists for that date — pick another.','error');render();return;}
     console.warn('[mybjj] saveW update:',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');render();return;
   }
@@ -8902,55 +9053,60 @@ async function saveW(week){
     console.warn('[mybjj] saveW: 0 rows affected (RLS or stale id)');
     showSaveToast2("Couldn't save week",'error');render();return;
   }
+  SCHED.sort((a,b)=>(a.weekStart||'').localeCompare(b.weekStart||''));
+  // Move selection along if the date changed to a different month.
+  S.schedPeriod=_monthKey(_parseISODate(w.weekStart));
+  S.sweek=w._localId;
   S.editWeek=false;render();
-  showSaveToast2('Week '+week+' saved.');
+  showSaveToast2('Week '+w.week+' saved.');
 }
-// Batch curriculum-crud — addWeek: INSERT a new programme_weeks row for
-// the current unit, then open it in edit mode. week_index = max+1 (or
-// 1) per the spec. week_start is required (NOT NULL + UNIQUE per unit),
-// derived from today + (idx-1)*7 days so each new week is unique even
-// across rapid clicks and resequencing after deletes.
-async function addWeek(){
+// Batch programme-redesign — addWeek: FORM-FIRST. Pushes a draft row
+// into SCHED (with _draft:true, _localId:'draft') and opens it in the
+// editor. No DB write until the user hits Save (saveW handles the
+// INSERT branch). Cancel discards via closeWE.
+function addWeek(){
   if(!isStaffOrOwner())return;
-  const cli=initSupabase();
-  if(!cli){showSaveToast2('Connection issue','error');return;}
   const curUnit=UNITS.find(u=>u.name===S.unit);
   if(!curUnit||!curUnit._dbId){showSaveToast2('No unit selected','error');return;}
+  // Discard any in-flight draft before opening a fresh one.
+  const dIdx=SCHED.findIndex(x=>x._draft);
+  if(dIdx>=0)SCHED.splice(dIdx,1);
   const nextIdx=(SCHED.reduce((m,x)=>Math.max(m,x.week||0),0))+1;
-  const weekStart=dk(new Date(Date.now()+(nextIdx-1)*7*864e5));
-  const payload={
-    unit_id:curUnit._dbId,
-    week_start:weekStart,
-    week_index:nextIdx,
+  // Default week_start = Monday after the latest existing Monday, or
+  // this week's Monday if SCHED is empty.
+  const latest=SCHED.filter(x=>x.weekStart).map(x=>x.weekStart).sort().pop();
+  let nextMonday;
+  if(latest){
+    const d=_parseISODate(latest);
+    nextMonday=_addDays(d,7);
+  } else {
+    nextMonday=_snapToMonday(new Date());
+  }
+  const draft={
+    _draft:true,
+    _localId:'draft',
+    week:nextIdx,
+    weekStart:dk(nextMonday),
+    unitId:curUnit._dbId,
     theme:'',
     color:'#1A5DAD',
     programs:[],
-    stand_up:[],
+    standUp:[],
     ground:[],
-    notes:''
+    notes:'',
+    video:''
   };
-  const r=await cli.from('programme_weeks').insert(payload).select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').single();
-  if(r&&r.error||!r||!r.data){
-    console.warn('[mybjj] addWeek insert:',r&&r.error);
-    showSaveToast2(r&&r.error?friendlyMutationError(r.error):"Couldn't add week",'error');return;
-  }
-  const row=r.data;
-  SCHED.push({week:row.week_index,_dbId:row.id,theme:row.theme||'',color:row.color||'#1A5DAD',programs:row.programs||[],standUp:row.stand_up||[],ground:row.ground||[],notes:row.notes||'',video:''});
-  SCHED.sort((a,b)=>(a.week||0)-(b.week||0));
-  S.sweek=row.week_index;
-  S.editWeek=row.week_index;
+  SCHED.push(draft);
+  S.editWeek='draft';
   render();
-  showSaveToast2('Week '+row.week_index+' added.');
 }
-// Batch curriculum-crud — delWeekConfirm: route through the generic
-// confirm modal (openConfirm); the executor hard-deletes the row,
-// verifies rowcount, and prunes local SCHED. Reuses the attendance/
-// events RLS-silent-failure guard.
-function delWeekConfirm(week){
+// Batch programme-redesign — delWeekConfirm: keep the existing flow,
+// just take _localId now that the rest of the curriculum handlers do.
+function delWeekConfirm(lid){
   if(!isStaffOrOwner())return;
-  const w=SCHED.find(x=>x.week===week);if(!w)return;
+  const w=SCHED.find(x=>x._localId===lid);if(!w||!w._dbId)return;
   openConfirm({
-    title:'Delete Week '+week+'?',
+    title:'Delete Week '+w.week+'?',
     message:'This removes the programme week and its techniques. This can’t be undone.',
     dangerLabel:'Delete week',
     onConfirm:()=>_delWeekExec(w)
@@ -8968,7 +9124,7 @@ async function _delWeekExec(w){
   }
   const idx=SCHED.findIndex(x=>x._dbId===w._dbId);
   if(idx>=0)SCHED.splice(idx,1);
-  if(S.sweek===w.week)S.sweek=SCHED.length?SCHED[0].week:0;
+  if(S.sweek===w._localId)S.sweek=null;
   S.editWeek=false;
   showSaveToast2('Week '+w.week+' deleted.');
 }
