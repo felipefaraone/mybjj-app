@@ -1239,7 +1239,7 @@ function staffDisplayName(s,opts){
 // Etapa 4 — public.promotions is the source of truth. Empty on boot,
 // populated by hydrateData below. Render code keeps reading from
 // PROMOTION_LOG so consumers don't need rewriting; an empty array
-// triggers the "No promotions yet" empty state in rPromoWall.
+// triggers the "No promotions yet" empty state in rCommunityWall.
 let PROMOTION_LOG=[];
 
 // MOCK-FIX — EVENTS is hydrated from public.events (see hydrateData).
@@ -1267,7 +1267,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -1911,9 +1911,9 @@ function rMUnits(){
 // viewStaff / openMyProfile callers); falls back to S.tab for legacy
 // callers that haven't been threaded with an explicit origin.
 function profileBackLabel(){
-  const originLabels={drawer:'Settings',community:'Members',roster:'Roster',class:'Class'};
+  const originLabels={drawer:'Settings',community:'Community',roster:'Roster',class:'Class'};
   if(S.profileOrigin&&originLabels[S.profileOrigin])return originLabels[S.profileOrigin];
-  const tabLabels={community:'Members',class:'Class',admin:'Roster'};
+  const tabLabels={community:'Community',class:'Class',admin:'Roster'};
   return tabLabels[S.tab]||'Back';
 }
 function rStaffProf(){
@@ -3787,11 +3787,24 @@ ${rows}${empty}
 </div></div>`;
 }
 
+// Batch community-wall — Community is the hub. Parents see People
+// only (privacy; no adult-promotion reads). Adult students and staff
+// get a [People] [Wall] segmented toggle (matches the Programme
+// Curriculum|Events toggle exactly — same .rseg class + --ctrl-h).
 function rMembers(){
-  // Parents get a different lens: only see other kids in the same unit,
-  // never adults, never their own children. Privacy-first peer view —
-  // first name + belt only, no contact info.
+  // Parents: People only, no Wall toggle.
   if(isParent())return rParentMembers();
+  const tab=S.commTab==='wall'?'wall':'people';
+  const segBtn=(key,lbl)=>{
+    const on=tab===key;
+    return '<button onclick="setCommTab(\''+key+'\')" style="flex:1;align-self:stretch;background:'+(on?'#1A5DAD':'transparent')+';color:'+(on?'#fff':'var(--text3)')+';border:none;border-radius:8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer;line-height:1">'+lbl+'</button>';
+  };
+  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px;margin-bottom:14px;height:var(--ctrl-h);box-sizing:border-box;align-items:stretch">'+segBtn('people','People')+segBtn('wall','Wall')+'</div>';
+  const body=tab==='wall'?rCommunityWall():rCommunityPeople();
+  return '<div style="height:16px"></div>'+segHtml+body;
+}
+function setCommTab(t){S.commTab=t==='wall'?'wall':'people';render();}
+function rCommunityPeople(){
   const curU=UNITS.find(u=>u.name===S.unit);
   const curUnit=curU?curU.id:null;
   const canSeeKids=isOwner()||isProfessor()||isCoach();
@@ -3854,7 +3867,7 @@ function rMembers(){
   const searchIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   const searchHtml='<div style="position:relative;margin-bottom:14px">'+searchIcon+'<input type="search" id="members-search" placeholder="Search members…" value="'+qVal+'" oninput="setMemberQuery(this.value)" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/>'+clearBtn+'</div>';
   const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · '+list.length+'</div>';
-  if(!list.length)return '<div style="height:16px"></div>'+headline+segHtml+typeChips+beltChips+searchHtml+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
+  if(!list.length)return headline+segHtml+typeChips+beltChips+searchHtml+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
   const rows=list.map(m=>{
     const isInstr=m._kind==='instructor';
     const av=isInstr?avStaff(m,40):avStu(m,40);
@@ -3889,7 +3902,68 @@ function rMembers(){
       +socialRow
       +'</div>';
   }).join('');
-  return '<div style="height:16px"></div>'+headline+segHtml+typeChips+beltChips+searchHtml+rows;
+  return headline+segHtml+typeChips+beltChips+searchHtml+rows;
+}
+// Batch community-wall — global promotions feed for the Community
+// hub. Adult students (prog='adult') only — kids' promotions are
+// excluded BOTH client-side here AND server-side by the new
+// promotions_select_adult_peer RLS policy. Scoped to the viewer's
+// current unit. Newest-first.
+function _ordSuffix(n){const v=Math.abs(Number(n))%100;const last=v%10;if(v>=11&&v<=13)return'th';if(last===1)return'st';if(last===2)return'nd';if(last===3)return'rd';return'th';}
+function _promoWhen(iso){
+  const d=new Date(iso);if(isNaN(d))return String(iso||'');
+  const now=new Date();
+  const ms=now-d;
+  if(ms<0)return d.toLocaleDateString('en-AU',{month:'short',day:'numeric'});
+  const days=Math.floor(ms/86400000);
+  if(days===0)return 'Today';
+  if(days===1)return 'Yesterday';
+  if(days<7)return days+' days ago';
+  if(days<30)return Math.floor(days/7)+'w ago';
+  return d.toLocaleDateString('en-AU',{month:'short',day:'numeric'});
+}
+function rCommunityWall(){
+  const curU=UNITS.find(u=>u.name===S.unit);
+  const curUnit=curU?curU.id:null;
+  // Resolve each promotion against STUDENTS (id=legacy_id); skip
+  // promotions whose student doesn't resolve or whose student is a
+  // kid. Unit scope: PROMOTION_LOG carries the unit legacy_id via
+  // hydrate's uMap.
+  const rows=PROMOTION_LOG
+    .filter(p=>p&&(!curUnit||p.unit===curUnit))
+    .map(p=>{
+      const s=STUDENTS.find(x=>x.id===p.studentId);
+      if(!s||s.prog!=='adult')return null;
+      return{p,s};
+    })
+    .filter(Boolean)
+    .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date));
+  if(!rows.length){
+    return '<div class="card" style="text-align:center;padding:32px 20px">'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No promotions yet</div>'
+      +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Belt and stripe promotions will appear here as they happen.</div>'
+      +'</div>';
+  }
+  const beltLabel=k=>(BA[k]||BK[k]||{label:k}).label;
+  const cards=rows.map(({p,s})=>{
+    const isBelt=!!p.isNewBelt||p.type==='belt';
+    const deg=p.toDeg||0;
+    const earned=isBelt
+      ?(beltLabel(p.toBelt)+' belt')
+      :(deg+_ordSuffix(deg)+' stripe');
+    const when=_promoWhen(p.date);
+    const trail=isBelt
+      ?'<div style="flex-shrink:0">'+bb(p.toBelt,0,'adult')+'</div>'
+      :'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--text3);flex-shrink:0">+1&nbsp;stripe</div>';
+    const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer"';
+    return '<div class="card" style="margin-bottom:8px"><div '+tap+'>'
+      +avStu(s,40)
+      +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+earned+'&nbsp;·&nbsp;'+when+'</div></div>'
+      +trail
+      +'</div></div>';
+  }).join('');
+  return cards;
 }
 function setMembersBelt(b){S.membersBelt=b;render();}
 function setMembersSegment(seg){S.membersSegment=seg;S.membersBelt='all';render();}
@@ -4045,7 +4119,7 @@ function rProgress(){
   // the Programme tab (rSchedule). Old saved state pointing at the
   // removed value gets rerouted to Rank so the hub never lands on a
   // tab the new render doesn't recognise.
-  if(S.ptab==='techniques')S.ptab='rank';
+  if(S.ptab==='techniques'||S.ptab==='wall')S.ptab='rank';
   var s=S.me;
   // The signed-in user's linked students row, if any. Owners and
   // professors often train as students in their own academy, in which
@@ -4078,8 +4152,8 @@ function rProgress(){
       var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>';
       var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter});
       var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney)+'</div>';
-      var iContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:rPromoWall();
-      return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button></div>'+iContent+'<div style="height:16px"></div>';
+      var iContent=S.ptab==='journey'?journeyTab:rankTab;
+      return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button></div>'+iContent+'<div style="height:16px"></div>';
     }
     // Coach (admin without STAFF record) — show student-like view.
     // Prefer the user_id link (real DB users); fall back to legacy id
@@ -4113,8 +4187,8 @@ function rProgress(){
       +'<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
-    var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='wall'?rPromoWall():feedbackTab;
-    return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
+    var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:feedbackTab;
+    return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
   }
   // B3b-2 — parent path resolves subject = active kid and falls
   // through to the same render below. Empty state when there's no
@@ -4189,9 +4263,9 @@ function rProgress(){
 
   var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
 
-  var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='wall'?rPromoWall():feedbackTab;
+  var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:feedbackTab;
 
-  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${S.ptab==='rank'?'active':''}" onclick="setPtab('rank')">Rank</button><button class="stab ${S.ptab==='journey'?'active':''}" onclick="setPtab('journey')">Journey</button><button class="stab ${S.ptab==='wall'?'active':''}" onclick="setPtab('wall')">Wall</button><button class="stab ${S.ptab==='feedback'?'active':''}" onclick="setPtab('feedback')">Feedback</button></div>${content}<div style="height:16px"></div>`;
+  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${S.ptab==='rank'?'active':''}" onclick="setPtab('rank')">Rank</button><button class="stab ${S.ptab==='journey'?'active':''}" onclick="setPtab('journey')">Journey</button><button class="stab ${S.ptab==='feedback'?'active':''}" onclick="setPtab('feedback')">Feedback</button></div>${content}<div style="height:16px"></div>`;
 }
 
 // Etapa 4 — prefer the joined staff row (BJJ title + clean name).
@@ -4202,32 +4276,6 @@ function _promoByLabel(p){
   if(!p)return '';
   if(p.promotedByStaff)return staffDisplayName(p.promotedByStaff);
   return parseStaffName(p.promotedBy||'');
-}
-function rPromoWall(){
-  const sorted=[...PROMOTION_LOG].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  if(!sorted.length)return '<div class="card" style="text-align:center;padding:32px 20px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No promotions yet</div><div style="font-size:12px;color:var(--text3);line-height:1.5">Belt and stripe promotions will appear here as they happen.</div></div>';
-  const byMonth={};
-  sorted.forEach(p=>{const d=new Date(p.date);const key=d.toLocaleDateString('en-AU',{month:'long',year:'numeric'});if(!byMonth[key])byMonth[key]=[];byMonth[key].push(p);});
-  return Object.entries(byMonth).map(([month,promos])=>{
-    const rows=promos.map(p=>{
-      const bmap=BA;const b=bmap[p.toBelt]||BA.white;
-      // G1 follow-up — guard against null/empty studentName. Same
-      // pattern as rMonthPromos' hotfix from 003bf1d; previously
-      // skipped because it was out of that batch's scope.
-      const safeName=(p.studentName||'').trim();
-      const ini=safeName?safeName.split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase():'??';
-      const displayName=safeName||'Unknown student';
-      const isBelt=p.isNewBelt;
-      return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0" class="divider">'
-        +'<div style="width:38px;height:38px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;flex-shrink:0'+(isBelt?';box-shadow:0 0 0 2.5px '+b.bg+',0 0 0 4.5px var(--card),0 0 0 6px '+b.bg:'')+'">'+ini+'</div>'
-        +'<div style="flex:1"><div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+displayName+'</div>'
-        +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+(isBelt?'Belt promotion':'Stripe')+'&nbsp;·&nbsp;'+_promoByLabel(p)+'</div></div>'
-        +(isBelt?'<div>'+bb(p.toBelt,0,'adult')+'</div>':'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;color:var(--text3)">+1&nbsp;stripe</div>')
-        +'</div>';
-    }).join('');
-    const hasNewBelt=promos.some(p=>p.isNewBelt);
-    return '<div class="slbl" style="display:flex;align-items:center;gap:6px">'+month+(hasNewBelt?'&nbsp;<span style="background:#1A5DAD20;color:#1A5DAD;font-family:Barlow Condensed,sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 6px;border-radius:4px">BELT PROMO</span>':'')+'</div><div class="card" style="padding:4px 16px">'+rows+'</div>';
-  }).join('');
 }
 function rSchedule(){
   const isA=isStaffOrOwner();
@@ -4867,7 +4915,7 @@ function rCEdit(){
 //   Manage units side-panel item
 //   Delete student (admin without owner gets no delete affordance)
 // ---------------------------------------------------------------------------
-const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Members',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
+const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
 function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
