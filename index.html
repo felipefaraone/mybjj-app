@@ -874,38 +874,34 @@ function _egDisplay(student){
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MFULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
-// Batch programme-redesign — shared date helpers used by rSchedule
-// (Programme tab) and rTechniquesLog (Progress→Techniques). Both views
-// group programme_weeks by their week_start month and label rows
-// "Week N" (week_index). week_start is always a Monday.
+// Batch programme-polish — shared date helpers for the Curriculum tab
+// (rSchedule) + the read view (rTechniquesLog). A programme week is now
+// anchored to a MONTH, not a precise Monday: week_start is always the
+// 1st of the month (used as the calendar bucket for filtering + sort);
+// week_index is the instructor's "Week N" number and is UNIQUE per
+// (unit_id, week_index) at the DB.
 function _parseISODate(s){
-  // Parse 'YYYY-MM-DD' at local midnight so getDay()/getMonth() reflect
-  // the calendar date instead of drifting through UTC interpretation.
   if(!s)return null;
   const m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if(!m)return null;
   return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
 }
-function _snapToMonday(date){
-  if(!date)return null;
-  const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());
-  const dow=d.getDay(); // 0=Sun..6=Sat
-  const offset=dow===0?-6:1-dow; // Sun → -6, Mon → 0, Tue → -1, ...
-  d.setDate(d.getDate()+offset);
-  return d;
-}
-function _addDays(date,n){const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());d.setDate(d.getDate()+n);return d;}
 function _monthKey(date){return date?date.getMonth()+'-'+date.getFullYear():'';}
 function _monthLabel(monthIdx,year){return MFULL[monthIdx]+' '+year;}
 function _currentMonthKey(){const n=new Date();return n.getMonth()+'-'+n.getFullYear();}
 function _parseMonthKey(k){const m=String(k||'').match(/^(\d+)-(\d{4})$/);return m?{monthIdx:Number(m[1]),year:Number(m[2])}:null;}
-// Build distinct month options from SCHED week_starts + the current
-// month, sorted newest first (matches the existing rTechniquesLog
-// dropdown convention).
-function _buildSchedPeriods(sched){
+// First day of the (monthIdx, year) bucket as YYYY-MM-DD. Used as the
+// week_start value when saving — every week in the same month therefore
+// shares the same week_start.
+function _dkFirstOfMonth(monthIdx,year){
+  const mm=String(monthIdx+1).padStart(2,'0');
+  return year+'-'+mm+'-01';
+}
+// Filter options: distinct months present in SCHED + the current month,
+// newest first. Used by the Curriculum filter and the Techniques filter.
+function _monthOptionsForFilter(sched){
   const seen={};
-  const cur=_currentMonthKey();
-  seen[cur]=true;
+  seen[_currentMonthKey()]=true;
   (sched||[]).forEach(w=>{
     if(w&&w.weekStart){
       const d=_parseISODate(w.weekStart);
@@ -917,13 +913,31 @@ function _buildSchedPeriods(sched){
     return{key:k,monthIdx:p.monthIdx,year:p.year,label:_monthLabel(p.monthIdx,p.year)};
   }).sort((a,b)=>(b.year*12+b.monthIdx)-(a.year*12+a.monthIdx));
 }
-function _weekRangeLabel(weekStart){
-  const m=_parseISODate(weekStart);if(!m)return '';
-  const end=_addDays(m,6);
-  if(m.getMonth()===end.getMonth()){
-    return MS[m.getMonth()]+' '+m.getDate()+'–'+end.getDate();
+// Create options: current month + N months ahead, chronological. Used
+// by the editor's Month picker. Doesn't depend on SCHED so the prof
+// can publish weeks into months that haven't been touched yet.
+function _monthOptionsForCreate(monthsAhead){
+  const n=new Date();
+  const baseM=n.getMonth(),baseY=n.getFullYear();
+  const out=[];
+  const N=Math.max(1,monthsAhead||12);
+  for(let i=0;i<=N;i++){
+    const total=baseY*12+baseM+i;
+    const y=Math.floor(total/12),m=total%12;
+    out.push({key:m+'-'+y,monthIdx:m,year:y,label:_monthLabel(m,y)});
   }
-  return MS[m.getMonth()]+' '+m.getDate()+'–'+MS[end.getMonth()]+' '+end.getDate();
+  return out;
+}
+// Shared styled <select> used by both filters AND the editor's Month
+// picker. Same markup → same look on every surface, light + dark.
+function _monthSelectHTML(id,options,selKey,onchange){
+  const opts=options.map(p=>{
+    const sel=p.key===selKey?' selected':'';
+    const suffix=p.key===_currentMonthKey()?' (current)':'';
+    return '<option value="'+p.key+'"'+sel+'>'+p.label+suffix+'</option>';
+  }).join('');
+  const idAttr=id?' id="'+id+'"':'';
+  return '<select'+idAttr+' onchange="'+onchange+'" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text);outline:none;cursor:pointer">'+opts+'</select>';
 }
 // Etapa 3 — INS hardcoded instructor list deleted. Dropdowns now read
 // the hydrated STAFF array (filtered to active rows) and render each
@@ -1198,7 +1212,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'programme',schedPeriod:null,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -3211,18 +3225,22 @@ function rClass(){
 
 
 function rTechniquesLog(s){
-  // Batch programme-redesign — read view now shares period grouping
-  // with the Programme tab: same _buildSchedPeriods (distinct months
-  // in SCHED week_starts + current month), same "Week N" labels
-  // (week_index), chronological per month.
-  var periods=_buildSchedPeriods(SCHED);
+  // Batch programme-polish — same filter component as the Curriculum
+  // tab (_monthSelectHTML), same options (_monthOptionsForFilter), same
+  // (week_start, week_index) sort. Week label is just "Week N"; the
+  // month shows via the filter header.
+  var periods=_monthOptionsForFilter(SCHED);
   var selPeriod=periods.find(function(p){return p.key===S._techPeriod;})?S._techPeriod:_currentMonthKey();
   var periodObj=periods.find(function(p){return p.key===selPeriod;})||periods[0];
 
   var weeksThisPeriod=(SCHED||[])
     .filter(function(w){return !w._draft && w.weekStart;})
     .filter(function(w){var d=_parseISODate(w.weekStart);return d && _monthKey(d)===periodObj.key;})
-    .sort(function(a,b){return (a.weekStart||'').localeCompare(b.weekStart||'');});
+    .sort(function(a,b){
+      var ws=(a.weekStart||'').localeCompare(b.weekStart||'');
+      if(ws)return ws;
+      return (a.week||0)-(b.week||0);
+    });
 
   var allTechs=weeksThisPeriod.map(function(w){
     var g={theme:w.theme,color:w.color,week:w.week,weekStart:w.weekStart,techs:[]};
@@ -3244,28 +3262,24 @@ function rTechniquesLog(s){
   var html='<div class="card"><div class="slbl" style="margin-bottom:4px">Techniques log</div>';
   html+='<div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.5">Curriculum techniques by month. Tap any technique to find tutorials on YouTube.</div>';
 
-  // Period selector \u2014 shared options via _buildSchedPeriods.
-  html+='<div style="margin-bottom:14px"><select onchange="S._techPeriod=this.value;render()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text);outline:none;cursor:pointer">';
-  periods.forEach(function(p){
-    var isSel=p.key===periodObj.key;
-    html+='<option value="'+p.key+'"'+(isSel?' selected':'')+'>'+p.label+(p.key===_currentMonthKey()?' (current)':'')+'</option>';
-  });
-  html+='</select></div>';
+  // Shared styled <select> \u2014 identical look to the Curriculum filter.
+  html+='<div style="margin-bottom:14px">'+_monthSelectHTML('',periods,periodObj.key,'S._techPeriod=this.value;render()')+'</div>';
 
   if(!allTechs.length){
     html+='<div style="text-align:center;padding:24px 8px;font-size:13px;color:var(--text3)">No programme for '+periodObj.label+' yet.</div></div>';
     return html;
   }
 
-  // Chronological "Week N" rows for the selected month.
+  // Chronological "Week N" rows for the selected month. No date-range
+  // label \u2014 the month shows via the filter, and week_start is just a
+  // month anchor now (not a specific Monday).
   allTechs.forEach(function(g){
     var isOpen=S.techWeek===g.week;
-    var dateRange=_weekRangeLabel(g.weekStart);
     html+='<div style="margin-bottom:6px">';
     html+='<div onclick="S.techWeek=S.techWeek==='+g.week+'?0:'+g.week+';render()" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer">';
-    html+='<div style="width:3px;height:16px;background:'+(g.color||'#1A5DAD')+';border-radius:2px;flex-shrink:0"></div>';
+    html+='<div style="width:3px;height:16px;background:#1A5DAD;border-radius:2px;flex-shrink:0"></div>';
     html+='<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:13px;font-weight:700;color:var(--text)">Week '+g.week+(g.theme?' \u2014 '+g.theme:'')+'</div>';
-    html+='<div style="font-size:10px;color:var(--text3)">'+(dateRange?dateRange+' \u00b7 ':'')+g.techs.length+' technique'+(g.techs.length===1?'':'s')+'</div></div>';
+    html+='<div style="font-size:10px;color:var(--text3)">'+g.techs.length+' technique'+(g.techs.length===1?'':'s')+'</div></div>';
     html+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--text3);transition:transform .2s;transform:rotate('+(isOpen?'180':'0')+'deg)"><polyline points="6 9 12 15 18 9"/></svg>';
     html+='</div>';
     if(isOpen){
@@ -4228,37 +4242,41 @@ function rPromoWall(){
 }
 function rSchedule(){
   const isA=isStaffOrOwner();
-  // Batch programme-redesign — two-mode IA. [Programme] is the default
-  // and is anchored to a calendar month (the same one rTechniquesLog
-  // uses), with chronological "Week N" tabs. [Events] is the old feed
-  // verbatim — switching modes just shows/hides; everything inside is
-  // untouched.
-  const mode=S.schedMode==='events'?'events':'programme';
+  // Batch programme-polish — segmented toggle styled to match the
+  // design system (selected = brand blue bg + white text). Labels:
+  // Curriculum / Events. The "MONTH YEAR PROGRAMME" header that used
+  // to sit above was redundant with the filter (and asymmetric with
+  // Events mode), so it's gone.
+  const mode=S.schedMode==='events'?'events':'curriculum';
   const segBtn=(key,lbl)=>{
     const on=mode===key;
-    return '<button onclick="setSchedMode(\''+key+'\')" style="flex:1;background:'+(on?'var(--card)':'transparent')+';color:'+(on?'var(--text)':'var(--text3)')+';border:none;border-radius:8px;padding:9px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">'+lbl+'</button>';
+    return '<button onclick="setSchedMode(\''+key+'\')" style="flex:1;background:'+(on?'#1A5DAD':'transparent')+';color:'+(on?'#fff':'var(--text3)')+';border:none;border-radius:8px;padding:9px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">'+lbl+'</button>';
   };
-  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:14px">'+segBtn('programme','Programme')+segBtn('events','Events')+'</div>';
+  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:14px">'+segBtn('curriculum','Curriculum')+segBtn('events','Events')+'</div>';
 
   if(mode==='events'){
     const evEditor=(S.editEv||S.addEv)?rEEdit():'';
     return '<div style="height:16px"></div>'+segHtml+rEvents(isA)+'<div style="height:16px"></div>'+evEditor;
   }
 
-  // Programme mode
-  const periods=_buildSchedPeriods(SCHED);
+  // Curriculum mode
+  const periods=_monthOptionsForFilter(SCHED);
   const selPeriodKey=periods.find(p=>p.key===S.schedPeriod)?S.schedPeriod:_currentMonthKey();
   const selPeriod=periods.find(p=>p.key===selPeriodKey)||periods[0];
-  const periodSelect='<div style="margin-bottom:14px"><select onchange="setSchedPeriod(this.value)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text);outline:none;cursor:pointer">'
-    +periods.map(p=>'<option value="'+p.key+'"'+(p.key===selPeriod.key?' selected':'')+'>'+p.label+(p.key===_currentMonthKey()?' (current)':'')+'</option>').join('')
-    +'</select></div>';
+  const periodSelect='<div style="margin-bottom:14px">'+_monthSelectHTML('',periods,selPeriod.key,'setSchedPeriod(this.value)')+'</div>';
 
   // Weeks in the selected period (committed rows only — the in-flight
   // draft is excluded from tabs and only surfaces through rWEditor).
+  // Sort by (week_start, week_index) so weeks within a month order by
+  // their number.
   const weeksThisPeriod=SCHED
     .filter(x=>!x._draft&&x.weekStart)
     .filter(x=>{const d=_parseISODate(x.weekStart);return d&&_monthKey(d)===selPeriod.key;})
-    .sort((a,b)=>(a.weekStart||'').localeCompare(b.weekStart||''));
+    .sort((a,b)=>{
+      const ws=(a.weekStart||'').localeCompare(b.weekStart||'');
+      if(ws)return ws;
+      return (a.week||0)-(b.week||0);
+    });
 
   const draft=SCHED.find(x=>x._draft);
   const inDraftEdit=draft&&S.editWeek===draft._localId;
@@ -4298,16 +4316,19 @@ function rSchedule(){
     const w=selW;
     const progCols={Fundamentals:'#1A5DAD',Mixed:'#7e22ce',Advanced:'#dc2626',Kids:'#15803d'};
     const badges=isA?(w.programs||[]).map(p=>{const c=progCols[p]||'#6b7280';return '<span style="background:'+c+'20;color:'+c+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+p+'</span>';}).join(' '):'';
-    const dateRange=_weekRangeLabel(w.weekStart);
     const editBtn=isA?('<button class="bedit" onclick="editW(\''+w._localId+'\')">Edit</button>'):'';
     const shareWeekBtn=shareBtnHtml('shareWeek(\''+w._localId+'\')');
     const topWeekActions='<div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0;align-self:flex-start">'+(editBtn||'')+shareWeekBtn+'</div>';
     const suRows=(w.standUp||[]).map((t,i)=>techRow(t,i,'standUp',w)).join('');
     const grRows=(w.ground||[]).map((t,i)=>techRow(t,i,'ground',w)).join('');
+    // Week header reads "WEEK N · MONTH YEAR" — no more precise date
+    // range now that week_start is just a month anchor.
+    const wsDate=_parseISODate(w.weekStart);
+    const monthLbl=wsDate?_monthLabel(wsDate.getMonth(),wsDate.getFullYear()):'';
     bodyHtml='<div class="card">'
       +'<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">'
-      +'<div style="width:4px;min-height:44px;background:'+(w.color||'#1A5DAD')+';border-radius:2px;flex-shrink:0;margin-top:2px"></div>'
-      +'<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);margin-bottom:2px">WEEK '+w.week+(dateRange?' · '+dateRange.toUpperCase():'')+'</div>'
+      +'<div style="width:4px;min-height:44px;background:#1A5DAD;border-radius:2px;flex-shrink:0;margin-top:2px"></div>'
+      +'<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);margin-bottom:2px">WEEK '+w.week+(monthLbl?' · '+monthLbl.toUpperCase():'')+'</div>'
       +'<div style="font-family:Bebas Neue,sans-serif;font-size:25px;color:var(--text);line-height:1.05;margin-bottom:'+(badges?'6px':'2px')+'">'+(w.theme||'').toUpperCase()+'</div>'
       +(badges?'<div style="display:flex;gap:4px;flex-wrap:wrap">'+badges+'</div>':'')+'</div>'+topWeekActions+'</div>'
       +(w.notes?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.5;font-style:italic">'+w.notes+'</div>':'')
@@ -4318,11 +4339,9 @@ function rSchedule(){
       +(S.editWeek===w._localId?rWEditor(w):'');
   }
 
-  const _now=new Date();
-  const headerLbl=MS[_now.getMonth()]+' '+_now.getFullYear()+' programme';
-  return '<div style="height:16px"></div><div class="slbl">'+headerLbl+'</div>'+segHtml+periodSelect+addBtn+weekTabsHtml+bodyHtml+'<div style="height:16px"></div>'+draftEditor;
+  return '<div style="height:16px"></div>'+segHtml+periodSelect+addBtn+weekTabsHtml+bodyHtml+'<div style="height:16px"></div>'+draftEditor;
 }
-function setSchedMode(m){S.schedMode=m==='events'?'events':'programme';S.editWeek=false;render();}
+function setSchedMode(m){S.schedMode=m==='events'?'events':'curriculum';S.editWeek=false;render();}
 function setSchedPeriod(k){S.schedPeriod=k;S.sweek=null;render();}
 function setSelectedWeek(lid){
   S.sweek=lid||null;
@@ -4438,12 +4457,6 @@ function rWEditor(w){
     const on=(w.programs||[]).includes(p);const c=progCols[p];
     return '<div onclick="toggleProg(\''+lid+'\',\''+p+'\')" style="cursor:pointer;padding:5px 9px;border-radius:6px;border:1.5px solid '+(on?c:'var(--border)')+';background:'+(on?c+'20':'var(--bg)')+';display:inline-flex;align-items:center;gap:5px;margin-right:5px;margin-bottom:5px"><div style="width:8px;height:8px;border-radius:50%;background:'+(on?c:'var(--border)')+'"></div><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:'+(on?c:'var(--text3)')+'">'+p+'</span></div>';
   }).join('');
-  const colorSwatches=['#1A5DAD','#7e22ce','#dc2626','#15803d','#b45309','#475569'];
-  const curColor=w.color||'#1A5DAD';
-  const colorPicker=colorSwatches.map(c=>{
-    const sel=curColor.toLowerCase()===c.toLowerCase();
-    return '<button type="button" onclick="setWeekColor(\''+lid+'\',\''+c+'\')" title="'+c+'" aria-label="Color '+c+'" style="width:28px;height:28px;border-radius:50%;background:'+c+';border:'+(sel?'3px solid var(--text)':'1px solid var(--border)')+';cursor:pointer;padding:0;flex-shrink:0"></button>';
-  }).join('');
   function techFields(list,cat){
     const arr=list||[];
     return arr.map((t,i)=>{
@@ -4465,15 +4478,27 @@ function rWEditor(w){
     }).join('');
   }
   const headerTxt=isDraft?'Add week':('Edit Week '+w.week);
-  // we-date input on every change snaps to Monday so week_start can only
-  // ever be a Monday (matches the UNIQUE (unit_id, week_start) anchor).
-  const weekStartVal=w.weekStart||'';
+  // Month picker — styled <select> (NOT <input type=month> — iOS quirks)
+  // sourced from the same _monthSelectHTML the filter uses. Default
+  // selection is the current week's stored month, falling back to the
+  // current calendar month if none.
+  const wsDate=w.weekStart?_parseISODate(w.weekStart):null;
+  const selMonthKey=wsDate?_monthKey(wsDate):_currentMonthKey();
+  const monthOptions=_monthOptionsForCreate(12);
+  // If the row's stored month is older than today, prepend it so the
+  // select can still reflect the saved value without forcing the user
+  // to change it on edit.
+  if(!monthOptions.find(o=>o.key===selMonthKey)){
+    const p=_parseMonthKey(selMonthKey);
+    if(p)monthOptions.unshift({key:selMonthKey,monthIdx:p.monthIdx,year:p.year,label:_monthLabel(p.monthIdx,p.year)});
+  }
+  const monthPicker=_monthSelectHTML('we-month',monthOptions,selMonthKey,'');
   return '<div class="cov" style="align-items:flex-end;justify-content:center;overflow-x:hidden"><div class="csheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto;overflow-x:hidden;max-width:min(480px,100%);margin:0 auto">'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;margin-bottom:14px">'+headerTxt+'</div>'
     +'<div class="ef" style="margin-bottom:12px">'
       +'<div class="erow"><div class="elbl">Week #</div><input id="we-week-idx" type="number" min="1" value="'+(w.week||1)+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);text-align:right"/></div>'
-      +'<div class="erow"><div class="elbl">Week of</div><input id="we-date" type="date" value="'+weekStartVal+'" onchange="_snapWeekDateInput(this)"/></div>'
     +'</div>'
+    +'<div class="slbl">Month</div><div style="margin-bottom:12px">'+monthPicker+'</div>'
     +'<div class="slbl">Theme</div><div class="ef" style="margin-bottom:12px"><div class="erow"><input id="we-theme" value="'+(w.theme||'').replace(/"/g,'&quot;')+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/></div></div>'
     +'<div class="slbl">Programmes</div><div style="display:flex;flex-wrap:wrap;margin-bottom:14px">'+progToggles+'</div>'
     +'<div class="slbl">Notes</div><div class="ef" style="margin-bottom:12px"><textarea id="we-notes" dir="ltr" style="width:100%;min-height:60px;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);padding:12px;resize:none;text-align:left;direction:ltr">'+(w.notes||'')+'</textarea></div>'
@@ -4481,18 +4506,9 @@ function rWEditor(w){
     +'<div style="min-width:0"><div class="slbl">Stand Up</div>'+techFields(w.standUp,'standUp')+'<button onclick="addTech(\''+lid+'\',\'standUp\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
     +'<div style="min-width:0"><div class="slbl">Ground</div>'+techFields(w.ground,'ground')+'<button onclick="addTech(\''+lid+'\',\'ground\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
     +'</div>'
-    +'<div class="slbl">Accent colour</div><div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+colorPicker+'</div>'
     +'<div style="display:flex;gap:10px;margin-bottom:10px"><button onclick="closeWE()" style="flex:1;background:var(--bg);color:var(--text2);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Cancel</button><button onclick="saveW(\''+lid+'\')" style="flex:1;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Save</button></div>'
     +(isDraft?'':'<button onclick="delWeekConfirm(\''+lid+'\')" style="width:100%;background:none;color:var(--red);border:1px solid var(--red-border);border-radius:10px;padding:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer">Delete week</button>')
     +'</div></div>';
-}
-// Snap the we-date input back to the Monday of its week so the
-// (unit_id, week_start) UNIQUE anchor stays meaningful no matter which
-// day the user picks.
-function _snapWeekDateInput(el){
-  const d=_parseISODate(el.value);
-  if(!d)return;
-  el.value=dk(_snapToMonday(d));
 }
 
 function rAdmin(){
@@ -6498,7 +6514,7 @@ async function hydrateData(){
       // MOCK-FIX — empty array clears SCHED so the curriculum empty
       // state renders instead of a stale mock seed.
       SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,_localId:r.id,weekStart:r.week_start,unitId:r.unit_id,theme:r.theme||'',color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
-      SCHED.sort((a,b)=>(a.weekStart||'').localeCompare(b.weekStart||''));
+      _sortSched();
       touched=true;
     }else if(pw.error){console.warn('[mybjj] hydrate programme_weeks:',pw.error);SCHED=[];}
     if(at.data){
@@ -8861,7 +8877,6 @@ function bumpTech(lid,cat,idx,dir){
 function addTech(lid,cat){const w=_findWk(lid);if(!w)return;if(!w[cat])w[cat]=[];w[cat].push({t:'New technique',video:''});render();}
 function removeTech(lid,cat,idx){const w=_findWk(lid);if(!w||!w[cat])return;w[cat].splice(idx,1);render();}
 function toggleProg(lid,prog){const w=_findWk(lid);if(!w)return;if(!w.programs)w.programs=[];const i=w.programs.indexOf(prog);if(i>=0)w.programs.splice(i,1);else w.programs.push(prog);render();}
-function setWeekColor(lid,color){const w=_findWk(lid);if(!w)return;w.color=color;render();}
 function editTechVideo2(lid,cat,idx){const w=_findWk(lid);if(!w)return;const list=w[cat]||[];const tech=list[idx];if(!tech)return;const tv=typeof tech==='object'?tech:{t:tech,video:''};const url=prompt('Video URL for "'+tv.t+'" (YouTube or Instagram):',tv.video||'');if(url===null)return;if(typeof list[idx]==='string')list[idx]={t:list[idx],video:url};else list[idx].video=url;render();}
 function toggleEv(id,intent){
   const e=EVENTS.find(x=>x.id===id);if(!e)return;
@@ -8982,10 +8997,18 @@ function editTechVideo(week,techIdx){
 // Batch programme-redesign — saveW dispatches INSERT vs UPDATE based on
 // whether the editor is in create mode (w._draft) or edit mode (real
 // _dbId). Both paths persist EVERY editor field: theme, notes,
-// stand_up, ground, programs, color PLUS week_index and week_start
-// (new in this batch — the editor now lets the user set both). UNIQUE
-// (unit_id, week_start) collisions surface as a clean toast instead of
-// the raw "duplicate key" error.
+// Batch programme-polish — week is now month-anchored. week_start is
+// stored as the 1st of the month picked in the editor; week_index is
+// the prof's "Week N" number and is UNIQUE per (unit_id, week_index)
+// at the DB. Conflict surfaces as "Week N already exists — pick a
+// different number." (the date can no longer collide).
+function _sortSched(){
+  SCHED.sort((a,b)=>{
+    const ws=(a.weekStart||'').localeCompare(b.weekStart||'');
+    if(ws)return ws;
+    return (a.week||0)-(b.week||0);
+  });
+}
 async function saveW(lid){
   const w=SCHED.find(x=>x._localId===lid);if(!w)return;
   const cli=initSupabase();
@@ -8994,20 +9017,17 @@ async function saveW(lid){
   const notes=(document.getElementById('we-notes')||{}).value||'';
   const weekIdxRaw=Number((document.getElementById('we-week-idx')||{}).value||0);
   const weekIdx=Number.isFinite(weekIdxRaw)&&weekIdxRaw>=1?Math.floor(weekIdxRaw):1;
-  let weekStart=(document.getElementById('we-date')||{}).value||w.weekStart||'';
-  // Snap any picked date back to Monday so the (unit_id, week_start)
-  // anchor is always a Monday, no matter what the picker submitted.
-  const wsDate=_parseISODate(weekStart);
-  if(wsDate)weekStart=dk(_snapToMonday(wsDate));
-  if(!weekStart){showSaveToast2('Pick a week date','error');return;}
+  const monthKey=(document.getElementById('we-month')||{}).value||_monthKey(_parseISODate(w.weekStart))||_currentMonthKey();
+  const mp=_parseMonthKey(monthKey);
+  if(!mp){showSaveToast2('Pick a month','error');return;}
+  const weekStart=_dkFirstOfMonth(mp.monthIdx,mp.year);
   const payload={
     week_index:weekIdx,
     week_start:weekStart,
     theme,notes,
     stand_up:w.standUp||[],
     ground:w.ground||[],
-    programs:w.programs||[],
-    color:w.color||'#1A5DAD'
+    programs:w.programs||[]
   };
   const isConflict=(err)=>{const m=String((err&&err.message)||err||'').toLowerCase();return m.includes('duplicate key')||m.includes('unique')||m.includes('23505');};
   if(w._draft){
@@ -9017,20 +9037,16 @@ async function saveW(lid){
     payload.unit_id=curUnit._dbId;
     const r=await cli.from('programme_weeks').insert(payload).select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').single();
     if(r&&r.error||!r||!r.data){
-      if(r&&r.error&&isConflict(r.error)){showSaveToast2('A week already exists for that date — pick another.','error');return;}
+      if(r&&r.error&&isConflict(r.error)){showSaveToast2('Week '+weekIdx+' already exists — pick a different number.','error');return;}
       console.warn('[mybjj] saveW insert:',r&&r.error);
       showSaveToast2(r&&r.error?friendlyMutationError(r.error):"Couldn't add week",'error');return;
     }
     const row=r.data;
-    // Replace the draft in SCHED with the persisted row.
     const dIdx=SCHED.findIndex(x=>x._draft);
     const fresh={week:row.week_index,_dbId:row.id,_localId:row.id,weekStart:row.week_start,unitId:row.unit_id,theme:row.theme||'',color:row.color||'#1A5DAD',programs:row.programs||[],standUp:row.stand_up||[],ground:row.ground||[],notes:row.notes||'',video:''};
     if(dIdx>=0)SCHED.splice(dIdx,1,fresh);else SCHED.push(fresh);
-    SCHED.sort((a,b)=>(a.weekStart||'').localeCompare(b.weekStart||''));
-    // Switch the period filter + selection to the new week so the
-    // editor's create→view transition lands on the right row.
-    const newPeriod=_monthKey(_parseISODate(fresh.weekStart));
-    S.schedPeriod=newPeriod;
+    _sortSched();
+    S.schedPeriod=_monthKey(_parseISODate(fresh.weekStart));
     S.sweek=fresh._localId;
     S.editWeek=false;
     render();
@@ -9039,12 +9055,12 @@ async function saveW(lid){
   }
   // EDIT — UPDATE existing row. Snapshot for rollback so an RLS silent
   // no-op or a UNIQUE conflict can't leave the UI lying.
-  const prev={week:w.week,weekStart:w.weekStart,theme:w.theme,notes:w.notes,programs:[...(w.programs||[])],color:w.color,standUp:w.standUp,ground:w.ground};
+  const prev={week:w.week,weekStart:w.weekStart,theme:w.theme,notes:w.notes,programs:[...(w.programs||[])],standUp:w.standUp,ground:w.ground};
   w.week=weekIdx;w.weekStart=weekStart;w.theme=theme;w.notes=notes;
   const r=await cli.from('programme_weeks').update(payload).eq('id',w._dbId).select('id,week_index,week_start');
   if(r&&r.error){
     Object.assign(w,prev);
-    if(isConflict(r.error)){showSaveToast2('A week already exists for that date — pick another.','error');render();return;}
+    if(isConflict(r.error)){showSaveToast2('Week '+weekIdx+' already exists — pick a different number.','error');render();return;}
     console.warn('[mybjj] saveW update:',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');render();return;
   }
@@ -9053,40 +9069,29 @@ async function saveW(lid){
     console.warn('[mybjj] saveW: 0 rows affected (RLS or stale id)');
     showSaveToast2("Couldn't save week",'error');render();return;
   }
-  SCHED.sort((a,b)=>(a.weekStart||'').localeCompare(b.weekStart||''));
-  // Move selection along if the date changed to a different month.
+  _sortSched();
   S.schedPeriod=_monthKey(_parseISODate(w.weekStart));
   S.sweek=w._localId;
   S.editWeek=false;render();
   showSaveToast2('Week '+w.week+' saved.');
 }
-// Batch programme-redesign — addWeek: FORM-FIRST. Pushes a draft row
-// into SCHED (with _draft:true, _localId:'draft') and opens it in the
-// editor. No DB write until the user hits Save (saveW handles the
-// INSERT branch). Cancel discards via closeWE.
+// Batch programme-polish — addWeek: form-first draft, month-based.
+// Pre-fill: week_index = max+1 (unique per unit at the DB), month =
+// current. No date snapping anywhere; week_start is just the 1st of
+// the month the prof picks in the editor.
 function addWeek(){
   if(!isStaffOrOwner())return;
   const curUnit=UNITS.find(u=>u.name===S.unit);
   if(!curUnit||!curUnit._dbId){showSaveToast2('No unit selected','error');return;}
-  // Discard any in-flight draft before opening a fresh one.
   const dIdx=SCHED.findIndex(x=>x._draft);
   if(dIdx>=0)SCHED.splice(dIdx,1);
   const nextIdx=(SCHED.reduce((m,x)=>Math.max(m,x.week||0),0))+1;
-  // Default week_start = Monday after the latest existing Monday, or
-  // this week's Monday if SCHED is empty.
-  const latest=SCHED.filter(x=>x.weekStart).map(x=>x.weekStart).sort().pop();
-  let nextMonday;
-  if(latest){
-    const d=_parseISODate(latest);
-    nextMonday=_addDays(d,7);
-  } else {
-    nextMonday=_snapToMonday(new Date());
-  }
+  const now=new Date();
   const draft={
     _draft:true,
     _localId:'draft',
     week:nextIdx,
-    weekStart:dk(nextMonday),
+    weekStart:_dkFirstOfMonth(now.getMonth(),now.getFullYear()),
     unitId:curUnit._dbId,
     theme:'',
     color:'#1A5DAD',
