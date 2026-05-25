@@ -875,7 +875,7 @@ const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MFULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
 // Batch programme-polish — shared date helpers for the Curriculum tab
-// (rSchedule) + the read view (rTechniquesLog). A programme week is now
+// (rSchedule) + the Events filter. A programme week is now
 // anchored to a MONTH, not a precise Monday: week_start is always the
 // 1st of the month (used as the calendar bucket for filtering + sort);
 // week_index is the instructor's "Week N" number and is UNIQUE per
@@ -913,6 +913,26 @@ function _monthOptionsForFilter(sched){
     return{key:k,monthIdx:p.monthIdx,year:p.year,label:_monthLabel(p.monthIdx,p.year)};
   }).sort((a,b)=>(b.year*12+b.monthIdx)-(a.year*12+a.monthIdx));
 }
+// Filter options for the Events month dropdown. Distinct months
+// present in EVENTS dates + the current month, newest first, prefixed
+// with an "All months" meta option (default selection — events are
+// forward-looking and the current-month default would hide them).
+function _monthOptionsForEvents(events){
+  const seen={};
+  seen[_currentMonthKey()]=true;
+  (events||[]).forEach(e=>{
+    const iso=e&&(e._dateIso||e.date);
+    if(iso){
+      const d=_parseISODate(iso);
+      if(d)seen[_monthKey(d)]=true;
+    }
+  });
+  const months=Object.keys(seen).map(k=>{
+    const p=_parseMonthKey(k);
+    return{key:k,monthIdx:p.monthIdx,year:p.year,label:_monthLabel(p.monthIdx,p.year)};
+  }).sort((a,b)=>(b.year*12+b.monthIdx)-(a.year*12+a.monthIdx));
+  return[{key:'all',label:'All months'}].concat(months);
+}
 // Create options: current month + N months ahead, chronological. Used
 // by the editor's Month picker. Doesn't depend on SCHED so the prof
 // can publish weeks into months that haven't been touched yet.
@@ -928,16 +948,30 @@ function _monthOptionsForCreate(monthsAhead){
   }
   return out;
 }
-// Shared styled <select> used by both filters AND the editor's Month
-// picker. Same markup → same look on every surface, light + dark.
+// Shared styled <select> used by every month filter (Curriculum,
+// Events, Techniques) AND the editor's Month picker — same markup, so
+// the look stays identical across roles and surfaces. Reads as a
+// filter control (regular weight, muted label, custom chevron) rather
+// than a heading; previous iteration used bold/700 which read like a
+// section title.
+//
+// `options` accepts the {key,label} shape produced by _monthOptionsForFilter
+// / _monthOptionsForCreate; an explicit {key:'all',label:'All months'}
+// option for the Events filter passes through too. The "(current)"
+// suffix is suppressed for the meta 'all' option.
 function _monthSelectHTML(id,options,selKey,onchange){
   const opts=options.map(p=>{
     const sel=p.key===selKey?' selected':'';
-    const suffix=p.key===_currentMonthKey()?' (current)':'';
+    const suffix=(p.key&&p.key===_currentMonthKey())?' (current)':'';
     return '<option value="'+p.key+'"'+sel+'>'+p.label+suffix+'</option>';
   }).join('');
   const idAttr=id?' id="'+id+'"':'';
-  return '<select'+idAttr+' onchange="'+onchange+'" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text);outline:none;cursor:pointer">'+opts+'</select>';
+  // Custom chevron via inline SVG background-image; appearance:none
+  // strips the platform-native arrow so the icon stays consistent
+  // across iOS / Android / desktop.
+  const chevron="url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%2393a3b3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><polyline points='1 1 5 5 9 1'/></svg>\")";
+  const style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 30px 9px 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer;-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:"+chevron+";background-repeat:no-repeat;background-position:right 12px center";
+  return '<select'+idAttr+' onchange="'+onchange+'" style="'+style+'">'+opts+'</select>';
 }
 // Etapa 3 — INS hardcoded instructor list deleted. Dropdowns now read
 // the hydrated STAFF array (filtered to active rows) and render each
@@ -1212,7 +1246,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,evalDismissed:false,techSearch:'',techWeek:0,_techPeriod:null,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:'all',evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -3224,83 +3258,6 @@ function rClass(){
   <div style="height:16px"></div>`;}
 
 
-function rTechniquesLog(s){
-  // Batch programme-polish — same filter component as the Curriculum
-  // tab (_monthSelectHTML), same options (_monthOptionsForFilter), same
-  // (week_start, week_index) sort. Week label is just "Week N"; the
-  // month shows via the filter header.
-  var periods=_monthOptionsForFilter(SCHED);
-  var selPeriod=periods.find(function(p){return p.key===S._techPeriod;})?S._techPeriod:_currentMonthKey();
-  var periodObj=periods.find(function(p){return p.key===selPeriod;})||periods[0];
-
-  var weeksThisPeriod=(SCHED||[])
-    .filter(function(w){return !w._draft && w.weekStart;})
-    .filter(function(w){var d=_parseISODate(w.weekStart);return d && _monthKey(d)===periodObj.key;})
-    .sort(function(a,b){
-      var ws=(a.weekStart||'').localeCompare(b.weekStart||'');
-      if(ws)return ws;
-      return (a.week||0)-(b.week||0);
-    });
-
-  var allTechs=weeksThisPeriod.map(function(w){
-    var g={theme:w.theme,color:w.color,week:w.week,weekStart:w.weekStart,techs:[]};
-    (w.standUp||[]).forEach(function(t){var tv=typeof t==='object'?t:{t:t,video:''};g.techs.push({t:tv.t,video:tv.video,cat:'Stand Up'});});
-    (w.ground||[]).forEach(function(t){var tv=typeof t==='object'?t:{t:t,video:''};g.techs.push({t:tv.t,video:tv.video,cat:'Ground'});});
-    return g;
-  });
-
-  var anyCommitted=(SCHED||[]).filter(function(w){return !w._draft;}).length>0;
-
-  // Empty state when programme_weeks has no rows yet.
-  if(!anyCommitted){
-    return '<div class="card" style="text-align:center;padding:32px 20px">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No curriculum yet</div>'
-      +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Your academy hasn’t published the weekly programme yet.</div>'
-      +'</div>';
-  }
-
-  var html='<div class="card"><div class="slbl" style="margin-bottom:4px">Techniques log</div>';
-  html+='<div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.5">Curriculum techniques by month. Tap any technique to find tutorials on YouTube.</div>';
-
-  // Shared styled <select> \u2014 identical look to the Curriculum filter.
-  html+='<div style="margin-bottom:14px">'+_monthSelectHTML('',periods,periodObj.key,'S._techPeriod=this.value;render()')+'</div>';
-
-  if(!allTechs.length){
-    html+='<div style="text-align:center;padding:24px 8px;font-size:13px;color:var(--text3)">No programme for '+periodObj.label+' yet.</div></div>';
-    return html;
-  }
-
-  // Chronological "Week N" rows for the selected month. No date-range
-  // label \u2014 the month shows via the filter, and week_start is just a
-  // month anchor now (not a specific Monday).
-  allTechs.forEach(function(g){
-    var isOpen=S.techWeek===g.week;
-    html+='<div style="margin-bottom:6px">';
-    html+='<div onclick="S.techWeek=S.techWeek==='+g.week+'?0:'+g.week+';render()" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer">';
-    html+='<div style="width:3px;height:16px;background:#1A5DAD;border-radius:2px;flex-shrink:0"></div>';
-    html+='<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:13px;font-weight:700;color:var(--text)">Week '+g.week+(g.theme?' \u2014 '+g.theme:'')+'</div>';
-    html+='<div style="font-size:10px;color:var(--text3)">'+g.techs.length+' technique'+(g.techs.length===1?'':'s')+'</div></div>';
-    html+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--text3);transition:transform .2s;transform:rotate('+(isOpen?'180':'0')+'deg)"><polyline points="6 9 12 15 18 9"/></svg>';
-    html+='</div>';
-    if(isOpen){
-      html+='<div style="padding:6px 0 4px">';
-      g.techs.forEach(function(t){
-        html+='<div onclick="window.open(\'https://www.youtube.com/results?search_query=bjj+'+encodeURIComponent(t.t)+'\',\'_blank\')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'none\'">';
-        html+='<span class="ctag '+(t.cat==='Stand Up'?'ta':'tb')+'" style="font-size:9px;min-width:52px;text-align:center">'+t.cat+'</span>';
-        html+='<span style="font-size:13px;color:var(--text);flex:1">'+t.t+'</span>';
-        html+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
-        html+='</div>';
-      });
-      html+='</div>';
-    }
-    html+='</div>';
-  });
-
-  var totalAll=allTechs.reduce(function(a,g){return a+g.techs.length;},0);
-  html+='<div style="font-size:11px;color:var(--text3);text-align:center;padding-top:4px;line-height:1.5">'+totalAll+' technique'+(totalAll===1?'':'s')+' across '+allTechs.length+' week'+(allTechs.length===1?'':'s')+'</div>';
-  html+='</div>';
-  return html;
-}
 
 
 // G14.1 — rParentAttendance removed. The kid Progress view now uses
@@ -4049,10 +4006,14 @@ function rKidPeer(){
 
 function rProgress(){
   // B3b-2 — parent kid Progress now conforms to the student tabbed
-  // surface (Rank/Journey/Techniques/Wall/Feedback). The parent path
-  // resolves subject = parentSelectedChild() and falls into the same
-  // student-tab render below. Student self path is untouched — its
-  // lookup + S.me overlay are byte-identical to today.
+  // surface (Rank/Journey/Wall/Feedback). The parent path resolves
+  // subject = parentSelectedChild() and falls into the same student-
+  // tab render below. Student self path is untouched.
+  // Batch programme-consolidate — the Techniques sub-tab moved into
+  // the Programme tab (rSchedule). Old saved state pointing at the
+  // removed value gets rerouted to Rank so the hub never lands on a
+  // tab the new render doesn't recognise.
+  if(S.ptab==='techniques')S.ptab='rank';
   var s=S.me;
   // The signed-in user's linked students row, if any. Owners and
   // professors often train as students in their own academy, in which
@@ -4085,9 +4046,8 @@ function rProgress(){
       var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>';
       var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter});
       var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney)+'</div>';
-      var techsTab=rTechniquesLog(s);
-      var iContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:rPromoWall();
-      return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button></div>'+iContent+'<div style="height:16px"></div>';
+      var iContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:rPromoWall();
+      return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button></div>'+iContent+'<div style="height:16px"></div>';
     }
     // Coach (admin without STAFF record) — show student-like view.
     // Prefer the user_id link (real DB users); fall back to legacy id
@@ -4120,10 +4080,9 @@ function rProgress(){
     var rankTab=_renderRankBox(coachStu,{kind:'student'})
       +'<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:#1A5DAD">'+coachPctHtml+'</div></div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
-    var techsTab=rTechniquesLog(s);
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
-    var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='wall'?rPromoWall():feedbackTab;
-    return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='techniques'?'active':'')+'" onclick="setPtab(\'techniques\')">Techniques</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
+    var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='wall'?rPromoWall():feedbackTab;
+    return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='wall'?'active':'')+'" onclick="setPtab(\'wall\')">Wall</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
   }
   // B3b-2 — parent path resolves subject = active kid and falls
   // through to the same render below. Empty state when there's no
@@ -4196,13 +4155,11 @@ function rProgress(){
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
 
-  var techsTab=rTechniquesLog(s);
-
   var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
 
-  var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='techniques'?techsTab:S.ptab==='wall'?rPromoWall():feedbackTab;
+  var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:S.ptab==='wall'?rPromoWall():feedbackTab;
 
-  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${S.ptab==='rank'?'active':''}" onclick="setPtab('rank')">Rank</button><button class="stab ${S.ptab==='journey'?'active':''}" onclick="setPtab('journey')">Journey</button><button class="stab ${S.ptab==='techniques'?'active':''}" onclick="setPtab('techniques')">Techniques</button><button class="stab ${S.ptab==='wall'?'active':''}" onclick="setPtab('wall')">Wall</button><button class="stab ${S.ptab==='feedback'?'active':''}" onclick="setPtab('feedback')">Feedback</button></div>${content}<div style="height:16px"></div>`;
+  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${S.ptab==='rank'?'active':''}" onclick="setPtab('rank')">Rank</button><button class="stab ${S.ptab==='journey'?'active':''}" onclick="setPtab('journey')">Journey</button><button class="stab ${S.ptab==='wall'?'active':''}" onclick="setPtab('wall')">Wall</button><button class="stab ${S.ptab==='feedback'?'active':''}" onclick="setPtab('feedback')">Feedback</button></div>${content}<div style="height:16px"></div>`;
 }
 
 // Etapa 4 — prefer the joined staff row (BJJ title + clean name).
@@ -4301,9 +4258,17 @@ function rSchedule(){
   function techRow(tech,idx,cat,wRef){
     const tv=typeof tech==='object'?tech:{t:tech,video:''};
     const hasVideo=!!(tv.video);
-    const linkSibling=hasVideo?'<a href="'+escAttr(tv.video)+'" target="_blank" rel="noopener" title="'+escAttr('Open '+(tv.t||'video'))+'" style="display:inline-flex;align-items:center;color:#1A5DAD;text-decoration:none;flex-shrink:0">'+LINK_ICON+'</a>':'';
-    const editBtn=isA?'<button onclick="editTechVideo2(\''+wRef._localId+'\',\''+cat+'\','+idx+')" title="Edit video link" aria-label="Edit video link" style="background:none;border:none;cursor:pointer;padding:0;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;opacity:'+(hasVideo?'1':'0.4')+';color:'+(hasVideo?'#1A5DAD':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
-    return '<div style="margin-bottom:7px"><div style="background:var(--bg);border-radius:7px;padding:0 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border);min-height:38px;max-width:100%;overflow:hidden'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'"><div title="'+escAttr(tv.t||'')+'" style="flex:1;min-width:0;font-size:12px;color:var(--text);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(tv.t||'')+'</div>'+linkSibling+editBtn+'</div></div>';
+    // Batch programme-consolidate — the whole row is now tappable to
+    // open a YouTube search ("bjj <technique name>"), the affordance
+    // the retired Progress→Techniques view used to provide. The stored
+    // video link icon keeps opening tv.video directly (stopPropagation
+    // so it doesn't also fire the row's YouTube search). Admin edit
+    // button uses the same stopPropagation pattern.
+    const ytQuery='https://www.youtube.com/results?search_query=bjj+'+encodeURIComponent(tv.t||'');
+    const linkSibling=hasVideo?'<a href="'+escAttr(tv.video)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="'+escAttr('Open '+(tv.t||'video'))+'" style="display:inline-flex;align-items:center;color:#1A5DAD;text-decoration:none;flex-shrink:0">'+LINK_ICON+'</a>':'';
+    const editBtn=isA?'<button onclick="event.stopPropagation();editTechVideo2(\''+wRef._localId+'\',\''+cat+'\','+idx+')" title="Edit video link" aria-label="Edit video link" style="background:none;border:none;cursor:pointer;padding:0;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;opacity:'+(hasVideo?'1':'0.4')+';color:'+(hasVideo?'#1A5DAD':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
+    const searchIcon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+    return '<div style="margin-bottom:7px"><div onclick="window.open(\''+ytQuery+'\',\'_blank\')" style="background:var(--bg);border-radius:7px;padding:0 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border);min-height:38px;max-width:100%;overflow:hidden;cursor:pointer'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'"><div title="'+escAttr(tv.t||'')+'" style="flex:1;min-width:0;font-size:12px;color:var(--text);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(tv.t||'')+'</div>'+linkSibling+editBtn+searchIcon+'</div></div>';
   }
 
   let bodyHtml='';
@@ -4379,7 +4344,21 @@ function rEvents(isA){
   const me=S.me.id;
   const curUnit=UNITS.find(u=>u.name===S.unit);
   const curUnitId=curUnit?curUnit.id:'';
-  const rows=EVENTS.filter(e=>!e.units||e.units.includes(curUnitId)).map(e=>{
+  // Batch programme-consolidate — month filter on the Events feed,
+  // shared component + helper with the Curriculum filter. "All" is
+  // the default so future-dated events aren't hidden behind the
+  // current-month bucket. Undated events always show.
+  const eventsPeriods=_monthOptionsForEvents(EVENTS);
+  const selEventsPeriod=eventsPeriods.find(p=>p.key===S.eventsPeriod)?S.eventsPeriod:'all';
+  const eventsFilterHtml='<div style="margin-bottom:12px">'+_monthSelectHTML('',eventsPeriods,selEventsPeriod,'setEventsPeriod(this.value)')+'</div>';
+  const inSelectedMonth=(e)=>{
+    if(selEventsPeriod==='all')return true;
+    const iso=e._dateIso||e.date;
+    const d=iso?_parseISODate(iso):null;
+    if(!d)return true; // undated events always show
+    return _monthKey(d)===selEventsPeriod;
+  };
+  const rows=EVENTS.filter(e=>!e.units||e.units.includes(curUnitId)).filter(inSelectedMonth).map(e=>{
     const isComp=e.type==='competition';
     const typeCol=isComp?'#1A5DAD':'#15803d';
     const typeLbl=isComp?'Competition':'Social';
@@ -4424,8 +4403,9 @@ function rEvents(isA){
     +'</div>';
   // Batch events-discoverability — addBtn at the TOP so admins don't
   // have to scroll past every event card to find it.
-  return addBtn+emptyState+rows.join('');
+  return eventsFilterHtml+addBtn+emptyState+rows.join('');
 }
+function setEventsPeriod(k){S.eventsPeriod=k||'all';render();}
 function rEEdit(){
   const isNew=!S.editEv;
   const e=S.editEv||{title:'',_dateIso:'',type:'competition',desc:'',link:''};
