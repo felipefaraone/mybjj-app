@@ -97,7 +97,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-:root{--blue:#1A5DAD;--blue-tint:#EBF2FB;--blue-mid:#cde0f7;--green:#16a34a;--green-bg:#f0fdf4;--green-text:#15803d;--green-border:#bbf7d0;--amber:#d97706;--amber-bg:#fffbeb;--amber-text:#92400e;--amber-border:#fde68a;--red:#dc2626;--red-bg:#fef2f2;--red-text:#991b1b;--red-border:#fecaca;--bg:#f5f6f8;--surface:#fff;--card:#fff;--border:#e5e7eb;--border2:#d1d5db;--text:#111827;--text2:#6b7280;--text3:#9ca3af;--nav-bg:#fff;--input-bg:#f9fafb;--sh:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);--sh-md:0 4px 16px rgba(0,0,0,.09);--sh-lg:0 8px 32px rgba(0,0,0,.13);--ctrl-h:44px}
+:root{--blue:#1A5DAD;--blue-tint:#EBF2FB;--blue-mid:#cde0f7;--green:#16a34a;--green-bg:#f0fdf4;--green-text:#15803d;--green-border:#bbf7d0;--amber:#d97706;--amber-bg:#fffbeb;--amber-text:#92400e;--amber-border:#fde68a;--red:#dc2626;--red-bg:#fef2f2;--red-text:#991b1b;--red-border:#fecaca;--bg:#f5f6f8;--surface:#fff;--card:#fff;--border:#e5e7eb;--border2:#d1d5db;--text:#111827;--text2:#6b7280;--text3:#9ca3af;--nav-bg:#fff;--input-bg:#f9fafb;--sh:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);--sh-md:0 4px 16px rgba(0,0,0,.09);--sh-lg:0 8px 32px rgba(0,0,0,.13);--ctrl-h:36px}
 @media(prefers-color-scheme:dark){:root{--blue:#4d90e0;--blue-tint:#0d1f3a;--blue-mid:#1a3f72;--green:#16a34a;--green-bg:#052e16;--green-text:#86efac;--green-border:#14532d;--amber:#d97706;--amber-bg:#1c1407;--amber-text:#fde68a;--amber-border:#78350f;--red:#dc2626;--red-bg:#450a0a;--red-text:#fca5a5;--red-border:#7f1d1d;--bg:#0d0d0d;--surface:#1c1c1c;--card:#1c1c1c;--border:#2a2a2a;--border2:#333;--text:#f0f0f0;--text2:#9ca3af;--text3:#555;--nav-bg:#111;--input-bg:#161616;--sh:0 1px 3px rgba(0,0,0,.4);--sh-md:0 4px 16px rgba(0,0,0,.5);--sh-lg:0 8px 32px rgba(0,0,0,.6)}}
 html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}body{display:flex;justify-content:center;font-family:'Barlow',sans-serif;color:var(--text)}
 #app{width:100%;max-width:430px;height:100dvh;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:relative}
@@ -980,7 +980,10 @@ function _monthSelectHTML(id,options,selKey,onchange){
     return '<option value="'+p.key+'"'+sel+'>'+p.label+suffix+'</option>';
   }).join('');
   const idAttr=id?' id="'+id+'"':'';
-  const style="width:100%;min-height:var(--ctrl-h);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer";
+  // padding-right gives the native chevron breathing room from the
+  // edge — without it the arrow sits flush, especially noticeable on
+  // narrow mobile widths.
+  const style="width:100%;min-height:var(--ctrl-h);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 28px 0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer";
   return '<select'+idAttr+' onchange="'+onchange+'" style="'+style+'">'+opts+'</select>';
 }
 // Etapa 3 — INS hardcoded instructor list deleted. Dropdowns now read
@@ -1308,6 +1311,17 @@ function myStudentRow(){
     return parentSelectedChild()||null;
   }
   return STUDENTS.find(x=>x._userId===S.profile.id)||null;
+}
+// Batch programme-fixup — viewer's "person" legacy_id for any surface
+// that stores either a student OR staff reference (e.g.
+// events.competing_legacy_ids, where owners/instructors also compete).
+// Prefers the linked STUDENTS row; falls back to STAFF if none.
+function myPersonLegacyId(){
+  const stu=myStudentRow();
+  if(stu)return stu.id;
+  if(!S.profile||!S.profile.id)return null;
+  const staff=STAFF.find(x=>x._userId===S.profile.id);
+  return staff?staff.id:null;
 }
 function nxlbl(belt,deg){return deg>=(MAXD[belt]||4)?'Next promotion':'Next degree';}
 
@@ -4347,31 +4361,32 @@ function setSelectedWeek(lid){
 // key) render as a muted "Unknown member" line so admins notice
 // instead of silently dropping rows.
 function evNamedList(ids,opts){
-  const all=[...STUDENTS,...STAFF];
   if(!ids||!ids.length)return '';
   const adminTap=!!(opts&&opts.adminTap);
   return '<div style="display:flex;flex-direction:column;gap:2px">'+ids.map(id=>{
-    const s=all.find(x=>x.id===id);
+    // Resolve against STUDENTS first, then STAFF — both are valid
+    // competitor references (owners/instructors compete too).
+    let s=STUDENTS.find(x=>x.id===id);
+    const isStudent=!!s;
+    if(!s)s=STAFF.find(x=>x.id===id);
     if(!s)return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text3);font-style:italic">Unknown member</div>';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
-    const isStudent=STUDENTS.indexOf(s)!==-1;
-    const tappable=adminTap&&isStudent;
-    const onclick=tappable?'onclick="viewStu(\''+s.id+'\',\'roster\')"':'';
-    const cursor=tappable?';cursor:pointer':'';
+    const onclick=adminTap
+      ?(isStudent?'onclick="viewStu(\''+s.id+'\',\'roster\')"':'onclick="viewStaff(\''+s.id+'\',\'roster\')"')
+      :'';
+    const cursor=adminTap?';cursor:pointer':'';
     const avatar='<div style="width:24px;height:24px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:9px;flex-shrink:0">'+s.initials+'</div>';
-    return '<div '+onclick+' style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:var(--text)'+cursor+'">'+avatar+'<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</div></div>';
+    const name=isStudent?s.name:(typeof staffDisplayName==='function'?staffDisplayName(s):s.name);
+    return '<div '+onclick+' style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;color:var(--text)'+cursor+'">'+avatar+'<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+name+'</div></div>';
   }).join('')+'</div>';
 }
 
 function rEvents(isA){
-  // Batch programme-polish-2 — `me` is now the viewer's STUDENTS
-  // legacy_id (same key competing_legacy_ids / supporting_legacy_ids
-  // store and evNamedList resolves by). Pure admins / instructors
-  // with no linked student row see `me === null`, which just leaves
-  // the Competing / Supporting buttons un-active (and toggleEv
-  // gracefully no-ops on tap).
-  const myStu=(typeof myStudentRow==='function')?myStudentRow():null;
-  const me=myStu?myStu.id:null;
+  // Batch programme-fixup — `me` resolves to the viewer's person
+  // legacy_id (student → staff fallback) so owner/instructors register
+  // as Competing too, not just students. Pure auth accounts with no
+  // linked person row see `me === null` and the toggle no-ops on tap.
+  const me=(typeof myPersonLegacyId==='function')?myPersonLegacyId():null;
   const curUnit=UNITS.find(u=>u.name===S.unit);
   const curUnitId=curUnit?curUnit.id:'';
   // Batch programme-polish-2 — shared filter helper + smart default
@@ -6424,7 +6439,7 @@ async function hydrateData(){
       // STAFF row by _fetchStaffNotes when the owner opens the profile.
       c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi,created_at'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
-      c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids').order('date'),
+      c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
       c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
       // Etapa 1 — schedule lives in public.classes. Join staff so we
@@ -6521,7 +6536,7 @@ async function hydrateData(){
     if(ev.data){
       // MOCK-FIX — empty array clears EVENTS so the feed empty state
       // renders instead of a stale mock seed.
-      EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,_dateIso:r.date||'',type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]}));
+      EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,_dateIso:r.date||'',type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[],unitDbIds:r.unit_ids||[]}));
       touched=true;
     }else if(ev.error){console.warn('[mybjj] hydrate events:',ev.error);EVENTS=[];}
     if(pw.data){
@@ -8895,13 +8910,12 @@ function editTechVideo2(lid,cat,idx){const w=_findWk(lid);if(!w)return;const lis
 function toggleEv(id,intent){
   const e=EVENTS.find(x=>x.id===id);if(!e)return;
   if(!e.competing)e.competing=[];if(!e.supporting)e.supporting=[];
-  // Batch programme-polish-2 — use the viewer's STUDENTS legacy_id
-  // (the same key evNamedList resolves by). Previously this stored
-  // S.me.id (the auth UUID), which never resolved against STUDENTS
-  // by id and rendered "(not found)". Pure admins / instructors with
-  // no linked student row no-op gracefully.
-  const stu=(typeof myStudentRow==='function')?myStudentRow():null;
-  const me=stu&&stu.id;
+  // Batch programme-fixup — staff (owner/instructors) compete too, so
+  // resolve the viewer's "person" legacy_id (student → falls back to
+  // staff). evNamedList already merges STUDENTS + STAFF when rendering
+  // the avatar+name rows. Users with no linked person row at all
+  // (rare; e.g. a pure auth account) no-op gracefully.
+  const me=(typeof myPersonLegacyId==='function')?myPersonLegacyId():null;
   if(!me)return;
   const other=intent==='competing'?'supporting':'competing';
   const arr=e[intent];const otherArr=e[other];
@@ -8929,7 +8943,7 @@ function closeEEdit(){S.editEv=null;S.addEv=false;render();}
 // (no DB column; UI fallback at rEvents shows both RSVP buttons when
 // e.options is absent).
 function _evRowToLocal(r){
-  return{id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,_dateIso:r.date||'',type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[]};
+  return{id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,_dateIso:r.date||'',type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[],unitDbIds:r.unit_ids||[]};
 }
 async function saveEv(){
   const title=((document.getElementById('ev-title')||{}).value||'').trim();
@@ -8941,11 +8955,19 @@ async function saveEv(){
   if(!dateIso){alert('Date is required.');return;}
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue','error');return;}
-  const curUnit=UNITS.find(u=>u.name===S.unit);const uid=curUnit?curUnit.id:null;
+  const curUnit=UNITS.find(u=>u.name===S.unit);
+  const uid=curUnit?curUnit.id:null;
+  const uDbId=curUnit?curUnit._dbId:null;
+  // Batch programme-fixup — write BOTH unit_ids (uuid[]) and
+  // unit_legacy_ids (text[]). The RLS events_select policy filters by
+  // unit_ids; without it, students/parents couldn't see admin-created
+  // events at all. Keeping unit_legacy_ids in sync preserves the local
+  // (legacy-id-keyed) UI filters that the rest of the app uses.
   const payload={
     title,type,description:desc,link:link||null,
     date:dateIso,date_text:null,
-    unit_legacy_ids:uid?[uid]:[]
+    unit_legacy_ids:uid?[uid]:[],
+    unit_ids:uDbId?[uDbId]:[]
   };
   if(S.addEv){
     payload.legacy_id='ev'+Date.now();
@@ -8972,7 +8994,7 @@ async function saveEv(){
       // Preserve competing/supporting RSVPs (toggled by a separate code
       // path) — only refresh the fields the editor controls.
       const fresh=_evRowToLocal(r.data);
-      EVENTS[idx]={...EVENTS[idx],title:fresh.title,date:fresh.date,_dateIso:fresh._dateIso,type:fresh.type,desc:fresh.desc,link:fresh.link,units:fresh.units};
+      EVENTS[idx]={...EVENTS[idx],title:fresh.title,date:fresh.date,_dateIso:fresh._dateIso,type:fresh.type,desc:fresh.desc,link:fresh.link,units:fresh.units,unitDbIds:fresh.unitDbIds};
     }
   }
   closeEEdit();
