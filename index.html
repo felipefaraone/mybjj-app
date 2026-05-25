@@ -218,7 +218,7 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .blt{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase}
 .pt{background:var(--border);border-radius:99px;height:7px;overflow:hidden}.pf{height:100%;border-radius:99px}
 .stabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;align-items:stretch}
-.stab{flex:1;min-width:72px;min-height:var(--ctrl-h);padding:4px 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;cursor:pointer;background:var(--card);color:var(--text2);white-space:nowrap;text-align:center;display:inline-flex;align-items:center;justify-content:center}.stab.active{background:#1A5DAD;color:#fff;border-color:#1A5DAD}
+.stab{flex:1;min-width:72px;height:var(--ctrl-h);box-sizing:border-box;padding:0 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;cursor:pointer;background:var(--card);color:var(--text2);white-space:nowrap;text-align:center;display:inline-flex;align-items:center;justify-content:center;line-height:1}.stab.active{background:#1A5DAD;color:#fff;border-color:#1A5DAD}
 .bblue{width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
 .admin-action-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#1A5DAD;cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .admin-action-btn:hover{background:var(--blue-tint);border-color:var(--blue-mid)}
@@ -277,7 +277,7 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .fbitem{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--sh)}.fbhdr{display:flex;align-items:center;gap:8px;margin-bottom:8px}.fbins{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text)}.fbdate{font-size:11px;color:var(--text3);margin-left:auto}.fbtxt{font-size:14px;color:var(--text2);line-height:1.55}
 .fbta{width:100%;background:none;border:none;outline:none;font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);padding:14px 16px;resize:none;min-height:80px;caret-color:#1A5DAD}.fbta::placeholder{color:var(--text3)}
 .fbfoot{padding:8px 12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end}.fbsend{background:#1A5DAD;color:#fff;border:none;border-radius:7px;padding:6px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
-.rsw{display:flex;gap:8px;margin-bottom:16px;align-items:stretch}.rseg{flex:1;min-height:var(--ctrl-h);padding:4px 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;background:var(--card);color:var(--text2);text-align:center;display:inline-flex;align-items:center;justify-content:center}.rseg.active{background:#1A5DAD;color:#fff;border-color:#1A5DAD}
+.rsw{display:flex;gap:8px;margin-bottom:16px;align-items:stretch}.rseg{flex:1;height:var(--ctrl-h);box-sizing:border-box;padding:0 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;background:var(--card);color:var(--text2);text-align:center;display:inline-flex;align-items:center;justify-content:center;line-height:1}.rseg.active{background:#1A5DAD;color:#fff;border-color:#1A5DAD}
 .achip2{padding:5px 12px;border-radius:20px;border:1px solid var(--border);font-size:12px;cursor:pointer;font-family:'Barlow',sans-serif;background:var(--card);color:var(--text2)}.achip2.on{background:#1A5DAD;color:#fff;border-color:#1A5DAD}
 
 .tgi{background:#dbeafe;color:#1e40af;margin-right:4px}
@@ -980,10 +980,14 @@ function _monthSelectHTML(id,options,selKey,onchange){
     return '<option value="'+p.key+'"'+sel+'>'+p.label+suffix+'</option>';
   }).join('');
   const idAttr=id?' id="'+id+'"':'';
-  // padding-right gives the native chevron breathing room from the
-  // edge — without it the arrow sits flush, especially noticeable on
-  // narrow mobile widths.
-  const style="width:100%;min-height:var(--ctrl-h);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 28px 0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer";
+  // Batch programme-fixup-2 — appearance:none + inline-SVG chevron
+  // (positioned at `right 12px center`) so the arrow has clear
+  // breathing room from the edge. Native arrows can't be repositioned
+  // and rendered flush on iOS. padding-right reserves space so the
+  // option label can never overlap the chevron.
+  const chevron="url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%239ca3af' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><polyline points='1.5 1.5 6 6 10.5 1.5'/></svg>\")";
+  const style="width:100%;height:var(--ctrl-h);box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 34px 0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer;line-height:1;-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:"+chevron+";background-repeat:no-repeat;background-position:right 12px center";
+
   return '<select'+idAttr+' onchange="'+onchange+'" style="'+style+'">'+opts+'</select>';
 }
 // Etapa 3 — INS hardcoded instructor list deleted. Dropdowns now read
@@ -3825,7 +3829,7 @@ function rMembers(){
     ?'<div class="rseg '+(segment==='kids'?'active':'')+'" onclick="setMembersSegment(\'kids\')">Kids</div>'
     :'<div class="rseg" aria-disabled="true" style="cursor:not-allowed;color:var(--text3);background:var(--bg);border-color:var(--border);opacity:.6">Kids</div>';
   const segHtml='<div class="rsw">'+segAdultBtn+segKidsBtn+'</div>';
-  const chipBase='border-radius:22px;padding:0 14px;min-height:var(--ctrl-h);display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
+  const chipBase='border-radius:18px;padding:0 14px;height:var(--ctrl-h);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s;line-height:1';
   const beltChip=(value,label)=>{
     const sel=beltFilter===value;
     return '<button onclick="setMembersBelt(\''+value+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'#1A5DAD':'var(--border)')+';color:'+(sel?'#1A5DAD':'var(--text3)')+'">'+label+'</button>';
@@ -4231,12 +4235,14 @@ function rSchedule(){
   const mode=S.schedMode==='events'?'events':'curriculum';
   const segBtn=(key,lbl)=>{
     const on=mode===key;
-    return '<button onclick="setSchedMode(\''+key+'\')" style="flex:1;align-self:stretch;background:'+(on?'#1A5DAD':'transparent')+';color:'+(on?'#fff':'var(--text3)')+';border:none;border-radius:8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">'+lbl+'</button>';
+    return '<button onclick="setSchedMode(\''+key+'\')" style="flex:1;align-self:stretch;background:'+(on?'#1A5DAD':'transparent')+';color:'+(on?'#fff':'var(--text3)')+';border:none;border-radius:8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer;line-height:1">'+lbl+'</button>';
   };
-  // Min-height var(--ctrl-h) on the wrapper so the segmented toggle
-  // matches the height of stab pills, the month dropdown, and filter
-  // chips — keeps the band under the header consistent across tabs.
-  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:14px;min-height:var(--ctrl-h);align-items:stretch">'+segBtn('curriculum','Curriculum')+segBtn('events','Events')+'</div>';
+  // Batch programme-fixup-2 — fixed height on the wrapper (box-sizing
+  // border-box so border+padding are inside var(--ctrl-h)). Every
+  // other control row now mirrors this exactly, so the band under the
+  // header is pixel-identical across Classes / Progress / Members /
+  // Programme.
+  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px;margin-bottom:14px;height:var(--ctrl-h);box-sizing:border-box;align-items:stretch">'+segBtn('curriculum','Curriculum')+segBtn('events','Events')+'</div>';
 
   if(mode==='events'){
     const evEditor=(S.editEv||S.addEv)?rEEdit():'';
@@ -4700,7 +4706,7 @@ function rARoster(){
   // input never gets re-created mid-keystroke.
   const clearBtn='<button id="rq-clear" onclick="setRQ(String())" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;'+(S.rq?'':'display:none')+'">×</button>';
 
-  const chipBase='border-radius:22px;padding:0 14px;min-height:var(--ctrl-h);display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s';
+  const chipBase='border-radius:18px;padding:0 14px;height:var(--ctrl-h);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s;line-height:1';
   // Fix 7 — belt filter as chip row. First chip "All belts" is the
   // default selection; per-belt chips deselect All and apply that
   // single belt. Mirrors the Members tab pattern.
@@ -8907,21 +8913,45 @@ function addTech(lid,cat){const w=_findWk(lid);if(!w)return;if(!w[cat])w[cat]=[]
 function removeTech(lid,cat,idx){const w=_findWk(lid);if(!w||!w[cat])return;w[cat].splice(idx,1);render();}
 function toggleProg(lid,prog){const w=_findWk(lid);if(!w)return;if(!w.programs)w.programs=[];const i=w.programs.indexOf(prog);if(i>=0)w.programs.splice(i,1);else w.programs.push(prog);render();}
 function editTechVideo2(lid,cat,idx){const w=_findWk(lid);if(!w)return;const list=w[cat]||[];const tech=list[idx];if(!tech)return;const tv=typeof tech==='object'?tech:{t:tech,video:''};const url=prompt('Video URL for "'+tv.t+'" (YouTube or Instagram):',tv.video||'');if(url===null)return;if(typeof list[idx]==='string')list[idx]={t:list[idx],video:url};else list[idx].video=url;render();}
-function toggleEv(id,intent){
-  const e=EVENTS.find(x=>x.id===id);if(!e)return;
-  if(!e.competing)e.competing=[];if(!e.supporting)e.supporting=[];
-  // Batch programme-fixup — staff (owner/instructors) compete too, so
-  // resolve the viewer's "person" legacy_id (student → falls back to
-  // staff). evNamedList already merges STUDENTS + STAFF when rendering
-  // the avatar+name rows. Users with no linked person row at all
-  // (rare; e.g. a pure auth account) no-op gracefully.
+// Batch programme-fixup-2 — Competing/Supporting now persists via the
+// set_event_participation SECURITY DEFINER RPC. Direct UPDATEs against
+// public.events are admin-only (events_write RLS), so the previous
+// local-only mutation never landed for students; the RPC owns the
+// participation arrays atomically (no admin+student race overwrite)
+// and we mirror the returned row into local state.
+async function toggleEv(id,intent){
+  const e=EVENTS.find(x=>x.id===id);if(!e||!e._dbId)return;
+  // Pure auth accounts (no linked STUDENTS or STAFF row) can't
+  // participate. Buttons stay visible — tap no-ops gracefully.
   const me=(typeof myPersonLegacyId==='function')?myPersonLegacyId():null;
   if(!me)return;
-  const other=intent==='competing'?'supporting':'competing';
-  const arr=e[intent];const otherArr=e[other];
-  const idx=arr.indexOf(me);
-  if(idx>=0){arr.splice(idx,1);}
-  else{arr.push(me);const oi=otherArr.indexOf(me);if(oi>=0)otherArr.splice(oi,1);}
+  // Derive target from current state: tapping the active side toggles
+  // off ('none'); tapping the other side switches.
+  const isComp=(e.competing||[]).includes(me);
+  const isSupp=(e.supporting||[]).includes(me);
+  let target;
+  if(intent==='competing')target=isComp?'none':'competing';
+  else if(intent==='supporting')target=isSupp?'none':'supporting';
+  else return;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const r=await cli.rpc('set_event_participation',{p_event_id:e._dbId,p_status:target});
+  if(r&&r.error){
+    console.warn('[mybjj] set_event_participation:',r.error);
+    showSaveToast2("Couldn't update participation",'error');
+    return;
+  }
+  // RPC returns the updated event row. Mirror the participation arrays
+  // from the canonical response so admin+student concurrent toggles
+  // don't lose each other's entries.
+  const row=Array.isArray(r&&r.data)?r.data[0]:(r&&r.data);
+  const idx=EVENTS.findIndex(x=>x._dbId===e._dbId);
+  if(idx>=0&&row){
+    EVENTS[idx]={...EVENTS[idx],
+      competing:row.competing_legacy_ids||EVENTS[idx].competing||[],
+      supporting:row.supporting_legacy_ids||EVENTS[idx].supporting||[]
+    };
+  }
   render();
 }
 function openAddEv(){S.addEv=true;S.editEv=null;render();}
