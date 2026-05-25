@@ -4189,8 +4189,13 @@ function rSchedule(){
         +SCHED.map(x=>'<button class="stab '+(S.sweek===x.week&&!showEv?'active':'')+'" onclick="setSweek('+x.week+')">Wk '+x.week+'</button>').join('')
       +'</div>')
     :'';
+  // Batch curriculum-crud — "+ Week" admin button always reachable, so
+  // an empty SCHED is no longer a dead-end. INSERT happens in addWeek;
+  // on success it sets sweek + editWeek so the new row opens for edit.
+  const addWeekBtn=isA?'<button class="stab" onclick="addWeek()" title="Add a programme week" aria-label="Add a programme week" style="background:var(--blue-tint);color:#1A5DAD;border:1.5px solid var(--blue-mid);font-weight:700">+ Week</button>':'';
   const tabsHtml='<div class="stabs" style="margin-bottom:6px">'
     +'<button class="stab '+(showEv?'active':'')+'" onclick="setSweek(0)">Events</button>'
+    +addWeekBtn
     +'</div>'
     +weekTabs;
 
@@ -4355,6 +4360,15 @@ function rWEditor(w){
     const on=(w.programs||[]).includes(p);const c=progCols[p];
     return '<div onclick="toggleProg('+w.week+',\''+p+'\')" style="cursor:pointer;padding:5px 9px;border-radius:6px;border:1.5px solid '+(on?c:'var(--border)')+';background:'+(on?c+'20':'var(--bg)')+';display:inline-flex;align-items:center;gap:5px;margin-right:5px;margin-bottom:5px"><div style="width:8px;height:8px;border-radius:50%;background:'+(on?c:'var(--border)')+'"></div><span style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:'+(on?c:'var(--text3)')+'">'+p+'</span></div>';
   }).join('');
+  // Batch curriculum-crud — color swatches drive w.color (saveW persists
+  // it now). The brand blue is the default; the four program tints match
+  // progCols so the picker reads as "same palette as the toggles".
+  const colorSwatches=['#1A5DAD','#7e22ce','#dc2626','#15803d','#b45309','#475569'];
+  const curColor=w.color||'#1A5DAD';
+  const colorPicker=colorSwatches.map(c=>{
+    const sel=curColor.toLowerCase()===c.toLowerCase();
+    return '<button type="button" onclick="setWeekColor('+w.week+',\''+c+'\')" title="'+c+'" aria-label="Color '+c+'" style="width:28px;height:28px;border-radius:50%;background:'+c+';border:'+(sel?'3px solid var(--text)':'1px solid var(--border)')+';cursor:pointer;padding:0;flex-shrink:0"></button>';
+  }).join('');
   function techFields(list,cat){
     const arr=list||[];
     return arr.map((t,i)=>{
@@ -4384,8 +4398,9 @@ function rWEditor(w){
     +'<div style="min-width:0"><div class="slbl">Stand Up</div>'+techFields(w.standUp,'standUp')+'<button onclick="addTech('+w.week+',\'standUp\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
     +'<div style="min-width:0"><div class="slbl">Ground</div>'+techFields(w.ground,'ground')+'<button onclick="addTech('+w.week+',\'ground\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
     +'</div>'
-    +'<div class="slbl">Week video link</div><div class="ef" style="margin-bottom:16px"><div class="erow"><input id="we-vid" value="'+(w.video||'')+'" placeholder="YouTube or Instagram URL" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text)"/></div></div>'
-    +'<div style="display:flex;gap:10px"><button onclick="closeWE()" style="flex:1;background:var(--bg);color:var(--text2);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Cancel</button><button onclick="saveW('+w.week+')" style="flex:1;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Save</button></div>'
+    +'<div class="slbl">Accent colour</div><div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+colorPicker+'</div>'
+    +'<div style="display:flex;gap:10px;margin-bottom:10px"><button onclick="closeWE()" style="flex:1;background:var(--bg);color:var(--text2);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Cancel</button><button onclick="saveW('+w.week+')" style="flex:1;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Save</button></div>'
+    +'<button onclick="delWeekConfirm('+w.week+')" style="width:100%;background:none;color:var(--red);border:1px solid var(--red-border);border-radius:10px;padding:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer">Delete week</button>'
     +'</div></div>';
 }
 
@@ -8741,6 +8756,7 @@ function bumpTech(week,cat,idx,dir){
 function addTech(week,cat){const w=SCHED.find(x=>x.week===week);if(!w){return;}if(!w[cat])w[cat]=[];w[cat].push({t:'New technique',video:''});render();}
 function removeTech(week,cat,idx){const w=SCHED.find(x=>x.week===week);if(!w||!w[cat])return;w[cat].splice(idx,1);render();}
 function toggleProg(week,prog){const w=SCHED.find(x=>x.week===week);if(!w)return;if(!w.programs)w.programs=[];const i=w.programs.indexOf(prog);if(i>=0)w.programs.splice(i,1);else w.programs.push(prog);render();}
+function setWeekColor(week,color){const w=SCHED.find(x=>x.week===week);if(!w)return;w.color=color;render();}
 function editTechVideo2(week,cat,idx){const w=SCHED.find(x=>x.week===week);if(!w)return;const list=w[cat]||[];const tech=list[idx];if(!tech)return;const tv=typeof tech==='object'?tech:{t:tech,video:''};const url=prompt('Video URL for "'+tv.t+'" (YouTube or Instagram):',tv.video||'');if(url===null)return;if(typeof list[idx]==='string')list[idx]={t:list[idx],video:url};else list[idx].video=url;render();}
 function toggleEv(id,intent){
   const e=EVENTS.find(x=>x.id===id);if(!e)return;
@@ -8858,7 +8874,104 @@ function editTechVideo(week,techIdx){
   else tech.video=url;
   render();
 }
-function saveW(week){const w=SCHED.find(x=>x.week===week);if(!w)return;w.theme=document.getElementById('we-theme')?.value||w.theme;w.notes=document.getElementById('we-notes')?.value||'';w.video=document.getElementById('we-vid')?.value||'';S.editWeek=false;render();if(w._dbId)withSb(c=>c.from('programme_weeks').update({theme:w.theme,notes:w.notes,stand_up:w.standUp||[],ground:w.ground||[]}).eq('id',w._dbId),'update programme week');}
+// Batch curriculum-crud — saveW now persists EVERY field the editor
+// exposes (was theme/notes/stand_up/ground only — programs and color
+// were drop-on-the-floor before, plus the dead we-vid field that had
+// no DB column). Uses the same rowcount-guard idiom as the attendance
+// picker fix so an RLS-hidden row can't silently no-op.
+async function saveW(week){
+  const w=SCHED.find(x=>x.week===week);if(!w||!w._dbId)return;
+  const prev={theme:w.theme,notes:w.notes,programs:[...(w.programs||[])],color:w.color,standUp:w.standUp,ground:w.ground};
+  const theme=(document.getElementById('we-theme')||{}).value||w.theme||'';
+  const notes=(document.getElementById('we-notes')||{}).value||'';
+  // standUp / ground / programs / color are mutated in place by the
+  // editor's inline handlers (updateTech, toggleProg, setWeekColor,
+  // addTech, removeTech, moveTech) so we read them straight off w.
+  w.theme=theme;w.notes=notes;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const payload={theme,notes,stand_up:w.standUp||[],ground:w.ground||[],programs:w.programs||[],color:w.color||'#1A5DAD'};
+  const r=await cli.from('programme_weeks').update(payload).eq('id',w._dbId).select('id');
+  if(r&&r.error){
+    Object.assign(w,prev);
+    console.warn('[mybjj] saveW update:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');render();return;
+  }
+  if(!r||!r.data||!r.data.length){
+    Object.assign(w,prev);
+    console.warn('[mybjj] saveW: 0 rows affected (RLS or stale id)');
+    showSaveToast2("Couldn't save week",'error');render();return;
+  }
+  S.editWeek=false;render();
+  showSaveToast2('Week '+week+' saved.');
+}
+// Batch curriculum-crud — addWeek: INSERT a new programme_weeks row for
+// the current unit, then open it in edit mode. week_index = max+1 (or
+// 1) per the spec. week_start is required (NOT NULL + UNIQUE per unit),
+// derived from today + (idx-1)*7 days so each new week is unique even
+// across rapid clicks and resequencing after deletes.
+async function addWeek(){
+  if(!isStaffOrOwner())return;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const curUnit=UNITS.find(u=>u.name===S.unit);
+  if(!curUnit||!curUnit._dbId){showSaveToast2('No unit selected','error');return;}
+  const nextIdx=(SCHED.reduce((m,x)=>Math.max(m,x.week||0),0))+1;
+  const weekStart=dk(new Date(Date.now()+(nextIdx-1)*7*864e5));
+  const payload={
+    unit_id:curUnit._dbId,
+    week_start:weekStart,
+    week_index:nextIdx,
+    theme:'',
+    color:'#1A5DAD',
+    programs:[],
+    stand_up:[],
+    ground:[],
+    notes:''
+  };
+  const r=await cli.from('programme_weeks').insert(payload).select('id,legacy_id,week_index,theme,color,programs,stand_up,ground,notes').single();
+  if(r&&r.error||!r||!r.data){
+    console.warn('[mybjj] addWeek insert:',r&&r.error);
+    showSaveToast2(r&&r.error?friendlyMutationError(r.error):"Couldn't add week",'error');return;
+  }
+  const row=r.data;
+  SCHED.push({week:row.week_index,_dbId:row.id,theme:row.theme||'',color:row.color||'#1A5DAD',programs:row.programs||[],standUp:row.stand_up||[],ground:row.ground||[],notes:row.notes||'',video:''});
+  SCHED.sort((a,b)=>(a.week||0)-(b.week||0));
+  S.sweek=row.week_index;
+  S.editWeek=row.week_index;
+  render();
+  showSaveToast2('Week '+row.week_index+' added.');
+}
+// Batch curriculum-crud — delWeekConfirm: route through the generic
+// confirm modal (openConfirm); the executor hard-deletes the row,
+// verifies rowcount, and prunes local SCHED. Reuses the attendance/
+// events RLS-silent-failure guard.
+function delWeekConfirm(week){
+  if(!isStaffOrOwner())return;
+  const w=SCHED.find(x=>x.week===week);if(!w)return;
+  openConfirm({
+    title:'Delete Week '+week+'?',
+    message:'This removes the programme week and its techniques. This can’t be undone.',
+    dangerLabel:'Delete week',
+    onConfirm:()=>_delWeekExec(w)
+  });
+}
+async function _delWeekExec(w){
+  if(!w||!w._dbId)return;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const r=await cli.from('programme_weeks').delete().eq('id',w._dbId).select('id');
+  if(r&&r.error||!r||!r.data||!r.data.length){
+    console.warn('[mybjj] delWeek:',r&&r.error);
+    showSaveToast2(r&&r.error?friendlyMutationError(r.error):"Couldn't delete week",'error');
+    throw new Error('delWeek failed');
+  }
+  const idx=SCHED.findIndex(x=>x._dbId===w._dbId);
+  if(idx>=0)SCHED.splice(idx,1);
+  if(S.sweek===w.week)S.sweek=SCHED.length?SCHED[0].week:0;
+  S.editWeek=false;
+  showSaveToast2('Week '+w.week+' deleted.');
+}
 
 function setRQ(v){
   S.rq=v;
