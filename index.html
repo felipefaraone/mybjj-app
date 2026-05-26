@@ -225,10 +225,16 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .admin-action-btn:active{background:var(--blue-tint);transform:scale(.98)}
 /* Pull-to-refresh indicator — themed to blend with the app, not the
    library's vanilla black-on-white box. */
+/* The PullToRefreshJS library appends its own <style id="pull-to-refresh-js-style">
+   to <head> at init time, with `color: rgba(0,0,0,0.3)` on .ptr--text
+   and .ptr--icon. Because that stylesheet lands after ours (same
+   selector specificity, later wins), our rules silently lose. The
+   !important here is the only clean way to beat it without ripping
+   into the library. */
 .ptr--ptr{background:var(--bg);color:var(--text);font-family:'Barlow Condensed',sans-serif}
-.ptr--box{font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text);opacity:.85}
-.ptr--text{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.5px;color:var(--text);opacity:.85}
-.ptr--icon{color:var(--text);font-size:0;display:flex;align-items:center;justify-content:center}
+.ptr--box{font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text)!important;opacity:.85}
+.ptr--text{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.5px;color:var(--text)!important;opacity:.85}
+.ptr--icon{color:var(--text)!important;font-size:0;display:flex;align-items:center;justify-content:center}
 .ptr--icon svg{display:block}
 @keyframes mybjj-ptr-spin{to{transform:rotate(360deg)}}
 .mybjj-ptr-spinner{animation:mybjj-ptr-spin 1.2s linear infinite;transform-origin:50% 50%}
@@ -264,8 +270,8 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .citem{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;box-shadow:var(--sh)}
 .cit{font-family:'Bebas Neue',sans-serif;font-size:24px;line-height:1;color:var(--text);min-width:52px}.cii{flex:1;min-width:0}.cin{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:var(--text);line-height:1.1}.cim{font-size:11px;color:var(--text3);margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
 .badd{background:none;border:1.5px dashed var(--border2);border-radius:8px;padding:8px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);cursor:pointer;display:flex;align-items:center;gap:6px;width:100%;letter-spacing:.5px}
-.cov{position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end}
-.csheet{background:var(--surface);border-radius:20px 20px 0 0;padding:24px;width:100%}
+.cov{position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;overscroll-behavior:contain;touch-action:none}
+.csheet{background:var(--surface);border-radius:20px 20px 0 0;padding:24px;width:100%;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}
 .gibd{display:flex;border-radius:8px;overflow:hidden;margin-top:8px;border:1px solid var(--border)}.giseg{flex:1;padding:8px 10px;text-align:center}.giseg:first-child{border-right:1px solid var(--border)}.giv{font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1}.gil{font-size:10px;color:var(--text3);margin-top:1px;font-family:'Barlow Condensed',sans-serif;font-weight:600;letter-spacing:.5px}
 .gnote{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;padding:8px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border)}
 .tl{padding:8px 0 4px;position:relative}.tlline{position:absolute;left:19px;top:0;bottom:0;width:2px;background:var(--border)}
@@ -4743,7 +4749,7 @@ function rEEdit(){
   return '<div class="sub open" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeEEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+(isNew?'Add event':'Edit event')+'</div><button class="ssave" onclick="saveEv()">Save</button></div>'
     +'<div class="sbody"><div class="ef">'
     +'<div class="erow"><div class="elbl">Title</div><input class="einput" id="ev-title" value="'+e.title+'" placeholder="Event name"/></div>'
-    +'<div class="erow"><div class="elbl">Date</div><input class="einput" id="ev-date" type="date" value="'+dateVal+'"/></div>'
+    +'<div class="erow"><div class="elbl">Date</div><input id="ev-date" type="date" value="'+dateVal+'" aria-label="Event date" style="flex:1;width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);text-align:right;min-height:28px;-webkit-appearance:none;appearance:none"/></div>'
     +'<div class="erow"><div class="elbl">Type</div><select class="esel" id="ev-type">'+typeOpts+'</select></div>'
     +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" dir="ltr" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4;text-align:left;direction:ltr">'+e.desc+'</textarea></div>'
     +'<div class="erow"><div class="elbl">Link</div><input class="einput" id="ev-link" value="'+(e.link||'')+'" placeholder="https://... (optional)"/></div>'
