@@ -1267,7 +1267,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -3170,7 +3170,15 @@ function rMonthPromos(){
   }).join('');
   const moreTxt=recent.length>3?'<span style="font-size:11px;color:var(--text3)">+' +(recent.length-3)+'</span>':'';
   const closeBtn='<button onclick="event.stopPropagation();dismissMonthPromos()" aria-label="Dismiss" title="Dismiss" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:#1A5DAD;padding:2px;display:flex;align-items:center;justify-content:center;border-radius:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
-  return `<div id="month-promos-banner" style="position:relative;background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 30px 11px 14px;margin-top:20px;margin-bottom:12px;transition:opacity 200ms">${closeBtn}<div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5DAD;margin-bottom:6px">🥋 Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
+  // Batch wall-4b — banner now taps through to Community → Wall.
+  // Dismiss button keeps its stopPropagation so the close action
+  // doesn't also navigate.
+  return `<div id="month-promos-banner" onclick="goToWall()" style="position:relative;background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 30px 11px 14px;margin-top:20px;margin-bottom:12px;transition:opacity 200ms;cursor:pointer">${closeBtn}<div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5DAD;margin-bottom:6px">🥋 Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
+}
+function goToWall(){
+  S.tab='community';
+  S.commTab='wall';
+  render();
 }
 function dismissMonthPromos(){
   const key='banner_promo_dismissed_'+_promoBannerMonthKey();
@@ -3944,6 +3952,13 @@ function rCommunityWall(){
       +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Belt and stripe promotions will appear here as they happen.</div>'
       +'</div>';
   }
+  // Batch wall-4b — kick off a one-time fetch of wall_reactions for
+  // the visible promotions. The fetch is keyed by the sorted UUID set
+  // so navigating away and back doesn't re-fetch unnecessarily, but
+  // a new promotion landing in PROMOTION_LOG (different set) triggers
+  // a fresh fetch automatically.
+  const promoIds=rows.map(r=>r.p._dbId).filter(Boolean);
+  _ensureWallReactions(promoIds);
   const beltLabel=k=>(BA[k]||BK[k]||{label:k}).label;
   const cards=rows.map(({p,s})=>{
     const isBelt=!!p.isNewBelt||p.type==='belt';
@@ -3956,14 +3971,122 @@ function rCommunityWall(){
       ?'<div style="flex-shrink:0">'+bb(p.toBelt,0,'adult')+'</div>'
       :'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--text3);flex-shrink:0">+1&nbsp;stripe</div>';
     const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer"';
+    const ossHtml=_ossControlHtml(p._dbId);
     return '<div class="card" style="margin-bottom:8px"><div '+tap+'>'
       +avStu(s,40)
       +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+earned+'&nbsp;·&nbsp;'+when+'</div></div>'
       +trail
-      +'</div></div>';
+      +'</div>'
+      +ossHtml
+      +'</div>';
   }).join('');
   return cards;
+}
+// Batch wall-4b — Oss reactions. The Wall card calls _ossControlHtml
+// with the promotion UUID; the control renders an outline / brand-blue-
+// filled "Oss" pill plus a tappable count chip when there are reactors.
+// Toggle goes through the toggle_oss SECURITY DEFINER RPC (atomic +
+// kids-excluded); tapping the count opens a small modal listing
+// reactors as avatar + name.
+const _OSS_FIST_SVG='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M6 11V8a2 2 0 0 1 4 0v3"/><path d="M10 11V7a2 2 0 0 1 4 0v4"/><path d="M14 11V8a2 2 0 0 1 4 0v3"/><path d="M6 11h12v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4z"/></svg>';
+function _ossControlHtml(promoDbId){
+  if(!promoDbId)return '';
+  const r=(S.wallReactions||{})[promoDbId]||{count:0,reacted:false};
+  const reacted=!!r.reacted;
+  const count=Number(r.count||0);
+  const bg=reacted?'#1A5DAD':'transparent';
+  const fg=reacted?'#fff':'var(--text3)';
+  const bd=reacted?'#1A5DAD':'var(--border)';
+  const btn='<button onclick="event.stopPropagation();toggleOss(\'promotion\',\''+promoDbId+'\')" style="background:'+bg+';color:'+fg+';border:1px solid '+bd+';border-radius:18px;padding:0 12px;height:30px;display:inline-flex;align-items:center;gap:6px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;line-height:1">'+_OSS_FIST_SVG+'Oss</button>';
+  const countChip=count>0
+    ?'<button onclick="event.stopPropagation();openOssList(\'promotion\',\''+promoDbId+'\')" style="background:transparent;color:var(--text2);border:none;padding:0 4px;height:30px;display:inline-flex;align-items:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer">'+count+'</button>'
+    :'';
+  return '<div style="display:flex;align-items:center;gap:4px;padding:0 12px 10px 14px">'+btn+countChip+'</div>';
+}
+async function _ensureWallReactions(ids){
+  if(!ids||!ids.length){S.wallReactions={};S.wallReactionsKey='';return;}
+  const cli=initSupabase();
+  if(!cli)return;
+  const key=ids.slice().sort().join(',');
+  if(S.wallReactionsKey===key&&S.wallReactions)return;
+  if(S.wallReactionsLoading)return;
+  S.wallReactionsLoading=true;
+  S.wallReactionsKey=key;
+  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').eq('target_type','promotion').in('target_id',ids);
+  S.wallReactionsLoading=false;
+  if(r&&r.error){
+    console.warn('[mybjj] wall_reactions:',r.error);
+    // Reset the key so a retry can fire on the next render.
+    S.wallReactionsKey=null;
+    return;
+  }
+  const map={};
+  ids.forEach(id=>{map[id]={count:0,reacted:false,reactors:[]};});
+  const myUid=S.profile&&S.profile.id;
+  (r&&r.data||[]).forEach(row=>{
+    const m=map[row.target_id];if(!m)return;
+    m.count++;
+    m.reactors.push(row.reactor_user_id);
+    if(myUid&&row.reactor_user_id===myUid)m.reacted=true;
+  });
+  S.wallReactions=map;
+  render();
+}
+async function toggleOss(targetType,targetId){
+  if(!targetId)return;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  const r=await cli.rpc('toggle_oss',{p_target_type:targetType,p_target_id:targetId});
+  if(r&&r.error){
+    console.warn('[mybjj] toggle_oss:',r.error);
+    showSaveToast2("Couldn't react",'error');
+    return;
+  }
+  const out=(r&&r.data)||{};
+  if(!S.wallReactions)S.wallReactions={};
+  const cur=S.wallReactions[targetId]||{count:0,reacted:false,reactors:[]};
+  const myUid=S.profile&&S.profile.id;
+  cur.count=Number(out.count||0);
+  cur.reacted=!!out.reacted;
+  // Keep the local reactors list in sync so an immediately-tapped
+  // count modal reflects the change without another roundtrip.
+  const without=(cur.reactors||[]).filter(u=>u!==myUid);
+  cur.reactors=cur.reacted&&myUid?without.concat([myUid]):without;
+  S.wallReactions[targetId]=cur;
+  render();
+}
+function openOssList(targetType,targetId){
+  if(!targetId)return;
+  S.ossList={targetType,targetId};
+  render();
+}
+function closeOssList(){S.ossList=null;render();}
+function rOssListModal(){
+  const o=S.ossList;if(!o)return '';
+  const r=(S.wallReactions||{})[o.targetId]||{reactors:[]};
+  const reactors=r.reactors||[];
+  const rows=reactors.length?reactors.map(uid=>{
+    // Resolve reactor_user_id → STUDENTS first, then STAFF (both
+    // hydrates carry user_id). Unresolved → muted "Someone" so a
+    // raw uuid never leaks.
+    let s=STUDENTS.find(x=>x._userId===uid);
+    const isStudent=!!s;
+    if(!s)s=STAFF.find(x=>x._userId===uid);
+    if(!s){
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;font-size:13px;color:var(--text3);font-style:italic">Someone</div>';
+    }
+    const av=isStudent?avStu(s,32):(typeof avStaff==='function'?avStaff(s,32):avStu(s,32));
+    const name=isStudent?s.name:(typeof staffDisplayName==='function'?staffDisplayName(s):s.name);
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0">'+av
+      +'<div style="flex:1;min-width:0;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+name+'</div>'
+    +'</div>';
+  }).join(''):'<div style="padding:18px 0;text-align:center;font-size:13px;color:var(--text3)">No reactions yet</div>';
+  return '<div class="cov" onclick="closeOssList()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px 18px;max-height:80vh;overflow-y:auto">'
+    +'<button onclick="closeOssList()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-bottom:8px;padding-right:36px;letter-spacing:.5px">Oss · '+reactors.length+'</div>'
+    +rows
+    +'</div></div>';
 }
 function setMembersBelt(b){S.membersBelt=b;render();}
 function setMembersSegment(seg){S.membersSegment=seg;S.membersBelt='all';render();}
@@ -5005,7 +5128,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
