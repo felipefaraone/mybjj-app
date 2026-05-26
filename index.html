@@ -3173,7 +3173,7 @@ function rMonthPromos(){
   // Batch wall-4b — banner now taps through to Community → Wall.
   // Dismiss button keeps its stopPropagation so the close action
   // doesn't also navigate.
-  return `<div id="month-promos-banner" onclick="goToWall()" style="position:relative;background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 30px 11px 14px;margin-top:20px;margin-bottom:12px;transition:opacity 200ms;cursor:pointer">${closeBtn}<div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5DAD;margin-bottom:6px">🥋 Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
+  return `<div id="month-promos-banner" onclick="goToWall()" style="position:relative;background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 30px 11px 14px;margin-top:20px;margin-bottom:12px;transition:opacity 200ms;cursor:pointer">${closeBtn}<div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1A5DAD;margin-bottom:6px">Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
 }
 function goToWall(){
   S.tab='community';
@@ -3937,6 +3937,11 @@ function rCommunityWall(){
   // promotions whose student doesn't resolve or whose student is a
   // kid. Unit scope: PROMOTION_LOG carries the unit legacy_id via
   // hydrate's uMap.
+  // Batch share-content — cap the Wall at the 25 most recent
+  // promotions so it can't pile up. Older promotions remain in each
+  // person's Journey (the archive). Future: add a "Load more" /
+  // pagination if volume grows past the cap.
+  const WALL_LIMIT=25;
   const rows=PROMOTION_LOG
     .filter(p=>p&&(!curUnit||p.unit===curUnit))
     .map(p=>{
@@ -3945,7 +3950,8 @@ function rCommunityWall(){
       return{p,s};
     })
     .filter(Boolean)
-    .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date));
+    .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date))
+    .slice(0,WALL_LIMIT);
   if(!rows.length){
     return '<div class="card" style="text-align:center;padding:32px 20px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No promotions yet</div>'
@@ -6063,9 +6069,9 @@ function sharePromoText(p,s){
   const bmap=prog==='kids'?BK:BA;
   const beltLbl=((bmap[p.toBelt]||BA.white).label||'').toLowerCase();
   const unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
-  const emoji=prog==='kids'?'🌟':'🥋';
-  if(p.isNewBelt) return emoji+' Congratulations to '+p.studentName+' who just received their '+beltLbl+' belt at myBJJ '+unit+'! Hard work pays off. '+appShareUrl();
-  return '⚪ '+p.studentName+' just earned a new stripe on their '+beltLbl+' belt at myBJJ '+unit+'! '+appShareUrl();
+  // Batch share-content — emoji prefixes removed (no emoji in copy).
+  if(p.isNewBelt) return 'Congratulations to '+p.studentName+' who just received their '+beltLbl+' belt at myBJJ '+unit+'! Hard work pays off.\n\n'+appShareUrl();
+  return p.studentName+' just earned a new stripe on their '+beltLbl+' belt at myBJJ '+unit+'!\n\n'+appShareUrl();
 }
 function sharePromo(legacyId){
   const p=PROMOTION_LOG.find(x=>x.id===legacyId);if(!p)return;
@@ -6076,15 +6082,26 @@ function sharePromo(legacyId){
 // dropped across all journey timelines). The Promote-on-completion
 // share affordance still lives elsewhere (sharePromo / shareWeek);
 // only the inline-on-each-milestone surface goes.
+// Batch share-content — self-contained event share text. No emoji,
+// no "open the app" framing — the recipient reads the message in
+// WhatsApp and gets the actual event details, not a teaser link. The
+// app URL is a single plain line at the bottom (optional install
+// affordance); the body above stands alone.
 function shareEventText(e){
+  const lines=[];
+  lines.push((e.title||'Event').trim());
+  const typeLbl=e.type==='social'?'Social':'Competition';
+  const dateStr=(e.date||'').trim();
+  lines.push(dateStr?(dateStr+'  ·  '+typeLbl):typeLbl);
   const desc=(e.desc||'').trim();
-  const m=desc.match(/^[^.!?]+[.!?]/);
-  const briefDesc=m?m[0].trim():'';
-  const parts=['📅 myBJJ event:', e.title+' on '+(e.date||'TBC')+'.'];
-  if(briefDesc) parts.push(briefDesc);
-  if(e.link) parts.push('Register: '+e.link+' — More: '+appShareUrl());
-  else parts.push(appShareUrl());
-  return parts.join(' ').replace(/\s+/g,' ').trim();
+  if(desc){lines.push('');lines.push(desc);}
+  const c=(e.competing||[]).length;
+  const s=(e.supporting||[]).length;
+  if(c>0||s>0){lines.push('');lines.push('Competing: '+c+'  ·  Supporting: '+s);}
+  if(e.link){lines.push('');lines.push(e.link);}
+  lines.push('');
+  lines.push(appShareUrl());
+  return lines.join('\n');
 }
 function shareEvent(legacyId){
   const e=EVENTS.find(x=>x.id===legacyId);if(!e)return;
@@ -6096,19 +6113,23 @@ function firstWeekVideo(w){
   const t=all.find(x=>x&&x.video);
   return t?t.video:'';
 }
+// Batch share-content — self-contained curriculum share text. Real
+// week data, no emoji, no brand image. App URL is a single plain
+// line at the bottom (optional).
 function shareWeekText(w){
-  const unit=S.unit||'';
-  const techs=[...(w.standUp||[]),...(w.ground||[])];
-  const firstTechName=(techs.find(t=>t&&t.t)||{}).t||'';
-  const programs=(w.programs||[]).join(', ');
-  const detail=firstTechName||programs||'';
-  const head=w.theme?'Programme this week: '+w.theme+'.':'Programme for the week.';
-  const video=firstWeekVideo(w);
-  const parts=['📚 myBJJ '+unit+' —',head];
-  if(detail)parts.push(detail+'.');
-  if(video)parts.push('Watch: '+video+' — Full schedule: '+appShareUrl());
-  else parts.push(appShareUrl());
-  return parts.join(' ').replace(/\s+/g,' ').trim();
+  const wsDate=w&&w.weekStart?_parseISODate(w.weekStart):null;
+  const monthLbl=wsDate?_monthLabel(wsDate.getMonth(),wsDate.getFullYear()):'';
+  const head='myBJJ - Week '+(w&&w.week!=null?w.week:'?')+(monthLbl?'  ·  '+monthLbl:'');
+  const flatten=arr=>(arr||[]).map(t=>(typeof t==='object'?t.t:t)||'').filter(Boolean).join(', ');
+  const standUp=flatten(w&&w.standUp);
+  const ground=flatten(w&&w.ground);
+  const lines=[head];
+  if(w&&w.theme)lines.push(w.theme);
+  if(standUp)lines.push('Stand-up: '+standUp);
+  if(ground)lines.push('Ground: '+ground);
+  lines.push('');
+  lines.push(appShareUrl());
+  return lines.join('\n');
 }
 function shareWeek(lid){
   // lid is now the SCHED entry's _localId (UUID), not the week_index —
