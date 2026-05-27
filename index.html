@@ -1316,7 +1316,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -1896,8 +1896,8 @@ function rAddStu(){
 <div class="ef">
 <div class="erow"><div class="elbl">First name</div><input id="add-first" class="einput" placeholder="First name" value="${v('first')}" oninput="S._addForm.first=this.value" autocomplete="off"/></div>
 <div class="erow"><div class="elbl">Last name</div><input id="add-last" class="einput" placeholder="Last name" value="${v('last')}" oninput="S._addForm.last=this.value" autocomplete="off"/></div>
-<div class="erow"><div class="elbl">Email</div><input id="add-email" class="einput" type="email" placeholder="email@example.com" value="${v('email')}" oninput="S._addForm.email=this.value" autocomplete="off"/></div>
-<div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-cc','S._addForm.cc=this.value',phoneCC)}<input id="add-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('phone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.phone=this.value" style="text-align:left" autocomplete="off"/></div></div>
+${isKids?'':`<div class="erow"><div class="elbl">Email</div><input id="add-email" class="einput" type="email" placeholder="email@example.com" value="${v('email')}" oninput="S._addForm.email=this.value" autocomplete="off"/></div>
+<div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-cc','S._addForm.cc=this.value',phoneCC)}<input id="add-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('phone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.phone=this.value" style="text-align:left" autocomplete="off"/></div></div>`}
 <div class="erow"><div class="elbl">Date of birth</div><input id="add-dob" class="einput" type="date" value="${v('dob')}" oninput="S._addForm.dob=this.value"/></div>
 </div>
 <div class="slbl" style="margin-top:8px">Program & rank</div>
@@ -3499,6 +3499,16 @@ function _renderProfileHeader(s,opts){
   const badges=(Array.isArray(opts.badges)?opts.badges:[defaultBadge])
     .concat(Array.isArray(opts.extraBadges)?opts.extraBadges:[]);
   const editPencilHtml=opts.editPencilHtml||'';
+  // Training since — student only; renders below the badges when
+  // students.training_started_at is set. Format: "Training since Mar 2021".
+  let trainSinceHtml='';
+  if(!isStaff&&s&&s.trainingStartedAt){
+    const dt=new Date(s.trainingStartedAt);
+    if(!isNaN(dt)){
+      const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
+      trainSinceHtml='<div style="margin-top:8px;font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Training since '+mo+' '+dt.getFullYear()+'</div>';
+    }
+  }
   // Name wraps naturally (word-break:break-word) and is never truncated
   // — long names like "Head Professor Mario Yokoyama" or
   // "Aaron NeedsLastName" can take two lines without overflowing.
@@ -3511,6 +3521,7 @@ function _renderProfileHeader(s,opts){
           +beltSVG(s.belt,s.deg||0,prog,110)
           +badges.join('')
         +'</div>'
+        +trainSinceHtml
       +'</div>'
     +'</div>'
     +editPencilHtml
@@ -4562,17 +4573,18 @@ function rSchedule(){
   function techRow(tech,idx,cat,wRef){
     const tv=typeof tech==='object'?tech:{t:tech,video:''};
     const hasVideo=!!(tv.video);
-    // Batch programme-consolidate — the whole row is now tappable to
-    // open a YouTube search ("bjj <technique name>"), the affordance
-    // the retired Progress→Techniques view used to provide. The stored
-    // video link icon keeps opening tv.video directly (stopPropagation
-    // so it doesn't also fire the row's YouTube search). Admin edit
-    // button uses the same stopPropagation pattern.
-    const ytQuery='https://www.youtube.com/results?search_query=bjj+'+encodeURIComponent(tv.t||'');
-    const linkSibling=hasVideo?'<a href="'+escAttr(tv.video)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="'+escAttr('Open '+(tv.t||'video'))+'" style="display:inline-flex;align-items:center;color:var(--blue);text-decoration:none;flex-shrink:0">'+LINK_ICON+'</a>':'';
+    // v1.39.x Fix 2 — the whole row is tappable. The onclick calls
+    // openTechVideo(lid,cat,idx), which resolves the stored URL
+    // safely (https:// only — javascript:/data: schemes can't sneak
+    // through a string-concatenated href) and falls back to a YouTube
+    // search when there's no stored link. The standalone link icon is
+    // gone (the row now IS the link); the admin "edit link" pencil
+    // stays and keeps its stopPropagation so it doesn't fire the row.
     const editBtn=isA?'<button onclick="event.stopPropagation();editTechVideo2(\''+wRef._localId+'\',\''+cat+'\','+idx+')" title="Edit video link" aria-label="Edit video link" style="background:none;border:none;cursor:pointer;padding:0;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;opacity:'+(hasVideo?'1':'0.4')+';color:'+(hasVideo?'var(--blue)':'var(--text3)')+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
-    const searchIcon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
-    return '<div style="margin-bottom:7px"><div onclick="window.open(\''+ytQuery+'\',\'_blank\')" style="background:var(--bg);border-radius:7px;padding:0 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border);min-height:38px;max-width:100%;overflow:hidden;cursor:pointer'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'"><div title="'+escAttr(tv.t||'')+'" style="flex:1;min-width:0;font-size:12px;color:var(--text);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(tv.t||'')+'</div>'+linkSibling+editBtn+searchIcon+'</div></div>';
+    const trailIcon=hasVideo
+      ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--blue);flex-shrink:0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+      : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+    return '<div style="margin-bottom:7px"><div onclick="openTechVideo(\''+wRef._localId+'\',\''+cat+'\','+idx+')" style="background:var(--bg);border-radius:7px;padding:0 11px;display:flex;align-items:center;gap:6px;border:1px solid var(--border);min-height:38px;max-width:100%;overflow:hidden;cursor:pointer'+(hasVideo&&isA?';border-color:var(--blue-mid)':'')+'"><div title="'+escAttr(tv.t||'')+'" style="flex:1;min-width:0;font-size:12px;color:var(--text);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(tv.t||'')+'</div>'+editBtn+trailIcon+'</div></div>';
   }
 
   let bodyHtml='';
@@ -5213,7 +5225,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -5806,7 +5818,7 @@ function avMe(size,mode){
   const inner=photoUrl
     ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+_ringBg+'"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
     : av(m.initials,m.belt,size);
-  const handler=mode==='opensub'?"openMyProfile()":"triggerPhotoUpload('self')";
+  const handler=mode==='opensub'?"openMyProfile()":"openPhotoMenu('self')";
   const title=mode==='opensub'?'View my profile':'Change photo';
   return '<div onclick="'+handler+'" title="'+title+'" style="position:relative;cursor:pointer;display:inline-flex;flex-shrink:0">'+inner+badge+'</div>';
 }
@@ -6491,7 +6503,7 @@ function rEditStaff(){
   // Photo block: tap own avatar to upload (same photo_approvals flow
   // students use); admin views static avatar.
   const photoBlock=isSelf
-    ?`<div onclick="triggerPhotoUpload('self')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStaff(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
+    ?`<div onclick="openPhotoMenu('self')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStaff(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
     :`${avStaff(s,72)}`;
   const tab=['basic','training','contact'].indexOf(S.editStaffTab)>=0?S.editStaffTab:'basic';
   const tabsHtml='<div class="stabs" style="margin-bottom:12px">'
@@ -6561,6 +6573,87 @@ function triggerPhotoUpload(sid){
   _crop.sid=sid;
   inp.onchange=(e)=>{const f=e.target.files&&e.target.files[0];if(f)_cropStart(f);inp.value='';};
   inp.click();
+}
+// Avatar tap. With a photo present, surface the Change/Remove menu;
+// otherwise jump straight to the picker (matches the legacy
+// no-photo behaviour). `sid` is 'self' for the signed-in user's own
+// avatar, or a student legacy id for staff editing a student.
+function openPhotoMenu(sid){
+  let hasPhoto=false;
+  if(sid==='self'){
+    const meUrl=(S.me&&S.me.photoUrl)||null;
+    const linkedStaff=(S.profile&&S.profile.id)?STAFF.find(x=>x._userId===S.profile.id):null;
+    const linkedStudent=linkedStaff?null:((S.profile&&S.profile.id)?STUDENTS.find(x=>x._userId===S.profile.id):null);
+    hasPhoto=!!(meUrl||(linkedStaff&&linkedStaff.photoUrl)||(linkedStudent&&linkedStudent.photoUrl));
+  }else{
+    const s=STUDENTS.find(x=>x.id===sid);
+    hasPhoto=!!(s&&s.photoUrl);
+  }
+  if(!hasPhoto){triggerPhotoUpload(sid);return;}
+  S.photoMenu={sid};render();
+}
+function closePhotoMenu(){S.photoMenu=null;render();}
+function _photoMenuChange(){
+  const sid=S.photoMenu&&S.photoMenu.sid;
+  S.photoMenu=null;render();
+  if(sid)triggerPhotoUpload(sid);
+}
+async function removePhoto(sid){
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  S.photoMenu=null;render();
+  if(sid==='self'){
+    const prevMe=S.me&&S.me.photoUrl||null;
+    const prevProfile=S.profile&&S.profile.photo_url||null;
+    const linkedStaff=(S.profile&&S.profile.id)?STAFF.find(x=>x._userId===S.profile.id):null;
+    const linkedStudent=linkedStaff?null:((S.profile&&S.profile.id)?STUDENTS.find(x=>x._userId===S.profile.id):null);
+    const prevSubject=linkedStaff?linkedStaff.photoUrl:(linkedStudent?linkedStudent.photoUrl:null);
+    const urlForDelete=prevSubject||prevMe;
+    if(S.me)S.me.photoUrl=null;
+    if(S.profile)S.profile.photo_url=null;
+    if(linkedStaff)linkedStaff.photoUrl=null;
+    if(linkedStudent)linkedStudent.photoUrl=null;
+    render();
+    const r=await cli.rpc('remove_photo');
+    if(r&&r.error){
+      console.warn('[mybjj] remove_photo (self):',r.error);
+      showSaveToast2(friendlyMutationError(r.error),'error');
+      if(S.me)S.me.photoUrl=prevMe;
+      if(S.profile)S.profile.photo_url=prevProfile;
+      if(linkedStaff)linkedStaff.photoUrl=prevSubject;
+      if(linkedStudent)linkedStudent.photoUrl=prevSubject;
+      render();
+      return;
+    }
+    if(urlForDelete){try{await cli.storage.from('avatars').remove([urlForDelete]);}catch(_){}}
+    showSaveToast2('Photo removed.');
+    loadMyPhotoApproval();
+    return;
+  }
+  const s=STUDENTS.find(x=>x.id===sid);
+  if(!s||!s._dbId){showSaveToast2('Student not found.','error');return;}
+  const prev=s.photoUrl||null;
+  s.photoUrl=null;render();
+  const r=await cli.rpc('remove_photo',{p_student_id:s._dbId});
+  if(r&&r.error){
+    console.warn('[mybjj] remove_photo (student):',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    s.photoUrl=prev;render();
+    return;
+  }
+  if(prev){try{await cli.storage.from('avatars').remove([prev]);}catch(_){}}
+  showSaveToast2('Photo removed.');
+}
+function rPhotoMenu(){
+  if(!S.photoMenu)return '';
+  return '<div class="cov" onclick="closePhotoMenu()" style="align-items:flex-end;justify-content:center;z-index:9999">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px 16px 0 0;max-width:480px;width:100%;padding:16px 16px 22px">'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.7px;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:12px">Photo</div>'
+      +'<button onclick="_photoMenuChange()" style="width:100%;padding:14px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px">Change photo</button>'
+      +'<button onclick="removePhoto(\''+String(S.photoMenu.sid).replace(/\\/g,'\\\\').replace(/\x27/g,'\\\x27')+'\')" style="width:100%;padding:14px;background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px">Remove photo</button>'
+      +'<button onclick="closePhotoMenu()" style="width:100%;padding:14px;background:none;color:var(--text2);border:1px solid var(--border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Cancel</button>'
+    +'</div>'
+  +'</div>';
 }
 function _cropStart(file){
   if(!file.type||file.type.indexOf('image/')!==0){showSaveToast2('Please choose an image file.','error');return;}
@@ -6680,9 +6773,29 @@ async function uploadCroppedPhoto(){
       staff_id:linkedStaff?linkedStaff._dbId:null,
       photo_url:path,
       status:'pending',
-    });
+    }).select('id').single();
     if(ins&&ins.error){console.warn('[mybjj] self photo approval insert fail:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
     console.log('[mybjj] self photo approval pending OK');
+    // Staff/owner upload: auto-approve immediately. Gate on the viewer
+    // role (isStaffOrOwner) rather than linkedStaff — an owner may have
+    // no staff row (user-self subject) and their photo must still
+    // auto-approve. The UPDATE fires sync_photo_url_on_approval which
+    // covers staff / student / user-self subjects uniformly.
+    // Students + parents (not staff/owner) keep the pending flow.
+    if(isStaffOrOwner()&&ins&&ins.data&&ins.data.id){
+      const upd=await cli.from('photo_approvals').update({status:'approved',approved_by_id:S.profile.id,approved_at:new Date().toISOString()}).eq('id',ins.data.id);
+      if(upd&&upd.error){
+        console.warn('[mybjj] staff/owner auto-approve fail:',upd.error);
+        showSaveToast2(friendlyMutationError(upd.error),'error');
+        return;
+      }
+      S.cropOpen=false;_crop.img=null;_crop.sid=null;
+      showSaveToast2('Photo updated.');
+      loadMyPhotoApproval();
+      render();
+      if(canEditClassCounts())loadPhotoQueue();
+      return;
+    }
     S.cropOpen=false;_crop.img=null;_crop.sid=null;
     showSaveToast2("Photo submitted for approval. You'll see it on your profile once approved.");
     loadMyPhotoApproval();
@@ -6805,7 +6918,7 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email').order('name'),
-      c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles'),
+      c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at'),
       // RLS-2 — staff.feedback dropped from the select; Head Instructor
       // Notes now live in public.staff_notes and are fetched lazily per
       // STAFF row by _fetchStaffNotes when the owner opens the profile.
@@ -6846,7 +6959,7 @@ async function hydrateData(){
       // Postgres numeric as String to avoid precision loss; wrap with
       // Number() so downstream math (sort, eligibility, formatStat)
       // compares numerically instead of lexicographically.
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{}}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
@@ -8651,6 +8764,7 @@ function _captureEditStuTab(){
   const g=v('es-gender');    if(g!==undefined)D.gender=g;
   const w=v('es-weight');    if(w!==undefined)D.weightKg=w;
   const h=v('es-height');    if(h!==undefined)D.heightCm=h;
+  const ts=v('es-trainstart');if(ts!==undefined)D.trainingStartedAt=ts;
   const myGiEl=document.getElementById('es-hasmybjjgi');
   if(myGiEl)D.hasMybjjGi=myGiEl.classList.contains('on');
   const ecn=v('es-ecname');  if(ecn!==undefined)D.ecName=ecn;
@@ -8704,6 +8818,7 @@ function rEditStu(){
   const hasMybjjGi=draftOr(D.hasMybjjGi,!!s.hasMybjjGi);
   const ecName=draftOr(D.ecName,s.ecName||'');
   const ecPhone=draftOr(D.ecPhone,s.ecPhone||'');
+  const trainingStartedAt=draftOr(D.trainingStartedAt,s.trainingStartedAt||'');
   const parentName=draftOr(D.parentName,s.parentName||'');
   const parentPhone=draftOr(D.parentPhone,s.parentPhone||'');
   const parentEmail=draftOr(D.parentEmail,s.parentEmail||'');
@@ -8720,8 +8835,9 @@ function rEditStu(){
   // Photo affordance only for the row's own user — admin viewing
   // someone else's profile keeps the static avatar; admin uploads on
   // behalf go through the photo queue.
-  const photoBlock=isSelf
-    ?`<div onclick="triggerPhotoUpload('self')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
+  const _photoTapTarget=isSelf?'self':(isStaffOrOwner()?s.id:null);
+  const photoBlock=_photoTapTarget
+    ?`<div onclick="openPhotoMenu('${_photoTapTarget}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
     :`${avStu(s,72)}`;
   // B-edit — tab set diverges by subject prog:
   //   kids  → Basic / Training / Guardian (Guardian merges parent +
@@ -8766,8 +8882,12 @@ function rEditStu(){
   // SOCIAL card via openSocialEditor. `social` snapshot kept for the
   // unchanged saveEditStu local pre-write (still mirrors the existing
   // socialHandles when nothing here changes them).
+  const trainStartRow=isAdminViewer
+    ?`<div class="erow"><div class="elbl">Training started</div><input class="einput" id="es-trainstart" type="date" value="${esc(trainingStartedAt)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>`
+    :'';
   const trainingTab=beltVisual+`
 <div class="ef" style="margin-top:8px">
+${trainStartRow}
 <div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(weightKg)}"/></div>
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
 <div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="toggle ${hasMybjjGi?'on':''}" id="es-hasmybjjgi" onclick="this.classList.toggle('on')"></button></div>
@@ -8847,6 +8967,9 @@ async function saveEditStu(){
   const weightKg=weightStr?parseInt(weightStr,10):null;
   const heightCm=heightStr?parseInt(heightStr,10):null;
   const hasMybjjGi=D.hasMybjjGi!==undefined?!!D.hasMybjjGi:!!s.hasMybjjGi;
+  const isAdminViewer=isStaffOrOwner();
+  const trainingStartedAtRaw=D.trainingStartedAt!==undefined?D.trainingStartedAt:s.trainingStartedAt;
+  const trainingStartedAt=(isAdminViewer&&trainingStartedAtRaw)?String(trainingStartedAtRaw):null;
   const ecName=trim(D.ecName,s.ecName||'')||null;
   const ecPhone=_phoneSanitize(trim(D.ecPhone,s.ecPhone||''))||null;
   if(ecPhone&&!_phoneValid(ecPhone))return showErr('Enter a valid emergency phone number');
@@ -8875,6 +8998,7 @@ async function saveEditStu(){
   s.dob=dob;s.phone=phone||null;s.gender=gender;
   s.weightKg=weightKg;s.heightCm=heightCm;
   s.hasMybjjGi=hasMybjjGi;
+  if(isAdminViewer)s.trainingStartedAt=trainingStartedAt;
   s.ecName=ecName;s.ecPhone=ecPhone;
   if(isKids){
     s.parentName=parentName;s.parentPhone=parentPhone;s.parentEmail=parentEmail;
@@ -8914,7 +9038,8 @@ async function saveEditStu(){
     date_of_birth:dob,phone:phone||null,gender,
     weight_kg:weightKg,height_cm:heightCm,
     emergency_contact_name:ecName,emergency_contact_phone:ecPhone,
-    has_mybjj_gi:hasMybjjGi
+    has_mybjj_gi:hasMybjjGi,
+    training_started_at:trainingStartedAt
   };
   if(isKids){
     payload.parent_name=parentName;payload.parent_phone=parentPhone;payload.parent_email=parentEmail;
@@ -9293,6 +9418,23 @@ function addTech(lid,cat){const w=_findWk(lid);if(!w)return;if(!w[cat])w[cat]=[]
 function removeTech(lid,cat,idx){const w=_findWk(lid);if(!w||!w[cat])return;w[cat].splice(idx,1);render();}
 function toggleProg(lid,prog){const w=_findWk(lid);if(!w)return;if(!w.programs)w.programs=[];const i=w.programs.indexOf(prog);if(i>=0)w.programs.splice(i,1);else w.programs.push(prog);render();}
 function editTechVideo2(lid,cat,idx){const w=_findWk(lid);if(!w)return;const list=w[cat]||[];const tech=list[idx];if(!tech)return;const tv=typeof tech==='object'?tech:{t:tech,video:''};const url=prompt('Video URL for "'+tv.t+'" (YouTube or Instagram):',tv.video||'');if(url===null)return;if(typeof list[idx]==='string')list[idx]={t:list[idx],video:url};else list[idx].video=url;render();}
+// v1.39.x Fix 2 — tap-to-open technique. Resolves the stored video
+// URL inside the handler instead of inlining it into the onclick
+// string — escAttr does NOT block javascript:/data: schemes, so an
+// admin-pasted "javascript:..." URL would otherwise execute on tap.
+// We allow only https:// links through; everything else (including
+// stored http:// values) falls back to a YouTube search so the row
+// is always tappable. Bound at file scope so it's reachable from any
+// re-rendered row.
+function openTechVideo(lid,cat,idx){
+  const w=_findWk(lid);if(!w)return;
+  const list=w[cat]||[];const tech=list[idx];if(!tech)return;
+  const tv=typeof tech==='object'?tech:{t:tech,video:''};
+  const url=String(tv.video||'').trim();
+  if(/^https:\/\//i.test(url)){window.open(url,'_blank','noopener');return;}
+  const q='https://www.youtube.com/results?search_query=bjj+'+encodeURIComponent(tv.t||'');
+  window.open(q,'_blank','noopener');
+}
 // Batch programme-fixup-2 — Competing/Supporting now persists via the
 // set_event_participation SECURITY DEFINER RPC. Direct UPDATEs against
 // public.events are admin-only (events_write RLS), so the previous
