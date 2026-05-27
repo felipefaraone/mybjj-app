@@ -4230,35 +4230,58 @@ function _renderKidsSummaryCard(unitName){
   if(!data){return '';}
   const total=Number(data.total||0);
   const byBelt=Array.isArray(data.by_belt)?data.by_belt:[];
-  // Batch 8-FE Item 3 — empty state is text-only, no chips, no zero hero.
   if(total===0){
     return '<div class="card" style="padding:18px;text-align:center"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px">No kids enrolled yet</div></div>';
   }
-  // Belt distribution: render each entry as a small chip with the belt
-  // color tinting the background. BK carries the kids-belt palette;
-  // null/unknown belts collapse to an "Unranked" muted chip.
-  const beltChips=byBelt.map(row=>{
-    const beltKey=row&&row.belt?String(row.belt).toLowerCase():'';
-    const count=Number(row&&row.count||0);
-    const meta=BK[beltKey]||null;
-    if(meta){
-      return '<div style="display:inline-flex;align-items:center;gap:6px;background:'+meta.bg+'22;border:1px solid '+meta.bg+'55;color:var(--text);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;padding:4px 10px;border-radius:999px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+meta.bg+'"></span>'+meta.label+' · '+count+'</div>';
+  // Macro tones in IBJJF order, derived from BELT_ORDER_K (no
+  // hardcoded order). Mirrors the Members-tab kids chip rollup at
+  // index.html:3911 (Object.keys(BK).filter(k=>!k.includes('/')))
+  // and its startsWith match at index.html:3926.
+  const macros=BELT_ORDER_K.filter(k=>!k.includes('/'));
+  const macroCounts={};macros.forEach(m=>{macroCounts[m]=0;});
+  for(const row of byBelt){
+    const key=String(row&&row.belt||'').toLowerCase();
+    const n=Number(row&&row.count||0);
+    if(!key||!n)continue;
+    for(const m of macros){
+      if(key===m||key.startsWith(m+'/')){macroCounts[m]+=n;break;}
     }
-    return '<div style="display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);color:var(--text2);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;padding:4px 10px;border-radius:999px">Unranked · '+count+'</div>';
-  }).join('');
-  // Batch 8-FE Item 3 — stat-hero layout. Big Barlow Condensed count
-  // beside the "kids training" label (singular at 1); thin divider;
-  // belt chips below. "at <unit>" line dropped — the unit is already
-  // in the top brand area + the Members tab header.
-  const kidsLbl=total===1?'kid training':'kids training';
-  return '<div class="card" style="padding:18px">'
-    +'<div style="display:flex;align-items:baseline;gap:10px">'
-      +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:40px;color:var(--text);line-height:1">'+total+'</div>'
-      +'<div style="font-size:14px;color:var(--text2);font-weight:600">'+kidsLbl+'</div>'
-    +'</div>'
-    +'<div style="margin:14px -18px 14px;border-top:1px solid var(--border)"></div>'
-    +'<div style="display:flex;flex-wrap:wrap;gap:6px">'+(beltChips||'<div style="font-size:12px;color:var(--text3)">No belt data.</div>')+'</div>'
+  }
+  // Active-kid highlight — parent only. Strip any "/sub" tail so a
+  // kid on grey/white still lights up the Grey row. Adult belt / null
+  // / unknown macro → no highlight, no name pill.
+  const me=S.me||{};
+  const isParentViewer=me.role==='parent';
+  const activeKid=isParentViewer&&typeof parentSelectedChild==='function'?parentSelectedChild():null;
+  const activeBelt=activeKid?String(activeKid.belt||'').toLowerCase():'';
+  const activeMacro=activeBelt.split('/')[0];
+  const highlightMacro=macros.indexOf(activeMacro)>=0?activeMacro:null;
+  const activeFirst=(highlightMacro&&activeKid)?((activeKid.name||'').split(' ')[0]||''):'';
+  const rows=macros.map(m=>{
+    const meta=BK[m]||{label:m,bg:BELT_COLORS[m]||'#e5e7eb'};
+    const c=macroCounts[m]||0;
+    const dim=c===0?'opacity:.4;':'';
+    const tinted=m===highlightMacro;
+    const rowBg=tinted?'background:var(--blue-tint);':'';
+    const isWhite=m==='white';
+    const swatchBorder=isWhite?'border:0.5px solid var(--border2);box-sizing:border-box;':'';
+    const swatch='<div style="width:42px;height:15px;border-radius:3px;flex-shrink:0;background:'+meta.bg+';'+swatchBorder+'"></div>';
+    const namePill=(tinted&&activeFirst)
+      ?' <span style="display:inline-flex;align-items:center;background:var(--blue);color:#fff;font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;margin-left:8px">'+escHtml(activeFirst)+'</span>'
+      :'';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;'+dim+rowBg+'">'
+      +swatch
+      +'<div style="font-size:14px;font-weight:500;color:var(--text);display:inline-flex;align-items:center;flex:1;min-width:0">'+meta.label+namePill+'</div>'
+      +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:600;font-size:16px;color:var(--text);text-align:right">'+c+'</div>'
     +'</div>';
+  }).join('');
+  return '<div class="card" style="padding:16px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+      +'<div class="slbl" style="margin:0">Kids program</div>'
+      +'<div style="font-size:13px;color:var(--text2)"><span style="font-weight:700;color:var(--text)">'+total+'</span> training</div>'
+    +'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:2px">'+rows+'</div>'
+  +'</div>';
 }
 // rParentMembers — parent's Members tab. Post-migration 55 the parent
 // can't SELECT other kids' rows, so the "Kids" list is now a
@@ -4302,7 +4325,6 @@ function rParentMembers(){
     ?'<div class="slbl" style="margin-top:20px">Instructors</div>'+instructorRows
     :'<div class="slbl" style="margin-top:20px">Instructors</div><div class="card" style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No instructors at this unit yet.</div>';
   return '<div style="height:16px"></div>'
-    +'<div class="slbl">Kids program</div>'
     +kidsCard
     +instructorsBlock;
 }
