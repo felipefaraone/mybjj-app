@@ -356,10 +356,46 @@ const LOGO_DATA_URI="data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX
 initSupabase();
 
 const BA={white:{label:'White',bg:'#e5e7eb',fg:'#111827'},blue:{label:'Blue',bg:'#1A5DAD',fg:'#fff'},purple:{label:'Purple',bg:'#7e22ce',fg:'#fff'},brown:{label:'Brown',bg:'#7c2d12',fg:'#fff'},black:{label:'Black',bg:'#111827',fg:'#fff',bdr:'1px solid #374151'}};
-const BK={white:{label:'White',bg:'#e5e7eb',fg:'#111827'},grey:{label:'Grey',bg:'#9ca3af',fg:'#fff'},yellow:{label:'Yellow',bg:'#ca8a04',fg:'#fff'},orange:{label:'Orange',bg:'#ea580c',fg:'#fff'},green:{label:'Green',bg:'#16a34a',fg:'#fff'}};
+// v1.39.x Fix 4 — kids' 13 IBJJF compound belts in progression order.
+// Each entry's bg/fg reuses the base colour (white/grey/yellow/
+// orange/green); the optional `tip` field (null | 'white' | 'black')
+// drives the right-edge sub-band on beltSVG so the compound variant
+// reads at a glance. students.belt has no DB check constraint, so
+// these slash-form keys persist as-is.
+const BK={
+  white:         {label:'White',         bg:'#e5e7eb',fg:'#111827',tip:null},
+  'grey/white':  {label:'Grey/White',    bg:'#9ca3af',fg:'#fff',   tip:'white'},
+  grey:          {label:'Grey',          bg:'#9ca3af',fg:'#fff',   tip:null},
+  'grey/black':  {label:'Grey/Black',    bg:'#9ca3af',fg:'#fff',   tip:'black'},
+  'yellow/white':{label:'Yellow/White',  bg:'#ca8a04',fg:'#fff',   tip:'white'},
+  yellow:        {label:'Yellow',        bg:'#ca8a04',fg:'#fff',   tip:null},
+  'yellow/black':{label:'Yellow/Black',  bg:'#ca8a04',fg:'#fff',   tip:'black'},
+  'orange/white':{label:'Orange/White',  bg:'#ea580c',fg:'#fff',   tip:'white'},
+  orange:        {label:'Orange',        bg:'#ea580c',fg:'#fff',   tip:null},
+  'orange/black':{label:'Orange/Black',  bg:'#ea580c',fg:'#fff',   tip:'black'},
+  'green/white': {label:'Green/White',   bg:'#16a34a',fg:'#fff',   tip:'white'},
+  green:         {label:'Green',         bg:'#16a34a',fg:'#fff',   tip:null},
+  'green/black': {label:'Green/Black',   bg:'#16a34a',fg:'#fff',   tip:'black'}
+};
 const GGA={white:40,blue:60,purple:70,brown:80,black:120};
-const GGK={white:30,grey:30,yellow:30,orange:30,green:30};
-const MAXD={white:4,blue:4,purple:4,brown:4,black:6,grey:4,yellow:4,orange:4,green:4};
+// v1.39.x Fix 4 — GGK + MAXD extended to all 13 kids belt keys
+// (PROMO_CRITERIA.kids was already authoritative for stripe-by-stripe
+// counts; these are the fallback per-belt values used by _egDisplay
+// when no exact criterion row matches).
+const GGK={
+  white:30,
+  'grey/white':30,grey:30,'grey/black':30,
+  'yellow/white':30,yellow:30,'yellow/black':30,
+  'orange/white':30,orange:30,'orange/black':30,
+  'green/white':30,green:30,'green/black':30
+};
+const MAXD={
+  white:4,blue:4,purple:4,brown:4,black:6,
+  'grey/white':4,grey:4,'grey/black':4,
+  'yellow/white':4,yellow:4,'yellow/black':4,
+  'orange/white':4,orange:4,'orange/black':4,
+  'green/white':4,green:4,'green/black':4
+};
 const PROGRESSION_THRESHOLDS={
   white: {classes_per_stripe:25, min_gi_ratio:0.7},
   blue:  {classes_per_stripe:40, min_gi_ratio:0.7},
@@ -640,7 +676,7 @@ function _socialChipsBlock(socialHandles,opts){
   if(!chips&&!canEdit)return '';
   const subjectKey=subj?(subj.kind+':'+subj.s.id):'';
   const editBtn=canEdit&&subjectKey
-    ?'<button onclick="openSocialEditor(\''+subjectKey+'\')" title="Edit social" style="position:absolute;top:10px;right:10px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:6px;padding:4px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">Edit</button>'
+    ?'<button onclick="openSocialEditor(\''+subjectKey+'\')" title="Edit social" style="position:absolute;top:10px;right:10px;z-index:2;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:6px;padding:4px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">Edit</button>'
     :'';
   const body=chips
     ?'<div style="display:flex;flex-wrap:wrap;gap:8px">'+chips+'</div>'
@@ -1411,7 +1447,13 @@ function beltSVG(belt,deg,prog,width){
   // up to 4 white stripe marks. Same band geometry and mark spacing
   // logic — the only thing that varies is bar colour + mark cap.
   const isBlack=belt==='black';
-  const tipBg=belt==='white'?'#9ca3af':b.bg;
+  // v1.39.x Fix 4(c) — compound kids belts (e.g. grey/white, yellow/
+  // black) flip the right-edge sub-band to the variant colour while
+  // keeping the body in the base colour. b.tip ('white' | 'black' |
+  // null) is the single source. For solid belts (b.tip null) the tip
+  // keeps the existing behaviour: white shows a grey accent, every
+  // other solid keeps its own body colour.
+  const tipBg=b.tip==='white'?'#ffffff':b.tip==='black'?'#1f2937':(belt==='white'?'#9ca3af':b.bg);
   const barColor=isBlack?'#B91C1C':'#1F2937';
   // G17.2c.4 — black maxMarks reduced 10 → 6. IBJJF treats degrees
   // 7-9 as coral belt (separate visual) and 10 as red belt, so any
@@ -1561,9 +1603,18 @@ function fmtT12(t){
   return h+':'+mm+ap;
 }
 function pb(v,mx,c){const p=Math.min(Math.round(v/mx*100),100);return `<div class="pt"><div class="pf" style="width:${p}%;background:${c}"></div></div>`;}
-const BELT_COLORS={white:'#e5e7eb',blue:'#1A5DAD',purple:'#7e22ce',brown:'#7c2d12',black:'#111827',grey:'#9ca3af',yellow:'#ca8a04',orange:'#ea580c',green:'#15803d'};
+// v1.39.x Fix 4 — BELT_COLORS adds entries for all 13 compound keys
+// (each compound shares its base-colour hex; the sub-band variant
+// shows on the belt render via b.tip, not as a separate colour here).
+const BELT_COLORS={
+  white:'#e5e7eb',blue:'#1A5DAD',purple:'#7e22ce',brown:'#7c2d12',black:'#111827',
+  'grey/white':'#9ca3af',grey:'#9ca3af','grey/black':'#9ca3af',
+  'yellow/white':'#ca8a04',yellow:'#ca8a04','yellow/black':'#ca8a04',
+  'orange/white':'#ea580c',orange:'#ea580c','orange/black':'#ea580c',
+  'green/white':'#15803d',green:'#15803d','green/black':'#15803d'
+};
 const BELT_ORDER_A=['white','blue','purple','brown','black'];
-const BELT_ORDER_K=['white','grey','yellow','orange','green'];
+const BELT_ORDER_K=['white','grey/white','grey','grey/black','yellow/white','yellow','yellow/black','orange/white','orange','orange/black','green/white','green','green/black'];
 function pbBelt(v,mx,currentBelt,prog){const p=Math.min(Math.round(v/mx*100),100);const ORD=prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;const ci=ORD.indexOf(currentBelt);const curC=BELT_COLORS[currentBelt]||'#e5e7eb';const nxtC=(ci>=0&&ci<ORD.length-1)?BELT_COLORS[ORD[ci+1]]:'#111827';return `<div class="pt"><div class="pf" style="width:${p}%;background:linear-gradient(to right,${curC},${nxtC})"></div></div>`;}
 function ytId(u){if(!u||typeof u!=='string')return null;const m=u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);return m?m[1]:null;}
 function escAttr(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
@@ -1825,7 +1876,11 @@ function rAddStu(){
   const F=S._addForm;
   const isKids=S._addProg==='kids';
   const isTransfer=S._addTransfer||'new';
-  const beltOpts=isKids?['white','grey','yellow','orange','green']:['white','blue','purple','brown','black'];
+  // v1.39.x Fix 4(b) — single source of truth. BK/BA already carry
+  // the canonical key order; Object.keys preserves it, so the kids
+  // dropdown now exposes all 13 IBJJF compound belts in progression
+  // order without a parallel hardcoded list to drift from.
+  const beltOpts=isKids?Object.keys(BK):Object.keys(BA);
   const beltDefault=isKids?'white':'white';
   if(F.belt&&!beltOpts.includes(String(F.belt).toLowerCase()))F.belt=beltDefault;
   const belt=String(F.belt||beltDefault).toLowerCase();
@@ -1849,7 +1904,7 @@ function rAddStu(){
 <div class="ef">
 <div class="erow"><div class="elbl">Program</div><div class="seg"><button class="segb ${isKids?'':'on'}" onclick="S._addProg='adult';render()">Adults</button><button class="segb ${isKids?'on':''}" onclick="S._addProg='kids';render()">Kids</button></div></div>
 <div class="erow"><div class="elbl">Unit</div><select id="add-unit" class="esel" onchange="S._addForm.unit=this.value">${unitSel}</select></div>
-<div class="erow"><div class="elbl">Belt</div><select id="add-belt" class="esel" onchange="S._addForm.belt=this.value">${beltOpts.map(b=>'<option value="'+b+'" '+(b===belt?'selected':'')+'>'+b.charAt(0).toUpperCase()+b.slice(1)+'</option>').join('')}</select></div>
+<div class="erow"><div class="elbl">Belt</div><select id="add-belt" class="esel" onchange="S._addForm.belt=this.value">${beltOpts.map(b=>'<option value="'+b+'" '+(b===belt?'selected':'')+'>'+((isKids?BK:BA)[b]||{label:b}).label+'</option>').join('')}</select></div>
 <div class="erow"><div class="elbl">Degree</div><select id="add-degree" class="esel" onchange="S._addForm.degree=this.value">${[0,1,2,3,4].map(i=>'<option value="'+i+'" '+(String(i)===degree?'selected':'')+'>'+i+'</option>').join('')}</select></div>
 </div>
 ${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child’s progress.</div>
@@ -2027,9 +2082,10 @@ function rPromoPanel(s){
   const me=S.me;
   if(!isStaffOrOwner())return '';
   const instrBelt=me.belt||'white';const instrDeg=me.deg||0;
-  const ORDER_A=['white','blue','purple','brown','black'];
-  const ORDER_K=['white','grey','yellow','orange','green'];
-  const ORDER=s.prog==='kids'?ORDER_K:ORDER_A;
+  // v1.39.x Fix 4(b) — reuse the shared BELT_ORDER_* progression so
+  // the kids' compound-belt chain is honoured (grey/white → grey →
+  // grey/black → yellow/white …) instead of the old 5-belt skip.
+  const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
   const curIdx=ORDER.indexOf(s.belt);
   const nextBelt=curIdx<ORDER.length-1?ORDER[curIdx+1]:null;
   const maxDeg=(s.belt==='black')?6:4;
@@ -2097,9 +2153,8 @@ function doPromote(id, isBeltPromotion){
   const s=STUDENTS.find(x=>x.id===id);if(!s)return;
   const me=S.me;
   const instrBelt=me.belt||'white';const instrDeg=me.deg||0;
-  const ORDER_A=['white','blue','purple','brown','black'];
-  const ORDER_K=['white','grey','yellow','orange','green'];
-  const ORDER=s.prog==='kids'?ORDER_K:ORDER_A;
+  // v1.39.x Fix 4(b) — shared 13-key kids progression.
+  const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
 
   let newPromo=null;
   if(isBeltPromotion){
@@ -2340,7 +2395,16 @@ function rJnySection(s,sidKey){
   const isSelfTarget=isStaffTarget
     ? isStaffSelf(s)
     : !!(s&&s._userId&&S.profile&&s._userId===S.profile.id);
-  const canEdit=canEditClassCounts()&&(isOwner()||!isSelfTarget);
+  // v1.39.x Fix 2(b)+(c) — staff journeys can only be edited by the
+  // head professor (owner). For students the existing
+  // canEditClassCounts gate stays. Community/peer view never shows
+  // an Edit affordance regardless of role — editing lives in
+  // Manage/Progress, not in the social/community lens.
+  const isPeerView=S.profileOrigin==='community';
+  let canEdit;
+  if(isPeerView) canEdit=false;
+  else if(isStaffTarget) canEdit=isOwner();
+  else canEdit=canEditClassCounts()&&(isOwner()||!isSelfTarget);
   const isEditing=!!(canEdit&&S.jnyEditFor===sidKey);
   const dirty=isEditing&&jnyHasChanges(s);
   if(!isEditing){
@@ -2349,7 +2413,7 @@ function rJnySection(s,sidKey){
     // without permission see no button. Matches the SOCIAL card
     // pattern shipped in the same batch.
     const editBtn=canEdit
-      ? '<button onclick="openJnyEdit(\''+sidKey+'\')" title="Edit journey" style="position:absolute;top:10px;right:10px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:6px;padding:4px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">Edit</button>'
+      ? '<button onclick="openJnyEdit(\''+sidKey+'\')" title="Edit journey" style="position:absolute;top:10px;right:10px;z-index:2;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:6px;padding:4px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">Edit</button>'
       : '';
     const jArr=Array.isArray(s.journey)?s.journey:[];
     const collapsed=jArr.length>3 && !S.showAllJourney;
@@ -2995,9 +3059,8 @@ function rPromoteModal(){
   const s=STUDENTS.find(x=>x.id===S.promoteFor);if(!s)return '';
   const me=S.me;
   const instrBelt=me.belt||'white';const instrDeg=me.deg||0;
-  const ORDER_A=['white','blue','purple','brown','black'];
-  const ORDER_K=['white','grey','yellow','orange','green'];
-  const ORDER=s.prog==='kids'?ORDER_K:ORDER_A;
+  // v1.39.x Fix 4(b) — shared 13-key kids progression.
+  const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
   const curIdx=ORDER.indexOf(s.belt);
   const nextBelt=curIdx<ORDER.length-1?ORDER[curIdx+1]:null;
   const maxDeg=(s.belt==='black')?6:4;
@@ -3097,11 +3160,11 @@ function rJnyEditor(){
 <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.4">Editing journey doesn’t change the student’s current belt or grade. Use Promote / Demote for that.</div>
 ${lockNote}
 <div class="ef" style="margin-bottom:12px">
-<div class="erow"><div class="elbl">Type</div><select class="esel" id="jm-type" onchange="jnyTypeChange()"${isAuto?' disabled':''}><option value="">—</option>${types.map(t=>`<option value="${t.v}" ${t.v===inferredType?'selected':''}>${t.l}</option>`).join('')}</select></div>
+<div class="erow"><div class="elbl">Type</div><select class="esel" id="jm-type" onchange="jnyTypeChange()" style="text-align:left;text-overflow:ellipsis"${isAuto?' disabled':''}><option value="">—</option>${types.map(t=>`<option value="${t.v}" ${t.v===inferredType?'selected':''}>${t.l}</option>`).join('')}</select></div>
 <div class="erow"><div class="elbl">Date</div><input class="einput" id="jm-date" type="date" value="${esc(dateValue)}"${lockedAttr}/></div>
 <div class="erow"><div class="elbl">Belt</div><select class="esel" id="jm-belt" onchange="jnyTypeChange()"${isAuto?' disabled':''}><option value="" ${beltValue?'':'selected'}>— optional —</option>${beltKeys.map(k=>`<option value="${k}" ${k===beltValue?'selected':''}>${beltLabel(k)}</option>`).join('')}</select></div>
 <div class="erow"><div class="elbl">Label</div><input class="einput" id="jm-lbl" maxlength="60" value="${esc(m.label)}" placeholder="e.g. Won tournament"${lockedAttr}/></div>
-<div class="erow"><div class="elbl">Classes</div><input class="einput" id="jm-cls" type="number" min="0" value="${m.classes!=null?m.classes:''}" placeholder="Optional"${lockedAttr}/></div>
+<div class="erow"><div class="elbl">Classes</div><input class="einput" id="jm-cls" type="number" min="0" value="${m.classes!=null?m.classes:''}" placeholder="Classes at this point"${lockedAttr}/></div>
 <div class="erow"><div class="elbl">Notes</div><input class="einput" id="jm-notes" value="${esc(m.notes)}" placeholder="Optional"/></div>
 </div>
 <div style="display:flex;gap:10px">
@@ -3150,14 +3213,12 @@ function rDayStrip(){
 
 
 function nextBeltColor(belt,prog){
-  var OA=['white','blue','purple','brown','black'];
-  var OK=['white','grey','yellow','orange','green'];
-  var O=prog==='kids'?OK:OA;
-  var C={white:'#e5e7eb',blue:'#1A5DAD',purple:'#7e22ce',brown:'#7c2d12',black:'#111827',
-         grey:'#9ca3af',yellow:'#ca8a04',orange:'#ea580c',green:'#15803d'};
+  // v1.39.x Fix 4(b) — derive from the shared BELT_ORDER_* +
+  // BELT_COLORS so the kids' compound progression is honoured.
+  var O=prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
   var i=O.indexOf(belt);
   if(i<0||i>=O.length-1)return '#111827';
-  return C[O[i+1]]||'#1A5DAD';
+  return BELT_COLORS[O[i+1]]||'#1A5DAD';
 }
 // G3 Item 1+2 — banner now sits 20px below the day strip and gets a
 // dismiss button. Dismissal is persisted in localStorage keyed by the
@@ -3830,8 +3891,13 @@ function rCommunityPeople(){
   const curUnit=curU?curU.id:null;
   const canSeeKids=isOwner()||isProfessor()||isCoach();
   const segment=canSeeKids?(S.membersSegment||'adult'):'adult';
-  const beltsAdult=['white','blue','purple','brown','black'];
-  const beltsKids=['grey','yellow','orange','green'];
+  // v1.39.x Fix 4(b) — chip list derives from the single belt source
+  // (BK / BA). Kids surface base-colour chips only (compound belts
+  // share a colour; 13 chips is too many for the filter row), and
+  // membership match below uses prefix so a `grey` chip catches
+  // students on grey, grey/white, and grey/black.
+  const beltsAdult=Object.keys(BA);
+  const beltsKids=Object.keys(BK).filter(k=>!k.includes('/'));
   const validBelts=segment==='kids'?beltsKids:beltsAdult;
   let beltFilter=S.membersBelt||'all';
   if(beltFilter!=='all'&&!validBelts.includes(beltFilter)){beltFilter='all';S.membersBelt='all';}
@@ -3846,7 +3912,7 @@ function rCommunityPeople(){
   if(typeFilter==='students')list=students;
   else if(typeFilter==='instructors')list=instructors;
   else list=[...instructors,...students]; // instructors surface first when "All"
-  if(beltFilter!=='all')list=list.filter(s=>s.belt===beltFilter);
+  if(beltFilter!=='all')list=list.filter(s=>String(s.belt||'').startsWith(beltFilter));
   // G17.2a.1 — search input. Case-insensitive substring match against
   // the clean name (no prefix involved in matching). Empty query → no
   // filter applied.
@@ -5207,8 +5273,11 @@ async function sendInvite(dispatch){
   // Form-driven belt + degree. Validated against the active prog's
   // belt set so a stale value (e.g. user toggled Adults→Kids→Adults
   // mid-edit) can't write 'grey' to an adult row.
-  const adultBeltOpts=['white','blue','purple','brown','black'];
-  const kidsBeltOpts=['white','grey','yellow','orange','green'];
+  // v1.39.x Fix 4(b) — same single source of truth as the Add form.
+  // Object.keys preserves BK/BA insertion order, so the kids slot
+  // accepts every compound belt the dropdown can produce.
+  const adultBeltOpts=Object.keys(BA);
+  const kidsBeltOpts=Object.keys(BK);
   const beltOptsForProg=isKids?kidsBeltOpts:adultBeltOpts;
   const formBeltRaw=String(F.belt||'white').toLowerCase();
   const formBelt=beltOptsForProg.includes(formBeltRaw)?formBeltRaw:'white';
@@ -6422,7 +6491,7 @@ function rEditStaff(){
   // Photo block: tap own avatar to upload (same photo_approvals flow
   // students use); admin views static avatar.
   const photoBlock=isSelf
-    ?`<div onclick="triggerPhotoUpload('${s.id}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStaff(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
+    ?`<div onclick="triggerPhotoUpload('self')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStaff(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
     :`${avStaff(s,72)}`;
   const tab=['basic','training','contact'].indexOf(S.editStaffTab)>=0?S.editStaffTab:'basic';
   const tabsHtml='<div class="stabs" style="margin-bottom:12px">'
@@ -8652,7 +8721,7 @@ function rEditStu(){
   // someone else's profile keeps the static avatar; admin uploads on
   // behalf go through the photo queue.
   const photoBlock=isSelf
-    ?`<div onclick="triggerPhotoUpload('${s.id}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
+    ?`<div onclick="triggerPhotoUpload('self')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
     :`${avStu(s,72)}`;
   // B-edit — tab set diverges by subject prog:
   //   kids  → Basic / Training / Guardian (Guardian merges parent +
@@ -9023,9 +9092,23 @@ function saveJny(){
   const label=((document.getElementById('jm-lbl')||{}).value||'').trim().slice(0,60);
   const clsv=(document.getElementById('jm-cls')||{}).value;
   if(!date)return showSaveToast2('Date is required','error');
-  if(!label)return showSaveToast2('Label is required','error');
+  // v1.39.x Fix 3(a) — for belt/stripe promotions auto-derive the
+  // label when the user hasn't typed one. jnyTypeChange only updates
+  // the DOM input (and only when empty), so a belt promotion saved
+  // without a manual label was hitting "Label is required". Same
+  // suggestion text the type-change handler uses, so the auto entry
+  // reads consistently with the on-screen hint. comp/custom/return/
+  // xfer still require a manually typed label — those carry
+  // user-specific context the app can't fill in.
+  const _beltLabel=k=>(BA[k]||BK[k]||{label:k}).label||'';
+  let finalLabel=label;
+  if(!finalLabel){
+    if(type==='belt'&&belt) finalLabel=_beltLabel(belt)+' belt';
+    else if(type==='stripe') finalLabel=belt==='black'?'1st degree':'1st stripe';
+  }
+  if(!finalLabel)return showSaveToast2('Label is required','error');
   const entry={
-    label,date,done:true,
+    label:finalLabel,date,done:true,
     classes:clsv!==''&&clsv!=null?parseInt(clsv,10):null,
     xfer:type==='xfer',
     type:type||null,
