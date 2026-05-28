@@ -3730,7 +3730,12 @@ function _restoreParentChild(){
 // active. Tabs react to this via activeProfileIsSelf().
 function rParentKidSwitcher(){
   const kids=parentChildren();
-  if(kids.length<1)return '';
+  // Non-training parent always gets the switcher (so the +Add child
+  // affordance is reachable even at 0 kids — they have no other
+  // surface that owns "manage kids"). Training parents / students /
+  // instructors keep the legacy "hide when no kids" rule.
+  const nonTrainingParent=isNonTrainingParent();
+  if(kids.length<1&&!nonTrainingParent)return '';
   const me=S.me||{};
   const isSelfActive=activeProfileIsSelf();
   const checkIcon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left:6px;flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -3764,7 +3769,11 @@ function rParentKidSwitcher(){
       +'</button>';
   }).join('');
   const addChip='<button onclick="onAddChild()" style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:24px;border:1.5px dashed var(--border);background:transparent;cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--text3);letter-spacing:.3px">'+plusIcon+'<span>Add child</span></button>';
-  return '<div style="background:var(--surface);border-bottom:1px solid var(--border);padding:8px 0"><div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px;scrollbar-width:none">'+selfChip+kidChips+addChip+'</div></div>';
+  // Non-training parent has no self context — drop the Me chip so the
+  // strip reads: [kid1, kid2, …] [+ Add child] (or just [+ Add child]
+  // when they have zero kids linked).
+  const leadingChip=nonTrainingParent?'':selfChip;
+  return '<div style="background:var(--surface);border-bottom:1px solid var(--border);padding:8px 0"><div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px;scrollbar-width:none">'+leadingChip+kidChips+addChip+'</div></div>';
 }
 // B1 — Parent profile area. Identity surface separate from the
 // drawer (settings) and from the Progress tab (activity). Tapping the
@@ -6396,14 +6405,34 @@ function parentChildren(userId){
   if(!uid) return [];
   return STUDENTS.filter(s=>s._parentUserId===uid&&s._active!==false);
 }
+// Training parent = the signed-in user has their own students row by
+// user_id. Independent of which kid is active in the switcher — uses
+// _userId directly so non-training parents with active kids don't get
+// misread as "training" (which would happen if we keyed off
+// myStudentRow()'s active-aware return).
+function isTrainingParent(){
+  if(!S.profile||!S.profile.id)return false;
+  return !!STUDENTS.find(x=>x._userId===S.profile.id);
+}
+// Non-training parent = role 'parent' AND no own training record. The
+// classic "drops the kid off, never gets on the mat" case. Their UI
+// loses the Me chip / self-context surfaces because there is no self
+// subject to render against.
+function isNonTrainingParent(){
+  return !!(S.me&&S.me.role==='parent'&&!isTrainingParent());
+}
 function parentSelectedChild(){
-  // Returns the EXPLICITLY-selected kid only. When S.parentChild is
-  // null (the new self-active default), this returns null. Callers
-  // that need a unit-context fallback to "any kid" must spell it out
-  // (e.g. parentSelectedChild() || parentChildren()[0]).
+  // Returns the EXPLICITLY-selected kid when one is set. When
+  // S.parentChild is null (the new self-active default), training
+  // parents / instructors / students get null → activeProfileIsSelf
+  // resolves to true. Non-training parents have no self subject, so
+  // they fall back to the first linked kid here — every downstream
+  // surface (Classes, Progress, Members) lands on kid context by
+  // default.
   const kids=parentChildren();
   if(!kids.length) return null;
   if(S.parentChild){const m=kids.find(k=>k.id===S.parentChild);if(m) return m;}
+  if(isNonTrainingParent())return kids[0];
   return null;
 }
 // True when no kid is selected → the signed-in user themselves is the
