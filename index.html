@@ -1316,7 +1316,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -3065,82 +3065,238 @@ async function saveFbModal(sid){
 // Admin Actions row at the top of the profile.
 function openPromoteModal(sid){
   if(!canEditClassCounts())return;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
   S.promoteFor=sid;
+  // Form state seeded from the student's current belt/deg. Belt change
+  // re-renders so the stripe dropdown's max can react (6 on black, 4
+  // elsewhere). Other inputs write through without re-render.
+  S.promoteForm={
+    belt:s.belt||'white',
+    deg:Number.isFinite(s.deg)?s.deg:0,
+    date:new Date().toISOString().slice(0,10),
+    setCurrent:true
+  };
   render();
 }
-function closePromoteModal(){S.promoteFor=null;render();}
-function promoteFromModal(sid,isBeltPromo){
-  closePromoteModal();
-  doPromote(sid,isBeltPromo);
-}
+function closePromoteModal(){S.promoteFor=null;S.promoteForm=null;render();}
 function revertFromModal(sid){
   closePromoteModal();
   revertPromo(sid);
 }
+function setPromoteBelt(v){
+  if(!S.promoteForm)return;
+  S.promoteForm.belt=String(v||'white');
+  // Clamp stripes to the new belt's max so a stale higher value can't
+  // sneak in if the user picked +5 stripes on black then switched belt.
+  const maxDeg=S.promoteForm.belt==='black'?6:4;
+  if(Number(S.promoteForm.deg)>maxDeg)S.promoteForm.deg=maxDeg;
+  render();
+}
+function setPromoteDeg(v){if(S.promoteForm)S.promoteForm.deg=parseInt(v,10)||0;}
+function setPromoteDate(v){if(S.promoteForm)S.promoteForm.date=String(v||'');}
+function setPromoteCurrent(v){if(S.promoteForm)S.promoteForm.setCurrent=!!v;}
 
 function rPromoteModal(){
   if(!S.promoteFor)return '';
   const s=STUDENTS.find(x=>x.id===S.promoteFor);if(!s)return '';
-  const me=S.me;
-  const instrBelt=me.belt||'white';const instrDeg=me.deg||0;
-  // v1.39.x Fix 4(b) — shared 13-key kids progression.
+  const F=S.promoteForm||{belt:s.belt,deg:s.deg,date:new Date().toISOString().slice(0,10),setCurrent:true};
   const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
-  const curIdx=ORDER.indexOf(s.belt);
-  const nextBelt=curIdx<ORDER.length-1?ORDER[curIdx+1]:null;
-  const maxDeg=(s.belt==='black')?6:4;
-  const canAddStripe=s.deg<maxDeg;
-  const stripeChk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false,s);
-  const beltChk=nextBelt?canPromote(instrBelt,instrDeg,nextBelt,0,true,s):{ok:false,reason:'Already at maximum belt.'};
-  // G9 Phase 1 consolidation — Promote modal hint now reads from
-  // PROMO_CRITERIA via _egDisplay (single source of truth across
-  // every eligibility surface). Kids resolve to status:'pending'
-  // ("Promotion criteria pending — ask Professor"); black belt returns
-  // null reason → empty hint.
-  const egd=_egDisplay(s);
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
-  const isBlack=s.belt==='black';
+  const targetBelt=F.belt||s.belt;
+  const targetDeg=Number(F.deg)||0;
+  const maxDeg=targetBelt==='black'?6:4;
+  const egd=_egDisplay(s);
   const lastPromo=PROMOTION_LOG.find(p=>p.studentId===s.id);
 
-  // Eligibility hint line — green when egd marks ready, neutral otherwise.
+  // Eligibility hint — keep the existing copy.
   const eligLine=egd.reason
-    ?'<div style="margin-bottom:14px;padding:8px 12px;border-radius:8px;background:'+(egd.isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(egd.isReady?'var(--green-border)':'var(--border)')+';font-size:12px;color:'+(egd.isReady?'var(--green-text)':'var(--text2)')+'">'+(egd.isReady?'✓ ':'')+egd.reason+'</div>'
+    ?'<div style="margin:8px 0 12px;padding:8px 12px;border-radius:8px;background:'+(egd.isReady?'var(--green-bg)':'var(--input-bg)')+';border:1px solid '+(egd.isReady?'var(--green-border)':'var(--border)')+';font-size:12px;color:'+(egd.isReady?'var(--green-text)':'var(--text2)')+'">'+(egd.isReady?'✓ ':'')+egd.reason+'</div>'
     :'';
 
-  const rowBtn=(label,sub,disabled,reason,onclick)=>'<button '+(disabled?'':('onclick="'+onclick+'"'))+' style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;cursor:'+(disabled?'default':'pointer')+';margin-bottom:8px;text-align:left'+(disabled?';opacity:.55':'')+'">'
-    +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text)">'+label+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+sub+'</div></div>'
-    +(disabled
-      ?(reason?'<div style="font-size:11px;color:var(--red-text);text-align:right;max-width:160px;margin-left:10px">'+reason+'</div>':'')
-      :'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5" style="flex-shrink:0;margin-left:10px"><polyline points="9 18 15 12 9 6"/></svg>')
-    +'</button>';
-
-  const stripeRow=isBlack
-    ?''
-    :(canAddStripe
-      ?rowBtn('+ Add stripe',beltLabel(s.belt)+' belt, '+(s.deg+1)+'-stripe',!stripeChk.ok,stripeChk.reason,'promoteFromModal(\''+s.id+'\',false)')
-      :'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:12px;font-size:13px;color:var(--amber-text);margin-bottom:8px;text-align:center">4 stripes reached — promote to '+beltLabel(nextBelt||'next')+' belt next.</div>');
-
-  const beltRow=(isBlack||!nextBelt)
-    ?''
-    :rowBtn('Promote to '+beltLabel(nextBelt),beltLabel(s.belt)+(s.deg?' ('+s.deg+'-stripe)':'')+' → '+beltLabel(nextBelt),!beltChk.ok,beltChk.reason,'promoteFromModal(\''+s.id+'\',true)');
-
-  const blackBeltMsg=isBlack
-    ?'<div style="background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;margin-bottom:8px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px">Black belt — by time only</div><div style="font-size:12px;color:var(--text3);line-height:1.4">Black-belt stripes are awarded by years of teaching, not class count. Use the journey editor to record manually.</div></div>'
-    :'';
+  // Belt dropdown — every belt in the program's progression.
+  const beltOpts=ORDER.map(k=>'<option value="'+k+'" '+(k===targetBelt?'selected':'')+'>'+beltLabel(k)+'</option>').join('');
+  // Stripes/degree dropdown — 0..max for the selected belt.
+  const degOpts=Array.from({length:maxDeg+1},(_,i)=>'<option value="'+i+'" '+(i===targetDeg?'selected':'')+'>'+i+'</option>').join('');
 
   const revertRow=lastPromo
-    ?'<button onclick="revertFromModal(\''+s.id+'\')" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px;background:none;border:1px solid var(--red-border);border-radius:10px;cursor:pointer;color:var(--red-text);margin-top:12px;text-align:left"><div style="font-size:13px;font-family:Barlow Condensed,sans-serif;font-weight:700">Revert last promotion</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M4 9h12a4 4 0 0 1 0 8h-1"/></svg></button>'
+    ?'<button onclick="revertFromModal(\''+s.id+'\')" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:11px;background:none;border:1px solid var(--red-border);border-radius:10px;cursor:pointer;color:var(--red-text);margin-top:12px;text-align:left"><div style="font-size:13px;font-family:Barlow Condensed,sans-serif;font-weight:700">Revert last promotion</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M4 9h12a4 4 0 0 1 0 8h-1"/></svg></button>'
     :'';
 
-  return `<div class="cov" onclick="closePromoteModal()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px">
-<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px">Promote ${s.name.split(' ')[0]}</div>
-<div style="font-size:12px;color:var(--text3);margin-bottom:14px">Currently ${beltLabel(s.belt)}${s.deg?', '+s.deg+'-stripe':''}</div>
+  return `<div class="cov" id="promote-modal" onclick="closePromoteModal()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px;max-height:88vh;overflow-y:auto">
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px">Promote ${escHtml(s.name.split(' ')[0])}</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Currently ${beltLabel(s.belt)}${s.deg?', '+s.deg+'-stripe':''}</div>
 ${eligLine}
-${blackBeltMsg}
-${stripeRow}
-${beltRow}
+<div class="ef" style="margin-bottom:12px">
+<div class="erow"><div class="elbl">Belt</div><select class="esel" id="pm-belt" onchange="setPromoteBelt(this.value)">${beltOpts}</select></div>
+<div class="erow"><div class="elbl">${targetBelt==='black'?'Degree':'Stripes'}</div><select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${degOpts}</select></div>
+<div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date" value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+</div>
+<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:6px">
+  <input type="checkbox" id="pm-current" ${F.setCurrent?'checked':''} onchange="setPromoteCurrent(this.checked)" style="margin-top:2px;flex-shrink:0"/>
+  <div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600">Set as current belt</div><div style="font-size:11px;color:var(--text3);margin-top:2px;line-height:1.4">On = this becomes their current belt. Off = just log a past belt on the timeline (history only).</div></div>
+</label>
 ${revertRow}
-<button class="bsm" style="width:100%;padding:11px;border-radius:10px;font-size:14px;margin-top:14px" onclick="closePromoteModal()">Cancel</button>
+<div style="display:flex;gap:10px;margin-top:14px">
+<button class="bsm" style="flex:1;padding:11px;border-radius:10px;font-size:14px" onclick="closePromoteModal()">Cancel</button>
+<button class="bblue" style="flex:1;padding:11px;border-radius:10px;font-size:14px" onclick="savePromote()">Save</button>
+</div>
 </div></div>`;
+}
+
+// New promote engine. Replaces doPromote's two-path (next-belt /
+// +stripe) logic with: any belt in the program, any stripe count,
+// chosen date, and a "Set as current belt" toggle. Three modes:
+//   1. setCurrent ON,  target HIGHER → forward promotion.
+//   2. setCurrent ON,  target LOWER  → demote / correction.
+//   3. setCurrent OFF                → history-only journey backfill.
+// Modes 1 and 2 write to public.promotions and re-run
+// recompute_student_stats; mode 3 does not (no Wall, no stat shift).
+// Mode 2 inserts type='correction' so the Community Wall filter at
+// rCommunityWall (index.html:4212) drops it from the feed.
+async function savePromote(){
+  if(!S.promoteFor||!S.promoteForm)return;
+  const sid=S.promoteFor;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s){closePromoteModal();return;}
+  const me=S.me||{};
+  // Defense-in-depth: read scoped to the modal in case a future render
+  // bug shadows the global S.promoteForm. Form state is the canonical
+  // source; DOM reads are a fallback only.
+  const root=document.getElementById('promote-modal')||document;
+  const _domBelt=(root.querySelector('#pm-belt')||{}).value;
+  const _domDeg=(root.querySelector('#pm-deg')||{}).value;
+  const _domDate=(root.querySelector('#pm-date')||{}).value;
+  const _domCurrent=(root.querySelector('#pm-current')||{}).checked;
+  const F=S.promoteForm;
+  const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
+  const targetBelt=String(F.belt||_domBelt||s.belt).toLowerCase();
+  const maxDeg=targetBelt==='black'?6:4;
+  const targetDeg=Math.max(0,Math.min(maxDeg,parseInt(F.deg!=null?F.deg:_domDeg,10)||0));
+  const date=String(F.date||_domDate||'').trim()||new Date().toISOString().slice(0,10);
+  const setCurrent=(F.setCurrent!=null)?!!F.setCurrent:!!_domCurrent;
+
+  if(ORDER.indexOf(targetBelt)<0){alert('Invalid belt for this program.');return;}
+
+  // Direction by belt index, then degree.
+  const curIdx=ORDER.indexOf(s.belt);
+  const newIdx=ORDER.indexOf(targetBelt);
+  const isBeltChange=newIdx!==curIdx;
+  const direction=newIdx<curIdx?-1:(newIdx>curIdx?1:(targetDeg<s.deg?-1:(targetDeg>s.deg?1:0)));
+
+  // Authority — same gate for forward and demote (owner any unit;
+  // instructor same unit), as the spec calls out.
+  const chk=canPromote(me.belt||'white',me.deg||0,targetBelt,targetDeg,isBeltChange,s);
+  if(!chk.ok){alert('Not authorized: '+chk.reason);closePromoteModal();return;}
+
+  // target == current with setCurrent ON → no-op.
+  if(direction===0 && setCurrent){closePromoteModal();return;}
+
+  const cli=initSupabase();
+  const unit=UNITS.find(u=>u.id===(s.unit||'nb'));
+  const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
+  const ordSuffix=(typeof _ordSuffix==='function')?_ordSuffix:(n=>{const v=n%100;if(v>=11&&v<=13)return'th';switch(n%10){case 1:return'st';case 2:return'nd';case 3:return'rd';default:return'th';}});
+
+  // ── Mode 3: history-only backfill ──────────────────────────────────
+  if(!setCurrent){
+    if(!s.journey)s.journey=[];
+    s.journey.push({belt:targetBelt,label:beltLabel(targetBelt)+' belt',date,classes:null,done:true,current:false,auto:true});
+    closePromoteModal();
+    if(s._dbId&&cli){
+      try{await cli.from('students').update({journey:s.journey||[]}).eq('id',s._dbId);}
+      catch(e){console.warn('[mybjj] promote backfill update:',e);}
+    }
+    return;
+  }
+
+  const fromBelt=s.belt, fromDeg=s.deg;
+
+  // ── Mode 1: forward promotion ──────────────────────────────────────
+  if(direction>0){
+    s.belt=targetBelt;s.deg=targetDeg;s.grade=0;s.giGrade=0;
+    if(!s.journey)s.journey=[];
+    s.journey.forEach(j=>{if(j.current)j.current=false;});
+    const label=isBeltChange
+      ?(beltLabel(targetBelt)+' belt')
+      :(targetDeg+ordSuffix(targetDeg)+(targetBelt==='black'?' degree':' stripe'));
+    s.journey.push({belt:targetBelt,label,date,classes:s.total,done:true,current:true,auto:true});
+    const legacyId='pl'+Date.now();
+    const newPromo={
+      id:legacyId, studentId:s.id, studentName:s.name,
+      fromBelt, fromDeg, toBelt:targetBelt, toDeg:targetDeg,
+      isNewBelt:isBeltChange, type:isBeltChange?'belt':'stripe',
+      date, promotedBy:me.name, unit:s.unit||'nb'
+    };
+    PROMOTION_LOG.unshift(newPromo);
+    closePromoteModal();
+    if(s._dbId&&cli){
+      try{await cli.from('promotions').insert({
+        legacy_id:legacyId, student_id:s._dbId,
+        from_belt:fromBelt, to_belt:targetBelt,
+        from_deg:fromDeg, to_deg:targetDeg,
+        type:isBeltChange?'belt':'stripe', is_new_belt:isBeltChange,
+        date, student_name:s.name,
+        promoted_by_name:me.name, promoted_by_id:(S.profile&&S.profile.id)||null,
+        unit_id:unit&&unit._dbId
+      });}catch(e){console.warn('[mybjj] promote insert:',e);}
+      try{await cli.from('students').update({
+        belt:s.belt,degree:s.deg,grade:0,gi_grade:0,journey:s.journey||[]
+      }).eq('id',s._dbId);}catch(e){console.warn('[mybjj] promote update student:',e);}
+      // recompute last_marker_date + grade/gi_grade from public.promotions.
+      try{await cli.rpc('recompute_student_stats',{p_student_id:s._dbId});}catch(_){}
+    }
+    return;
+  }
+
+  // ── Mode 2: demote / correction ────────────────────────────────────
+  s.belt=targetBelt;s.deg=targetDeg;s.grade=0;s.giGrade=0;
+  if(!s.journey)s.journey=[];
+  // Strip AUTO journey entries representing a rank ABOVE target. Keeps
+  // every manual entry (auto:false) untouched.
+  const stripeNumFromLabel=(label)=>{
+    if(!label)return null;
+    const m=String(label).match(/^(\d+)(?:st|nd|rd|th)\s+(stripe|degree)$/i);
+    return m?parseInt(m[1],10):null;
+  };
+  s.journey=s.journey.filter(j=>{
+    if(!j||!j.auto)return true;
+    if(!j.belt)return true; // auto entry without a belt anchor — keep
+    const ji=ORDER.indexOf(j.belt);
+    if(ji<0)return true; // unknown belt — keep
+    if(ji>newIdx)return false;
+    if(ji===newIdx){
+      const stripeN=stripeNumFromLabel(j.label);
+      if(stripeN!==null && stripeN>targetDeg)return false;
+    }
+    return true;
+  });
+  s.journey.forEach(j=>{if(j.current)j.current=false;});
+  for(let i=s.journey.length-1;i>=0;i--){
+    if(s.journey[i]&&s.journey[i].done){s.journey[i].current=true;break;}
+  }
+  const correctionDate=new Date().toISOString().slice(0,10);
+  const legacyId='pl'+Date.now();
+  const newPromo={
+    id:legacyId, studentId:s.id, studentName:s.name,
+    fromBelt, fromDeg, toBelt:targetBelt, toDeg:targetDeg,
+    isNewBelt:isBeltChange, type:'correction',
+    date:correctionDate, promotedBy:me.name, unit:s.unit||'nb'
+  };
+  PROMOTION_LOG.unshift(newPromo);
+  closePromoteModal();
+  if(s._dbId&&cli){
+    try{await cli.from('promotions').insert({
+      legacy_id:legacyId, student_id:s._dbId,
+      from_belt:fromBelt, to_belt:targetBelt,
+      from_deg:fromDeg, to_deg:targetDeg,
+      type:'correction', is_new_belt:isBeltChange,
+      date:correctionDate, student_name:s.name,
+      promoted_by_name:me.name, promoted_by_id:(S.profile&&S.profile.id)||null,
+      unit_id:unit&&unit._dbId
+    });}catch(e){console.warn('[mybjj] correction insert:',e);}
+    try{await cli.from('students').update({
+      belt:s.belt,degree:s.deg,grade:0,gi_grade:0,journey:s.journey||[]
+    }).eq('id',s._dbId);}catch(e){console.warn('[mybjj] correction update student:',e);}
+    try{await cli.rpc('recompute_student_stats',{p_student_id:s._dbId});}catch(_){}
+  }
 }
 
 function rJnyEditor(){
@@ -4209,7 +4365,7 @@ function rCommunityWall(){
   // pagination if volume grows past the cap.
   const WALL_LIMIT=25;
   const rows=PROMOTION_LOG
-    .filter(p=>p&&(!curUnit||p.unit===curUnit))
+    .filter(p=>p&&p.type!=='correction'&&(!curUnit||p.unit===curUnit))
     .map(p=>{
       const s=STUDENTS.find(x=>x.id===p.studentId);
       if(!s||s.prog!=='adult')return null;
@@ -7204,7 +7360,7 @@ async function hydrateData(){
       // Notes now live in public.staff_notes and are fetched lazily per
       // STAFF row by _fetchStaffNotes when the owner opens the profile.
       c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi,created_at'),
-      c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
+      c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
       c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
@@ -7287,6 +7443,7 @@ async function hydrateData(){
           toBelt:r.to_belt,
           toDeg:r.to_deg,
           isNewBelt:r.is_new_belt,
+          type:r.type||null,
           date:r.date,
           promotedBy:r.promoted_by_name,
           promotedById:r.promoted_by_id||null,
