@@ -2105,9 +2105,11 @@ function rStaffProf(){
   // G17.2c — social card now renders for every viewer (admin / self /
   // peer) so the affordance is consistent. _socialChipsBlock returns
   // '' when there are no handles, so the empty case stays clean.
-  const notesBlock=(!isPeer)?_staffNotesSummaryCard(s,canAdmin):'';
-  const detailsBlock=(!isPeer)?details:'';
-  const socialBlock=_socialChipsBlock(s.socialHandles,{subject:{kind:'staff',s}});
+  // Batch 3 follow-up — Community view = header + Journey only. Notes,
+  // Details, Social, Children all hidden off roster.
+  const notesBlock=(!isPeer&&isRosterEntry)?_staffNotesSummaryCard(s,canAdmin):'';
+  const detailsBlock=(!isPeer&&isRosterEntry)?details:'';
+  const socialBlock=(!isRosterEntry)?'':_socialChipsBlock(s.socialHandles,{subject:{kind:'staff',s}});
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
     +'<div class="sbody">'
@@ -2123,8 +2125,8 @@ function rStaffProf(){
     +notesBlock
     // Details summary (hidden for peer — privacy).
     +detailsBlock
-    // Children — staff/admin only.
-    +_renderChildrenSection(s,{kind:'staff'})
+    // Children — staff/admin only AND roster entry only.
+    +(isRosterEntry?_renderChildrenSection(s,{kind:'staff'}):'')
     // Danger Zone.
     +dangerZone
     // rJnyEditor mounted globally in rApp — avoid double-render when
@@ -2308,13 +2310,20 @@ function rStuProf(){
   const isParentOfKid=!!(viewerId&&s._parentUserId&&s._parentUserId===viewerId);
   const isAdminViewer=isStaffOrOwner();
   const isPeer=!(isSelf||isParentOfKid||isAdminViewer);
+  // Batch 3 follow-up — Community view = header + Journey only, for any
+  // viewer role. Roster view stays full. Declared up here so every
+  // section below can short-circuit when the entry isn't 'roster'.
+  // Self-edit path at openProfileArea (~index.html:3718) isn't routed
+  // through here, so this gate doesn't touch self-view.
+  const isRosterEntry=S.profileOrigin==='roster';
   const giSince=Math.max(s.giGrade||0,0);
   const noGiSince=Math.max((s.grade||0)-giSince,0);
   // Batch 2 — KIDS/ADULT and belt band are built by _renderProfileHeader.
   // The auth-claim chip (AWAITING / JOINED) is admin/self-only info; we
   // append it after the default subject badge via opts.extraBadges so it
   // shares the row instead of overlapping the name.
-  const headerBadge=isPeer?'':inviteChip(s._userId,s.email,false);
+  // JOINED / AWAITING chip is admin-only header decoration → roster only.
+  const headerBadge=(isPeer||!isRosterEntry)?'':inviteChip(s._userId,s.email,false);
 
   // Section 4 — Details
   const emailVal=s.email
@@ -2335,7 +2344,8 @@ function rStuProf(){
   // is gone so there's a single Social surface, no duplication. peerSocialBlock
   // renamed → socialBlock; renders whenever at least one handle resolves
   // to a URL (admin / self / peer) and returns '' otherwise.
-  const socialBlock=_socialChipsBlock(social,{subject:{kind:'student',s}});
+  // Social card hidden entirely from Community (handles + Edit button).
+  const socialBlock=(!isRosterEntry)?'':_socialChipsBlock(social,{subject:{kind:'student',s}});
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
     +(isKids?rDetailRow('Parent',parentDisplayName(s),''):'')
@@ -2366,7 +2376,7 @@ function rStuProf(){
   // header card + journey card. Stats / eligibility hint / details /
   // attendance log / instructor feedback / action buttons are gated
   // out below.
-  const statsCard=isPeer?'':`<div class="card" style="padding:16px;margin-top:12px">
+  const statsCard=(isPeer||!isRosterEntry)?'':`<div class="card" style="padding:16px;margin-top:12px">
   <div style="display:flex;gap:0;margin-bottom:10px">
     <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
     <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(giSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
@@ -2378,20 +2388,16 @@ function rStuProf(){
   ${_giCeremonyHint(s,egd)}
   ${canAdmin?rReconcileBadge(s):''}
 </div>`;
-  const detailsBlock=isPeer?'':details;
+  const detailsBlock=(isPeer||!isRosterEntry)?'':details;
   // G16b — attendance + feedback collapsed into summary cards. Full
   // history sits behind View all subviews (rStuAttList / rStuFbList).
-  // Batch 3 — entry-point gate. S.profileOrigin is set by viewStu /
-  // viewStaff at the call site ('roster' from rAdmin lists,
-  // 'community' from rMembers, other values from contextual entries).
-  // Fail safe: anything that isn't explicitly 'roster' falls through
-  // to community / read-only.
-  const isRosterEntry=S.profileOrigin==='roster';
-  const attendanceBlock=isPeer?'':_stuAttSummaryCard(s);
-  // Feedback summary card stays visible (data), but its trailing
-  // "+ Add" affordance is suppressed off the roster entry.
-  const feedbackBlock=isPeer?'':_stuFbSummaryCard(s,{allowAdd:isRosterEntry});
-  const bottomBlock=isPeer?'':bottomActions;
+  // Batch 3 follow-up — both cards hide entirely off the roster entry
+  // (admin entering via Community is browsing, not managing). The
+  // allowAdd opt on the feedback card stays so legacy Progress / parent
+  // callers keep the +Add button when they pass nothing.
+  const attendanceBlock=(isPeer||!isRosterEntry)?'':_stuAttSummaryCard(s);
+  const feedbackBlock=(isPeer||!isRosterEntry)?'':_stuFbSummaryCard(s,{allowAdd:isRosterEntry});
+  const bottomBlock=(isPeer||!isRosterEntry)?'':bottomActions;
   // Admin actions row (Promote / + Class count / Feedback) — gated by
   // entry point on top of the existing canAdmin permission check.
   const adminActionsBlock=(isPeer||!canAdmin||!isRosterEntry)?'':rAdminActionRow(s);
@@ -2438,10 +2444,9 @@ ${feedbackBlock}
      come first; reference data sits below. -->
 ${detailsBlock}
 
-<!-- Section 6.5: Children — staff/admin only, adults only. Lists kids
-     linked via parent_user_id; +Add child opens the prefilled Add
-     Student form. -->
-${s.prog!=='kids'?_renderChildrenSection(s,{kind:'student'}):''}
+<!-- Section 6.5: Children — staff/admin only, adults only. Roster
+     entry only (admin tool, hidden from Community). -->
+${(isRosterEntry&&s.prog!=='kids')?_renderChildrenSection(s,{kind:'student'}):''}
 
 <!-- Section 7: Danger Zone — owner/professor only. Replaces the
      legacy plain "More" buttons with bordered red cards. -->
