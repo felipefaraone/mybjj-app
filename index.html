@@ -2150,7 +2150,9 @@ function rPromoPanel(s){
 
 function revertPromo(id){
   const s=STUDENTS.find(x=>x.id===id);if(!s)return;
-  const idx=PROMOTION_LOG.findIndex(p=>p.studentId===id);
+  // Skip type='correction' rows — corrections are deliberate admin
+  // fixes and must never be auto-reverted by this path.
+  const idx=PROMOTION_LOG.findIndex(p=>p.studentId===id&&p.type!=='correction');
   if(idx<0)return;
   const p=PROMOTION_LOG[idx];
   if(!confirm('Revert promotion for '+s.name+'? This will restore their previous belt/stripe.'))return;
@@ -3106,7 +3108,10 @@ function rPromoteModal(){
   const targetDeg=Number(F.deg)||0;
   const maxDeg=targetBelt==='black'?6:4;
   const egd=_egDisplay(s);
-  const lastPromo=PROMOTION_LOG.find(p=>p.studentId===s.id);
+  // Revert lookup skips type='correction' rows so a hydrated correction
+  // can't masquerade as the last promotion and trigger a reverse-of-a-
+  // correction (which would undo a deliberate admin fix).
+  const lastPromo=PROMOTION_LOG.find(p=>p.studentId===s.id&&p.type!=='correction');
 
   // Eligibility hint — keep the existing copy.
   const eligLine=egd.reason
@@ -3228,13 +3233,18 @@ async function savePromote(){
     PROMOTION_LOG.unshift(newPromo);
     closePromoteModal();
     if(s._dbId&&cli){
+      // promoted_by_id is a FK to public.staff(id) — must be the staff
+      // row's uuid, NOT the auth user_id. Mirrors the feedback insert
+      // pattern at index.html:8966 (instructor_id:meStaffDbId()) /
+      // helper at index.html:6299. Falls back to null if the staff row
+      // can't be resolved (column + FK allow null).
       try{await cli.from('promotions').insert({
         legacy_id:legacyId, student_id:s._dbId,
         from_belt:fromBelt, to_belt:targetBelt,
         from_deg:fromDeg, to_deg:targetDeg,
         type:isBeltChange?'belt':'stripe', is_new_belt:isBeltChange,
         date, student_name:s.name,
-        promoted_by_name:me.name, promoted_by_id:(S.profile&&S.profile.id)||null,
+        promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
         unit_id:unit&&unit._dbId
       });}catch(e){console.warn('[mybjj] promote insert:',e);}
       try{await cli.from('students').update({
@@ -3268,28 +3278,33 @@ async function savePromote(){
     }
     return true;
   });
+  // Clear every current flag. Demote does NOT push a new journey entry
+  // — only the filter above removes entries above the target. Then,
+  // if a kept done entry happens to sit at the target belt, mark the
+  // most recent one current; otherwise leave nothing current (never
+  // fabricate / coerce a non-target entry into "current").
   s.journey.forEach(j=>{if(j.current)j.current=false;});
   for(let i=s.journey.length-1;i>=0;i--){
-    if(s.journey[i]&&s.journey[i].done){s.journey[i].current=true;break;}
+    const j=s.journey[i];
+    if(j&&j.done&&j.belt===targetBelt){j.current=true;break;}
   }
+  // Corrections stay DB-only — they don't enter PROMOTION_LOG so they
+  // never surface on the Wall or as the next "Revert last promotion"
+  // target. After a reload they're hydrated with type='correction'
+  // and the same filter at rPromoteModal/revertPromo skips them.
   const correctionDate=new Date().toISOString().slice(0,10);
   const legacyId='pl'+Date.now();
-  const newPromo={
-    id:legacyId, studentId:s.id, studentName:s.name,
-    fromBelt, fromDeg, toBelt:targetBelt, toDeg:targetDeg,
-    isNewBelt:isBeltChange, type:'correction',
-    date:correctionDate, promotedBy:me.name, unit:s.unit||'nb'
-  };
-  PROMOTION_LOG.unshift(newPromo);
   closePromoteModal();
   if(s._dbId&&cli){
+    // promoted_by_id resolved via meStaffDbId() — same as feedback
+    // (index.html:8966 / helper 6299). FK references public.staff(id).
     try{await cli.from('promotions').insert({
       legacy_id:legacyId, student_id:s._dbId,
       from_belt:fromBelt, to_belt:targetBelt,
       from_deg:fromDeg, to_deg:targetDeg,
       type:'correction', is_new_belt:isBeltChange,
       date:correctionDate, student_name:s.name,
-      promoted_by_name:me.name, promoted_by_id:(S.profile&&S.profile.id)||null,
+      promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
       unit_id:unit&&unit._dbId
     });}catch(e){console.warn('[mybjj] correction insert:',e);}
     try{await cli.from('students').update({
