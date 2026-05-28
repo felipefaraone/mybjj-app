@@ -4296,22 +4296,27 @@ function _renderKidsSummaryCard(unitName){
     const tinted=m===highlightMacro;
     const rowBg=tinted?'background:var(--blue-tint);':'';
     const isWhite=m==='white';
+    // Belt swatch — thinner, less pill-like, with a black graduation
+    // band on the right tip mirroring the IBJJF belt visual.
     const swatchBorder=isWhite?'border:0.5px solid var(--border2);box-sizing:border-box;':'';
-    const swatch='<div style="width:42px;height:15px;border-radius:3px;flex-shrink:0;background:'+meta.bg+';'+swatchBorder+'"></div>';
+    const swatch=''
+      +'<div style="position:relative;width:64px;height:14px;border-radius:2px;overflow:hidden;flex-shrink:0;background:'+meta.bg+';'+swatchBorder+'">'
+        +'<div style="position:absolute;right:0;top:0;bottom:0;width:14px;background:#0a0a0a"></div>'
+      +'</div>';
     const namePill=(tinted&&activeFirst)
       ?' <span style="display:inline-flex;align-items:center;background:var(--blue);color:#fff;font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;margin-left:8px">'+escHtml(activeFirst)+'</span>'
       :'';
-    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;'+dim+rowBg+'">'
+    return '<div style="display:flex;align-items:center;gap:12px;padding:6px 10px;border-radius:8px;'+dim+rowBg+'">'
       +swatch
-      +'<div style="font-size:14px;font-weight:500;color:var(--text);display:inline-flex;align-items:center;flex:1;min-width:0">'+meta.label+namePill+'</div>'
-      +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:600;font-size:16px;color:var(--text);text-align:right">'+c+'</div>'
+      +'<div style="font-size:14px;color:var(--text);display:inline-flex;align-items:center;flex:1;min-width:0">'+meta.label+namePill+'</div>'
+      +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:500;font-size:16px;color:var(--text);text-align:right">'+c+'</div>'
     +'</div>';
   }).join('');
+  // Section label is rendered by the caller (matches the INSTRUCTORS
+  // pattern in rParentMembers). The card itself just carries the total
+  // + ladder.
   return '<div class="card" style="padding:16px">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-      +'<div class="slbl" style="margin:0">Kids program</div>'
-      +'<div style="font-size:13px;color:var(--text2)"><span style="font-weight:700;color:var(--text)">'+total+'</span> training</div>'
-    +'</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-bottom:10px">'+total+' training</div>'
     +'<div style="display:flex;flex-direction:column;gap:2px">'+rows+'</div>'
   +'</div>';
 }
@@ -4358,6 +4363,7 @@ function rParentMembers(){
     ?'<div class="slbl" style="margin-top:20px">Instructors</div>'+instructorRows
     :'<div class="slbl" style="margin-top:20px">Instructors</div><div class="card" style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No instructors at this unit yet.</div>';
   return '<div style="height:16px"></div>'
+    +'<div class="slbl">Kids program</div>'
     +kidsCard
     +instructorsBlock;
 }
@@ -5379,9 +5385,12 @@ async function sendInvite(dispatch){
   const inviteEmail=isKids?parentEmail:email;
   let saved=false;
   if(isKids){
-    // Uniqueness: parent_email must not equal an existing student.email in this unit.
-    const dup=await cli.from('students').select('id,full_name').eq('unit_id',unitDbId).eq('email',parentEmail).limit(1);
-    if(dup&&dup.data&&dup.data.length){return showSaveToast2("That email already belongs to a student in this unit. Use a different parent email.",'error');}
+    // Note: the legacy "parent_email already belongs to a student in
+    // this unit" guard was removed. The happy path is exactly that
+    // collision — an existing user (student or otherwise) is the
+    // parent. The lookup-and-link block below sets parent_user_id
+    // directly when the email matches a real users row, with no
+    // invite / magic-link side-effect.
     const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
     const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
     const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
@@ -5411,9 +5420,17 @@ async function sendInvite(dispatch){
       STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob});
       saved=true;
     }
-    const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
-    if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
-    else console.log('[mybjj] parent whitelist OK');
+    // Skip the parent whitelist invite when the user already exists —
+    // the parent_user_id link above is the one and only side-effect
+    // needed. Whitelist still fires for fresh emails (next-batch
+    // claim_profile picks them up on first sign-in).
+    if(!parentUserId){
+      const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
+      if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
+      else console.log('[mybjj] parent whitelist OK');
+    } else {
+      console.log('[mybjj] parent whitelist skipped — user already exists');
+    }
   } else {
     // Adult invite (Batch 8b base + 8b-fix field persistence). Always
     // whitelist; always materialise a students row. Dedup priority:
