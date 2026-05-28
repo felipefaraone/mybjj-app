@@ -1768,19 +1768,61 @@ function _fmtJnyDate(d){
 // G17.2b — per-milestone Share button removed. Felipe's call: journey
 // is internal progression, not a social broadcast. shareSid parameter
 // dropped; isStaffJourney usage in callers simplified accordingly.
-function rTL(journey){
-  return `<div class="tl"><div class="tlline"></div>${(journey||[]).map((m,i)=>{
-    const bl=BA[m.belt]||BA.white;const isFut=!m.done;const isCur=!!m.current;const isTr=!!m.xfer;
+function rTL(journey,subject){
+  const arr=Array.isArray(journey)?journey:[];
+  const s=subject||null;
+  // Batch 2b — derive "You are here" from the LAST entry whose
+  // belt === s.belt. Stored m.current flags are ignored (historic
+  // entries carry duplicate / stale `current:true`); the deterministic
+  // derivation guarantees exactly one badge, on the most recent entry
+  // anchored at the student's actual current belt. Stripe entries
+  // count because stripes carry the same belt key. When no entry
+  // matches, no badge — never fabricate.
+  let curIdx=-1;
+  if(s&&s.belt){
+    for(let i=arr.length-1;i>=0;i--){
+      if(arr[i]&&arr[i].belt===s.belt){curIdx=i;break;}
+    }
+  }
+  // Legacy-caller fallback: when no subject was passed, fall back to
+  // the stored m.current flag so existing call sites that haven't been
+  // updated keep working.
+  const useDerived=!!s;
+  // Faded "next belt" preview after the last entry. Hidden at the
+  // terminal belt (black for adults, green/black for kids) and for
+  // any subject with pending criteria (kids).
+  let nextNode='';
+  if(s&&s.belt){
+    const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
+    const curBeltIdx=ORDER.indexOf(s.belt);
+    const nextBelt=(curBeltIdx>=0&&curBeltIdx<ORDER.length-1)?ORDER[curBeltIdx+1]:null;
+    const egd=(typeof _egDisplay==='function')?_egDisplay(s):{isPending:false};
+    if(nextBelt&&!egd.isPending){
+      const nbl=BA[nextBelt]||BK[nextBelt]||{label:nextBelt};
+      nextNode='<div class="tli" style="opacity:.5">'
+        +'<div class="tldot" style="background:var(--bg);color:var(--text3);border:2px dashed var(--border2)">'
+          +'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
+        +'</div>'
+        +'<div class="tlb" style="padding-bottom:4px">'
+          +'<div class="tlt" style="color:var(--text3)">'+nbl.label+' belt</div>'
+          +'<div class="tld" style="color:var(--text3);font-style:italic">Next</div>'
+        +'</div>'
+      +'</div>';
+    }
+  }
+  return `<div class="tl"><div class="tlline"></div>${arr.map((m,i)=>{
+    const bl=BA[m.belt]||BA.white;const isFut=!m.done;const isTr=!!m.xfer;
+    const isCur=useDerived?(i===curIdx):!!m.current;
     const dateLbl=_fmtJnyDate(m.date);
     return `<div class="tli"><div class="tldot" style="background:${isFut?'var(--bg)':isTr?'var(--amber-bg)':bl.bg};color:${isFut?'var(--text3)':isTr?'var(--amber-text)':bl.fg};border:2px solid ${isFut?'var(--border2)':isTr?'var(--amber-border)':isCur?'var(--blue)':bl.bg}${isCur?';box-shadow:0 0 0 3px var(--blue-tint)':''}">
       ${isTr?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`:isFut?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>`:isCur?`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><circle cx="12" cy="12" r="4" fill="${bl.fg}"/></svg>`:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`}
-    </div><div class="tlb" ${i===(journey||[]).length-1?'style="padding-bottom:4px"':''}>
+    </div><div class="tlb" ${i===arr.length-1&&!nextNode?'style="padding-bottom:4px"':''}>
       <div class="tlt" style="color:${isFut?'var(--text3)':'var(--text)'}">${m.label}</div>
       ${dateLbl?`<div class="tld">${dateLbl}</div>`:''}
       ${Number.isFinite(m.classes)&&m.classes>0?`<div class="tlc">${m.classes} classes</div>`:''}
       ${isCur?'<div class="tlhere"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px;margin-right:2px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>You are here</div>':''}
       ${isTr?`<div class="tlxfer">Transferred from ${m.prev||'previous academy'}</div>`:''}
-    </div></div>`;}).join('')}</div>`;
+    </div></div>`;}).join('')}${nextNode}</div>`;
 }
 
 
@@ -2450,7 +2492,7 @@ function rJnySection(s,sidKey){
     return '<div class="slbl">Journey</div>'
       +'<div class="card" style="padding:12px 16px;position:relative">'
         +editBtn
-        +rTL(renderJourney)
+        +rTL(renderJourney,s)
         +showLink
       +'</div>';
   }
@@ -4748,7 +4790,7 @@ function rProgress(){
       // S.me via enrichMeFromHydrate.
       var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>';
       var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter});
-      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney)+'</div>';
+      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney,myStu||staff)+'</div>';
       var iContent=S.ptab==='journey'?journeyTab:rankTab;
       return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button></div>'+iContent+'<div style="height:16px"></div>';
     }
@@ -4782,7 +4824,7 @@ function rProgress(){
     // gone — same scope discipline as the L3787 student path).
     var rankTab=_renderRankBox(coachStu,{kind:'student'})
       +'<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:var(--blue)">'+coachPctHtml+'</div></div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
-    var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[])+'</div>';
+    var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[],coachStu)+'</div>';
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
@@ -4868,7 +4910,7 @@ function rProgress(){
   var rankTab=_renderRankBox(stu,{kind:'student'})
     +`<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--blue)">${pctHtml}</div></div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(s.total-s.giTotal)}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>${attendanceCard}`;
 
-  var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[])}</div>`;
+  var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div>`;
 
   var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
 
