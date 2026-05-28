@@ -8550,7 +8550,16 @@ async function doCI(id){
   ATTENDANCE.push(local);
   render();
   const cli=initSupabase();if(!cli||!stu._dbId)return;
-  const r=await cli.from('attendance').insert({student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_modalityFromType(t.type),status:'going'}).select('id').single();
+  // Batch A — upsert with ignoreDuplicates:true so a double-tap or
+  // race CANNOT downgrade an existing 'present' row back to 'going'.
+  // Conflict-ignored returns an empty data array; in that case fetch
+  // the existing row's id so the local-prefix reconciliation still
+  // lands and we don't leak an orphan local row.
+  const _mod=_modalityFromType(t.type);
+  const r=await cli.from('attendance').upsert(
+    {student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:'going'},
+    {onConflict:'student_id,class_id',ignoreDuplicates:true}
+  ).select('id');
   if(r&&r.error){
     // Roll back local
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
@@ -8558,7 +8567,16 @@ async function doCI(id){
     showSaveToast2(friendlyMutationError(r.error),'error');
     render();return;
   }
-  if(r&&r.data)local._dbId=r.data.id;
+  let _realId=r&&r.data&&r.data[0]&&r.data[0].id;
+  if(!_realId&&t.classId){
+    // Conflict was ignored — existing row already present. Find its id
+    // so the local-prefix row reconciles to the canonical row.
+    try{
+      const f=await cli.from('attendance').select('id').eq('student_id',stu._dbId).eq('class_id',t.classId).maybeSingle();
+      if(f&&f.data&&f.data.id)_realId=f.data.id;
+    }catch(_){}
+  }
+  if(_realId)local._dbId=_realId;
   // 'going' rows don't change cached counts (only 'present' does), but
   // calling refreshStudentStats here keeps the local row in lock-step
   // with whatever the trigger decided — safer than assuming.
@@ -8755,9 +8773,13 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
     ATTENDANCE.push(local);
     render();
     if(!cli)return;
-    const payload={student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_modalityFromType(t.type),status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
+    // Batch A — keep gi consistent with modality on every new write.
+    const _mod=_modalityFromType(t.type);
+    const payload={student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
     if(isPresent)payload.class_value=cv;
-    const r=await cli.from('attendance').insert(payload).select('id').single();
+    // Upsert with ignoreDuplicates:false so the instructor's mark
+    // upgrades any pre-existing 'going' row in place (intended).
+    const r=await cli.from('attendance').upsert(payload,{onConflict:'student_id,class_id',ignoreDuplicates:false}).select('id').single();
     if(r&&r.error){
       const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
       console.warn('[mybjj] insert attendance ('+newStatus+'):',r.error);
@@ -8967,7 +8989,11 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   _renderClassAddList();
   const cli=initSupabase();
   if(!cli){S.classAdd.saving=false;showSaveToast2('Connection issue','error');return;}
-  const r=await cli.from('attendance').insert({
+  // Batch A — upsert so an admin-add upgrades any existing 'going'
+  // row to 'present' in place, and never duplicates. gi mirrors
+  // modality on every write so the canonical/derived pair never drifts.
+  const _mod=_modalityFromType(tt.type);
+  const r=await cli.from('attendance').upsert({
     student_id:s._dbId,
     unit_id:unit&&unit._dbId||null,
     class_id:tt.classId||null,
@@ -8975,12 +9001,13 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
     class_date:c.date,
     class_time:c.time,
     class_type:tt.type||null,
-    modality:_modalityFromType(tt.type),
+    modality:_mod,
+    gi:_mod==='gi',
     status:'present',
     confirmed_by:S.profile&&S.profile.id,
     confirmed_at:nowISO,
     class_value:cv,
-  }).select('id').single();
+  },{onConflict:'student_id,class_id',ignoreDuplicates:false}).select('id').single();
   if(r&&r.error){
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
     console.warn('[mybjj] add student to class:',r.error);
