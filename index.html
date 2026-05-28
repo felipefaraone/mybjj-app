@@ -1316,7 +1316,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -2035,6 +2035,21 @@ function rMUnits(){
 // viewStaff / openMyProfile callers); falls back to S.tab for legacy
 // callers that haven't been threaded with an explicit origin.
 function profileBackLabel(){
+  // One-step prev memory wins: "< <Parent's name>" when the kid was
+  // opened from a parent's Children list. Falls through to the
+  // origin / tab label for direct opens.
+  const prev=S.profilePrev;
+  if(prev&&prev.id){
+    let name=null;
+    if(prev.kind==='staff'){
+      const row=STAFF.find(x=>x.id===prev.id);
+      if(row)name=parseStaffName(row.name||'')||row.name||null;
+    }else{
+      const row=STUDENTS.find(x=>x.id===prev.id);
+      if(row)name=(row.name||'').split(' ')[0]||row.name||null;
+    }
+    if(name)return name;
+  }
   const originLabels={drawer:'Settings',community:'Community',roster:'Roster',class:'Class'};
   if(S.profileOrigin&&originLabels[S.profileOrigin])return originLabels[S.profileOrigin];
   const tabLabels={community:'Community',class:'Class',admin:'Roster'};
@@ -2111,7 +2126,7 @@ function rStaffProf(){
   const detailsBlock=(!isPeer&&isRosterEntry)?details:'';
   const socialBlock=(!isRosterEntry)?'':_socialChipsBlock(s.socialHandles,{subject:{kind:'staff',s}});
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="closeStaffProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="profileBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
     +'<div class="sbody">'
     // Batch 2 — header routed through _renderProfileHeader. Edit pencil
     // appended inside the card via opts.editPencilHtml.
@@ -2407,7 +2422,7 @@ function rStuProf(){
     ?`<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStu('${s.id}')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>`
     :'';
   return `<div class="sub open">
-<div class="shdr"><button class="sback" onclick="closeStudentProfile()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> ${backLbl}</button><div class="stitle">${s.name}</div></div>
+<div class="shdr"><button class="sback" onclick="profileBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> ${backLbl}</button><div class="stitle">${s.name}</div></div>
 <div class="sbody">
 
 ${_renderProfileHeader(s,{kind:'student',extraBadges:headerBadge?[headerBadge]:[],editPencilHtml:editPencilHtml})}
@@ -4168,7 +4183,16 @@ function _renderChildrenSection(target,opts){
     const beltBg=meta.bg||BELT_COLORS[k.belt]||'#e5e7eb';
     const isWhite=String(k.belt||'').toLowerCase().startsWith('white');
     const swatchBorder=isWhite?'border:0.5px solid var(--border2);':'';
-    return '<div onclick="viewStu(\''+escHtml(k.id)+'\',\'children\')" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer">'
+    // Children-list tap: route through viewLinkedStu so the parent
+    // profile is remembered as the one-step back target and the
+    // origin propagates (parent in Roster → kid in Roster). isMe
+    // surfaces the Children block on the self profile; that path
+    // doesn't have a "parent profile to return to" — close-to-list
+    // semantics, so use plain viewStu there.
+    const _onclick=isMe
+      ?('viewStu(\''+escHtml(k.id)+'\',\'children\')')
+      :('viewLinkedStu(\''+(kind==='staff'?'staff':'stu')+'\',\''+escHtml(target.id)+'\',\''+escHtml(k.id)+'\')');
+    return '<div onclick="'+_onclick+'" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer">'
       +avStu(k,40)
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(display)+'</div>'
@@ -4612,7 +4636,7 @@ function setMemberQuery(v){
   render();
   setTimeout(()=>{const el=document.getElementById('members-search');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);
 }
-function viewStaff(id,origin){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;S.profileOrigin=origin||null;render();}
+function viewStaff(id,origin){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;S.profileOrigin=origin||null;S.profilePrev=null;render();}
 
 // Batch 5 — parent kids summary aggregate. Parents cannot SELECT other
 // kids' rows (RLS post-migration 55), so any per-kid listing here is
@@ -5578,7 +5602,7 @@ function rStaff(){
   }).join('');
   return header+rows;
 }
-function viewStaffMember(id,origin){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;S.profileOrigin=origin||null;render();}
+function viewStaffMember(id,origin){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;S.profileOrigin=origin||null;S.profilePrev=null;render();}
 // G17.1 — single canonical entry point for "my profile" from the
 // drawer. Staff land on rStaffProf, students on rStuProf, parents on
 // their first child's profile (no parent self-row exists in the V1
@@ -8391,7 +8415,7 @@ function rPending(){
     : `Hi <strong>${email}</strong>.<br/>Your account isn’t on the access list yet. Once an admin approves you, you’ll be able to sign in here.`;
   return `<div class="lw">${authHero()}<div class="lbody"><div class="fg" style="padding:24px"><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);letter-spacing:.5px;margin-bottom:10px">${title}</div><div style="color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:18px">${body}</div><button class="bout" onclick="logout()">Sign out</button></div></div></div>`;
 }
-function setTab(t){S.tab=t;S.classAdd=null;render();}
+function setTab(t){S.tab=t;S.classAdd=null;S.profilePrev=null;render();}
 // B2 — drawer retired for self. Any legacy openPanel() caller now lands
 // on the profile area on Me. The drawer panel itself stays mounted to
 // host admin roster subs (viewStu / viewStaff still set S.panelOpen
@@ -9080,7 +9104,41 @@ function rDeleteUnitConfirm(){
     +'</div></div></div>';
 }
 
-function viewStu(idOrEl,origin){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;S.profileOrigin=origin||null;render();}
+function viewStu(idOrEl,origin){const id=typeof idOrEl==='string'?idOrEl:idOrEl;S.viewStu=id;S.sub='stuprof';S.panelOpen=true;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;S.profileOrigin=origin||null;S.profilePrev=null;render();}
+// One-step "previous profile" memory: opens a kid from a parent's
+// Children list while preserving the parent as the back target. The
+// kid inherits the parent's origin so admin context stays consistent
+// (parent in Roster → kid in Roster). Single slot — no stack.
+// Direct list opens (viewStu / viewStaff / viewStaffMember) clear
+// S.profilePrev so they never return to a stale parent.
+function viewLinkedStu(parentKind,parentId,kidId){
+  if(!kidId)return;
+  S.profilePrev={kind:parentKind==='staff'?'staff':'stu',id:parentId,origin:S.profileOrigin||null};
+  const inheritedOrigin=S.profileOrigin||null;
+  // Reuse viewStu's full state-reset, then RESTORE profilePrev because
+  // viewStu clears it as part of its "direct open" default.
+  viewStu(kidId,inheritedOrigin);
+  S.profilePrev={kind:parentKind==='staff'?'staff':'stu',id:parentId,origin:inheritedOrigin};
+  render();
+}
+// Back action for rStuProf / rStaffProf headers. If a previous profile
+// is remembered (one-step), navigate to it and clear the slot.
+// Otherwise fall through to the normal close-to-list behaviour.
+function profileBack(){
+  const prev=S.profilePrev;
+  if(prev&&prev.id){
+    S.profilePrev=null;
+    if(prev.kind==='staff'){viewStaff(prev.id,prev.origin||null);return;}
+    viewStu(prev.id,prev.origin||null);
+    return;
+  }
+  // No prev → existing close path. The caller's button onclick still
+  // routes to closeStudentProfile / closeStaffProfile directly when
+  // they want the explicit close; this helper covers the unified
+  // back-from-header path.
+  if(S.viewStaff){closeStaffProfile();return;}
+  closeStudentProfile();
+}
 function openFb(sid){S.addFb=sid;render();}
 function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
 function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
@@ -9192,6 +9250,7 @@ function closeStudentProfile(){
   S.emailEdit=null;S.promoteFor=null;S.fbModalFor=null;
   S.showAllJourney=false;S.stuAttList=null;S.stuFbList=null;
   S.profileOrigin=null;
+  S.profilePrev=null;
   render();
 }
 // closeStaffProfile — mirror of closeStudentProfile for rStaffProf.
@@ -9204,6 +9263,7 @@ function closeStaffProfile(){
   S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;
   S.staffNotesList=null;
   S.profileOrigin=null;
+  S.profilePrev=null;
   render();
 }
 
