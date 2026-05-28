@@ -2331,6 +2331,14 @@ function rStuProf(){
   // Self-edit path at openProfileArea (~index.html:3718) isn't routed
   // through here, so this gate doesn't touch self-view.
   const isRosterEntry=S.profileOrigin==='roster';
+  // Parent-on-own-kid (Option B): a parent viewing their own kid
+  // bypasses the Community-collapse for kid-relevant data (Progress,
+  // Attendance, Feedback) and gets the Edit Profile pencil. Same
+  // source of truth as isParentOfKid above — parent_user_id match —
+  // plus a kid-program guard. Admin actions (Promote / +Class /
+  // +Add Feedback) stay gated by canAdmin and remain hidden for a
+  // parent who isn't staff.
+  const isParentOnOwnKid=isParentOfKid&&isKids;
   const giSince=Math.max(s.giGrade||0,0);
   const noGiSince=Math.max((s.grade||0)-giSince,0);
   // Batch 2 — KIDS/ADULT and belt band are built by _renderProfileHeader.
@@ -2360,7 +2368,9 @@ function rStuProf(){
   // renamed → socialBlock; renders whenever at least one handle resolves
   // to a URL (admin / self / peer) and returns '' otherwise.
   // Social card hidden entirely from Community (handles + Edit button).
-  const socialBlock=(!isRosterEntry)?'':_socialChipsBlock(social,{subject:{kind:'student',s}});
+  // Child-safety override: kid profiles never expose social, regardless
+  // of viewer or origin.
+  const socialBlock=(isKids||!isRosterEntry)?'':_socialChipsBlock(social,{subject:{kind:'student',s}});
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
     +(isKids?rDetailRow('Parent',parentDisplayName(s),''):'')
@@ -2391,7 +2401,7 @@ function rStuProf(){
   // header card + journey card. Stats / eligibility hint / details /
   // attendance log / instructor feedback / action buttons are gated
   // out below.
-  const statsCard=(isPeer||!isRosterEntry)?'':`<div class="card" style="padding:16px;margin-top:12px">
+  const statsCard=(isPeer||(!isRosterEntry&&!isParentOnOwnKid))?'':`<div class="card" style="padding:16px;margin-top:12px">
   <div style="display:flex;gap:0;margin-bottom:10px">
     <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
     <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(giSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
@@ -2410,15 +2420,22 @@ function rStuProf(){
   // (admin entering via Community is browsing, not managing). The
   // allowAdd opt on the feedback card stays so legacy Progress / parent
   // callers keep the +Add button when they pass nothing.
-  const attendanceBlock=(isPeer||!isRosterEntry)?'':_stuAttSummaryCard(s);
-  const feedbackBlock=(isPeer||!isRosterEntry)?'':_stuFbSummaryCard(s,{allowAdd:isRosterEntry});
+  const attendanceBlock=(isPeer||(!isRosterEntry&&!isParentOnOwnKid))?'':_stuAttSummaryCard(s);
+  // +Add Feedback stays roster-only (admin authoring) via allowAdd; the
+  // data card itself unlocks for parent-on-own-kid so they can read
+  // instructor notes on their kid.
+  const feedbackBlock=(isPeer||(!isRosterEntry&&!isParentOnOwnKid))?'':_stuFbSummaryCard(s,{allowAdd:isRosterEntry});
   const bottomBlock=(isPeer||!isRosterEntry)?'':bottomActions;
   // Admin actions row (Promote / + Class count / Feedback) — gated by
   // entry point on top of the existing canAdmin permission check.
   const adminActionsBlock=(isPeer||!canAdmin||!isRosterEntry)?'':rAdminActionRow(s);
   // Edit Profile pencil — self can always edit own profile; admin only
-  // gets the entry from the roster, not from community browsing.
-  const editPencilHtml=(isSelf||(isAdminViewer&&isRosterEntry))
+  // gets the entry from the roster, not from community browsing; parent
+  // owns the kid's personal info and gets it from any entry. The form
+  // (rEditStu) gates admin-only fields by isStaffOrOwner() and the
+  // saveEditStu dispatch routes parents through edit_student_self,
+  // which already restricts the payload to the personal-info subset.
+  const editPencilHtml=(isSelf||(isAdminViewer&&isRosterEntry)||isParentOnOwnKid)
     ?`<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStu('${s.id}')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>`
     :'';
   return `<div class="sub open">
