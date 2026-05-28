@@ -1361,11 +1361,13 @@ function attendanceFor(date,time){
 }
 function myStudentRow(){
   if(!S.profile||!S.profile.id)return null;
-  // For parents, the relevant student row is whichever child they're
-  // currently viewing (parentSelectedChild). For everyone else, the
-  // row linked by user_id is the one used.
-  if(S.me&&S.me.role==='parent'&&typeof parentSelectedChild==='function'){
-    return parentSelectedChild()||null;
+  // When a kid is the active profile, that kid is "me" for class
+  // check-ins / progress lookups. Otherwise the user's own STUDENTS row
+  // (when they have one — instructors usually don't). Decouples from
+  // role: an instructor-with-kids on kid-active still routes to the kid.
+  if(typeof activeProfileIsSelf==='function'&&!activeProfileIsSelf()){
+    const k=parentSelectedChild();
+    if(k)return k;
   }
   return STUDENTS.find(x=>x._userId===S.profile.id)||null;
 }
@@ -1816,11 +1818,11 @@ function rInbox(){
   return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur>99?'99+':ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?empty:list}</div></div>`;
 }
 
-function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;
+function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;const _showAddChild=m&&(m.role==='parent'||(typeof parentChildren==='function'&&parentChildren().length>0));
 // G17.2a — title surfaces drop the "Professor"/"Coach" prefix; the
 // role chip below the name carries that information now. parseStaffName
 // strips any legacy prefix that survived the migration cleanup.
-const greetName=parseStaffName(m.name||'');const pendingPill=(S.myPhotoApproval&&S.myPhotoApproval.status==='pending')?`<div style="margin-top:8px"><span style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>PHOTO PENDING APPROVAL</span></div>`:'';return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${(S.panelOpen&&S.sub)?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div><div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:(m.role==='parent'?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">PARENT</span>`:bb(m.belt,m.deg||0,m.prog||'adult'))}</div>${pendingPill}</div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openMyProfile()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">View my profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div>${m.role==='parent'?`<div class="pitem" onclick="openAddKidModal()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">+ Add a child</div>${CHV}</div>`:''}<div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
+const greetName=parseStaffName(m.name||'');const pendingPill=(S.myPhotoApproval&&S.myPhotoApproval.status==='pending')?`<div style="margin-top:8px"><span style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>PHOTO PENDING APPROVAL</span></div>`:'';return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${(S.panelOpen&&S.sub)?rSub():''}<div class="phdr" style="position:relative"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div><div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:(m.role==='parent'?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">PARENT</span>`:bb(m.belt,m.deg||0,m.prog||'adult'))}</div>${pendingPill}</div><div style="flex:1;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openMyProfile()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">View my profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div>${_showAddChild?`<div class="pitem" onclick="openAddKidModal()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">+ Add a child</div>${CHV}</div>`:''}<div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><button class="psign" onclick="logout()" style="margin-top:auto">Sign out</button></div>`;}
 
 function rSub(){const ss={'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'editstaff':rEditStaff,'kidpeer':rKidPeer,'stuattlist':rStuAttList,'stufblist':rStuFbList,'staffnoteslist':rStaffNotesList,'evroster':rEventRoster};return(ss[S.sub]||(() =>''))();}
 
@@ -2273,7 +2275,7 @@ function rStuProf(){
   const socialBlock=_socialChipsBlock(social,{subject:{kind:'student',s}});
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
-    +(isKids?rDetailRow('Parent',s.parentName,''):'')
+    +(isKids?rDetailRow('Parent',parentDisplayName(s),''):'')
     +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
     +(isKids?rDetailRow('Parent email',parentEmailVal,''):'')
     +rDetailRow('Unit',unitName,'')
@@ -3279,7 +3281,13 @@ function rClass(){
   // assumed to be parenting kid-prog students.
   let cls=getDC(sd);
   if(!isStaffOrOwner()){
-    const meProg=(me&&me.role==='parent')?'kids':((me&&me.prog)||'adult');
+    // Audience filter follows the active profile. Kid-active → kid's
+    // prog. Self-active → user's own prog, with parent role defaulting
+    // to 'kids' (today's behaviour preserved for parent-with-no-kid).
+    const _kidAct=!activeProfileIsSelf()?parentSelectedChild():null;
+    const meProg=_kidAct
+      ?(_kidAct.prog||'kids')
+      :((me&&me.role==='parent')?'kids':((me&&me.prog)||'adult'));
     const myAud=meProg==='kids'?'Kids':'Adults';
     cls=cls.filter(c=>{
       const a=c.aud||'Adults';
@@ -3385,13 +3393,13 @@ function rClass(){
 const _PARENT_CHILD_LS_PREFIX='mybjj_parentChild:';
 function _parentChildLsKey(){return _PARENT_CHILD_LS_PREFIX+((S.profile&&S.profile.id)||'anon');}
 function setParentChild(id){
-  S.parentChild=id;
-  if(isParent()){
-    try{localStorage.setItem(_parentChildLsKey(),id||'');}catch(_){}
-    const kid=STUDENTS.find(s=>s.id===id);
-    // Align the active unit with the active kid so Classes / Programme
-    // / Members render the unit the kid trains at. pickUnit handles
-    // rebuildTT + render; only fire when the unit actually changes.
+  S.parentChild=id||null;
+  try{localStorage.setItem(_parentChildLsKey(),S.parentChild||'');}catch(_){}
+  // Align the active unit with the active kid so Classes / Programme
+  // / Members render the unit the kid trains at. Only fires when a kid
+  // is actually selected (self-active leaves the unit alone).
+  if(S.parentChild){
+    const kid=STUDENTS.find(s=>s.id===S.parentChild);
     if(kid&&kid.unit){
       const u=UNITS.find(x=>x.id===kid.unit);
       if(u&&u.name&&u.name!==S.unit){pickUnit(u.name);return;}
@@ -3403,29 +3411,47 @@ function setParentChild(id){
 // enrichMeFromHydrate once parentChildren() can resolve. Falls back
 // silently if the persisted id no longer matches an active kid.
 function _restoreParentChild(){
-  if(!isParent())return;
+  // Any user with linked kids may have a persisted active kid (the
+  // self-default leaves S.parentChild=null and the switcher shows the
+  // self entry on the left).
   let stored=null;
   try{stored=localStorage.getItem(_parentChildLsKey());}catch(_){}
   if(!stored)return;
   const kids=parentChildren();
   if(kids.some(k=>k.id===stored))S.parentChild=stored;
 }
-// G14.2 Step 3 — persistent multi-kid switcher banner for parents.
-// Renders only when isParent() AND parentChildren().length >= 2.
-// Chip layout: scrollable horizontal strip with one chip per kid plus
-// a "+ Add child" ghost chip that opens the existing contact modal.
-// Active chip uses brand background; switching writes through
-// setParentChild which persists + re-renders.
+// Persistent profile switcher for any user with linked kids. Renders
+// when parentChildren().length >= 1 (self + 1 kid is enough). Entries:
+//   1. Self entry (always first) — user's avatar + first name.
+//   2. Each linked kid (existing chip).
+//   3. "+ Add child" ghost pill (same modal entry point as the drawer).
+// Active state is `S.parentChild`: null ⇒ self active, kid id ⇒ kid
+// active. Tabs react to this via activeProfileIsSelf().
 function rParentKidSwitcher(){
-  if(!isParent())return '';
   const kids=parentChildren();
-  if(kids.length<2)return '';
-  const active=parentSelectedChild();
-  const activeId=active&&active.id;
+  if(kids.length<1)return '';
+  const me=S.me||{};
+  const isSelfActive=activeProfileIsSelf();
   const checkIcon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left:6px;flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
   const plusIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="flex-shrink:0"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-  const chips=kids.map(k=>{
-    const sel=k.id===activeId;
+  // Self entry avatar uses the user's photo (or initials). Reuses the
+  // same _avBeltPair ring helper as avMe so the visual matches the
+  // header avatar.
+  const meFirst=(me.name||'').trim().split(/\s+/)[0]||'Me';
+  const meRing=(typeof _avBeltPair==='function')?_avBeltPair(me.belt)[0]:'transparent';
+  const meAvatar=me.photoUrl
+    ?'<div style="width:24px;height:24px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+meRing+';flex-shrink:0"><img src="'+photoSrc(me.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display=\'none\'"/></div>'
+    :(typeof av==='function'?av(me.initials||(meFirst[0]||'?').toUpperCase(),me.belt,24):'');
+  const selfBg=isSelfActive?'#1A5DAD':'var(--card)';
+  const selfFg=isSelfActive?'#fff':'var(--text2)';
+  const selfBorder=isSelfActive?'var(--blue)':'var(--border)';
+  const selfChip='<button onclick="setParentChild(null)" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:24px;border:1.5px solid '+selfBorder+';background:'+selfBg+';cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:'+selfFg+'">'
+    +meAvatar
+    +'<span style="white-space:nowrap">'+escHtml(meFirst)+'</span>'
+    +(isSelfActive?checkIcon:'')
+    +'</button>';
+  const kidChips=kids.map(k=>{
+    const sel=!isSelfActive&&k.id===S.parentChild;
     const first=(k.name||'').split(' ')[0]||k.name||'Kid';
     const bg=sel?'#1A5DAD':'var(--card)';
     const fg=sel?'#fff':'var(--text2)';
@@ -3437,7 +3463,7 @@ function rParentKidSwitcher(){
       +'</button>';
   }).join('');
   const addChip='<button onclick="openAddKidModal()" style="flex-shrink:0;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:24px;border:1.5px dashed var(--border);background:transparent;cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--text3);letter-spacing:.3px">'+plusIcon+'<span>Add child</span></button>';
-  return '<div style="background:var(--surface);border-bottom:1px solid var(--border);padding:8px 0"><div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px;scrollbar-width:none">'+chips+addChip+'</div></div>';
+  return '<div style="background:var(--surface);border-bottom:1px solid var(--border);padding:8px 0"><div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px;scrollbar-width:none">'+selfChip+kidChips+addChip+'</div></div>';
 }
 // B1 — Parent profile area. Identity surface separate from the
 // drawer (settings) and from the Progress tab (activity). Tapping the
@@ -3571,7 +3597,7 @@ function _renderProfileIdentity(s,opts){
     const giOwned=s.hasMybjjGi===true;
     const giRow=rDetailRow('MyBJJ Gi',giOwned?'<span style="color:var(--green-text)">✓</span>':'<span style="color:var(--text3)">—</span>','');
     detailsBody=rDetailRow('Email',emailVal,'')
-      +(isKids?rDetailRow('Parent',s.parentName,''):'')
+      +(isKids?rDetailRow('Parent',parentDisplayName(s),''):'')
       +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
       +(isKids?rDetailRow('Parent email',parentEmailVal,''):'')
       +rDetailRow('Unit',unitName,'')
@@ -3606,11 +3632,13 @@ function rProfileArea(){
   const isP=isParent();
   const isOwnerNow=isOwner();
   const isStaffNow=isStaffOrOwner();
-  // Subject switcher only renders for parent with active kids.
-  const kids=isP?parentChildren():[];
+  // Subject switcher renders whenever the user has linked kids,
+  // regardless of role (instructor/student with kids still get [Me]
+  // + each kid here, matching the header switcher rule).
+  const kids=parentChildren();
   let subj=S.profileSubject||'me';
   if(subj!=='me'&&!kids.some(k=>k.id===subj))subj='me';
-  const showSwitcher=isP&&kids.length>=1;
+  const showSwitcher=kids.length>=1;
   // Switcher chips (parent only).
   const meChipLabel=(parseStaffName(m.name||'').split(' ')[0])||'Me';
   const meChip=(()=>{const sel=subj==='me';return '<button onclick="setProfileSubject(\'me\')" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:24px;border:1.5px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'#1A5DAD':'var(--card)')+';cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:'+(sel?'#fff':'var(--text2)')+'"><span>'+(isP?'Me':meChipLabel)+'</span></button>';})();
@@ -3636,7 +3664,7 @@ function rProfileArea(){
     let rows='<div class="slbl" style="margin-top:18px">Settings</div>'
       +setRow(icoBell,'Notification preferences','openSub(\'nprefs\')')
       +setRow(icoLock,'Set password','openSub(\'setpwd\')')
-      +(isP?setRow(icoAddKid,'+ Add a child','openAddKidModal()'):'')
+      +((isP||(typeof parentChildren==='function'&&parentChildren().length>0))?setRow(icoAddKid,'+ Add a child','openAddKidModal()'):'')
       +setRow(icoUnit,'My unit','',unitTrail);
     if(isStaffNow){
       rows+='<div class="slbl" style="margin-top:18px">Admin tools</div>'
@@ -3834,10 +3862,11 @@ async function _copyAcademyContact(v){
 }
 function rAddKidModal(){
   if(!S.addKidModal)return '';
-  // Resolve the unit. Parents land on Classes by default (G14) so
-  // S.parentChild may not have been touched yet; parentSelectedChild's
-  // fallback to the first linked kid is the right anchor.
-  const kid=(typeof parentSelectedChild==='function')?parentSelectedChild():null;
+  // Unit anchor for the academy-contact card. parentSelectedChild now
+  // returns null when self is active (new default), so fall back to
+  // the first linked kid for the unit lookup.
+  const kid=(typeof parentSelectedChild==='function'?parentSelectedChild():null)
+         ||((typeof parentChildren==='function'?parentChildren()[0]:null)||null);
   const unit=kid?UNITS.find(u=>u.id===kid.unit):null;
   const mobile=unit&&unit.mobilePhone||null;
   const studio=unit&&unit.phone||null;
@@ -3885,7 +3914,10 @@ ${rows}${empty}
 // get a [People] [Wall] segmented toggle (matches the Programme
 // Curriculum|Events toggle exactly — same .rseg class + --ctrl-h).
 function rMembers(){
-  // Parents: People only, no Wall toggle.
+  // Kid-active (any role) OR parent self → privacy-first kids aggregate
+  // view (counts only, no other kids' rows). Non-parent self (instructor
+  // / student) falls through to the normal People/Wall community view.
+  if(!activeProfileIsSelf())return rParentMembers();
   if(isParent())return rParentMembers();
   const tab=S.commTab==='wall'?'wall':'people';
   const segBtn=(key,lbl)=>{
@@ -4250,9 +4282,9 @@ function _renderKidsSummaryCard(unitName){
   // Active-kid highlight — parent only. Strip any "/sub" tail so a
   // kid on grey/white still lights up the Grey row. Adult belt / null
   // / unknown macro → no highlight, no name pill.
-  const me=S.me||{};
-  const isParentViewer=me.role==='parent';
-  const activeKid=isParentViewer&&typeof parentSelectedChild==='function'?parentSelectedChild():null;
+  // Highlight fires whenever a kid is the active profile (any viewer
+  // role). Self-active → no highlight, no pill.
+  const activeKid=(typeof activeProfileIsSelf==='function'&&!activeProfileIsSelf()&&typeof parentSelectedChild==='function')?parentSelectedChild():null;
   const activeBelt=activeKid?String(activeKid.belt||'').toLowerCase():'';
   const activeMacro=activeBelt.split('/')[0];
   const highlightMacro=macros.indexOf(activeMacro)>=0?activeMacro:null;
@@ -4294,9 +4326,10 @@ function rParentMembers(){
   if(!myKids.length){
     return '<div style="height:16px"></div><div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--text2);line-height:1.5">No linked children yet. Members will appear once your child is added by the academy.</div></div>';
   }
-  // Scope to the ACTIVE kid's unit (consistent with G14.2 Step 3 — the
-  // multi-kid switcher drives the unit context for every parent tab).
-  const active=parentSelectedChild();
+  // Scope to the ACTIVE kid's unit. Self-active (new default) has no
+  // explicit kid, so fall back to the first linked kid's unit so the
+  // instructor list still resolves.
+  const active=parentSelectedChild()||myKids[0]||null;
   const activeUnit=active&&active.unit;
   const myUnits=new Set(activeUnit?[activeUnit]:[]);
   const instructors=STAFF.filter(st=>st._active!==false&&myUnits.has(st.unit))
@@ -4437,12 +4470,24 @@ function rProgress(){
   // exactly as it was — email-fallback lookup + S.me overlay
   // unchanged.
   var stu;
-  if(isParent()){
-    stu=parentSelectedChild();
-    if(!stu){
-      return '<div style="height:16px"></div><div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--text2);line-height:1.5">No linked children yet.<br/>Once your academy admin adds your child with this email as the parent contact, you\'ll see their profile here.</div></div>';
-    }
+  // Kid-active (any role) → kid subject. Self-active falls through to
+  // the user's own student row (email-fallback lookup unchanged). Parent
+  // self with no kid selected (the new default) lands on the
+  // "select a child" empty state below.
+  var _kidActive=!activeProfileIsSelf()?parentSelectedChild():null;
+  if(_kidActive){
+    stu=_kidActive;
     s=stu;
+  }else if(isParent()){
+    // Parent self-active: prompt to pick a kid (or invite them to add
+    // one if zero linked). Old "no linked children yet" wording kept
+    // for the zero case; new "select a child" wording for self-active
+    // with kids.
+    var _hasKids=parentChildren().length>0;
+    var _msg=_hasKids
+      ?'Select a child above to view their progress.'
+      :'No linked children yet.<br/>Once your academy admin adds your child with this email as the parent contact, you\'ll see their profile here.';
+    return '<div style="height:16px"></div><div class="card" style="text-align:center;padding:32px"><div style="font-size:14px;color:var(--text2);line-height:1.5">'+_msg+'</div></div>';
   }else{
     // G9.3 follow-up — student self lookup adds an email-fallback so a
     // broken or missing students.user_id link doesn't drop the Progress
@@ -4492,7 +4537,7 @@ function rProgress(){
   // drives the close path: both drop the panel back to the underlying
   // Progress tab. rStuAttList itself is read-only by construction \u2014
   // no mark / add / delete affordances ever exposed.
-  var attendanceCard=_stuAttSummaryCard(stu,isParent()?{fromParent:true}:{fromSelf:true});
+  var attendanceCard=_stuAttSummaryCard(stu,_kidActive?{fromParent:true}:{fromSelf:true});
   // Batch 7b \u2014 Current Rank routed through the shared _renderRankBox.
   // We pass `stu` (the underlying STUDENTS row) so the helper sees
   // _createdAt for the "member since" stat \u2014 the merged `s` overlay
@@ -5247,7 +5292,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const vt=TABS.filter(t=>{if(t.id==='admin')return isA;return true;});if(!isA&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -5343,8 +5388,27 @@ async function sendInvite(dispatch){
     const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob}).select('id,legacy_id').single();
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
+    // Immediate parent link: if the parent_email already matches a
+    // signed-up user, set students.parent_user_id now so the parent's
+    // switcher / kid view light up on their next session without
+    // waiting for claim_profile to wire the link. Backfilled
+    // historically by migration 58.
+    let parentUserId=null;
+    let parentUserFullName=null;
+    if(ins&&ins.data&&parentEmail){
+      try{
+        const pu=await cli.from('users').select('id,full_name').ilike('email',parentEmail).limit(1);
+        if(pu&&pu.data&&pu.data[0]&&pu.data[0].id){
+          parentUserId=pu.data[0].id;
+          parentUserFullName=pu.data[0].full_name||null;
+          const link=await cli.from('students').update({parent_user_id:parentUserId}).eq('id',ins.data.id).is('parent_user_id',null);
+          if(link&&link.error){console.warn('[mybjj] parent_user_id link:',link.error);}
+          else console.log('[mybjj] parent_user_id linked OK');
+        }
+      }catch(e){console.warn('[mybjj] parent_user_id link exception:',e);}
+    }
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,dob:formDob});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob});
       saved=true;
     }
     const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
@@ -5854,22 +5918,37 @@ function avStaff(s,size){
 }
 function isParent(){return !!(S.me&&S.me.role==='parent');}
 function parentChildren(){
-  if(!isParent()||!S.profile||!S.profile.id) return [];
-  // G14.2 Step 3 follow-up — hide inactive kids from every parent
-  // surface. STUDENTS rows carry _active (mapped from students.active
-  // at hydrate, ~line 5089); inactive kids should not appear in the
-  // switcher, should not count toward the 2+ gating, and must not be
-  // selectable as the active kid. parentSelectedChild's empty-array
-  // path returns null, which every parent renderer (rParentChildView,
-  // rParentMembers, rParentKidSwitcher) already handles with a safe
-  // empty state, and myStudentRow → doCI already null-guards.
+  // John-case decoupling: kids resolve by `parent_user_id` match against
+  // the signed-in user regardless of role. Instructors/students who
+  // happen to be parents get the same switcher + kid surfaces as a pure
+  // parent. Permission-keyed gates (Manage tab, RLS-aligned actions)
+  // still read `me.role` separately and are not affected here.
+  if(!S.profile||!S.profile.id) return [];
   return STUDENTS.filter(s=>s._parentUserId===S.profile.id&&s._active!==false);
 }
 function parentSelectedChild(){
+  // Returns the EXPLICITLY-selected kid only. When S.parentChild is
+  // null (the new self-active default), this returns null. Callers
+  // that need a unit-context fallback to "any kid" must spell it out
+  // (e.g. parentSelectedChild() || parentChildren()[0]).
   const kids=parentChildren();
   if(!kids.length) return null;
   if(S.parentChild){const m=kids.find(k=>k.id===S.parentChild);if(m) return m;}
-  return kids[0];
+  return null;
+}
+// True when no kid is selected → the signed-in user themselves is the
+// active profile. Drives whether tabs render the kid view or the user's
+// own (instructor / student / parent self) view.
+function activeProfileIsSelf(){return !parentSelectedChild();}
+// Authoritative parent name. Once the parent has claimed their user
+// row, users.full_name (hydrated to kid.parentUserName via the
+// students→users join at index.html:7011) is what the parent edits
+// from their own profile and should be the displayed name on the kid
+// profile. Falls back to students.parent_name only when the link
+// hasn't been set yet (parent hasn't signed in).
+function parentDisplayName(kid){
+  if(kid&&kid._parentUserId&&kid.parentUserName)return kid.parentUserName;
+  return kid&&kid.parentName||'';
 }
 
 async function withSb(builder,label){
@@ -6940,7 +7019,7 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email').order('name'),
-      c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at'),
+      c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,parent_user:users!parent_user_id(full_name)'),
       // RLS-2 — staff.feedback dropped from the select; Head Instructor
       // Notes now live in public.staff_notes and are fetched lazily per
       // STAFF row by _fetchStaffNotes when the owner opens the profile.
@@ -6981,7 +7060,7 @@ async function hydrateData(){
       // Postgres numeric as String to avoid precision loss; wrap with
       // Number() so downstream math (sort, eligibility, formatStat)
       // compares numerically instead of lexicographically.
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
