@@ -1818,7 +1818,7 @@ function rInbox(){
   return `<div class="ov ${S.inboxOpen?'open':''} " onclick="closeInbox()" style="z-index:198"></div><div class="inbox-p ${S.inboxOpen?'open':''}"><div class="shdr">${IBACK}<div class="stitle">Notifications${ur>0?` <span style="background:var(--red);color:#fff;font-size:11px;border-radius:10px;padding:1px 7px;margin-left:4px">${ur>99?'99+':ur}</span>`:''}</div>${ur>0?`<button style="background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;margin-left:auto;font-family:'Barlow',sans-serif" onclick="markAllRead()">Mark all read</button>`:''}</div><div style="flex:1;overflow-y:auto">${NOTIFS.length===0?empty:list}</div></div>`;
 }
 
-function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;const _showAddChild=!!m;
+function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA.white;const _showAddChild=!!m&&!isOwner();
 // G17.2a — title surfaces drop the "Professor"/"Coach" prefix; the
 // role chip below the name carries that information now. parseStaffName
 // strips any legacy prefix that survived the migration cleanup.
@@ -3672,7 +3672,7 @@ function rProfileArea(){
     let rows='<div class="slbl" style="margin-top:18px">Settings</div>'
       +setRow(icoBell,'Notification preferences','openSub(\'nprefs\')')
       +setRow(icoLock,'Set password','openSub(\'setpwd\')')
-      +setRow(icoAddKid,'+ Add child','onAddChild()')
+      +(!isOwnerNow?setRow(icoAddKid,'+ Add child','onAddChild()'):'')
       +setRow(icoUnit,'My unit','',unitTrail);
     if(isStaffNow){
       rows+='<div class="slbl" style="margin-top:18px">Admin tools</div>'
@@ -3926,12 +3926,19 @@ function _renderChildrenSection(target,opts){
   if(isMe)handler='onAddChild()';
   else if(kind==='staff')handler='onAddChild(STAFF.find(x=>x.id===\''+escHtml(target.id)+'\'))';
   else handler='onAddChild(STUDENTS.find(x=>x.id===\''+escHtml(target.id)+'\'))';
-  const addBtn='<button onclick="'+handler+'" style="width:100%;margin-top:10px;background:none;border:1px dashed var(--border2);border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--text2);cursor:pointer">+ Add child</button>';
+  // Owner self-view: section header + kid list still render, but hide
+  // the trailing +Add child button (owner is rarely a parent of an
+  // academy kid; the legacy semantic mismatch flagged in UX feedback).
+  // On another user's profile, the button stays — owner often adds
+  // kids for someone else.
+  const hideSelfAddBtn=isMe&&(typeof isOwner==='function')&&isOwner();
+  const addBtn=hideSelfAddBtn?'':'<button onclick="'+handler+'" style="width:100%;margin-top:10px;background:none;border:1px dashed var(--border2);border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--text2);cursor:pointer">+ Add child</button>';
+  const addBtnRow=hideSelfAddBtn?'':'<div style="padding:12px">'+addBtn+'</div>';
   return '<div class="slbl" style="margin-top:18px">Children</div>'
     +'<div class="card" style="padding:0;overflow:hidden">'
       +rows
       +empty
-      +'<div style="padding:12px">'+addBtn+'</div>'
+      +addBtnRow
     +'</div>';
 }
 // Open the Add Student sub-panel with the parent block pre-filled. The
