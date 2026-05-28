@@ -1776,7 +1776,7 @@ function rTL(journey){
       ${isTr?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`:isFut?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>`:isCur?`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><circle cx="12" cy="12" r="4" fill="${bl.fg}"/></svg>`:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`}
     </div><div class="tlb" ${i===(journey||[]).length-1?'style="padding-bottom:4px"':''}>
       <div class="tlt" style="color:${isFut?'var(--text3)':'var(--text)'}">${m.label}</div>
-      ${dateLbl?`<div class="tld">${dateLbl}</div>`:'<div class="tld" style="color:var(--border2)">—</div>'}
+      ${dateLbl?`<div class="tld">${dateLbl}</div>`:''}
       ${m.classes!==null?`<div class="tlc">${m.classes} classes</div>`:''}
       ${isCur?'<div class="tlhere"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px;margin-right:2px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>You are here</div>':''}
       ${isTr?`<div class="tlxfer">Transferred from ${m.prev||'previous academy'}</div>`:''}
@@ -3318,9 +3318,11 @@ function rJnyEditor(){
   const{sid,idx,isNew}=S.editJny;const s=getJnyTarget(sid);if(!s)return '';
   const m=isNew?{label:'',date:'',classes:'',belt:'',xfer:false,type:'',notes:'',auto:false}:(s.journey[idx]||{});
   const isAuto=!!m.auto;
+  // Belt promotion + stripe promotion live in the Promote modal now
+  // (savePromote) — leaving them here let admins double-record the
+  // same event and skipped the FK to public.promotions. Add Milestone
+  // is reserved for transfer / return / comp / custom from this point.
   const types=[
-    {v:'belt',  l:'Belt promotion'},
-    {v:'stripe',l:'Stripe promotion'},
     {v:'xfer',  l:'Transfer from another academy'},
     {v:'return',l:'Returning after time away'},
     {v:'comp',  l:'Competition / Achievement'},
@@ -5690,7 +5692,14 @@ async function sendInvite(dispatch,chain){
   // Background seeds (transfer / returning). Belt/degree are NOT
   // overridden by Background — admin's rank picks above are an
   // independent signal from how the student joined.
+  // Batch 2a — every new student gets an origin entry at the form's
+  // initial belt as the first journey item. Locks down a starting
+  // anchor so the timeline can render even before any promotion lands.
+  // No training_started_at field is collected on Add Student today,
+  // so date defaults to today.
   const initialJourney=[];
+  const _originBeltLabel=((isKids?BK:BA)[formBelt]||{label:formBelt}).label;
+  initialJourney.push({belt:formBelt,label:_originBeltLabel+' belt',date:new Date().toISOString().slice(0,10),done:true,auto:true,origin:true});
   if(status==='transfer'){
     const fromAcad=String(F.xferFrom||'').trim();
     const sinceVal=String(F.xferSince||'').trim()||null;
@@ -7471,6 +7480,33 @@ async function hydrateData(){
       console.warn('[mybjj] hydrate promotions:',pm.error);
       PROMOTION_LOG=[];
     }
+    // Batch 2a — origin-belt backfill. Runs after both STUDENTS and
+    // PROMOTION_LOG are populated so the earliest-promotion lookup is
+    // valid. Skips students whose journey already contains an entry
+    // at the derived origin belt — that's the idempotency guard: once
+    // a row is seeded (manually, by create, or by this backfill on a
+    // previous load), subsequent hydrates leave it alone.
+    try{
+      const _beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
+      STUDENTS.forEach(s=>{
+        if(!s||!s._dbId)return;
+        const journey=Array.isArray(s.journey)?s.journey:[];
+        // Earliest non-correction promotion → fromBelt; fall back to
+        // the student's current belt when no promotion history exists.
+        const promos=PROMOTION_LOG
+          .filter(p=>p&&p.studentId===s.id&&p.type!=='correction'&&p.fromBelt&&p.date)
+          .slice()
+          .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+        const originBelt=(promos[0]&&promos[0].fromBelt)||s.belt||null;
+        if(!originBelt)return;
+        if(journey.some(j=>j&&j.belt===originBelt))return;
+        const entry={belt:originBelt,label:_beltLabel(originBelt)+' belt',date:null,done:true,auto:true,origin:true};
+        s.journey=[entry].concat(journey);
+        // Fire-and-forget persistence — never block hydrate on this.
+        c.from('students').update({journey:s.journey}).eq('id',s._dbId)
+          .then(r=>{if(r&&r.error)console.warn('[mybjj] origin backfill update:',r.error);});
+      });
+    }catch(e){console.warn('[mybjj] origin backfill loop:',e);}
     if(ev.data){
       // MOCK-FIX — empty array clears EVENTS so the feed empty state
       // renders instead of a stale mock seed.
