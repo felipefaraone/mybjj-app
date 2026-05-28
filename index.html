@@ -1893,7 +1893,18 @@ function rAddStu(){
   const v=(k)=>escAttr(F[k]==null?'':F[k]);
   const ccSelect=(idAttr,handler,selected)=>'<select id="'+idAttr+'" onchange="'+handler+'" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">'+ccOptions.map(o=>'<option value="'+o.c+'" '+(o.c===selected?'selected':'')+'>'+o.l+'</option>').join('')+'</select>';
   const unitSel=UNITS.filter(u=>u.active).map(u=>'<option value="'+u.name+'" '+(u.name===(F.unit||S.unit)?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
+  // Prefill banner — persistent header when openAddStudentForm passed
+  // a parent_name (chained Save-&-add-child OR +Add child from another
+  // user's profile). Reads from a dedicated slot S._addPrefillForName
+  // so typing into the parent-name input doesn't mutate the banner
+  // label. Legacy Manage > Add Student leaves the slot null → no
+  // banner.
+  const _prefillParentName=String(S._addPrefillForName||'').trim();
+  const prefillBanner=_prefillParentName
+    ?`<div style="margin-bottom:14px;padding:12px 14px;background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;font-size:14px;color:var(--blue);line-height:1.4">Adding child for ${escHtml(_prefillParentName)}</div>`
+    :'';
   return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody">
+${prefillBanner}
 <div class="slbl">Personal info</div>
 <div class="ef">
 <div class="erow"><div class="elbl">First name</div><input id="add-first" class="einput" placeholder="First name" value="${v('first')}" oninput="S._addForm.first=this.value" autocomplete="off"/></div>
@@ -1925,7 +1936,7 @@ ${isTransfer==='transfer'?'<div class="gnote" style="margin-top:4px">Set belt an
 ${isTransfer==='returning'?'<div class="gnote" style="margin-top:4px">Returning student. Their previous data will be preserved and a return milestone will be added to their journey.</div>':''}
 <div style="height:16px"></div>
 <div style="display:flex;gap:10px;margin-bottom:10px"><button onclick="sendInvite(true)" class="bblue" style="flex:1;padding:12px;font-size:15px">Save & invite</button><button onclick="sendInvite(false)" class="bout" style="flex:1;padding:12px;font-size:15px;border-width:1px;margin-bottom:0">Save only</button></div>
-${!isKids?`<div style="margin-bottom:24px"><button onclick="sendInvite(false,true)" class="bout" style="width:100%;padding:12px;font-size:14px;border-width:1px;margin-bottom:0">Save & add child</button></div>`:'<div style="height:14px"></div>'}
+${!isKids?`<div style="margin-bottom:24px"><button onclick="sendInvite(true,true)" class="bout" style="width:100%;padding:12px;font-size:14px;border-width:1px;margin-bottom:0">Save & add child</button></div>`:'<div style="height:14px"></div>'}
 </div></div>`;
 }
 
@@ -3948,6 +3959,11 @@ function openAddStudentForm(opts){
   opts=opts||{};
   const prefill=opts.prefill||{};
   S._addForm={cc:'+61',parentCc:'+61'};
+  // Persistent banner: the form keeps this label visible the whole
+  // time it's open so the user can see whose child they're adding.
+  // Distinct from S._addForm.parentName (which is bound to the input;
+  // a user typing in that field shouldn't mutate the banner).
+  S._addPrefillForName=prefill.parent_name?String(prefill.parent_name):null;
   if(prefill.parent_email)S._addForm.parentEmail=String(prefill.parent_email).toLowerCase();
   if(prefill.parent_name)S._addForm.parentName=String(prefill.parent_name);
   if(prefill.parent_phone){
@@ -8110,6 +8126,7 @@ function openSub(s){
   if(s==='addstu'){
     S._addForm={cc:'+61',parentCc:'+61'};
     S._addProg='adult';S._addTransfer='new';
+    S._addPrefillForName=null;
   }
   render();
   // Defensive autofill clear — Chrome / Safari often inject a stale
@@ -8122,7 +8139,7 @@ function openSub(s){
     setTimeout(clear,250);
   }
 }
-function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;S.pwdReauthAttempts=0;S.pwdResetSent=false;render();}
+function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;S.pwdReauthAttempts=0;S.pwdResetSent=false;S._addPrefillForName=null;render();}
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
 function pickUnit(u){S.unit=u;S.unitOpen=false;rebuildTT();render();}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
