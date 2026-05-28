@@ -12,9 +12,6 @@ update public.attendance
 set gi = (modality = 'gi')
 where modality is not null and gi <> (modality = 'gi');
 
--- (2) Partial UNIQUE index on (student_id, class_id) — only where class_id NOT NULL.
---     Legacy rows with class_id NULL are out of the gate (acceptable trade-off).
-drop index if exists attendance_student_class_uniq;
-create unique index attendance_student_class_uniq
-  on public.attendance (student_id, class_id)
-  where class_id is not null;
+-- 2 — full UNIQUE constraint (PostgREST exige constraint, não partial index)
+   alter table public.attendance drop constraint if exists attendance_student_class_uniq;
+   alter table public.attendance add constraint attendance_student_class_uniq unique (student_id, class_id);
