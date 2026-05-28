@@ -2075,16 +2075,20 @@ function rStaffProf(){
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:'+(isActive?'var(--green-text)':'var(--amber-text)')+';font-weight:600">'+(isActive?'Active':'Inactive')+'</div></div>'
     +'</div>';
 
+  // Batch 3 — entry-point gate (same rule as rStuProf). Self can edit
+  // any time; admin gets the affordance only when entering via roster.
+  // Community browsing of someone else's profile is read-only.
+  const isRosterEntry=S.profileOrigin==='roster';
   // Pencil "Edit Profile" header button. Matches rStuProf G16a style
   // so the entry point is identical between staff and student profiles.
-  const editPencil=(canAdmin||isSelf)
+  const editPencil=(isSelf||(canAdmin&&isRosterEntry))
     ?'<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStaff(\''+s.id+'\')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>'
     :'';
   const backLbl=profileBackLabel();
-  // Danger Zone — owner viewing someone else. canRemoveStaffRow is
-  // `isOwner() && !isStaffSelf(s)` which is already !isPeer && !isSelf
-  // by construction; explicit isPeer guard for defense-in-depth.
-  const dangerZone=(!isPeer && canRemoveStaffRow(s))
+  // Danger Zone — owner viewing someone else from the roster. Removed
+  // entirely from community-entry to match the rStuProf rule (admin
+  // actions live in Manage, not in the social lens).
+  const dangerZone=(isRosterEntry && !isPeer && canRemoveStaffRow(s))
     ?'<div class="slbl" style="margin-top:20px;color:var(--red-text);border-bottom:1px solid var(--red-border);padding-bottom:6px;letter-spacing:2px">Danger Zone</div>'
       +'<div style="border:1px solid var(--red-border);background:var(--card);border-radius:12px;padding:16px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">'
       +'<div style="flex:1;min-width:160px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px">Remove staff</div><div style="font-size:12px;color:var(--text3);line-height:1.5">Revokes their staff access to the academy. Their journey and head-instructor notes remain on the record.</div></div>'
@@ -2377,11 +2381,23 @@ function rStuProf(){
   const detailsBlock=isPeer?'':details;
   // G16b — attendance + feedback collapsed into summary cards. Full
   // history sits behind View all subviews (rStuAttList / rStuFbList).
+  // Batch 3 — entry-point gate. S.profileOrigin is set by viewStu /
+  // viewStaff at the call site ('roster' from rAdmin lists,
+  // 'community' from rMembers, other values from contextual entries).
+  // Fail safe: anything that isn't explicitly 'roster' falls through
+  // to community / read-only.
+  const isRosterEntry=S.profileOrigin==='roster';
   const attendanceBlock=isPeer?'':_stuAttSummaryCard(s);
-  const feedbackBlock=isPeer?'':_stuFbSummaryCard(s);
+  // Feedback summary card stays visible (data), but its trailing
+  // "+ Add" affordance is suppressed off the roster entry.
+  const feedbackBlock=isPeer?'':_stuFbSummaryCard(s,{allowAdd:isRosterEntry});
   const bottomBlock=isPeer?'':bottomActions;
-  const adminActionsBlock=(isPeer||!canAdmin)?'':rAdminActionRow(s);
-  const editPencilHtml=(isAdminViewer||isSelf)
+  // Admin actions row (Promote / + Class count / Feedback) — gated by
+  // entry point on top of the existing canAdmin permission check.
+  const adminActionsBlock=(isPeer||!canAdmin||!isRosterEntry)?'':rAdminActionRow(s);
+  // Edit Profile pencil — self can always edit own profile; admin only
+  // gets the entry from the roster, not from community browsing.
+  const editPencilHtml=(isSelf||(isAdminViewer&&isRosterEntry))
     ?`<div style="margin-top:12px;display:flex;justify-content:flex-end"><button onclick="openEditStu('${s.id}')" style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:6px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit Profile</button></div>`
     :'';
   return `<div class="sub open">
@@ -2463,14 +2479,15 @@ function rJnySection(s,sidKey){
   const isSelfTarget=isStaffTarget
     ? isStaffSelf(s)
     : !!(s&&s._userId&&S.profile&&s._userId===S.profile.id);
-  // v1.39.x Fix 2(b)+(c) — staff journeys can only be edited by the
-  // head professor (owner). For students the existing
-  // canEditClassCounts gate stays. Community/peer view never shows
-  // an Edit affordance regardless of role — editing lives in
-  // Manage/Progress, not in the social/community lens.
-  const isPeerView=S.profileOrigin==='community';
+  // Batch 3 — entry-point gate (unified). The earlier partial check
+  // tested `S.profileOrigin==='community'` to deny edit; that left a
+  // gap for any unknown / future origin (e.g. 'children', 'class')
+  // which silently fell through to the permission check. Now we
+  // affirmatively require roster entry, so any non-roster source
+  // (community / class / children / null / undefined) → read-only.
+  const isRosterEntry=S.profileOrigin==='roster';
   let canEdit;
-  if(isPeerView) canEdit=false;
+  if(!isRosterEntry) canEdit=false;
   else if(isStaffTarget) canEdit=isOwner();
   else canEdit=canEditClassCounts()&&(isOwner()||!isSelfTarget);
   const isEditing=!!(canEdit&&S.jnyEditFor===sidKey);
@@ -2757,7 +2774,12 @@ function rStuAttList(){
 function _stuFbSummaryCard(s,opts){
   const fromParent=!!(opts&&opts.fromParent);
   const fb=(s.feedback||[]);
-  const canAdd=canEditClassCounts();
+  // Batch 3 — opts.allowAdd defaults true (back-compat for callers that
+  // don't pass it, e.g. Progress tab). rStuProf passes false from
+  // community-entry so the "+ Add" affordance disappears even when
+  // the viewer holds the permission — matches the entry-point gate.
+  const allowAdd=opts&&opts.allowAdd===false?false:true;
+  const canAdd=canEditClassCounts()&&allowAdd;
   const latest=fb[0];
   const addBtn=canAdd?'<button onclick="openFbModal(\''+s.id+'\')" style="background:none;border:1px solid var(--blue);color:var(--blue);border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">+ Add</button>':'';
   if(!latest){
