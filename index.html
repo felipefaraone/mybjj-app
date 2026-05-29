@@ -1652,6 +1652,15 @@ function _stkAv(s,isMe){
   }
   return `<div class="aav" style="background:${bg};color:${fg}">${s.initials||'?'}</div>`;
 }
+// Batch — kids privacy hardening (E1). Public class roster for kids
+// classes collapses to a count-only label — no names, no avatars, no
+// "Show all" expand. Applies for every non-staff viewer (students,
+// peers, parents — including the parent of the kid). Staff retain
+// the full rAttsStaff management surface so they can mark attendance.
+function rAttsCountOnly(all){
+  if(!all||!all.length)return '';
+  return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:12px;color:var(--text2)">${all.length} going</span></div></div>`;
+}
 function rAtts(all,cid){
   if(!all.length)return '';
   const exp=!!S.expanded[cid];
@@ -3680,7 +3689,15 @@ function rClass(){
       }
     }
     else{btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
-    const attBlock=isStaffViewer?rAttsStaff(rows,c.id):rAtts(all,c.id);
+    // Batch — kids privacy hardening (E1). Non-staff viewers see a
+    // count-only label on Kids classes AND on 'All' (open-mat /
+    // mixed-age) classes — Sat 9:30 open mat lets adolescents train
+    // alongside adults, so adult viewers would otherwise see kid
+    // names. Staff keep the management UI.
+    const _hideRosterIdentities=c.aud==='Kids'||c.aud==='All';
+    const attBlock=isStaffViewer
+      ?rAttsStaff(rows,c.id)
+      :(_hideRosterIdentities?rAttsCountOnly(all):rAtts(all,c.id));
     return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
 
@@ -6739,6 +6756,10 @@ async function sendMagicLink(email, opts){
 function photoSrc(path){return path?(SUPABASE_URL+'/storage/v1/object/public/avatars/'+path):'';}
 function avStu(s,size){
   size=size||38;
+  // Batch — kids privacy hardening (E2.2). Kids never render their
+  // stored photo; the initials placeholder is the canonical
+  // identification surface. Adult students unaffected.
+  if(s&&s.prog==='kids')return av(s&&s.initials||'?',s&&s.belt||'',size);
   if(s&&s.photoUrl){
     const ring=_avBeltPair(s&&s.belt||'')[0];
     return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.parentNode.style.display=\'none\'"/></div>';
@@ -9831,10 +9852,17 @@ function rEditStu(){
   // Photo affordance only for the row's own user — admin viewing
   // someone else's profile keeps the static avatar; admin uploads on
   // behalf go through the photo queue.
-  const _photoTapTarget=isSelf?'self':(isStaffOrOwner()?s.id:null);
-  const photoBlock=_photoTapTarget
-    ?`<div onclick="openPhotoMenu('${_photoTapTarget}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
-    :`${avStu(s,72)}`;
+  // Batch — kids privacy hardening (E2.1). Kids accounts have NO
+  // photo upload affordance — the static initials avatar + a small
+  // explanatory note replace the tap-to-change block. Adults keep the
+  // existing self / admin upload paths.
+  const _isKidsSubject=s&&s.prog==='kids';
+  const _photoTapTarget=_isKidsSubject?null:(isSelf?'self':(isStaffOrOwner()?s.id:null));
+  const photoBlock=_isKidsSubject
+    ?`${avStu(s,72)}<div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">Photo upload disabled for kids accounts.</div>`
+    :(_photoTapTarget
+      ?`<div onclick="openPhotoMenu('${_photoTapTarget}')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStu(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
+      :`${avStu(s,72)}`);
   // B-edit — tab set diverges by subject prog:
   //   kids  → Basic / Training / Guardian (Guardian merges parent +
   //           emergency fields; no Social, no kid email/phone).
