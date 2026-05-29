@@ -137,6 +137,8 @@ html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}bod
 @media(prefers-color-scheme:dark){.abadge{color:#4d90e0}}
 .qb{background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);border-radius:6px;padding:3px 8px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;line-height:1}
 .offline-strip{position:fixed;top:0;left:0;right:0;background:var(--amber-bg);color:var(--amber-text);border-bottom:1px solid var(--amber-border);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.4px;text-align:center;padding:4px 8px;z-index:9000;pointer-events:none}
+.update-strip{position:fixed;top:0;left:0;right:0;background:#1A5DAD;color:#fff;text-align:center;padding:6px 12px;font-family:Barlow,sans-serif;font-size:13px;z-index:9001;pointer-events:auto;display:flex;align-items:center;justify-content:center;gap:8px}
+.us-btn{background:#fff;color:#1A5DAD;border:0;padding:3px 10px;border-radius:4px;font-weight:700;cursor:pointer;font-family:Barlow Condensed,sans-serif;text-transform:uppercase;letter-spacing:.5px;font-size:12px}
 .content{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 16px 16px;-webkit-overflow-scrolling:touch;min-width:0;overscroll-behavior-y:contain}
 /* When any .cov overlay (incl. the Add week sheet) is mounted in the
    DOM, freeze the underlying scroll container so iOS can't chain a
@@ -5736,7 +5738,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -10766,9 +10768,58 @@ window.addEventListener('load',()=>{
   _startQueueTimer();
   drainAttendanceQueue();
 });
+// ---------------------------------------------------------------------------
+// SW update detection. When a new sw.js ships, surface a one-tap
+// "Update available — Refresh" banner. The user is in control: no
+// auto skipWaiting, no auto reload outside the controllerchange
+// listener. updateViaCache:'none' is REQUIRED — without it, GitHub
+// Pages can cache sw.js for 10+ minutes and new versions go
+// undetected (the exact failure mode that prompted this batch).
+// ---------------------------------------------------------------------------
+let _swUpdateBannerShown=false;
+let _swWaitingReg=null;
+let _swReloading=false;
+
+function _showUpdateBanner(reg){
+  if(_swUpdateBannerShown)return;
+  _swUpdateBannerShown=true;
+  _swWaitingReg=reg;
+  try{render();}catch(_){}
+}
+function applySwUpdate(){
+  if(!_swWaitingReg||!_swWaitingReg.waiting)return;
+  _swWaitingReg.waiting.postMessage({type:'SKIP_WAITING'});
+  // The controllerchange listener below reloads once the new SW takes
+  // control. No reload here — avoids racing the SW handoff.
+}
+
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('/sw.js').then(()=>console.log('[mybjj] SW registered')).catch(err=>console.warn('[mybjj] SW reg failed:',err));
+    navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then((reg)=>{
+      console.log('[mybjj] SW registered');
+      // Already-waiting SW from a previous session: banner immediately.
+      if(reg.waiting&&navigator.serviceWorker.controller){
+        _showUpdateBanner(reg);
+      }
+      // New SW found during this session.
+      reg.addEventListener('updatefound',()=>{
+        const nw=reg.installing;
+        if(!nw)return;
+        nw.addEventListener('statechange',()=>{
+          if(nw.state==='installed'&&navigator.serviceWorker.controller){
+            _showUpdateBanner(reg);
+          }
+        });
+      });
+    }).catch(err=>console.warn('[mybjj] SW reg failed:',err));
+  });
+  // Reload exactly once after the user-triggered skipWaiting completes
+  // and the new SW takes over. _swReloading guards against the same
+  // event firing twice (some browsers do).
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(_swReloading)return;
+    _swReloading=true;
+    location.reload();
   });
 }
 </script>

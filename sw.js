@@ -1,4 +1,4 @@
-const CACHE = 'mybjj-v153';
+const CACHE = 'mybjj-v154';
 const STATIC = [
   '/', '/index.html', '/manifest.json',
   '/icon-192.png', '/icon-512.png',
@@ -10,10 +10,20 @@ const STATIC = [
 ];
 
 self.addEventListener('install', e => {
-  self.skipWaiting();
+  // Don't auto-skip-waiting. The page surfaces an "Update available"
+  // banner and posts {type:'SKIP_WAITING'} when the user taps Refresh —
+  // see the message listener below. First-time installs (no prior SW
+  // controlling) still activate immediately because the lifecycle has
+  // no `waiting` phase when there's nothing to replace.
   e.waitUntil(
     caches.open(CACHE).then(c => c.addAll(STATIC).catch(() => {}))
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', e => {
