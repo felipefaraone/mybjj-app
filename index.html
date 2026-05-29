@@ -3689,15 +3689,26 @@ function rClass(){
       }
     }
     else{btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
-    // Batch — kids privacy hardening (E1). Non-staff viewers see a
-    // count-only label on Kids classes AND on 'All' (open-mat /
-    // mixed-age) classes — Sat 9:30 open mat lets adolescents train
-    // alongside adults, so adult viewers would otherwise see kid
-    // names. Staff keep the management UI.
-    const _hideRosterIdentities=c.aud==='Kids'||c.aud==='All';
-    const attBlock=isStaffViewer
-      ?rAttsStaff(rows,c.id)
-      :(_hideRosterIdentities?rAttsCountOnly(all):rAtts(all,c.id));
+    // Batch — kids privacy hardening (E1, per-audience). Three-way
+    // split for non-staff viewers: 'Kids' classes stay fully
+    // count-only; 'All' (open-mat / mixed-age, e.g. Sat 9:30) shows
+    // only adult attendees so peer adults remain visible while kids
+    // stay hidden; 'Adults' (and any other audience) renders the
+    // full roster. Staff path is unchanged.
+    let attBlock;
+    if(isStaffViewer){
+      attBlock=rAttsStaff(rows,c.id);
+    }else if(c.aud==='Kids'){
+      attBlock=rAttsCountOnly(all);
+    }else if(c.aud==='All'){
+      // `all` carries legacy student ids (line 3632 already maps each
+      // attendance row → STUDENTS.find → s.id). Filter via the same
+      // lookup, dropping rows whose subject is a kid.
+      const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
+      attBlock=rAtts(_adultsOnly,c.id);
+    }else{
+      attBlock=rAtts(all,c.id);
+    }
     return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
 
