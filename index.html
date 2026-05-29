@@ -7705,6 +7705,22 @@ async function hydrateData(){
       console.warn('[mybjj] hydrate feedback:',fb.error);
       for(const s of STUDENTS)s.feedback=[];
     }
+    // Batch B — fire-and-forget cleanup of stale 'going' rows past
+    // their class end time. The RPC (migration 64) flips them to
+    // 'absent' for THIS user only; legacy backlog across all users
+    // was covered by the one-shot UPDATE inside the migration itself.
+    // Hydrate doesn't wait on this; failures stay silent.
+    try{
+      if(c&&S.profile&&S.profile.id){
+        c.rpc('cleanup_orphan_going',{p_user_id:S.profile.id})
+          .then(function(r){
+            if(r&&typeof r.data==='number'&&r.data>0){
+              console.log('[mybjj] cleaned',r.data,'orphan going row(s)');
+            }
+          })
+          .catch(function(){});
+      }
+    }catch(_){}
     if(touched){enrichMeFromHydrate();console.log('[mybjj] hydrated from Supabase');S.hydrating=false;render();if(canEditClassCounts())loadPhotoQueue();loadMyPhotoApproval();loadNotifications();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
     else{console.warn('[mybjj] hydration returned no rows — keeping local fallback');S.hydrating=false;render();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
   }catch(e){
@@ -8536,6 +8552,11 @@ function _classEndedToday(c){
 // RLS / migration 63 schema all untouched by this layer.
 // ---------------------------------------------------------------------------
 const _ATT_QUEUE_KEY='mybjj_attendance_queue';
+// Batch B — cap retries so a permanent error can't loop forever.
+// Auth + constraint errors are handled separately and aren't subject
+// to this cap (auth pauses; constraint drops immediately).
+const MAX_QUEUE_RETRIES=5;
+let _queueDeadLetterToastShown=false;
 let _draining=false;
 let _queueIntervalStarted=false;
 let _queueListenersStarted=false;
@@ -8648,8 +8669,21 @@ async function drainAttendanceQueue(){
           queueUpdate(item.qid,{retries:(item.retries||0)+1,lastError:String(err.message||err)});
           break;
         }
+        // Network — bump retries, then either drop (max retries reached)
+        // or keep + break so the next drain trigger retries.
+        const _nextRetries=(item.retries||0)+1;
+        if(_nextRetries>=MAX_QUEUE_RETRIES){
+          console.warn('[mybjj] dropping queue item after max retries:',item.qid,String(err.message||err));
+          queueRemove(item.qid);
+          if(!_queueDeadLetterToastShown){
+            _queueDeadLetterToastShown=true;
+            try{showSaveToast2('Some actions could not be saved. Please refresh and try again.','error');}catch(_){}
+          }
+          // Try the next item — one stuck row shouldn't block others.
+          continue;
+        }
         console.warn('[mybjj] queue retry (network):',err);
-        queueUpdate(item.qid,{retries:(item.retries||0)+1,lastError:String(err.message||err)});
+        queueUpdate(item.qid,{retries:_nextRetries,lastError:String(err.message||err)});
         break;
       }
       // Success — reconcile local-prefix row if any.
