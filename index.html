@@ -135,6 +135,8 @@ html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}bod
 .bell-badge{position:absolute;top:1px;right:1px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--red);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--surface);box-sizing:border-box;line-height:1}
 .abadge{background:var(--blue-tint);color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:4px;border:1px solid var(--blue-mid)}
 @media(prefers-color-scheme:dark){.abadge{color:#4d90e0}}
+.qb{background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);border-radius:6px;padding:3px 8px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;line-height:1}
+.offline-strip{position:fixed;top:0;left:0;right:0;background:var(--amber-bg);color:var(--amber-text);border-bottom:1px solid var(--amber-border);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.4px;text-align:center;padding:4px 8px;z-index:9000;pointer-events:none}
 .content{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 16px 16px;-webkit-overflow-scrolling:touch;min-width:0;overscroll-behavior-y:contain}
 /* When any .cov overlay (incl. the Add week sheet) is mounted in the
    DOM, freeze the underlying scroll container so iOS can't chain a
@@ -5734,7 +5736,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 13l2 2 4-4"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="myBJJ" style="width:38px;height:38px;object-fit:contain;border-radius:50%"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -7703,8 +7705,8 @@ async function hydrateData(){
       console.warn('[mybjj] hydrate feedback:',fb.error);
       for(const s of STUDENTS)s.feedback=[];
     }
-    if(touched){enrichMeFromHydrate();console.log('[mybjj] hydrated from Supabase');S.hydrating=false;render();if(canEditClassCounts())loadPhotoQueue();loadMyPhotoApproval();loadNotifications();}
-    else{console.warn('[mybjj] hydration returned no rows — keeping local fallback');S.hydrating=false;render();}
+    if(touched){enrichMeFromHydrate();console.log('[mybjj] hydrated from Supabase');S.hydrating=false;render();if(canEditClassCounts())loadPhotoQueue();loadMyPhotoApproval();loadNotifications();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
+    else{console.warn('[mybjj] hydration returned no rows — keeping local fallback');S.hydrating=false;render();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
   }catch(e){
     console.warn('[mybjj] hydration failed — keeping local fallback:',e);
     // Even on error, drop the splash so the user isn't stuck staring
@@ -8521,6 +8523,170 @@ function _classEndedToday(c){
   const m=+(parts.find(p=>p.type==='minute')||{}).value||0;
   return (h*60+m)>endMin;
 }
+// ---------------------------------------------------------------------------
+// Offline-resilient attendance queue (Batch A.2).
+// localStorage-backed FIFO of pending attendance writes. Single key
+// 'mybjj_attendance_queue'. Items carry their op+payload+userId; the
+// drain loop applies them in order whenever the network is back and
+// the same user is signed in. On caught network errors (fetch
+// throws / navigator.onLine flips), writes fall back to enqueue
+// instead of rolling back the local-state mutation, so the UI stays
+// optimistic. Constraint errors get DROPPED (retrying won't help);
+// auth errors PAUSE the drain (waiting for re-auth). recompute /
+// RLS / migration 63 schema all untouched by this layer.
+// ---------------------------------------------------------------------------
+const _ATT_QUEUE_KEY='mybjj_attendance_queue';
+let _draining=false;
+let _queueIntervalStarted=false;
+let _queueListenersStarted=false;
+let _queueHydrateDrainStarted=false;
+
+function queueRead(){
+  try{
+    const raw=localStorage.getItem(_ATT_QUEUE_KEY);
+    if(!raw)return [];
+    const a=JSON.parse(raw);
+    return Array.isArray(a)?a:[];
+  }catch(_){return [];}
+}
+function queueWrite(arr){
+  try{localStorage.setItem(_ATT_QUEUE_KEY,JSON.stringify(arr||[]));}
+  catch(e){console.warn('[mybjj] queueWrite failed:',e);}
+}
+function queueEnqueue(item){
+  const arr=queueRead();
+  if(!item.qid)item.qid='q-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
+  if(item.enqueuedAt==null)item.enqueuedAt=Date.now();
+  if(item.retries==null)item.retries=0;
+  arr.push(item);
+  queueWrite(arr);
+  return item;
+}
+function queueRemove(qid){
+  queueWrite(queueRead().filter(x=>x&&x.qid!==qid));
+}
+function queueUpdate(qid,patch){
+  queueWrite(queueRead().map(x=>(x&&x.qid===qid)?Object.assign({},x,patch):x));
+}
+function queueCount(){
+  const uid=S.profile&&S.profile.id;
+  const arr=queueRead();
+  if(!uid)return arr.length;
+  return arr.filter(x=>x&&(!x.userId||x.userId===uid)).length;
+}
+function queueFindByLocalId(localDbId){
+  if(!localDbId)return null;
+  const arr=queueRead();
+  for(const x of arr)if(x&&x.localDbId===localDbId)return x;
+  return null;
+}
+
+// Categorise a drain error so the loop knows whether to drop, pause,
+// or keep + retry.
+function _queueClassifyError(err){
+  if(!err)return 'unknown';
+  const code=String(err.code||'').toUpperCase();
+  const msg=String(err.message||err).toLowerCase();
+  if(code==='PGRST301'||code==='PGRST302'||code==='42501')return 'auth';
+  if(msg.includes('jwt')||msg.includes('not authenticated')||msg.includes('unauthorized'))return 'auth';
+  if(/^23/.test(code)||/^42/.test(code))return 'constraint';
+  if(code.startsWith('PGRST')&&!/PGRST301|PGRST302/.test(code))return 'constraint';
+  if(msg.includes('duplicate')||msg.includes('violates'))return 'constraint';
+  if(!navigator.onLine)return 'network';
+  if(err instanceof TypeError||msg.includes('fetch')||msg.includes('network')||msg.includes('timeout'))return 'network';
+  return 'network';
+}
+
+async function drainAttendanceQueue(){
+  if(_draining)return;
+  if(typeof navigator!=='undefined'&&navigator.onLine===false)return;
+  const cli=initSupabase();if(!cli)return;
+  const uid=S.profile&&S.profile.id;if(!uid)return;
+  if(queueCount()===0)return;
+  _draining=true;
+  try{
+    while(true){
+      const arr=queueRead();
+      const item=arr.find(x=>x&&x.userId===uid);
+      if(!item)break;
+      let err=null,realId=null;
+      try{
+        const tbl=item.table||'attendance';
+        if(item.op==='upsert'){
+          const ignore=!!item.ignoreDuplicates;
+          const r=await cli.from(tbl).upsert(item.payload,{onConflict:item.onConflict||'student_id,class_id',ignoreDuplicates:ignore}).select('id');
+          if(r&&r.error){err=r.error;}
+          else{
+            realId=r&&r.data&&r.data[0]&&r.data[0].id;
+            if(!realId&&ignore&&item.payload&&item.payload.class_id){
+              try{
+                const f=await cli.from(tbl).select('id').eq('student_id',item.payload.student_id).eq('class_id',item.payload.class_id).maybeSingle();
+                if(f&&f.data&&f.data.id)realId=f.data.id;
+              }catch(_){}
+            }
+          }
+        }else if(item.op==='update'){
+          const r=await cli.from(tbl).update(item.payload).eq('id',item.rowId).select('id');
+          if(r&&r.error)err=r.error;
+          else realId=item.rowId;
+        }else if(item.op==='delete'){
+          const r=await cli.from(tbl).delete().eq('id',item.rowId);
+          if(r&&r.error)err=r.error;
+        }else{
+          queueRemove(item.qid);continue;
+        }
+      }catch(e){err=e;}
+      if(err){
+        const kind=_queueClassifyError(err);
+        if(kind==='constraint'){
+          console.warn('[mybjj] queue drop (constraint):',err);
+          queueRemove(item.qid);
+          continue;
+        }
+        if(kind==='auth'){
+          console.warn('[mybjj] queue paused (auth):',err);
+          queueUpdate(item.qid,{retries:(item.retries||0)+1,lastError:String(err.message||err)});
+          break;
+        }
+        console.warn('[mybjj] queue retry (network):',err);
+        queueUpdate(item.qid,{retries:(item.retries||0)+1,lastError:String(err.message||err)});
+        break;
+      }
+      // Success — reconcile local-prefix row if any.
+      if(item.localDbId){
+        const localRow=ATTENDANCE.find(a=>a&&a._dbId===item.localDbId);
+        if(localRow&&realId)localRow._dbId=realId;
+      }
+      queueRemove(item.qid);
+    }
+  }finally{
+    _draining=false;
+    try{render();}catch(_){}
+  }
+}
+
+// Idempotent listener / timer registration. Safe to call from anywhere
+// (rApp / boot / hydrate); guards prevent double registration.
+function _startQueueListeners(){
+  if(_queueListenersStarted)return;
+  if(typeof window==='undefined')return;
+  _queueListenersStarted=true;
+  window.addEventListener('online',()=>{
+    drainAttendanceQueue();
+    try{render();}catch(_){}
+  });
+  window.addEventListener('offline',()=>{
+    try{render();}catch(_){}
+  });
+}
+function _startQueueTimer(){
+  if(_queueIntervalStarted)return;
+  _queueIntervalStarted=true;
+  setInterval(()=>{
+    if(queueCount()>0&&navigator.onLine)drainAttendanceQueue();
+  },30000);
+}
+
 async function doCI(id){
   // G1-B + G16-new — defence in depth. Self check-in window is
   // today OR tomorrow. Day+2+ must still be refused even if a stale
@@ -8556,10 +8722,24 @@ async function doCI(id){
   // the existing row's id so the local-prefix reconciliation still
   // lands and we don't leak an orphan local row.
   const _mod=_modalityFromType(t.type);
-  const r=await cli.from('attendance').upsert(
-    {student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:'going'},
-    {onConflict:'student_id,class_id',ignoreDuplicates:true}
-  ).select('id');
+  const _payload={student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:'going'};
+  let r=null,_caught=null;
+  try{
+    r=await cli.from('attendance').upsert(_payload,{onConflict:'student_id,class_id',ignoreDuplicates:true}).select('id');
+  }catch(e){_caught=e;}
+  // Batch A.2 — network failure (fetch throw / offline): enqueue and
+  // keep the local-prefix row visible. The drain replaces _dbId with
+  // the real id once we're back online.
+  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    queueEnqueue({
+      op:'upsert',table:'attendance',
+      ignoreDuplicates:true,onConflict:'student_id,class_id',
+      payload:_payload,localDbId:local._dbId,
+      userId:(S.profile&&S.profile.id)||null
+    });
+    try{render();}catch(_){}
+    return;
+  }
   if(r&&r.error){
     // Roll back local
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
@@ -8581,6 +8761,8 @@ async function doCI(id){
   // calling refreshStudentStats here keeps the local row in lock-step
   // with whatever the trigger decided — safer than assuming.
   await refreshStudentStats(stu._dbId);
+  // Opportunistic drain in case earlier offline writes are waiting.
+  drainAttendanceQueue();
 }
 
 // Undo — DELETE the attendance row for the signed-in user's student row.
@@ -8608,8 +8790,32 @@ async function undoCI(id){
   if(ix<0)return;
   const removed=ATTENDANCE.splice(ix,1)[0];
   render();
-  const cli=initSupabase();if(!cli||!removed._dbId||String(removed._dbId).startsWith('local-'))return;
-  const r=await cli.from('attendance').delete().eq('id',removed._dbId);
+  const cli=initSupabase();
+  if(!cli||!removed._dbId)return;
+  // Batch A.2 — local-prefix row never landed in the DB. If there's
+  // a pending queue item for it, drop the item so we don't sync a
+  // ghost upsert after coming back online. No DB call needed.
+  if(String(removed._dbId).startsWith('local-')){
+    const pending=queueFindByLocalId(removed._dbId);
+    if(pending)queueRemove(pending.qid);
+    try{render();}catch(_){}
+    return;
+  }
+  let r=null,_caught=null;
+  try{
+    r=await cli.from('attendance').delete().eq('id',removed._dbId);
+  }catch(e){_caught=e;}
+  // Network failure → enqueue. We don't restore the local row because
+  // the user explicitly removed it; the queue absorbs the DB sync.
+  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    queueEnqueue({
+      op:'delete',table:'attendance',
+      rowId:removed._dbId,
+      userId:(S.profile&&S.profile.id)||null
+    });
+    try{render();}catch(_){}
+    return;
+  }
   if(r&&r.error){
     // Restore
     ATTENDANCE.push(removed);
@@ -8620,6 +8826,7 @@ async function undoCI(id){
   // If the staff had already confirmed this row, deleting it should
   // decrement total — pull the fresh counts.
   await refreshStudentStats(stu._dbId);
+  drainAttendanceQueue();
 }
 function setAtab(t){S.atab=t;render();if(t==='photos'&&canEditClassCounts())loadPhotoQueue();}
 function setPtab(t){S.ptab=t;render();}
@@ -8779,7 +8986,21 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
     if(isPresent)payload.class_value=cv;
     // Upsert with ignoreDuplicates:false so the instructor's mark
     // upgrades any pre-existing 'going' row in place (intended).
-    const r=await cli.from('attendance').upsert(payload,{onConflict:'student_id,class_id',ignoreDuplicates:false}).select('id').single();
+    let r=null,_caught=null;
+    try{
+      r=await cli.from('attendance').upsert(payload,{onConflict:'student_id,class_id',ignoreDuplicates:false}).select('id').single();
+    }catch(e){_caught=e;}
+    if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+      queueEnqueue({
+        op:'upsert',table:'attendance',
+        ignoreDuplicates:false,onConflict:'student_id,class_id',
+        payload:payload,localDbId:local._dbId,
+        userId:(S.profile&&S.profile.id)||null
+      });
+      showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
+      try{render();}catch(_){}
+      return;
+    }
     if(r&&r.error){
       const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
       console.warn('[mybjj] insert attendance ('+newStatus+'):',r.error);
@@ -8787,19 +9008,47 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
     }
     if(r&&r.data)local._dbId=r.data.id;
     showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
-    await refreshStudentStats(s._dbId);render();return;
+    await refreshStudentStats(s._dbId);render();
+    drainAttendanceQueue();
+    return;
   }
   const prev={status:row.status,classValue:row.classValue};
   row.status=newStatus;row.confirmedBy=confirmed;row.confirmedAt=confirmedAt;
   if(isPresent)row.classValue=cv;
   render();
-  if(!cli||String(row._dbId).startsWith('local-'))return;
+  if(!cli)return;
   const updatePayload={status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
   if(isPresent)updatePayload.class_value=cv;
+  // Batch A.2 — row still has a local- prefix: there's an in-flight
+  // upsert in the queue. Merge the new status/confirmer/class_value
+  // into THAT payload instead of enqueueing a separate update — one
+  // canonical upsert drains a single row, correct state.
+  if(String(row._dbId).startsWith('local-')){
+    const pending=queueFindByLocalId(row._dbId);
+    if(pending){
+      const mergedPayload=Object.assign({},pending.payload||{},updatePayload);
+      queueUpdate(pending.qid,{payload:mergedPayload,ignoreDuplicates:false});
+    }
+    try{render();}catch(_){}
+    return;
+  }
   // .select() returns the modified rows. RLS-hidden rows give 0
   // rowcount with no error — rolling back keeps local state in sync
   // with the DB instead of lying to the instructor.
-  const r=await cli.from('attendance').update(updatePayload).eq('id',row._dbId).select('id');
+  let r=null,_caught=null;
+  try{
+    r=await cli.from('attendance').update(updatePayload).eq('id',row._dbId).select('id');
+  }catch(e){_caught=e;}
+  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    queueEnqueue({
+      op:'update',table:'attendance',
+      rowId:row._dbId,payload:updatePayload,
+      userId:(S.profile&&S.profile.id)||null
+    });
+    showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
+    try{render();}catch(_){}
+    return;
+  }
   if(r&&r.error){
     row.status=prev.status;row.classValue=prev.classValue;
     console.warn('[mybjj] update attendance ('+newStatus+'):',r.error);
@@ -8812,6 +9061,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
   }
   showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
   await refreshStudentStats(s._dbId);render();
+  drainAttendanceQueue();
 }
 // G9.2 — Mark Present now opens the 5-tier picker sheet instead of
 // going straight to class_value=1.00. Tap a row → openMarkPSheet →
@@ -8993,7 +9243,7 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   // row to 'present' in place, and never duplicates. gi mirrors
   // modality on every write so the canonical/derived pair never drifts.
   const _mod=_modalityFromType(tt.type);
-  const r=await cli.from('attendance').upsert({
+  const _payload={
     student_id:s._dbId,
     unit_id:unit&&unit._dbId||null,
     class_id:tt.classId||null,
@@ -9007,7 +9257,24 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
     confirmed_by:S.profile&&S.profile.id,
     confirmed_at:nowISO,
     class_value:cv,
-  },{onConflict:'student_id,class_id',ignoreDuplicates:false}).select('id').single();
+  };
+  let r=null,_caught=null;
+  try{
+    r=await cli.from('attendance').upsert(_payload,{onConflict:'student_id,class_id',ignoreDuplicates:false}).select('id').single();
+  }catch(e){_caught=e;}
+  // Batch A.2 — offline / network fail: enqueue, keep the optimistic
+  // ATTENDANCE row visible. Drain later upgrades the local-prefix id.
+  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    queueEnqueue({
+      op:'upsert',table:'attendance',
+      ignoreDuplicates:false,onConflict:'student_id,class_id',
+      payload:_payload,localDbId:local._dbId,
+      userId:(S.profile&&S.profile.id)||null
+    });
+    S.classAdd.saving=false;
+    _renderClassAddList();
+    return;
+  }
   if(r&&r.error){
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
     console.warn('[mybjj] add student to class:',r.error);
@@ -9028,6 +9295,7 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   // the search input for the next-add.
   setTimeout(()=>{const el=document.getElementById('cas-input');if(el)el.focus();},20);
   showSaveToast2('Added '+s.name.split(' ')[0]);
+  drainAttendanceQueue();
 }
 // G1-B — notification data layer. NOTIFS + UNREAD_COUNT are sourced
 // exclusively from the migration-42 RPCs. Every mutation refreshes the
@@ -10455,7 +10723,15 @@ render();bootAuth();
 // invocation (idempotent), but if the user just sits on the screen
 // without triggering re-renders, this load listener ensures the
 // library wires itself up as soon as it's available.
-window.addEventListener('load',()=>{initPullToRefresh();});
+window.addEventListener('load',()=>{
+  initPullToRefresh();
+  // Batch A.2 — offline queue boot. Idempotent guards inside the
+  // helpers prevent double registration. Initial drain attempt fires
+  // immediately (no-op if queue empty or offline).
+  _startQueueListeners();
+  _startQueueTimer();
+  drainAttendanceQueue();
+});
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('/sw.js').then(()=>console.log('[mybjj] SW registered')).catch(err=>console.warn('[mybjj] SW reg failed:',err));
