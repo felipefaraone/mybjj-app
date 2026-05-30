@@ -1791,6 +1791,16 @@ function rTL(journey,subject){
   const _myStuForJny=(typeof myStudentRow==='function')?myStudentRow():null;
   const _isStudentAdminJny=!!(S.me&&S.me.role==='instructor'&&_myStuForJny);
   const _viewerIsStaff=(typeof isStaffOrOwner==='function')&&isStaffOrOwner()&&!_isStudentAdminJny;
+  // V2 refinement — "You are here" pill only renders on the viewer's
+  // own journey. myStudentRow() already routes parent-with-active-kid
+  // to that kid's row (per the parent-switcher batches), so a parent
+  // viewing their kid via the switcher counts as own. Second clause
+  // catches the staff-self path (rStaffProf) where the subject is a
+  // STAFF row whose _userId is the signed-in user.
+  const _isOwnJourney=!!(
+    (_myStuForJny&&s&&_myStuForJny.id===s.id)
+    ||(s&&s._userId&&S.profile&&s._userId===S.profile.id)
+  );
   // Batch 2b — derive "You are here" from the LAST entry whose
   // belt === s.belt. Stored m.current flags are ignored (historic
   // entries carry duplicate / stale `current:true`); the deterministic
@@ -1846,11 +1856,17 @@ function rTL(journey,subject){
     const _curMetaLine=isCur
       ?(_curMetaParts.length?'<div class="tld">'+_curMetaParts.join(' · ')+'</div>':'')
       :'';
-    const _herePill=isCur
-      ?'<span style="display:inline-flex;align-items:center;gap:3px;background:transparent;border:0.5px solid var(--blue);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:6px;line-height:1;flex-shrink:0"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>You are here</span>'
+    // V2 refinement — pill only when viewing own journey; centering
+    // fix: title gets line-height:1.4 inside the row so its line-box
+    // is taller than the pill, letting flex `align-items:center`
+    // place the pill on the title's cap-height midline. (The global
+    // .tlt rule at index.html:290 sets line-height:1, which pinned
+    // the smaller pill to the title's bottom edge.)
+    const _herePill=(isCur&&_isOwnJourney)
+      ?'<span style="display:inline-flex;align-items:center;gap:3px;background:transparent;border:0.5px solid var(--blue);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:6px;line-height:1;flex-shrink:0"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display:block"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>You are here</span>'
       :'';
     const _titleRow=isCur
-      ?'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+'">'+m.label+'</div>'+_herePill+'</div>'
+      ?'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+';line-height:1.4">'+m.label+'</div>'+_herePill+'</div>'
       :'<div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+'">'+m.label+'</div>';
     return `<div class="tli"><div class="tldot" style="background:${isFut?'var(--bg)':isTr?'var(--amber-bg)':bl.bg};color:${isFut?'var(--text3)':isTr?'var(--amber-text)':bl.fg};border:2px solid ${isFut?'var(--border2)':isTr?'var(--amber-border)':isCur?'var(--blue)':bl.bg}${isCur?';box-shadow:0 0 0 3px var(--blue-tint)':''}">
       ${isTr?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`:isFut?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>`:isCur?`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><circle cx="12" cy="12" r="4" fill="${bl.fg}"/></svg>`:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`}
