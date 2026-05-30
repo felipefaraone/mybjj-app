@@ -3352,7 +3352,7 @@ ${revertRow}
 // recompute_student_stats; mode 3 does not (no Wall, no stat shift).
 // Mode 2 inserts type='correction' so the Community Wall filter at
 // rCommunityWall (index.html:4212) drops it from the feed.
-async function savePromote(){
+async function savePromote(skipDuplicateBeltConfirm){
   if(!S.promoteFor||!S.promoteForm)return;
   const sid=S.promoteFor;
   const s=STUDENTS.find(x=>x.id===sid);if(!s){closePromoteModal();return;}
@@ -3388,6 +3388,22 @@ async function savePromote(){
 
   // target == current with setCurrent ON → no-op.
   if(direction===0 && setCurrent){closePromoteModal();return;}
+
+  // Duplicate-belt guard — when the admin picks a belt equal to the
+  // student's current belt as a forward action (direction > 0), the
+  // common cause is forgetting to bump the dropdown to the next belt.
+  // Confirm before inserting. Bypassed on the recursive call from
+  // openConfirm's onConfirm (skipDuplicateBeltConfirm=true).
+  if(!skipDuplicateBeltConfirm && setCurrent && direction>0 && targetBelt===s.belt){
+    const _curLbl=(BA[s.belt]||BK[s.belt]||{label:s.belt}).label;
+    openConfirm({
+      title:'Belt unchanged',
+      message:'This student is already at '+_curLbl+' belt. Promote again anyway?',
+      dangerLabel:'Promote anyway',
+      onConfirm:()=>savePromote(true)
+    });
+    return;
+  }
 
   const cli=initSupabase();
   const unit=UNITS.find(u=>u.id===(s.unit||'nb'));
@@ -4670,53 +4686,53 @@ function rCommunityWall(){
     const deg=p.toDeg||0;
     const when=_promoWhen(p.date);
     const ossHtml=_ossControlHtml(p._dbId);
+    // V3 layout (shared by belt + stripe). Eyebrow + bigger name +
+    // date on the left; belt visual on the right (bb() owns its own
+    // uppercase caption — duplicating it here was the source of the
+    // doubled "PURPLE" label). Divider with bottom-padding matches
+    // the profile header V2 meta-row rhythm at index.html:3988 —
+    // ossHtml below keeps its own padding wrapper, so the divider's
+    // padding-bottom is the only breathing room added between them.
+    const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:flex-start;gap:12px;padding:14px 14px 12px;cursor:pointer"';
+    const _eyebrowStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1';
+    const _nameStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;line-height:1.2';
+    const _dateStyle='font-size:11px;color:var(--text3);margin-top:4px';
+    let _eyebrow,_trail;
     if(isBelt){
-      // V3 layout — belt-promotion card: eyebrow "NEW PROMOTION",
-      // bigger name (16px), date-only subtitle (the eyebrow + the
-      // belt visual already say "promoted"), belt visual on the
-      // right with an uppercase belt-name label under it, then a
-      // 0.5px divider, then the Oss area unchanged below.
-      // Eyebrow + belt label reuse the existing Barlow Condensed
-      // uppercase-caption signature (matches .dlbl / .psec at
-      // index.html:123 / index.html:173) — brand-blue for the
-      // eyebrow, text3 for the belt label.
-      const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:flex-start;gap:12px;padding:14px 14px 12px;cursor:pointer"';
-      const _eyebrowStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1';
-      const _nameStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;line-height:1.2';
-      const _dateStyle='font-size:11px;color:var(--text3);margin-top:4px';
-      const _beltLblStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-top:6px;line-height:1';
-      const _beltLbl=beltLabel(p.toBelt).toUpperCase();
-      const _trail='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'
+      // Belt — eyebrow "NEW PROMOTION"; right column = belt visual
+      // at deg 0 (bb() draws the belt name under it, e.g. "PURPLE").
+      _eyebrow='New promotion';
+      _trail='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'
         +bb(p.toBelt,0,'adult')
-        +'<div style="'+_beltLblStyle+'">'+_beltLbl+'</div>'
       +'</div>';
-      return '<div class="card" style="margin-bottom:8px"><div '+tap+'>'
-        +avStu(s,40)
-        +'<div style="flex:1;min-width:0">'
-          +'<div style="'+_eyebrowStyle+'">New promotion</div>'
-          +'<div style="'+_nameStyle+'">'+s.name+'</div>'
-          +'<div style="'+_dateStyle+'">'+when+'</div>'
-        +'</div>'
-        +_trail
-        +'</div>'
-        +'<div style="border-top:0.5px solid var(--border);margin:0 14px"></div>'
-        +ossHtml
+    }else{
+      // Stripe — eyebrow "NEW STRIPE" (or "NEW DEGREE" on black);
+      // right column = beltSVG with deg markings + custom ordinal
+      // caption ("2ND STRIPE") so the label reads as a stripe
+      // milestone instead of bb()'s default "{Belt} · N stripes".
+      const _prog=s.prog||'adult';
+      const _isBlack=p.toBelt==='black';
+      const _unit=_isBlack?'DEGREE':'STRIPE';
+      _eyebrow=_isBlack?'New degree':'New stripe';
+      const _ordCap=deg+_ordSuffix(deg).toUpperCase()+' '+_unit;
+      const _stripeCaption='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:center;margin-top:2px">'+_ordCap+'</div>';
+      _trail='<div style="display:inline-flex;flex-direction:column;gap:0;align-items:center;flex-shrink:0">'
+        +beltSVG(p.toBelt,deg,_prog,110)
+        +_stripeCaption
       +'</div>';
     }
-    // Stripe-only path — untouched: "Promoted to Purple belt" verb
-    // prefix and original single-row layout preserved because the
-    // "+1 stripe" trail chip already carries the action verb.
-    const earned=deg+_ordSuffix(deg)+' stripe';
-    const trail='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--text3);flex-shrink:0">+1&nbsp;stripe</div>';
-    const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer"';
     return '<div class="card" style="margin-bottom:8px"><div '+tap+'>'
       +avStu(s,40)
-      +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div>'
-      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+earned+'&nbsp;·&nbsp;'+when+'</div></div>'
-      +trail
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="'+_eyebrowStyle+'">'+_eyebrow+'</div>'
+        +'<div style="'+_nameStyle+'">'+s.name+'</div>'
+        +'<div style="'+_dateStyle+'">'+when+'</div>'
       +'</div>'
+      +_trail
+      +'</div>'
+      +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
       +ossHtml
-      +'</div>';
+    +'</div>';
   }).join('');
   return cards;
 }
