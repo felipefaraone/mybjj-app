@@ -1841,7 +1841,43 @@ function rTL(journey,subject){
       +'</div>';
     }
   }
-  return `<div class="tl"><div class="tlline"></div>${arr.map((m,i)=>{
+  // V2 — synthetic "Started BJJ" entry pinned to the TOP of the
+  // timeline (above "Joined myBJJ app"). Only renders for students
+  // (subject with .bjjStartDate slot) — staff journeys don't carry
+  // this concept and the property isn't present on STAFF rows.
+  let startedNode='';
+  if(s&&Object.prototype.hasOwnProperty.call(s,'bjjStartDate')){
+    let subText='';
+    const _raw=s.bjjStartDate;
+    if(_raw){
+      const dt=new Date(_raw);
+      if(!isNaN(dt)){
+        const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
+        subText=mo+' '+dt.getFullYear();
+      }
+    }
+    let subHtml;
+    if(subText){
+      subHtml='<div class="tld">'+subText+'</div>';
+    }else{
+      // Date-not-set state. Staff viewers get an inline "Add date"
+      // link that opens the edit modal on this student; non-staff
+      // viewers see the muted label only.
+      const _canAddDate=(typeof isStaffOrOwner==='function')&&isStaffOrOwner()&&s.id;
+      const _addLink=_canAddDate
+        ?' <a href="#" onclick="event.preventDefault();openEditStu(\''+s.id+'\')" style="color:var(--blue);text-decoration:underline;font-size:11px">Add date</a>'
+        :'';
+      subHtml='<div class="tld" style="color:var(--text3);font-style:italic">Date not set'+_addLink+'</div>';
+    }
+    startedNode=''
+      +'<div class="tli"><div class="tldot" style="background:var(--bg);color:var(--text3);border:2px solid var(--border2)">'
+        +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>'
+      +'</div><div class="tlb">'
+        +'<div class="tlt" style="color:var(--text)">Started BJJ</div>'
+        +subHtml
+      +'</div></div>';
+  }
+  return `<div class="tl"><div class="tlline"></div>${startedNode}${arr.map((m,i)=>{
     const bl=BA[m.belt]||BA.white;const isFut=!m.done;const isTr=!!m.xfer;
     const isCur=useDerived?(i===curIdx):!!m.current;
     const dateLbl=_fmtJnyDate(m.date);
@@ -2008,6 +2044,8 @@ ${prefillBanner}
 ${isKids?'':`<div class="erow"><div class="elbl">Email</div><input id="add-email" class="einput" type="email" placeholder="email@example.com" value="${v('email')}" oninput="S._addForm.email=this.value" autocomplete="off"/></div>
 <div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-cc','S._addForm.cc=this.value',phoneCC)}<input id="add-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('phone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.phone=this.value" style="text-align:left" autocomplete="off"/></div></div>`}
 <div class="erow"><div class="elbl">Date of birth</div><input id="add-dob" class="einput" type="date" value="${v('dob')}" oninput="S._addForm.dob=this.value"/></div>
+<div class="erow"><div class="elbl">Started BJJ</div><input id="add-bjjstart" class="einput" type="month" value="${v('bjjStartMonth')}" oninput="S._addForm.bjjStartMonth=this.value"/></div>
+<div style="font-size:11px;color:var(--text3);padding:4px 14px 0">Optional. When this student first started practicing BJJ (anywhere).</div>
 </div>
 <div class="slbl" style="margin-top:8px">Program & rank</div>
 <div class="ef">
@@ -3915,11 +3953,17 @@ function _renderProfileHeader(s,opts){
   // card. Format: "Training since Mar 2021". No SHOUTY caps — matches
   // the muted-caption tone of the meta row.
   let trainSinceText='';
-  if(!isStaff&&s&&s.trainingStartedAt){
-    const dt=new Date(s.trainingStartedAt);
-    if(!isNaN(dt)){
-      const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
-      trainSinceText='Training since '+mo+' '+dt.getFullYear();
+  if(!isStaff&&s){
+    // V2 — prefer bjj_start_date (when did they first start practising
+    // BJJ anywhere) over training_started_at (when they joined this
+    // academy). Both columns optional; first non-null wins.
+    const _rawSince=s.bjjStartDate||s.trainingStartedAt||null;
+    if(_rawSince){
+      const dt=new Date(_rawSince);
+      if(!isNaN(dt)){
+        const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
+        trainSinceText='Training since '+mo+' '+dt.getFullYear();
+      }
     }
   }
   // V2 — "Edit profile" text-link with pen icon, right-aligned in the
@@ -4453,11 +4497,11 @@ function rMembers(){
   if(!activeProfileIsSelf())return rParentMembers();
   if(isParent())return rParentMembers();
   const tab=S.commTab==='wall'?'wall':'people';
-  const segBtn=(key,lbl)=>{
-    const on=tab===key;
-    return '<button onclick="setCommTab(\''+key+'\')" style="flex:1;align-self:stretch;background:'+(on?'#1A5DAD':'transparent')+';color:'+(on?'#fff':'var(--text3)')+';border:none;border-radius:8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer;line-height:1">'+lbl+'</button>';
-  };
-  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px;margin-bottom:14px;height:var(--ctrl-h);box-sizing:border-box;align-items:stretch">'+segBtn('people','People')+segBtn('wall','Wall')+'</div>';
+  // V2 hierarchy — top-level People/Wall reuses the same `.rsw / .rseg`
+  // class as the nested Adults/Kids toggle so parent and child read
+  // visually equivalent.
+  const segBtn=(key,lbl)=>'<div class="rseg '+(tab===key?'active':'')+'" onclick="setCommTab(\''+key+'\')">'+lbl+'</div>';
+  const segHtml='<div class="rsw">'+segBtn('people','People')+segBtn('wall','Wall')+'</div>';
   const body=tab==='wall'?rCommunityWall():rCommunityPeople();
   return '<div style="height:16px"></div>'+segHtml+body;
 }
@@ -4624,8 +4668,11 @@ function rCommunityWall(){
   const cards=rows.map(({p,s})=>{
     const isBelt=!!p.isNewBelt||p.type==='belt';
     const deg=p.toDeg||0;
+    // V2 copy — belt promotions get the explicit "Promoted to" verb.
+    // Stripe rows are left untouched (their "+1 stripe" trail badge
+    // already carries the verb; prefixing here would double it).
     const earned=isBelt
-      ?(beltLabel(p.toBelt)+' belt')
+      ?('Promoted to '+beltLabel(p.toBelt)+' belt')
       :(deg+_ordSuffix(deg)+' stripe');
     const when=_promoWhen(p.date);
     const trail=isBelt
@@ -4862,29 +4909,36 @@ function _renderKidsSummaryCard(unitName){
   const activeMacro=activeBelt.split('/')[0];
   const highlightMacro=macros.indexOf(activeMacro)>=0?activeMacro:null;
   const activeFirst=(highlightMacro&&activeKid)?((activeKid.name||'').split(' ')[0]||''):'';
-  const rows=macros.map(m=>{
-    const meta=BK[m]||{label:m,bg:BELT_COLORS[m]||'#e5e7eb'};
-    const c=macroCounts[m]||0;
-    const dim=c===0?'opacity:.4;':'';
-    const tinted=m===highlightMacro;
-    const rowBg=tinted?'background:var(--blue-tint);':'';
-    const isWhite=m==='white';
-    // Belt swatch — thinner, less pill-like, with a black graduation
-    // band on the right tip mirroring the IBJJF belt visual.
-    const swatchBorder=isWhite?'border:0.5px solid var(--border2);box-sizing:border-box;':'';
-    const swatch=''
-      +'<div style="position:relative;width:64px;height:14px;border-radius:2px;overflow:hidden;flex-shrink:0;background:'+meta.bg+';'+swatchBorder+'">'
-        +'<div style="position:absolute;right:0;top:0;bottom:0;width:14px;background:#0a0a0a"></div>'
+  // V2 — hide zero-count buckets entirely; only render belts with at
+  // least one kid. Aggregation logic (grey/white + grey + grey/black
+  // → Grey) above is unchanged. Empty fallback below covers the edge
+  // case where the macros all collapse to zero (transient between
+  // hydrate and counts update).
+  const _visibleMacros=macros.filter(m=>(macroCounts[m]||0)>0);
+  const rows=_visibleMacros.length
+    ?_visibleMacros.map(m=>{
+      const meta=BK[m]||{label:m,bg:BELT_COLORS[m]||'#e5e7eb'};
+      const c=macroCounts[m]||0;
+      const tinted=m===highlightMacro;
+      const rowBg=tinted?'background:var(--blue-tint);':'';
+      const isWhite=m==='white';
+      // Belt swatch — thinner, less pill-like, with a black graduation
+      // band on the right tip mirroring the IBJJF belt visual.
+      const swatchBorder=isWhite?'border:0.5px solid var(--border2);box-sizing:border-box;':'';
+      const swatch=''
+        +'<div style="position:relative;width:64px;height:14px;border-radius:2px;overflow:hidden;flex-shrink:0;background:'+meta.bg+';'+swatchBorder+'">'
+          +'<div style="position:absolute;right:0;top:0;bottom:0;width:14px;background:#0a0a0a"></div>'
+        +'</div>';
+      const namePill=(tinted&&activeFirst)
+        ?' <span style="display:inline-flex;align-items:center;background:var(--blue);color:#fff;font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;margin-left:8px">'+escHtml(activeFirst)+'</span>'
+        :'';
+      return '<div style="display:flex;align-items:center;gap:12px;padding:6px 10px;border-radius:8px;'+rowBg+'">'
+        +swatch
+        +'<div style="font-size:14px;color:var(--text);display:inline-flex;align-items:center;flex:1;min-width:0">'+meta.label+namePill+'</div>'
+        +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:500;font-size:16px;color:var(--text);text-align:right">'+c+'</div>'
       +'</div>';
-    const namePill=(tinted&&activeFirst)
-      ?' <span style="display:inline-flex;align-items:center;background:var(--blue);color:#fff;font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;margin-left:8px">'+escHtml(activeFirst)+'</span>'
-      :'';
-    return '<div style="display:flex;align-items:center;gap:12px;padding:6px 10px;border-radius:8px;'+dim+rowBg+'">'
-      +swatch
-      +'<div style="font-size:14px;color:var(--text);display:inline-flex;align-items:center;flex:1;min-width:0">'+meta.label+namePill+'</div>'
-      +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:500;font-size:16px;color:var(--text);text-align:right">'+c+'</div>'
-    +'</div>';
-  }).join('');
+    }).join('')
+    :'<div style="padding:14px 10px;text-align:center;font-size:13px;color:var(--text3)">No students yet</div>';
   // Section label is rendered by the caller (matches the INSTRUCTORS
   // pattern in rParentMembers). The card itself just carries the total
   // + ladder.
@@ -5152,14 +5206,17 @@ function rSchedule(){
   const mode=S.schedMode==='events'?'events':'curriculum';
   const segBtn=(key,lbl)=>{
     const on=mode===key;
-    return '<button onclick="setSchedMode(\''+key+'\')" style="flex:1;align-self:stretch;background:'+(on?'#1A5DAD':'transparent')+';color:'+(on?'#fff':'var(--text3)')+';border:none;border-radius:8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer;line-height:1">'+lbl+'</button>';
+    // V2 hierarchy — Curriculum/Events reuses the same `.rsw / .rseg`
+    // class as the nested Week N tabs so parent and child read
+    // visually equivalent.
+    return '<div class="rseg '+(on?'active':'')+'" onclick="setSchedMode(\''+key+'\')">'+lbl+'</div>';
   };
   // Batch programme-fixup-2 — fixed height on the wrapper (box-sizing
   // border-box so border+padding are inside var(--ctrl-h)). Every
   // other control row now mirrors this exactly, so the band under the
   // header is pixel-identical across Classes / Progress / Members /
   // Programme.
-  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px;margin-bottom:14px;height:var(--ctrl-h);box-sizing:border-box;align-items:stretch">'+segBtn('curriculum','Curriculum')+segBtn('events','Events')+'</div>';
+  const segHtml='<div class="rsw">'+segBtn('curriculum','Curriculum')+segBtn('events','Events')+'</div>';
 
   if(mode==='events'){
     const evEditor=(S.editEv||S.addEv)?rEEdit():'';
@@ -5945,6 +6002,18 @@ async function sendInvite(dispatch,chain){
   const formBelt=beltOptsForProg.includes(formBeltRaw)?formBeltRaw:'white';
   const formDegree=Number.isFinite(parseInt(F.degree,10))?parseInt(F.degree,10):0;
   const formDob=String(F.dob||'').trim()||null;
+  // Batch — Started BJJ field. <input type="month"> returns "YYYY-MM";
+  // we persist as a date by appending "-01". Optional. Validation:
+  // must not be in the future. (joined_at comparison is moot for a
+  // brand-new student — they're joining today.)
+  const _bjjMonthRaw=String(F.bjjStartMonth||'').trim();
+  let formBjjStartDate=null;
+  if(_bjjMonthRaw){
+    if(!/^\d{4}-\d{2}$/.test(_bjjMonthRaw))return showSaveToast2('Started BJJ format looks off.','error');
+    const _bjj=_bjjMonthRaw+'-01';
+    if(_bjj>new Date().toISOString().slice(0,10))return showSaveToast2('Started BJJ can\'t be in the future.','error');
+    formBjjStartDate=_bjj;
+  }
   // Background seeds (transfer / returning). Belt/degree are NOT
   // overridden by Background — admin's rank picks above are an
   // independent signal from how the student joined.
@@ -5978,7 +6047,7 @@ async function sendInvite(dispatch,chain){
     const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
     const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
     const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
-    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob}).select('id,legacy_id').single();
+    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob,bjj_start_date:formBjjStartDate}).select('id,legacy_id').single();
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
     // Immediate parent link: if the parent_email already matches a
@@ -6001,7 +6070,7 @@ async function sendInvite(dispatch,chain){
       }catch(e){console.warn('[mybjj] parent_user_id link exception:',e);}
     }
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob,bjjStartDate:formBjjStartDate});
       saved=true;
     }
     // Skip the parent whitelist invite when the user already exists —
@@ -6037,7 +6106,8 @@ async function sendInvite(dispatch,chain){
     const editable={
       email,full_name:fullName,first_name:fname,last_name:lname,
       belt:formBelt,degree:formDegree,
-      phone:phone,date_of_birth:formDob
+      phone:phone,date_of_birth:formDob,
+      bjj_start_date:formBjjStartDate
     };
     if(emailMatch){
       const m=emailMatch;
@@ -6071,7 +6141,7 @@ async function sendInvite(dispatch,chain){
       if(ins&&ins.error){console.warn('[mybjj] add adult invite:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
       console.log('[mybjj] add adult invite OK');
       if(ins&&ins.data){
-        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob});
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob,bjjStartDate:formBjjStartDate});
         saved=true;
       }
     }
@@ -7659,7 +7729,7 @@ async function hydrateData(){
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email').order('name'),
-      c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,parent_user:users!parent_user_id(full_name)'),
+      c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,parent_user:users!parent_user_id(full_name)'),
       // RLS-2 — staff.feedback dropped from the select; Head Instructor
       // Notes now live in public.staff_notes and are fetched lazily per
       // STAFF row by _fetchStaffNotes when the owner opens the profile.
@@ -7700,7 +7770,7 @@ async function hydrateData(){
       // Postgres numeric as String to avoid precision loss; wrap with
       // Number() so downstream math (sort, eligibility, formatStat)
       // compares numerically instead of lexicographically.
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
+      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
     if(sf.data&&sf.data.length){
@@ -9906,6 +9976,7 @@ function _captureEditStuTab(){
   const w=v('es-weight');    if(w!==undefined)D.weightKg=w;
   const h=v('es-height');    if(h!==undefined)D.heightCm=h;
   const ts=v('es-trainstart');if(ts!==undefined)D.trainingStartedAt=ts;
+  const bjs=v('es-bjjstart');if(bjs!==undefined)D.bjjStartMonth=bjs;
   const myGiEl=document.getElementById('es-hasmybjjgi');
   if(myGiEl)D.hasMybjjGi=myGiEl.classList.contains('on');
   const ecn=v('es-ecname');  if(ecn!==undefined)D.ecName=ecn;
@@ -9960,6 +10031,12 @@ function rEditStu(){
   const ecName=draftOr(D.ecName,s.ecName||'');
   const ecPhone=draftOr(D.ecPhone,s.ecPhone||'');
   const trainingStartedAt=draftOr(D.trainingStartedAt,s.trainingStartedAt||'');
+  // Batch — bjj_start_date. Stored as date (YYYY-MM-DD) but edited via
+  // <input type="month"> (YYYY-MM). Slice for display; saveEditStu
+  // appends -01 before persisting.
+  const _bjjStored=s.bjjStartDate||'';
+  const _bjjStoredMonth=_bjjStored?String(_bjjStored).slice(0,7):'';
+  const bjjStartMonth=draftOr(D.bjjStartMonth,_bjjStoredMonth);
   const parentName=draftOr(D.parentName,s.parentName||'');
   const parentPhone=draftOr(D.parentPhone,s.parentPhone||'');
   const parentEmail=draftOr(D.parentEmail,s.parentEmail||'');
@@ -10013,6 +10090,8 @@ function rEditStu(){
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+<div class="erow"><div class="elbl">Started BJJ</div><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+<div style="font-size:11px;color:var(--text3);padding:2px 14px 0">Optional. When this student first started practicing BJJ (anywhere).</div>
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
 </div>`;
   // -------- Training --------
@@ -10118,6 +10197,28 @@ async function saveEditStu(){
   const isAdminViewer=isStaffOrOwner();
   const trainingStartedAtRaw=D.trainingStartedAt!==undefined?D.trainingStartedAt:s.trainingStartedAt;
   const trainingStartedAt=(isAdminViewer&&trainingStartedAtRaw)?String(trainingStartedAtRaw):null;
+  // Batch — bjj_start_date. Personal-info tier: editable by anyone who
+  // opened the form (no isAdminViewer gate). Validate empty OR
+  // ≤ today AND ≤ s._createdAt when present (joined_at proxy).
+  let bjjStartDateOut;
+  if(D.bjjStartMonth===undefined){
+    bjjStartDateOut=s.bjjStartDate||null; // untouched in this session
+  }else{
+    const _bRaw=String(D.bjjStartMonth||'').trim();
+    if(!_bRaw){
+      bjjStartDateOut=null;
+    }else{
+      if(!/^\d{4}-\d{2}$/.test(_bRaw))return showErr('Started BJJ format looks off.');
+      const _bDate=_bRaw+'-01';
+      const _today=new Date().toISOString().slice(0,10);
+      if(_bDate>_today)return showErr("Started BJJ can't be in the future.");
+      if(s._createdAt){
+        const _joined=String(s._createdAt).slice(0,10);
+        if(_joined&&_bDate>_joined)return showErr("Started BJJ can't be after the join date.");
+      }
+      bjjStartDateOut=_bDate;
+    }
+  }
   const ecName=trim(D.ecName,s.ecName||'')||null;
   const ecPhone=_phoneSanitize(trim(D.ecPhone,s.ecPhone||''))||null;
   if(ecPhone&&!_phoneValid(ecPhone))return showErr('Enter a valid emergency phone number');
@@ -10147,6 +10248,7 @@ async function saveEditStu(){
   s.weightKg=weightKg;s.heightCm=heightCm;
   s.hasMybjjGi=hasMybjjGi;
   if(isAdminViewer)s.trainingStartedAt=trainingStartedAt;
+  s.bjjStartDate=bjjStartDateOut;
   s.ecName=ecName;s.ecPhone=ecPhone;
   if(isKids){
     s.parentName=parentName;s.parentPhone=parentPhone;s.parentEmail=parentEmail;
@@ -10174,7 +10276,8 @@ async function saveEditStu(){
       date_of_birth:dob,phone:phone||null,gender,
       weight_kg:weightKg,height_cm:heightCm,
       emergency_contact_name:ecName,emergency_contact_phone:ecPhone,
-      has_mybjj_gi:hasMybjjGi
+      has_mybjj_gi:hasMybjjGi,
+      bjj_start_date:bjjStartDateOut
     };
     const r=await cli.rpc('edit_student_self',{p_legacy_id:s.id,p_payload:payload});
     if(r&&r.error){console.warn('[mybjj] edit_student_self:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');}
@@ -10187,7 +10290,8 @@ async function saveEditStu(){
     weight_kg:weightKg,height_cm:heightCm,
     emergency_contact_name:ecName,emergency_contact_phone:ecPhone,
     has_mybjj_gi:hasMybjjGi,
-    training_started_at:trainingStartedAt
+    training_started_at:trainingStartedAt,
+    bjj_start_date:bjjStartDateOut
   };
   if(isKids){
     payload.parent_name=parentName;payload.parent_phone=parentPhone;payload.parent_email=parentEmail;
