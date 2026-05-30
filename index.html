@@ -2077,7 +2077,7 @@ function rMUnits(){
     sections+='<div style="margin-bottom:16px"><div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">'+(FLAG[code]||"")+' '+CC[code]+'</div>'+cards+'</div>';
   });
   var ccOptions=["AU","NZ","JP","KR","US"].map(function(c){return '<option value="'+c+'">'+CC[c]+'</option>';}).join("");
-  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Manage Units</div></div><div class="sbody">'+(S._deleteConfirm?rDeleteUnitConfirm():'')+sections+'<div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><select class="einput" id="nu-country" style="background:var(--card)">'+ccOptions+'</select></div><div class="erow"><div class="elbl">Address</div><input class="einput" id="nu-addr" placeholder="e.g. 120 Military Rd"/></div></div><button class="bblue" onclick="addUnit()">Add unit</button><div style="height:24px"></div></div></div>';
+  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Manage Units</div></div><div class="sbody">'+(S._deleteConfirm?rDeleteUnitConfirm():'')+sections+'<div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><select class="einput" id="nu-country" style="background:var(--card)">'+ccOptions+'</select></div><div class="erow"><div class="elbl">Address</div><input class="einput" id="nu-addr" placeholder="e.g. 120 Military Rd"/></div></div><button class="bblue" style="opacity:.5;cursor:not-allowed" disabled>Add unit</button><div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">Multi-unit setup is in beta. Contact support to add another unit.</div><div style="height:24px"></div></div></div>';
 }
 // rStaffProf — layout mirrors rStuProf (header / stats / journey /
 // details / feedback / more) so students + instructors feel like
@@ -9515,6 +9515,14 @@ async function dismissNotif(id){
 }
 function togUA(id){const u=UNITS.find(x=>x.id===id);if(!u)return;u.active=!u.active;render();if(u._dbId)withSb(c=>c.from('units').update({active:u.active}).eq('id',u._dbId),'toggle unit active');}
 function addUnit(){
+  // TEMPORARY guard — multi-unit production gaps still open (cross-unit
+  // RLS leakage on staff-scoped policies, owner_user_id not set on
+  // insert, no rollback on DB failure). Block new creation; edit /
+  // delete / toggle-active on EXISTING units stay live. Remove this
+  // early return once Camperdown-prep batch closes the RLS gaps and
+  // the insert path sets owner_user_id with a rollback path.
+  showSaveToast2('Adding new units is coming soon. Contact support to set up an additional unit.','error');
+  return;
   const n=(document.getElementById('nu-name')?.value||'').trim();
   const c=(document.getElementById('nu-city')?.value||'').trim();
   const co=(document.getElementById('nu-country')?.value||'').trim();
