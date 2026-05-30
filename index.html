@@ -4668,18 +4668,47 @@ function rCommunityWall(){
   const cards=rows.map(({p,s})=>{
     const isBelt=!!p.isNewBelt||p.type==='belt';
     const deg=p.toDeg||0;
-    // V2 copy — belt promotions get the explicit "Promoted to" verb.
-    // Stripe rows are left untouched (their "+1 stripe" trail badge
-    // already carries the verb; prefixing here would double it).
-    const earned=isBelt
-      ?('Promoted to '+beltLabel(p.toBelt)+' belt')
-      :(deg+_ordSuffix(deg)+' stripe');
     const when=_promoWhen(p.date);
-    const trail=isBelt
-      ?'<div style="flex-shrink:0">'+bb(p.toBelt,0,'adult')+'</div>'
-      :'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--text3);flex-shrink:0">+1&nbsp;stripe</div>';
-    const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer"';
     const ossHtml=_ossControlHtml(p._dbId);
+    if(isBelt){
+      // V3 layout — belt-promotion card: eyebrow "NEW PROMOTION",
+      // bigger name (16px), date-only subtitle (the eyebrow + the
+      // belt visual already say "promoted"), belt visual on the
+      // right with an uppercase belt-name label under it, then a
+      // 0.5px divider, then the Oss area unchanged below.
+      // Eyebrow + belt label reuse the existing Barlow Condensed
+      // uppercase-caption signature (matches .dlbl / .psec at
+      // index.html:123 / index.html:173) — brand-blue for the
+      // eyebrow, text3 for the belt label.
+      const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:flex-start;gap:12px;padding:14px 14px 12px;cursor:pointer"';
+      const _eyebrowStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1';
+      const _nameStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;line-height:1.2';
+      const _dateStyle='font-size:11px;color:var(--text3);margin-top:4px';
+      const _beltLblStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-top:6px;line-height:1';
+      const _beltLbl=beltLabel(p.toBelt).toUpperCase();
+      const _trail='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'
+        +bb(p.toBelt,0,'adult')
+        +'<div style="'+_beltLblStyle+'">'+_beltLbl+'</div>'
+      +'</div>';
+      return '<div class="card" style="margin-bottom:8px"><div '+tap+'>'
+        +avStu(s,40)
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="'+_eyebrowStyle+'">New promotion</div>'
+          +'<div style="'+_nameStyle+'">'+s.name+'</div>'
+          +'<div style="'+_dateStyle+'">'+when+'</div>'
+        +'</div>'
+        +_trail
+        +'</div>'
+        +'<div style="border-top:0.5px solid var(--border);margin:0 14px"></div>'
+        +ossHtml
+      +'</div>';
+    }
+    // Stripe-only path — untouched: "Promoted to Purple belt" verb
+    // prefix and original single-row layout preserved because the
+    // "+1 stripe" trail chip already carries the action verb.
+    const earned=deg+_ordSuffix(deg)+' stripe';
+    const trail='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--text3);flex-shrink:0">+1&nbsp;stripe</div>';
+    const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer"';
     return '<div class="card" style="margin-bottom:8px"><div '+tap+'>'
       +avStu(s,40)
       +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div>'
