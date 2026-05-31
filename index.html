@@ -4468,12 +4468,21 @@ async function _copyAcademyContact(v){
 }
 function rAddKidModal(){
   if(!S.addKidModal)return '';
-  // Unit anchor for the academy-contact card. parentSelectedChild now
-  // returns null when self is active (new default), so fall back to
-  // the first linked kid for the unit lookup.
+  // Unit anchor for the academy-contact card. Fallback chain — kid
+  // (parent path) → my student row → my staff row → currently-selected
+  // unit by name. Covers student-only adults and instructors who tap
+  // "+ Add child" from their own profile drawer (kid is null, but the
+  // user still belongs to a unit with configured contacts).
   const kid=(typeof parentSelectedChild==='function'?parentSelectedChild():null)
          ||((typeof parentChildren==='function'?parentChildren()[0]:null)||null);
-  const unit=kid?UNITS.find(u=>u.id===kid.unit):null;
+  const _uid=S.profile&&S.profile.id;
+  const _myStu=_uid?STUDENTS.find(x=>x._userId===_uid):null;
+  const _myStaff=_uid?STAFF.find(x=>x._userId===_uid):null;
+  const unit=(kid&&UNITS.find(u=>u.id===kid.unit))
+          ||(_myStu&&_myStu.unit&&UNITS.find(u=>u.id===_myStu.unit))
+          ||(_myStaff&&_myStaff.unit&&UNITS.find(u=>u.id===_myStaff.unit))
+          ||UNITS.find(u=>u.name===S.unit)
+          ||null;
   const mobile=unit&&unit.mobilePhone||null;
   const studio=unit&&unit.phone||null;
   const email=unit&&unit.email||null;
