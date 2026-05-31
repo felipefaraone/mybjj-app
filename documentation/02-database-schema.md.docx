@@ -4,7 +4,7 @@
 
 The database is a single Postgres instance on Supabase (project ID dcilltzgegqsrgatskhz, region aws-1-ap-southeast-2). All application tables live in the public schema. Row Level Security is enabled on every table and enforced at the database level — even if the frontend has bugs, data access is gated by RLS policies that read from auth.uid() and the helper functions is_admin(), is_staff(), is_approved(), current_role(), current_status(), current_unit(), is_unit_owner(), is_unit_owner_any().
 
-This document mirrors the actual live schema at the time of writing (post-migration 57, validated against information_schema.columns, pg_proc, pg_policies and information_schema.triggers). When schema changes, update this file.
+This document mirrors the actual live schema at the time of writing (post-migration 67, validated against information_schema.columns, pg_proc, pg_policies and information_schema.triggers). When schema changes, update this file.
 
 **Unversioned live objects (important).** A set of objects added during the Community/Wall/Oss arc (V1_3) was applied directly in the Supabase SQL Editor and never saved as numbered migration files: the table `wall_reactions` (+ its `wall_reactions_select` policy), the policy `promotions_select_adult_peer`, and the RPCs `toggle_oss` and `set_event_participation`. They are live in production but absent from `supabase/*.sql`. A rebuild of the database from the migration files alone (for example, the planned `mybjj-staging` project) would NOT recreate them. Backlog item: extract these into migration files (58+) before the staging environment is stood up.
 
@@ -67,6 +67,7 @@ A student record. May or may not be linked to a users row (via user_id for adult
 | photo_url | text | YES | - | Approved photo path |
 | email | text | YES | - | Student's login email (adults only; null for kids until transition) |
 | date_of_birth | date | YES | - | Required for kids (programme + transition eligibility); optional for adults |
+| bjj_start_date | date | YES | - | Optional month-precision date capturing when the student first started practicing BJJ anywhere (independent of joined_at). Drives "Training since" header and the "Started BJJ" first journey entry. Validation: ≤ today and ≤ joined_at. Stored as YYYY-MM-01 (day fixed to 01). (migration 66) |
 | phone | text | YES | - | Student's phone (adults). For kids, see parent_phone. |
 | weight_kg | integer | YES | - |  |
 | height_cm | integer | YES | - |  |
@@ -409,7 +410,7 @@ All callable from client via supabase.rpc('function_name', { args }). Functions 
 
 ### Authentication and identity
 
-**claim_profile() → users** (SECURITY DEFINER). First-auth setup: reads auth.users.email, looks up whitelist, creates users row, links staff/students, syncs has_password, seeds journey. Idempotent.
+**claim_profile() → users** (SECURITY DEFINER). First-auth setup: reads auth.users.email, looks up whitelist, creates users row, links staff/students, syncs has_password, seeds journey. Idempotent. **Migration 59:** also re-links orphan kids — students rows where parent_email or parent2_email matches the signing-in user's email get their parent_user_id populated on every login (covers race conditions where a kid was created before the parent first signed in). **Migration 61:** when the JWT carries no display name, claim_profile derives full_name from the linked record — first tries the user's own student row, then falls back to parent_name from a linked kid's row.
 
 **current_role(), current_unit(), current_status() → text/uuid/text.** Read fields off the caller's users row (used in RLS).
 
@@ -437,7 +438,9 @@ All callable from client via supabase.rpc('function_name', { args }). Functions 
 
 ### Student management
 
-**edit_student_self(p_legacy_id text, p_payload jsonb) → students** (SECURITY DEFINER, migration 44). Adult student edits own profile, or parent edits child's. Validates auth.uid() matches user_id OR parent_user_id. Allowed: first_name, last_name, full_name, initials, date_of_birth, phone, gender, weight_kg, height_cm, emergency_contact_name, emergency_contact_phone, has_mybjj_gi, social_handles, photo_url, medical_notes. **Excluded (admin-only):** belt, degree, journey, prog, unit_id, active.
+**edit_student_self(p_legacy_id text, p_payload jsonb) → students** (SECURITY DEFINER, migration 44, extended migration 67). Adult student edits own profile, or parent edits child's. Validates auth.uid() matches user_id OR parent_user_id. Allowed: first_name, last_name, full_name, initials, date_of_birth, **bjj_start_date** (migration 67), phone, gender, weight_kg, height_cm, emergency_contact_name, emergency_contact_phone, has_mybjj_gi, social_handles, photo_url, medical_notes. **Excluded (admin-only):** belt, degree, journey, prog, unit_id, active.
+
+**Clear semantics:** most fields use `COALESCE(p_payload->>'col', col)` so the existing value is preserved when the key is absent from the payload. bjj_start_date uses `CASE WHEN p_payload ? 'bjj_start_date' THEN NULLIF(p_payload->>'bjj_start_date','')::date ELSE bjj_start_date END` — this lets the field be CLEARED by sending an empty string in the payload, while still preserving the value when the key is omitted. Same pattern as weight_kg / height_cm / has_mybjj_gi / social_handles. Migration 67 was a stand-alone follow-up to extend the whitelist after the bjj_start_date column landed in migration 66.
 
 **recompute_student_stats(p_student_id uuid) → void** (SECURITY DEFINER, rewritten migrations 45/47/48). Recomputes total, gi_classes, nogi_classes, grade, gi_grade as SUM(class_value) where status='present'; caches last_marker_date = MAX(promotions.date).
 
@@ -509,13 +512,15 @@ All callable from client via supabase.rpc('function_name', { args }). Functions 
 
 **trg_sync_user_full_name_from_student** on students — AFTER UPDATE → sync_user_full_name_from_student(). Keeps users.full_name in sync when a student name changes.
 
+**trg_relink_orphan_kids** on users — AFTER INSERT → re-links any students rows whose parent_email or parent2_email matches NEW.email. Belt-and-suspenders companion to claim_profile's re-link logic (migration 60). Fires on every new public.users insert so orphan kids attach to a freshly-created parent the moment that parent's users row appears.
+
 ## Operational notes
 
 ### Migrations
 
 All schema changes happen via SQL migration files in supabase/NN_phase8_*.sql. Migrations are idempotent (IF NOT EXISTS, ON CONFLICT DO UPDATE) so they're safe to re-run.
 
-**Current migration set on filesystem (validated):** 01 through 57, with gaps at 07 and 38 (unused numbers, not deletions).
+**Current migration set on filesystem (validated):** 01 through 67, with gaps at 07 and 38 (unused numbers, not deletions).
 
 Migration log (recent batches):
 
@@ -535,6 +540,16 @@ Migration log (recent batches):
 - **55** — RLS privacy hardening (child-safety): rewrote students_select / promotions_select / attendance_select (peer adults see only status='going' on others)
 - **56** — staff_notes table: moved Head Instructor Notes out of staff.feedback (leaked via public staff_select) into an owner-only table; add_staff_note / delete_staff_note rewritten; staff.feedback emptied
 - **57** — kids_unit_summary RPC: non-identifying kids-program aggregate (counts only)
+- **58** — kid_creation_link_parent: kid creation now resolves parent_user_id from parent_email/parent2_email up front (covers admin-creates-kid-before-parent-signs-in flow)
+- **59** — claim_relink_kids: claim_profile() re-links orphan kids on every authentication (students rows where parent_email or parent2_email matches the signing-in user)
+- **60** — relink_trigger: trg_relink_orphan_kids on public.users — belt-and-suspenders companion to claim_profile's re-link, fires on every new users row insert
+- **61** — claim_name_fallback: claim_profile() derives full_name when JWT carries no display name — first the user's own student row, then parent_name from a linked kid
+- **62** — promotions_correction_type: extends the promotions.type CHECK to include 'correction' alongside 'belt' / 'stripe'
+- **63** — attendance_integrity: tightens attendance write paths (status transitions, idempotency, foreign-key integrity) to prevent stale "going" rows from outliving the class they reference
+- **64** — going_orphan_cleanup: removes orphan 'going' attendance rows for classes that have been deleted or whose class_date has passed without confirmation
+- **65** — kids_privacy_hardening: tighter privacy on kids data (peer roster restrictions, photo visibility constraints, RLS adjustments) shipped during the E1/E2/E3 batches
+- **66** — bjj_start_date: adds students.bjj_start_date date (idempotent ADD COLUMN IF NOT EXISTS). Optional month-precision date for when the student first started practicing BJJ; surfaces in profile header "Training since" and as the first journey entry "Started BJJ"
+- **67** — edit_student_self_bjj: extends edit_student_self RPC whitelist to accept bjj_start_date using the CASE WHEN NULLIF clear-support pattern (lets parent / student / staff clear the field by sending empty string while preserving when the key is omitted)
 
 ### Unversioned live objects (not in migration files)
 
@@ -626,3 +641,15 @@ JSONB on staff and students instead of a column per platform. Social platforms c
 ### has_mybjj_gi naming
 
 Boolean, Postgres convention (positive prefix has_, lowercase). Real schema is has_mybjj_gi (migration 49).
+
+### bjj_start_date separate from joined_at (migration 66)
+
+Two distinct dates:
+- **joined_at** = students.created_at, when the row was inserted (i.e., joined the myBJJ app)
+- **bjj_start_date** = when the student first started practicing BJJ anywhere (any academy, any country)
+
+A student who has trained for years before the academy adopted myBJJ shouldn't appear as "Training since May 2026" — that's the join date, not the journey origin. bjj_start_date is optional, month-precision, validated ≤ today and ≤ joined_at. The journey timeline renders "Started BJJ — {Mon YYYY}" as the first entry when populated, and a muted "Date not set" placeholder otherwise (with an inline "Add date" link for staff viewers).
+
+### edit_student_self clear-support pattern (migration 67)
+
+Most fields in edit_student_self use `COALESCE(p_payload->>'col', col)` so absence of the key in the payload preserves the existing value. This is what we want for fields you don't intend to clear (e.g. full_name). For fields where clear is a legitimate user action (bjj_start_date, weight_kg, height_cm, has_mybjj_gi, social_handles), the function uses `CASE WHEN p_payload ? 'col' THEN NULLIF(...,'')::col_type ELSE col END` — the JSON-key check lets the caller distinguish "key omitted → preserve" from "key present with empty string → clear to NULL".
