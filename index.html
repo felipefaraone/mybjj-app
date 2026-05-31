@@ -1569,8 +1569,8 @@ function _renderRankBox(s,opts){
   const statsRow=statHtml.length
     ?'<div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+statHtml.join(sep)+'</div>'
     :'';
-  return '<div class="card">'
-    +'<div class="slbl" style="margin-bottom:10px">Current rank</div>'
+  return '<div class="slbl">Current rank</div>'
+    +'<div class="card">'
     +'<div>'+beltSVG(s.belt,deg,prog,110)+'</div>'
     +'<div style="margin-top:6px;font-size:13px;color:var(--text2);font-weight:600">'+beltLine+'</div>'
     +statsRow
@@ -3448,15 +3448,28 @@ async function savePromote(skipDuplicateBeltConfirm){
       // pattern at index.html:8966 (instructor_id:meStaffDbId()) /
       // helper at index.html:6299. Falls back to null if the staff row
       // can't be resolved (column + FK allow null).
-      try{await cli.from('promotions').insert({
-        legacy_id:legacyId, student_id:s._dbId,
-        from_belt:fromBelt, to_belt:targetBelt,
-        from_deg:fromDeg, to_deg:targetDeg,
-        type:isBeltChange?'belt':'stripe', is_new_belt:isBeltChange,
-        date, student_name:s.name,
-        promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
-        unit_id:unit&&unit._dbId
-      });}catch(e){console.warn('[mybjj] promote insert:',e);}
+      // .select('id').single() captures the new row's UUID so the Wall
+      // card can render the Oss control immediately (without it,
+      // newPromo._dbId is undefined, _ossControlHtml early-returns ''
+      // and the button stays hidden until a hard reload re-hydrates
+      // PROMOTION_LOG from the DB).
+      try{
+        const ins=await cli.from('promotions').insert({
+          legacy_id:legacyId, student_id:s._dbId,
+          from_belt:fromBelt, to_belt:targetBelt,
+          from_deg:fromDeg, to_deg:targetDeg,
+          type:isBeltChange?'belt':'stripe', is_new_belt:isBeltChange,
+          date, student_name:s.name,
+          promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
+          unit_id:unit&&unit._dbId
+        }).select('id').single();
+        const newDbId=ins&&ins.data&&ins.data.id;
+        if(newDbId){
+          newPromo._dbId=newDbId;
+          if(!S.wallReactions)S.wallReactions={};
+          S.wallReactions[newDbId]={count:0,reacted:false,reactors:[]};
+        }
+      }catch(e){console.warn('[mybjj] promote insert:',e);}
       try{await cli.from('students').update({
         belt:s.belt,degree:s.deg,grade:0,gi_grade:0,journey:s.journey||[]
       }).eq('id',s._dbId);}catch(e){console.warn('[mybjj] promote update student:',e);}
