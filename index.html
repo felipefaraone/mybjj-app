@@ -4332,25 +4332,35 @@ function openBugReport(){
 }
 function closeBugReport(){S.bugReport=null;render();}
 function _onBugReportInput(el){
-  if(!S.bugReport)return;
-  S.bugReport.text=el.value;
-  if(S.bugReport.err)S.bugReport.err=false;
-  // Counter + Send-disabled state both depend on text length; re-render
-  // so they update on every keystroke (matches the existing modal
-  // pattern — no diffing, full re-render is the model).
-  render();
-  // Focus drifts on re-render because the textarea node is replaced.
-  // Restore focus + caret position so typing isn't interrupted.
-  setTimeout(()=>{
-    const t=document.getElementById('br-text');
-    if(t){t.focus();const n=t.value.length;t.setSelectionRange(n,n);}
-  },0);
+  // Uncontrolled textarea — no state mutation, no render(). Touches
+  // only the counter element and the Send button's disabled / opacity
+  // / cursor styles so typing doesn't flicker. The submitted value is
+  // read straight from the DOM in submitBugReport.
+  const len=(el.value||'').length;
+  const c=document.getElementById('br-counter');
+  if(c){
+    c.textContent=len+' / 1000';
+    c.style.color=len>=900?'var(--text2)':'var(--text3)';
+  }
+  const send=document.getElementById('br-send');
+  if(send){
+    const canSend=(el.value||'').trim().length>0;
+    send.disabled=!canSend;
+    send.style.opacity=canSend?'1':'.5';
+    send.style.cursor=canSend?'pointer':'not-allowed';
+  }
 }
 function _onBugReportType(el){if(S.bugReport)S.bugReport.type=el.value;}
 async function submitBugReport(){
   if(!S.bugReport)return;
-  const txt=String(S.bugReport.text||'').trim();
+  // Textarea is uncontrolled — single source of truth at submit time
+  // is the DOM. Capture into state so a failed-insert re-render (busy
+  // → false with err=true) restores the typed value instead of
+  // clobbering it with the open-time empty string.
+  const el=document.getElementById('br-text');
+  const txt=String(el?el.value:'').trim();
   if(!txt||S.bugReport.busy)return;
+  S.bugReport.text=el?el.value:'';
   S.bugReport.busy=true;S.bugReport.err=false;render();
   const uid=(S.profile&&S.profile.id)||null;
   const _myStu=uid?STUDENTS.find(x=>x._userId===uid):null;
@@ -4372,7 +4382,7 @@ async function submitBugReport(){
     text:txt,
     page_path:pagePath,
     user_agent:(typeof navigator!=='undefined'?navigator.userAgent:''),
-    app_version:'v168'
+    app_version:'v169'
   };
   const cli=initSupabase();
   if(!cli){
@@ -4392,11 +4402,17 @@ function rBugReportModal(){
   if(!S.bugReport)return '';
   const st=S.bugReport;
   const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
-  const len=String(st.text||'').length;
+  // Textarea is uncontrolled (oninput touches DOM only — no render).
+  // st.text is empty at open, and only synced from the DOM at submit
+  // time so a failed-insert re-render can restore the typed value.
+  // Initial counter / Send-disabled state are derived from st.text
+  // (empty on open, captured value on retry); subsequent updates come
+  // from the DOM via _onBugReportInput.
+  const initLen=String(st.text||'').length;
   const canSend=String(st.text||'').trim().length>0 && !st.busy;
   const sendDis=canSend?'':'disabled';
   const sendOpacity=canSend?'1':'.5';
-  const counter=len>800?('<div style="font-size:12px;color:var(--text3);margin-top:4px;text-align:right">'+len+' / 1000</div>'):'';
+  const counterColor=initLen>=900?'var(--text2)':'var(--text3)';
   const errBlock=st.err
     ?'<div style="color:var(--red-text);font-size:14px;margin-top:12px;text-align:center">Couldn\'t send. Please try again.</div>'
     :'';
@@ -4412,12 +4428,12 @@ ${typeOpt('suggestion','Suggestion')}
 ${typeOpt('question','Question')}
 </select>
 <textarea id="br-text" rows="5" maxlength="1000" placeholder="Describe what happened or what you'd like to see..." oninput="_onBugReportInput(this)" onkeydown="if(event.key==='Escape')closeBugReport()" style="width:100%;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:inherit;font-size:14px;color:var(--text);resize:vertical;line-height:1.5;box-sizing:border-box">${esc(st.text)}</textarea>
-${counter}
+<div id="br-counter" style="font-size:12px;color:${counterColor};margin-top:4px;text-align:right">${initLen} / 1000</div>
 <div style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.4">Your name, role, and current screen are included automatically.</div>
 ${errBlock}
 <div style="display:flex;gap:10px;margin-top:16px">
 <button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeBugReport()" ${st.busy?'disabled':''}>Cancel</button>
-<button class="bblue" style="flex:1;padding:12px;opacity:${sendOpacity};cursor:${canSend?'pointer':'not-allowed'}" onclick="submitBugReport()" ${sendDis}>${st.busy?'Sending…':'Send'}</button>
+<button id="br-send" class="bblue" style="flex:1;padding:12px;opacity:${sendOpacity};cursor:${canSend?'pointer':'not-allowed'}" onclick="submitBugReport()" ${sendDis}>${st.busy?'Sending…':'Send'}</button>
 </div>
 </div></div>`;
 }
