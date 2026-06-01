@@ -3660,12 +3660,15 @@ function rMonthPromos(){
     if(localStorage.getItem('banner_promo_dismissed_'+_promoBannerMonthKey()))return '';
   }catch(_){/* localStorage disabled (private mode) → just always render */}
   const chips=recent.slice(0,3).map(p=>{
-    const bmap=BA;const b=bmap[p.toBelt]||BA.white;
     // G1-B hotfix — guard against null/empty studentName / toBelt so a
     // partial promotion row can't crash the home screen render.
+    // Pill colors are neutral (var(--card) + var(--text) + var(--border))
+    // so light belts (white, grey/white, yellow/white) stay legible
+    // against the banner's blue-tint→surface gradient. Belt-derived
+    // colors were unreadable on the light end of that gradient.
     const firstName=(p.studentName||'').split(' ')[0]||'?';
     const toBelt=p.toBelt||'?';
-    return '<span style="background:'+b.bg+'25;color:'+b.bg+';border:1px solid '+b.bg+'40;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px">'+firstName+'&nbsp;→&nbsp;'+toBelt+'</span>';
+    return '<span style="background:var(--card);color:var(--text);border:1px solid var(--border);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px">'+firstName+'&nbsp;→&nbsp;'+toBelt+'</span>';
   }).join('');
   const moreTxt=recent.length>3?'<span style="font-size:11px;color:var(--text3)">+' +(recent.length-3)+'</span>':'';
   const closeBtn='<button onclick="event.stopPropagation();dismissMonthPromos()" aria-label="Dismiss" title="Dismiss" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--blue);padding:2px;display:flex;align-items:center;justify-content:center;border-radius:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
