@@ -4089,10 +4089,19 @@ function _renderProfileIdentity(s,opts){
       +statusRow;
   }
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'+detailsBody+'</div>';
-  // B-edit — kids never show the Social card (no public socials in the
-  // V1 kid model). Adults and staff keep the chips when handles
-  // resolve to URLs; empty handles render an empty string anyway.
-  const socialBlock=(!isStaff&&isKids)?'':_socialChipsBlock(s.socialHandles,{subject:{kind:isStaff?'staff':'student',s}});
+  // Social links — compact chevron row matching the Settings rows
+  // pattern (icon bubble + label + chevron). Replaces the old SOCIAL
+  // chip card + inline Edit pill on the self-profile drawer. Tapping
+  // the row opens the same social editor modal the Edit pill used
+  // (openSocialEditor with the same subjectKey). Only the staff/student
+  // self-profile gets this row; kids (no V1 socials) and the kid-view
+  // path render nothing. Other people's roster profiles still render
+  // the chip card via _socialChipsBlock in rStaffProf / rStuProf.
+  const icoLink='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+  const socialKey=(isStaff?'staff':'student')+':'+s.id;
+  const socialBlock=(selfView&&!(!isStaff&&isKids))
+    ?'<div style="margin-top:18px"><button onclick="openSocialEditor(\''+socialKey+'\')" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:left;cursor:pointer"><div style="flex-shrink:0;color:var(--text2);display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--input-bg)">'+icoLink+'</div><div style="flex:1;min-width:0;font-size:14px;color:var(--text);font-weight:500">Social links</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg></button></div>'
+    :'';
   const editBtn='<div style="margin-top:18px"><button onclick="'+editHandler+'" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">'+editLabel+'</button></div>';
   return header+details+editBtn+socialBlock;
 }
