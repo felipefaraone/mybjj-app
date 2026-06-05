@@ -1321,7 +1321,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null,bugReport:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -2041,7 +2041,7 @@ function rAddStu(){
   const prefillBanner=_prefillParentName
     ?`<div style="margin-bottom:14px;padding:12px 14px;background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;font-size:14px;color:var(--blue);line-height:1.4">Adding child for ${escHtml(_prefillParentName)}</div>`
     :'';
-  return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Add Student</div></div><div class="sbody">
+  return `<div class="sub open"><div class="shdr"><button class="sback" onclick="closeAddStu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Add Student</div></div><div class="sbody">
 ${prefillBanner}
 <div class="slbl">Personal info</div>
 <div class="ef">
@@ -4485,13 +4485,24 @@ function onAddChild(target){
   const t=target||me;
   const isStaffViewer=(typeof isStaffOrOwner==='function')&&isStaffOrOwner();
   if(isStaffViewer){
+    // When the form is opened from another user's profile (target passed
+    // and distinct from self), remember where Back should return. Kind
+    // resolves from which roster the target row came from: STAFF →
+    // staffprof, otherwise stuprof. Opened from the drawer "Add student"
+    // (openSub('addstu')) there is no target and no returnTo, so Back
+    // falls through to closeSub → base drawer.
+    const fromProfile=!!target&&target.id!==me.id;
+    const returnTo=fromProfile
+      ?{sub:(STAFF.some(x=>x.id===target.id)?'staffprof':'stuprof'),id:target.id}
+      :null;
     openAddStudentForm({
       prefill:{
         parent_email:t&&t.email||null,
         parent_name:t&&t.name||null,
         parent_phone:t&&t.phone||null
       },
-      defaultProgram:'kid'
+      defaultProgram:'kid',
+      returnTo:returnTo
     });
     return;
   }
@@ -4591,11 +4602,32 @@ function openAddStudentForm(opts){
   // Mark the form as prefilled so submitAddStu (sendInvite) can branch
   // for the chained "+ Add child after adult save" workflow.
   S._addPrefilledFor=opts.prefilledFor||null;
+  // Where Back should return: a profile origin {sub,id} when opened from
+  // a user's Children section, else null (drawer-opened → base drawer).
+  S._addStuReturnTo=opts.returnTo||null;
   // Open the sub-panel directly, bypassing openSub's reset.
   S.sub='addstu';
   S.panelOpen=true;
   S.unitOpen=false;
   render();
+}
+// Back handler for the Add Student form. When the form was opened from a
+// user's profile (Children section), return to that profile by restoring
+// its subject id (S.viewStu for stuprof / S.viewStaff for staffprof) and
+// sub. Otherwise (drawer-opened) fall through to closeSub → base drawer.
+// The origin is consumed (nulled) so it can't leak into a later
+// drawer-opened Add Student.
+function closeAddStu(){
+  const r=S._addStuReturnTo;
+  S._addStuReturnTo=null;
+  if(r&&r.sub){
+    S.viewStu=(r.sub==='stuprof')?r.id:S.viewStu;
+    S.viewStaff=(r.sub==='staffprof')?r.id:S.viewStaff;
+    S.sub=r.sub;
+    render();
+  }else{
+    closeSub();
+  }
 }
 function _telHref(v){return 'tel:'+String(v||'').replace(/[^\d+]/g,'');}
 // G14.2 Step 2 follow-up — copy a contact value to clipboard. Reuses
@@ -6360,6 +6392,10 @@ async function sendInvite(dispatch,chain){
   // produced an apparent "no toast" symptom when the user dismissed
   // the panel before the magic-link round-trip resolved.
   if(!saved)return;
+  // Successful save closes the form (or chains to a fresh one) — the
+  // profile origin is no longer relevant, so clear it. Prevents a stale
+  // returnTo leaking into the next drawer-opened Add Student.
+  S._addStuReturnTo=null;
   // Snapshot the adult's contact details before wiping S._addForm so
   // the chained "+ Add child" step can pre-fill the parent block from
   // the just-saved adult. Only meaningful when chain=true && !isKids.
@@ -8929,7 +8965,7 @@ function openSub(s){
     setTimeout(clear,250);
   }
 }
-function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;S.pwdReauthAttempts=0;S.pwdResetSent=false;S._addPrefillForName=null;render();}
+function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;S.pwdReauthAttempts=0;S.pwdResetSent=false;S._addPrefillForName=null;S._addStuReturnTo=null;render();}
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
 function pickUnit(u){S.unit=u;S.unitOpen=false;rebuildTT();render();}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
