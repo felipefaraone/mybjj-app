@@ -9199,15 +9199,43 @@ async function doCI(id){
     render();return;
   }
   let _realId=r&&r.data&&r.data[0]&&r.data[0].id;
-  if(!_realId&&t.classId){
-    // Conflict was ignored — existing row already present. Find its id
-    // so the local-prefix row reconciles to the canonical row.
+  if(!_realId){
+    // ignoreDuplicates:true returns an empty data array when the upsert
+    // hit the (student_id,class_id,class_date) conflict and was ignored.
+    // This is a legitimate double-tap on the SAME occurrence ONLY if a
+    // 'going' (or already-confirmed 'present') row exists for THIS exact
+    // occurrence. The re-fetch must therefore be scoped to the exact
+    // (student_id, class_id, class_date) — filtering by class_id alone
+    // would match a different date's row (same recurring slot) and
+    // falsely report success. class_id may be null for virtual classes;
+    // fall back to class_legacy_id so we still target the occurrence.
+    let _ok=false;
     try{
-      const f=await cli.from('attendance').select('id').eq('student_id',stu._dbId).eq('class_id',t.classId).maybeSingle();
-      if(f&&f.data&&f.data.id)_realId=f.data.id;
+      let q=cli.from('attendance').select('id,status').eq('student_id',stu._dbId).eq('class_date',c.date);
+      q=(t.classId!=null)?q.eq('class_id',t.classId):q.eq('class_legacy_id',t.id);
+      const f=await q.maybeSingle();
+      if(f&&!f.error&&f.data&&(f.data.status==='going'||f.data.status==='present')){
+        // Confirmed-present is also a valid "I'm in" state — reconcile,
+        // never downgrade or treat as failure.
+        local._dbId=f.data.id;_ok=true;
+      }
     }catch(_){}
+    if(!_ok){
+      // No-op upsert that did NOT reconcile to a going/present row for
+      // this exact occurrence: the write did not land (missing row,
+      // wrong status like 'absent', or the re-fetch itself errored).
+      // Roll back the optimistic row instead of letting the UI claim a
+      // check-in that silently reverts on the next hydrate.
+      const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
+      console.warn('[mybjj] going not persisted (no-op upsert, reconcile failed):',{student:stu._dbId,class_id:t.classId,class_date:c.date});
+      showSaveToast2("Couldn't save — tap to retry",'error');
+      render();return;
+    }
+  }else{
+    // Fresh insert — reconcile the optimistic local-prefix row to the
+    // canonical id the upsert returned.
+    local._dbId=_realId;
   }
-  if(_realId)local._dbId=_realId;
   // 'going' rows don't change cached counts (only 'present' does), but
   // calling refreshStudentStats here keeps the local row in lock-step
   // with whatever the trigger decided — safer than assuming.
