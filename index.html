@@ -295,6 +295,13 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .fbta{width:100%;background:none;border:none;outline:none;font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);padding:14px 16px;resize:none;min-height:80px;caret-color:var(--blue)}.fbta::placeholder{color:var(--text3)}
 .fbfoot{padding:8px 12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end}.fbsend{background:#1A5DAD;color:#fff;border:none;border-radius:7px;padding:6px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
 .rsw{display:flex;gap:8px;margin-bottom:16px;align-items:stretch}.rseg{flex:1;height:var(--ctrl-h);box-sizing:border-box;padding:0 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;background:var(--card);color:var(--text2);text-align:center;display:inline-flex;align-items:center;justify-content:center;line-height:1}.rseg.active{background:#1A5DAD;color:#fff;border-color:var(--blue)}
+.mblock{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:10px;margin-bottom:14px}
+.mswitch{position:relative;display:flex;width:100%;height:var(--ctrl-h);box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:3px;margin-bottom:10px}
+.mswitch-thumb{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);background:var(--card);border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .18s ease;z-index:0}
+.mswitch.k .mswitch-thumb{transform:translateX(100%)}
+.mswitch-opt{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;line-height:1;cursor:pointer;color:var(--text3);user-select:none}
+.mswitch-opt.active{color:#1A5DAD}
+.mswitch-opt.disabled{opacity:.5;cursor:not-allowed}
 .achip2{padding:5px 12px;border-radius:20px;border:1px solid var(--border);font-size:12px;cursor:pointer;font-family:'Barlow',sans-serif;background:var(--card);color:var(--text2)}.achip2.on{background:#1A5DAD;color:#fff;border-color:var(--blue)}
 
 .tgi{background:#dbeafe;color:#1e40af;margin-right:4px}
@@ -4758,11 +4765,16 @@ function rCommunityPeople(){
   // control. Non-admin viewers (students) see Kids in a disabled state
   // (muted text, not-allowed cursor, no onclick) — the segment makes
   // sense without granting kid access.
-  const segAdultBtn='<div class="rseg '+(segment==='adult'?'active':'')+'" onclick="setMembersSegment(\'adult\')">Adults</div>';
-  const segKidsBtn=canSeeKids
-    ?'<div class="rseg '+(segment==='kids'?'active':'')+'" onclick="setMembersSegment(\'kids\')">Kids</div>'
-    :'<div class="rseg" aria-disabled="true" style="cursor:not-allowed;color:var(--text3);background:var(--bg);border-color:var(--border);opacity:.6">Kids</div>';
-  const segHtml='<div class="rsw">'+segAdultBtn+segKidsBtn+'</div>';
+  // Level-2 Adults/Kids — subtler sliding switch (gray track + white
+  // thumb, active label in brand blue) so it reads as subordinate to the
+  // solid-blue People/Wall pill above. Behaviour unchanged: still calls
+  // setMembersSegment and updates S.rseg. Disabled-Kids affordance for
+  // non-admin viewers preserved (dimmed, no onclick).
+  const segOptAdult='<div class="mswitch-opt '+(segment==='adult'?'active':'')+'" onclick="setMembersSegment(\'adult\')">Adults</div>';
+  const segOptKids=canSeeKids
+    ?'<div class="mswitch-opt '+(segment==='kids'?'active':'')+'" onclick="setMembersSegment(\'kids\')">Kids</div>'
+    :'<div class="mswitch-opt disabled" aria-disabled="true">Kids</div>';
+  const segHtml='<div class="mswitch '+(segment==='kids'?'k':'')+'"><div class="mswitch-thumb"></div>'+segOptAdult+segOptKids+'</div>';
   const chipBase='border-radius:18px;padding:0 14px;height:var(--ctrl-h);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid;transition:all .15s;line-height:1';
   const beltChip=(value,label)=>{
     const sel=beltFilter===value;
@@ -4784,7 +4796,10 @@ function rCommunityPeople(){
   const searchIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   const searchHtml='<div style="position:relative;margin-bottom:14px">'+searchIcon+'<input type="search" id="members-search" placeholder="Search members…" value="'+qVal+'" oninput="setMemberQuery(this.value)" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/>'+clearBtn+'</div>';
   const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · '+list.length+'</div>';
-  if(!list.length)return headline+segHtml+typeChips+beltChips+searchHtml+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
+  // Recessed containment block groups the level-2 switch with the
+  // level-3 filter chips, subordinating them to the People/Wall pill.
+  const filterBlock='<div class="mblock">'+segHtml+typeChips+beltChips+'</div>';
+  if(!list.length)return headline+filterBlock+searchHtml+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
   const rows=list.map(m=>{
     const isInstr=m._kind==='instructor';
     const av=isInstr?avStaff(m,40):avStu(m,40);
@@ -4819,7 +4834,7 @@ function rCommunityPeople(){
       +socialRow
       +'</div>';
   }).join('');
-  return headline+segHtml+typeChips+beltChips+searchHtml+rows;
+  return headline+filterBlock+searchHtml+rows;
 }
 // Batch community-wall — global promotions feed for the Community
 // hub. Adult students (prog='adult') only — kids' promotions are
