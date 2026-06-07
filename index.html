@@ -3670,20 +3670,31 @@ function _promoBannerMonthKey(){
   return TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
 }
 function rMonthPromos(){
-  const cutoff=new Date('2026-03-01');
-  const recent=PROMOTION_LOG.filter(p=>new Date(p.date)>=cutoff&&p.isNewBelt);
+  // Recently promoted — rolling 7-day window (was a hardcoded 2026-03-01
+  // cutoff). Unit-scoped like the Wall. Role-gated: staff/owner see kids
+  // too; students/parents see adults only (kid promotions never surface
+  // here — a parent sees their own kid only inside the kid's profile).
+  const _bCurU=UNITS.find(u=>u.name===S.unit);
+  const _bCurUnit=_bCurU?_bCurU.id:null;
+  const _bCutoff=new Date();_bCutoff.setDate(_bCutoff.getDate()-7);
+  const _bSeeKids=isStaffOrOwner();
+  const recent=PROMOTION_LOG
+    .filter(p=>p&&p.isNewBelt&&new Date(p.date)>=_bCutoff&&(!_bCurUnit||p.unit===_bCurUnit))
+    .map(p=>{const s=STUDENTS.find(x=>x.id===p.studentId);return{p,s};})
+    .filter(({s})=>s&&(_bSeeKids||s.prog==='adult'))
+    .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date));
   if(!recent.length)return '';
   try{
     if(localStorage.getItem('banner_promo_dismissed_'+_promoBannerMonthKey()))return '';
   }catch(_){/* localStorage disabled (private mode) → just always render */}
-  const chips=recent.slice(0,3).map(p=>{
-    // G1-B hotfix — guard against null/empty studentName / toBelt so a
+  const chips=recent.slice(0,3).map(({p,s})=>{
+    // G1-B hotfix — guard against null/empty name / toBelt so a
     // partial promotion row can't crash the home screen render.
     // Pill colors are neutral (var(--card) + var(--text) + var(--border))
     // so light belts (white, grey/white, yellow/white) stay legible
     // against the banner's blue-tint→surface gradient. Belt-derived
     // colors were unreadable on the light end of that gradient.
-    const firstName=(p.studentName||'').split(' ')[0]||'?';
+    const firstName=(s.name||'').split(' ')[0]||'?';
     const toBelt=p.toBelt||'?';
     return '<span style="background:var(--card);color:var(--text);border:1px solid var(--border);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px">'+firstName+'&nbsp;→&nbsp;'+toBelt+'</span>';
   }).join('');
@@ -3692,7 +3703,7 @@ function rMonthPromos(){
   // Batch wall-4b — banner now taps through to Community → Wall.
   // Dismiss button keeps its stopPropagation so the close action
   // doesn't also navigate.
-  return `<div id="month-promos-banner" onclick="goToWall()" style="position:relative;background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 30px 11px 14px;margin-top:20px;margin-bottom:12px;transition:opacity 200ms;cursor:pointer">${closeBtn}<div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);margin-bottom:6px">Promoted this month</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
+  return `<div id="month-promos-banner" onclick="goToWall()" style="position:relative;background:linear-gradient(135deg,var(--blue-tint),var(--surface));border:1px solid var(--blue-mid);border-radius:12px;padding:11px 30px 11px 14px;margin-top:20px;margin-bottom:12px;transition:opacity 200ms;cursor:pointer">${closeBtn}<div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);margin-bottom:6px">Recently promoted</div><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${chips}${moreTxt}</div></div>`;
 }
 function goToWall(){
   S.tab='community';
