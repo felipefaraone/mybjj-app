@@ -3684,9 +3684,16 @@ function rMonthPromos(){
     .filter(({s})=>s&&(_bSeeKids||s.prog==='adult'))
     .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date));
   if(!recent.length)return '';
+  // Per-user dismiss that reappears when a newer promotion lands. Store
+  // the timestamp of the most recent promotion the user has seen,
+  // namespaced by user id; stay hidden only while nothing newer arrives.
+  const _bNewest=new Date(recent[0].p.date).getTime();
+  S._bannerNewest=_bNewest;
+  const _bUid=(S.profile&&S.profile.id)||'anon';
   try{
-    if(localStorage.getItem('banner_promo_dismissed_'+_promoBannerMonthKey()))return '';
-  }catch(_){/* localStorage disabled (private mode) → just always render */}
+    const bSeen=parseInt(localStorage.getItem('banner_promo_seen_'+_bUid)||'0',10)||0;
+    if(_bNewest&&_bNewest<=bSeen)return '';
+  }catch(_){/* localStorage disabled → always render */}
   const chips=recent.slice(0,3).map(({p,s})=>{
     // G1-B hotfix — guard against null/empty name / toBelt so a
     // partial promotion row can't crash the home screen render.
@@ -3712,16 +3719,17 @@ function goToWall(){
   render();
 }
 function dismissMonthPromos(){
-  const key='banner_promo_dismissed_'+_promoBannerMonthKey();
+  const key='banner_promo_seen_'+((S.profile&&S.profile.id)||'anon');
+  const val=String(S._bannerNewest||Date.now());
   const el=document.getElementById('month-promos-banner');
   if(el){
     el.style.opacity='0';
     setTimeout(()=>{
-      try{localStorage.setItem(key,'1');}catch(_){/* no-op */}
+      try{localStorage.setItem(key,val);}catch(_){/* no-op */}
       render();
     },220);
   } else {
-    try{localStorage.setItem(key,'1');}catch(_){/* no-op */}
+    try{localStorage.setItem(key,val);}catch(_){/* no-op */}
     render();
   }
 }
