@@ -1332,7 +1332,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -3697,6 +3697,7 @@ function rMonthPromos(){
 function goToWall(){
   S.tab='community';
   S.commTab='wall';
+  S.wallShown=5;
   render();
 }
 function dismissMonthPromos(){
@@ -4726,7 +4727,8 @@ function rMembers(){
   const body=tab==='wall'?rCommunityWall():rCommunityPeople();
   return '<div style="height:16px"></div>'+segHtml+body;
 }
-function setCommTab(t){S.commTab=t==='wall'?'wall':'people';render();}
+function setCommTab(t){S.commTab=t==='wall'?'wall':'people';if(S.commTab==='wall')S.wallShown=5;render();}
+function wallLoadMore(){S.wallShown=(S.wallShown||5)+10;render();}
 function rCommunityPeople(){
   const curU=UNITS.find(u=>u.name===S.unit);
   const curUnit=curU?curU.id:null;
@@ -4865,12 +4867,11 @@ function rCommunityWall(){
   // promotions whose student doesn't resolve or whose student is a
   // kid. Unit scope: PROMOTION_LOG carries the unit legacy_id via
   // hydrate's uMap.
-  // Batch share-content — cap the Wall at the 25 most recent
-  // promotions so it can't pile up. Older promotions remain in each
-  // person's Journey (the archive). Future: add a "Load more" /
-  // pagination if volume grows past the cap.
-  const WALL_LIMIT=25;
-  const rows=PROMOTION_LOG
+  // 12-month render window. PROMOTION_LOG keeps the full history for
+  // the Journey archive; this only limits what the Wall shows. The
+  // load-more pager reveals 5, then +10 per tap via S.wallShown.
+  const _wallCutoff=new Date();_wallCutoff.setMonth(_wallCutoff.getMonth()-12);
+  const eligible=PROMOTION_LOG
     .filter(p=>p&&p.type!=='correction'&&(!curUnit||p.unit===curUnit))
     .map(p=>{
       const s=STUDENTS.find(x=>x.id===p.studentId);
@@ -4878,8 +4879,10 @@ function rCommunityWall(){
       return{p,s};
     })
     .filter(Boolean)
-    .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date))
-    .slice(0,WALL_LIMIT);
+    .filter(({p})=>{const d=new Date(p.date);return !isNaN(d)&&d>=_wallCutoff;})
+    .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date));
+  const _wallShown=S.wallShown||5;
+  const rows=eligible.slice(0,_wallShown);
   if(!rows.length){
     return '<div class="card" style="text-align:center;padding:32px 20px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No promotions yet</div>'
@@ -4947,7 +4950,10 @@ function rCommunityWall(){
       +ossHtml
     +'</div>';
   }).join('');
-  return cards;
+  const _loadMore=(eligible.length>_wallShown)
+    ?'<button onclick="wallLoadMore()" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--blue);cursor:pointer;margin-top:4px">Load more</button>'
+    :'';
+  return cards+_loadMore;
 }
 // Batch wall-4b — Oss reactions. The Wall card calls _ossControlHtml
 // with the promotion UUID; the control renders an outline / brand-blue-
