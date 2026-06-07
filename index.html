@@ -230,6 +230,10 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .pt{background:var(--border);border-radius:99px;height:7px;overflow:hidden}.pf{height:100%;border-radius:99px}
 .stabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;align-items:stretch}
 .stab{flex:1;min-width:72px;height:var(--ctrl-h);box-sizing:border-box;padding:0 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;cursor:pointer;background:var(--card);color:var(--text2);white-space:nowrap;text-align:center;display:inline-flex;align-items:center;justify-content:center;line-height:1}.stab.active{background:#1A5DAD;color:#fff;border-color:var(--blue)}
+.wsel{display:flex;gap:6px}
+.wseg{flex:1;min-width:0;height:36px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2px;cursor:pointer;display:flex;align-items:center;justify-content:center;text-align:center;white-space:nowrap}
+.wseg.active{background:#1A5DAD;color:#fff;border-color:var(--blue)}
+.wseg-add{flex:1;min-width:0;height:36px;border-radius:8px;border:1.5px dashed var(--border2);background:transparent;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px}
 .bblue{width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
 .admin-action-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--blue);cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .admin-action-btn:hover{background:var(--blue-tint);border-color:var(--blue-mid)}
@@ -5519,12 +5523,19 @@ function rSchedule(){
   // (allowed since the DB doesn't UNIQUE on week_index).
   let selW=weeksThisPeriod.find(x=>x._localId===S.sweek)||weeksThisPeriod[0]||null;
 
-  const addBtn=isA?'<button class="badd" style="margin-top:0;margin-bottom:12px" onclick="addWeek()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add week</button>':'';
-
-  const weekTabsHtml=weeksThisPeriod.length
-    ?('<div class="stabs" style="margin-bottom:14px;flex-wrap:wrap">'
-        +weeksThisPeriod.map(x=>'<button class="stab '+(selW&&selW._localId===x._localId?'active':'')+'" onclick="setSelectedWeek(\''+x._localId+'\')">Week '+x.week+'</button>').join('')
-      +'</div>')
+  // Week selector — segmented row (.wseg) inside the recessed .mblock,
+  // matching the app's segmented-control language. The "+Add" segment is
+  // an inline dashed segment (last child), admin-only and capped at 5
+  // weeks/period. Replaces the old standalone .badd addBtn + .stabs tabs.
+  const _addSeg=(isA&&weeksThisPeriod.length<5)
+    ?'<button class="wseg-add" onclick="addWeek()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add</button>'
+    :'';
+  const _weekSegs=weeksThisPeriod.map(x=>'<button class="wseg '+(selW&&selW._localId===x._localId?'active':'')+'" onclick="setSelectedWeek(\''+x._localId+'\')">Week '+x.week+'</button>').join('');
+  // Render the block when there are weeks, OR when an admin can add the
+  // first one (empty-state admin gets just the +Add segment). Non-admins
+  // on an empty period fall through to the existing empty-state card.
+  const weekTabsHtml=(weeksThisPeriod.length||isA)
+    ?('<div class="mblock"><div class="wsel">'+_weekSegs+_addSeg+'</div></div>')
     :'';
 
   function techRow(tech,idx,cat,wRef){
@@ -5578,7 +5589,7 @@ function rSchedule(){
       +(S.editWeek===w._localId?rWEditor(w):'');
   }
 
-  return '<div style="height:16px"></div>'+segHtml+periodSelect+addBtn+weekTabsHtml+bodyHtml+'<div style="height:16px"></div>'+draftEditor;
+  return '<div style="height:16px"></div>'+segHtml+periodSelect+weekTabsHtml+bodyHtml+'<div style="height:16px"></div>'+draftEditor;
 }
 function setSchedMode(m){S.schedMode=m==='events'?'events':'curriculum';S.editWeek=false;render();}
 function setSchedPeriod(k){S.schedPeriod=k;S.sweek=null;render();}
