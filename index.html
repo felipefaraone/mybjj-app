@@ -1332,7 +1332,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -5700,7 +5700,7 @@ function rEvents(isA){
   const eventsPeriods=_monthOptionsWithItems(EVENTS,x=>x._dateIso||x.date);
   const selEventsPeriod=(S.eventsPeriod&&eventsPeriods.find(p=>p.key===S.eventsPeriod))
     ?S.eventsPeriod
-    :_smartDefaultMonthKey(EVENTS,x=>x._dateIso||x.date);
+    :'all';
   const eventsFilterHtml='<div style="margin-bottom:12px">'+_monthSelectHTML('',eventsPeriods,selEventsPeriod,'setEventsPeriod(this.value)')+'</div>';
   const inSelectedMonth=(e)=>{
     if(selEventsPeriod==='all')return true;
@@ -5709,7 +5709,25 @@ function rEvents(isA){
     if(!d)return true; // undated events always show
     return _monthKey(d)===selEventsPeriod;
   };
-  const rows=EVENTS.filter(e=>!e.units||e.units.includes(curUnitId)).filter(inSelectedMonth).map(e=>{
+  // Upcoming-first ordering: today counts as upcoming (cutoff = start of
+  // today). Both upcoming → nearest first; both past → most recent first;
+  // upcoming always above past; undated rows sink to the bottom.
+  const _evToday=new Date(); _evToday.setHours(0,0,0,0);
+  const filtered=EVENTS.filter(e=>!e.units||e.units.includes(curUnitId))
+    .filter(inSelectedMonth)
+    .sort((a,b)=>{
+      const da=_parseISODate(a._dateIso||a.date);
+      const db=_parseISODate(b._dateIso||b.date);
+      if(!da&&!db)return 0;
+      if(!da)return 1;            // undated → bottom
+      if(!db)return -1;
+      const fa=da>=_evToday, fb=db>=_evToday;
+      if(fa&&fb)return da-db;     // both upcoming: nearest first
+      if(!fa&&!fb)return db-da;   // both past: most recent first
+      return fa?-1:1;            // upcoming before past
+    });
+  const _evShown=S.eventsShown||5;
+  const rows=filtered.slice(0,_evShown).map(e=>{
     const isComp=e.type==='competition';
     const typeCol=isComp?'#1A5DAD':'#15803d';
     const typeLbl=isComp?'Competition':'Social';
@@ -5759,15 +5777,19 @@ function rEvents(isA){
   const addBtn=isA?'<button class="badd" style="margin-top:4px;margin-bottom:12px" onclick="openAddEv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add event</button>':'';
   // MOCK-FIX — empty state for events feed. Triggered when EVENTS is
   // empty OR when the filter (current unit) hides every row.
-  const emptyState=rows.length?'':'<div class="card" style="text-align:center;padding:32px 20px">'
+  const emptyState=filtered.length?'':'<div class="card" style="text-align:center;padding:32px 20px">'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No events yet</div>'
     +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Upcoming tournaments and seminars will show here.</div>'
     +'</div>';
+  // Load-more pager (5, then +10) — same markup/style as the Community
+  // Wall's load-more for visual consistency.
+  const eventsMore=(filtered.length>_evShown)?'<button onclick="eventsLoadMore()" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--blue);cursor:pointer;margin-top:4px">Load more</button>':'';
   // Batch events-discoverability — addBtn at the TOP so admins don't
   // have to scroll past every event card to find it.
-  return eventsFilterHtml+addBtn+emptyState+rows.join('');
+  return eventsFilterHtml+addBtn+emptyState+rows.join('')+eventsMore;
 }
-function setEventsPeriod(k){S.eventsPeriod=k||null;render();}
+function eventsLoadMore(){S.eventsShown=(S.eventsShown||5)+10;render();}
+function setEventsPeriod(k){S.eventsShown=5;S.eventsPeriod=k||null;render();}
 // Batch event-facepile — full roster subview opened by tapping a
 // Competing / Supporting row on the event card. Same .sub open slide-
 // in pattern as rStuAttList; lives in the rSub() registry. The
