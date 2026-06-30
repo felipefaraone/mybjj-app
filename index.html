@@ -1157,6 +1157,7 @@ const SOCIAL={
 // hydrate fills it. On hydrate failure the array stays empty so
 // the UI renders empty states rather than fallback mock rows.
 let STUDENTS=[];
+let TRIALS=[];
 
 
 // Etapa 3 — STAFF hydrates from public.staff. Empty on boot;
@@ -6066,6 +6067,39 @@ function rARosterListInner(){
   return rows+emptyMsg;
 }
 
+// Module 1 — read-only Trials block shown above the member roster.
+// Lists active trial bookings (booked|attended) for the current unit.
+// Returns '' when there are no trials so the section collapses cleanly.
+// No action buttons yet — convert/attend/reschedule come in a follow-up.
+function rTrialsBlock(){
+  const curU=UNITS.find(u=>u.name===S.unit);
+  const list=TRIALS.filter(t=>!t._unitId||(curU&&t._unitId===curU._dbId));
+  if(!list.length)return '';
+  const chipBase='display:inline-flex;align-items:center;gap:4px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px';
+  const rows=list.map(t=>{
+    const isAttended=t.status==='attended';
+    const statusChip='<span style="'+chipBase+';background:'+(isAttended?'var(--green-bg)':'var(--blue-tint)')+';color:'+(isAttended?'var(--green-text)':'var(--blue)')+'">'+(isAttended?'Attended':'Booked')+'</span>';
+    const kidChip=t.isKid?'<span style="'+chipBase+';background:var(--amber-bg);color:var(--amber-text)">KIDS</span>':'';
+    const waiverOk=!!t.waiverSignedAt;
+    const waiverChip='<span style="'+chipBase+';background:'+(waiverOk?'var(--green-bg)':'var(--amber-bg)')+';color:'+(waiverOk?'var(--green-text)':'var(--amber-text)')+';border:1px solid '+(waiverOk?'var(--green-border)':'var(--amber-border)')+'">'+(waiverOk?'WAIVER OK':'WAIVER PENDING')+'</span>';
+    const displayName=(t.isKid&&t.kidName)?t.kidName:(t.name||'—');
+    const contactBits=[t.email,t.phone].filter(Boolean).join(' · ');
+    const contact=contactBits?'<div style="font-size:11px;color:var(--text3);margin-top:6px">'+contactBits+'</div>':'';
+    const prefDay=t.preferredDay?'<div style="font-size:11px;color:var(--text3);margin-top:4px">Prefers '+t.preferredDay+'</div>':'';
+    return '<div class="card">'
+      +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
+      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text)">'+displayName+'</span>'
+      +kidChip
+      +'</div>'
+      +statusChip+'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'+waiverChip+'</div>'
+      +contact
+      +prefDay
+      +'</div>';
+  }).join('');
+  return '<div style="margin-bottom:20px"><div class="slbl">Trials ('+list.length+')</div>'+rows+'</div>';
+}
 function rARoster(){
   const rfBelt=S.rfBelt||'all';
   const rfNear=!!S.rfNear;
@@ -6110,7 +6144,7 @@ function rARoster(){
   const totalReg=allAdults.length+allKids.length;
   const regLine='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">'+totalReg+' registered students</div>';
   const seg='<div class="rsw">'+'<div class="rseg '+(S.rseg==="adult"?"active":"")+'" onclick="S.rseg=String.fromCharCode(97,100,117,108,116);render()">Adults ('+allAdults.length+')</div>'+'<div class="rseg '+(S.rseg==="kids"?"active":"")+'" onclick="S.rseg=String.fromCharCode(107,105,100,115);render()">Kids ('+allKids.length+')</div></div>';
-  return regLine+seg+filterHtml+'<div id="roster-results">'+rARosterListInner()+'</div>';
+  return rTrialsBlock()+regLine+seg+filterHtml+'<div id="roster-results">'+rARosterListInner()+'</div>';
 }
 function rStaff(){
   const ownerView=isOwner();
@@ -8066,9 +8100,13 @@ async function hydrateData(){
       // STUDENTS row as `.feedback`, replacing whatever the JSONB
       // students.feedback column produced.
       c.from('feedback').select('id,student_id,instructor_id,text,date,created_at,instructor:staff!instructor_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(500),
+      // Module 1 — trial bookings. Scope to active trials only
+      // (booked|attended); converted/lapsed rows are excluded in the
+      // query so TRIALS only ever holds rows that still need action.
+      c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended']).order('booked_at',{ascending:false}),
     ]);
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),cl=get(7),fb=get(8);
+    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),cl=get(7),fb=get(8),tr=get(9);
     const uMap={};
     if(u.data){
       // MOCK-FIX — empty array clears UNITS so an empty DB doesn't
@@ -8090,6 +8128,13 @@ async function hydrateData(){
       STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
       touched=true;
     }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
+    if(tr.data){
+      // Module 1 — trial bookings mapped to camelCase, same style as
+      // STUDENTS. unit resolved via uMap (legacy id) so render can scope
+      // to the current unit the same way the member roster does.
+      TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
+      touched=true;
+    }else if(tr.error)console.warn('[mybjj] hydrate trials:',tr.error);
     if(sf.data&&sf.data.length){
       STAFF=sf.data.map(r=>{
         // Strip any legacy "Prof." / "Professor " prefix at hydrate so
