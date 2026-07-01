@@ -230,10 +230,11 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .pt{background:var(--border);border-radius:99px;height:7px;overflow:hidden}.pf{height:100%;border-radius:99px}
 .stabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;align-items:stretch}
 .stab{flex:1;min-width:72px;height:var(--ctrl-h);box-sizing:border-box;padding:0 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;cursor:pointer;background:var(--card);color:var(--text2);white-space:nowrap;text-align:center;display:inline-flex;align-items:center;justify-content:center;line-height:1}.stab.active{background:#1A5DAD;color:#fff;border-color:var(--blue)}
-.wsel{display:flex;gap:6px}
-.wseg{flex:1;min-width:0;height:36px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2px;cursor:pointer;display:flex;align-items:center;justify-content:center;text-align:center;white-space:nowrap}
+.wsel{display:flex;gap:6px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.wsel::-webkit-scrollbar{display:none}
+.wseg{flex:0 0 auto;min-width:0;height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2px;cursor:pointer;display:flex;align-items:center;justify-content:center;text-align:center;white-space:nowrap}
 .wseg.active{background:#1A5DAD;color:#fff;border-color:var(--blue)}
-.wseg-add{flex:1;min-width:0;height:36px;border-radius:8px;border:1.5px dashed var(--border2);background:transparent;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px}
+.wseg-add{flex:0 0 auto;min-width:0;height:36px;padding:0 12px;border-radius:8px;border:1.5px dashed var(--border2);background:transparent;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px}
 .bblue{width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
 .admin-action-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--blue);cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .admin-action-btn:hover{background:var(--blue-tint);border-color:var(--blue-mid)}
@@ -4478,6 +4479,105 @@ async function submitBugReport(){
   S.bugReport=null;render();
   showSaveToast2("Thanks. We'll review and follow up if needed.",undefined,4000);
 }
+// 18-week cycle Fatia 3 — admin (isStaffOrOwner, NOT owner-only) UI to
+// configure the recurring cycle for the current unit. mode:'setup' opens
+// from the Curriculum tab's entry line when cycle is off; mode:'settings'
+// opens from the gear when cycle is on and adds a "turn off" action.
+function openCycleSetup(){
+  const u=UNITS.find(x=>x.name===S.unit)||null;
+  S.cycleSetup={week:(u?currentCycleWeek(u):null)||1,len:(u&&u.cycleLengthWeeks)||18,busy:false,mode:'setup'};
+  render();
+}
+function openCycleSettings(){
+  const u=UNITS.find(x=>x.name===S.unit)||null;
+  S.cycleSetup={week:(u?currentCycleWeek(u):null)||1,len:(u&&u.cycleLengthWeeks)||18,busy:false,mode:'settings'};
+  render();
+}
+function closeCycleSetup(){S.cycleSetup=null;render();}
+async function saveCycleSetup(){
+  if(!S.cycleSetup||S.cycleSetup.busy)return;
+  const u=UNITS.find(x=>x.name===S.unit)||null;
+  if(!u||!u._dbId){showSaveToast2('No unit selected','error');return;}
+  const weekEl=document.getElementById('cyc-week');
+  const lenEl=document.getElementById('cyc-len');
+  const len=parseInt(lenEl?lenEl.value:'',10)||18;
+  const wk=Math.min(Math.max(parseInt(weekEl?weekEl.value:'',10)||1,1),len);
+  // Monday of the current week (local), then subtract (wk-1) weeks so
+  // week 1's Monday becomes the anchor.
+  const now=new Date();now.setHours(0,0,0,0);
+  const dow=(now.getDay()+6)%7;           // 0=Mon..6=Sun
+  const monday=new Date(now);monday.setDate(now.getDate()-dow);
+  monday.setDate(monday.getDate()-(wk-1)*7);
+  const y=monday.getFullYear(),m=String(monday.getMonth()+1).padStart(2,'0'),d=String(monday.getDate()).padStart(2,'0');
+  const anchorStr=`${y}-${m}-${d}`;
+  S.cycleSetup.busy=true;render();
+  const cli=initSupabase();
+  if(!cli){if(S.cycleSetup)S.cycleSetup.busy=false;render();showSaveToast2('Connection issue','error');return;}
+  try{
+    const r=await cli.from('units').update({cycle_anchor_date:anchorStr,cycle_length_weeks:len}).eq('id',u._dbId);
+    if(r&&r.error)throw r.error;
+    u.cycleAnchorDate=anchorStr;u.cycleLengthWeeks=len;
+    S.cycleSetup=null;render();
+    showSaveToast2('Cycle updated');
+  }catch(e){
+    console.warn('[mybjj] saveCycleSetup:',e);
+    if(S.cycleSetup)S.cycleSetup.busy=false;render();
+    showSaveToast2('Could not save cycle','error');
+  }
+}
+async function turnOffCycle(){
+  if(!S.cycleSetup||S.cycleSetup.busy)return;
+  const u=UNITS.find(x=>x.name===S.unit)||null;
+  if(!u||!u._dbId){showSaveToast2('No unit selected','error');return;}
+  S.cycleSetup.busy=true;render();
+  const cli=initSupabase();
+  if(!cli){if(S.cycleSetup)S.cycleSetup.busy=false;render();showSaveToast2('Connection issue','error');return;}
+  try{
+    const r=await cli.from('units').update({cycle_anchor_date:null}).eq('id',u._dbId);
+    if(r&&r.error)throw r.error;
+    u.cycleAnchorDate=null;
+    S.cycleSetup=null;render();
+    showSaveToast2('Cycle turned off');
+  }catch(e){
+    console.warn('[mybjj] turnOffCycle:',e);
+    if(S.cycleSetup)S.cycleSetup.busy=false;render();
+    showSaveToast2('Could not turn off cycle','error');
+  }
+}
+function rCycleSetupModal(){
+  if(!S.cycleSetup||!isStaffOrOwner())return '';
+  const st=S.cycleSetup;
+  const isSettings=st.mode==='settings';
+  const len=Math.max(1,parseInt(st.len,10)||18);
+  let weekOpts='';for(let i=1;i<=len;i++){weekOpts+='<option value="'+i+'" '+(i===st.week?'selected':'')+'>Week '+i+'</option>';}
+  const lenSel=[12,16,18,20,24].map(n=>'<option value="'+n+'" '+(n===len?'selected':'')+'>'+n+' weeks</option>').join('');
+  const title=isSettings?'Cycle settings':'Set up cycle';
+  const caption=isSettings
+    ?'Adjust which week you’re on or the cycle length.'
+    :'Your curriculum repeats on a fixed cycle. Tell us which week you’re in now and it runs automatically, looping back to week 1 at the end.';
+  const weekLabel=isSettings?'Current week':'Which week are you in this week?';
+  const primaryLabel=isSettings?'Save':'Turn on cycle';
+  const dis=st.busy?'disabled':'';
+  const selStyle='width:100%;background:var(--card);margin-bottom:14px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;color:var(--text)';
+  const lblStyle='font-size:12px;color:var(--text3);margin-bottom:6px;font-weight:600';
+  const dangerBlock=isSettings
+    ?'<div style="border-top:1px solid var(--border);margin-top:18px;padding-top:16px"><button class="bsm" onclick="turnOffCycle()" '+dis+' style="width:100%;padding:12px;border-radius:10px;font-size:14px;color:var(--red-text);border:1px solid var(--red-border);background:transparent;cursor:pointer">Turn off cycle (back to month view)</button></div>'
+    :'';
+  return `<div class="cov" onclick="${st.busy?'':'closeCycleSetup()'}" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:420px;width:100%;margin:0 auto;padding:22px">
+<button onclick="closeCycleSetup()" aria-label="Close" ${dis} style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;padding-right:40px">${title}</div>
+<div style="font-size:13px;color:var(--text3);margin-bottom:16px;line-height:1.4">${caption}</div>
+<div style="${lblStyle}">${weekLabel}</div>
+<select id="cyc-week" class="einput" ${dis} style="${selStyle}">${weekOpts}</select>
+<div style="${lblStyle}">Cycle length</div>
+<select id="cyc-len" class="einput" ${dis} style="${selStyle}">${lenSel}</select>
+<div style="display:flex;gap:10px;margin-top:6px">
+<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeCycleSetup()" ${dis}>Cancel</button>
+<button class="bblue" style="flex:1;padding:12px;opacity:${st.busy?'.6':'1'}" onclick="saveCycleSetup()" ${dis}>${st.busy?'Saving…':primaryLabel}</button>
+</div>
+${dangerBlock}
+</div></div>`;
+}
 function rBugReportModal(){
   if(!S.bugReport)return '';
   const st=S.bugReport;
@@ -5619,9 +5719,12 @@ function rSchedule(){
     ?('<div class="mblock"><div class="wsel">'+_weekSegs+_addSeg+'</div></div>')
     :'';
   // Cycle on → small muted caption above the selector telling everyone
-  // where we are in the cycle.
+  // where we are in the cycle, with an admin-only gear to open settings.
+  const _cycleGear=(_cycleOn&&isA)
+    ?'<button onclick="openCycleSettings()" title="Cycle settings" aria-label="Cycle settings" style="background:none;border:none;padding:0;cursor:pointer;color:var(--text3);display:inline-flex;align-items:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>'
+    :'';
   const cycleHeader=_cycleOn
-    ?'<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Week '+_cycleWeek+' of '+_curUnit.cycleLengthWeeks+'</div>'
+    ?'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="font-size:11px;color:var(--text3)">Week '+_cycleWeek+' of '+_curUnit.cycleLengthWeeks+'</div>'+_cycleGear+'</div>'
     :'';
 
   function techRow(tech,idx,cat,wRef){
@@ -5675,7 +5778,17 @@ function rSchedule(){
       +(S.editWeek===w._localId?rWEditor(w):'');
   }
 
-  return '<div style="height:16px"></div>'+segHtml+periodSelect+cycleHeader+weekTabsHtml+bodyHtml+'<div style="height:16px"></div>'+draftEditor;
+  // Cycle off + admin → discreet entry line (not a card) to configure the
+  // recurring cycle without touching SQL.
+  const cycleEntry=(!_cycleOn&&isA)
+    ?'<div onclick="openCycleSetup()" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--blue)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Set up recurring cycle</div>'
+    :'';
+  // Cycle on → auto-center the live/selected week in the scrollable
+  // selector once the DOM exists (guarded on the element being present).
+  if(_cycleOn){
+    setTimeout(()=>{const el=document.querySelector('.wseg.active');if(el&&el.scrollIntoView)el.scrollIntoView({inline:'center',block:'nearest'});},0);
+  }
+  return '<div style="height:16px"></div>'+segHtml+periodSelect+cycleHeader+weekTabsHtml+bodyHtml+cycleEntry+'<div style="height:16px"></div>'+draftEditor;
 }
 function setSchedMode(m){S.schedMode=m==='events'?'events':'curriculum';S.editWeek=false;render();}
 function setSchedPeriod(k){S.schedPeriod=k;S.sweek=null;render();}
@@ -6439,7 +6552,7 @@ function rCEdit(){
 // ---------------------------------------------------------------------------
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rBugReportModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}${isA?`<div class="abadge">${staffTitle(S.me)}</div>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${S.tab===t.id?'<div class="ntick"></div>':''}</button>`).join('')}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
