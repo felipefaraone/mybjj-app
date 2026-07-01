@@ -5543,29 +5543,43 @@ function rSchedule(){
   // user's explicit pick (including 'all') is honoured when it
   // resolves to an option still present in the list.
   const committedSched=SCHED.filter(x=>!x._draft);
+  // 18-week cycle Fatia 2 — when the current unit has a cycle configured
+  // (cycleAnchorDate set), the Curriculum tab reads by cycle week instead
+  // of by calendar month. _cycleOn=false → byte-identical legacy path.
+  const _curUnit=UNITS.find(u=>u.name===S.unit)||null;
+  const _cycleWeek=_curUnit?currentCycleWeek(_curUnit):null; // null = cycle off
+  const _cycleOn=_cycleWeek!=null;
   const periods=_monthOptionsWithItems(committedSched,x=>x.weekStart).filter(p=>p.key!=='all');
   const selPeriodKey=(S.schedPeriod&&periods.find(p=>p.key===S.schedPeriod))
     ?S.schedPeriod
     :_smartDefaultMonthKey(committedSched,x=>x.weekStart);
   const selPeriod=periods.find(p=>p.key===selPeriodKey)||periods[0];
-  const periodSelect='<div style="margin-bottom:14px">'+_monthSelectHTML('',periods,selPeriod.key,'setSchedPeriod(this.value)')+'</div>';
+  const periodSelect=_cycleOn?'':'<div style="margin-bottom:14px">'+_monthSelectHTML('',periods,selPeriod.key,'setSchedPeriod(this.value)')+'</div>';
 
   // Weeks in the selected period (committed rows only — the in-flight
   // draft is excluded from tabs and only surfaces through rWEditor).
   // Sort by (week_start, week_index) so weeks within a month order by
   // their number.
-  const weeksThisPeriod=SCHED
-    .filter(x=>!x._draft&&x.weekStart)
-    .filter(x=>{
-      if(selPeriod.key==='all')return true;
-      const d=_parseISODate(x.weekStart);
-      return d&&_monthKey(d)===selPeriod.key;
-    })
-    .sort((a,b)=>{
-      const ws=(a.weekStart||'').localeCompare(b.weekStart||'');
-      if(ws)return ws;
-      return (a.week||0)-(b.week||0);
-    });
+  // Cycle on → weeks come from the unit's fixed template (week_index
+  // 1..cycleLengthWeeks), ordered by week number, ignoring calendar month.
+  // Cycle off → unchanged legacy filter by weekStart month.
+  const weeksThisPeriod=_cycleOn
+    ? committedSched
+        .filter(x=>x.unitId===_curUnit._dbId)
+        .filter(x=>x.week>=1&&x.week<=_curUnit.cycleLengthWeeks)
+        .sort((a,b)=>(a.week||0)-(b.week||0))
+    : SCHED
+        .filter(x=>!x._draft&&x.weekStart)
+        .filter(x=>{
+          if(selPeriod.key==='all')return true;
+          const d=_parseISODate(x.weekStart);
+          return d&&_monthKey(d)===selPeriod.key;
+        })
+        .sort((a,b)=>{
+          const ws=(a.weekStart||'').localeCompare(b.weekStart||'');
+          if(ws)return ws;
+          return (a.week||0)-(b.week||0);
+        });
 
   const draft=SCHED.find(x=>x._draft);
   const inDraftEdit=draft&&S.editWeek===draft._localId;
@@ -5577,21 +5591,37 @@ function rSchedule(){
   // exist. Storing the _localId (UUID) instead of the week_index makes
   // the lookup unambiguous even when two rows share a week_index
   // (allowed since the DB doesn't UNIQUE on week_index).
-  let selW=weeksThisPeriod.find(x=>x._localId===S.sweek)||weeksThisPeriod[0]||null;
+  // Cycle on → default the selected week to the current cycle week
+  // (still honouring an explicit S.sweek tap). Cycle off → first row.
+  let selW=_cycleOn
+    ?(weeksThisPeriod.find(x=>x._localId===S.sweek)||weeksThisPeriod.find(x=>x.week===_cycleWeek)||weeksThisPeriod[0]||null)
+    :(weeksThisPeriod.find(x=>x._localId===S.sweek)||weeksThisPeriod[0]||null);
 
   // Week selector — segmented row (.wseg) inside the recessed .mblock,
   // matching the app's segmented-control language. The "+Add" segment is
   // an inline dashed segment (last child), admin-only and capped at 5
   // weeks/period. Replaces the old standalone .badd addBtn + .stabs tabs.
-  const _addSeg=(isA&&weeksThisPeriod.length<5)
+  // Cycle on → the template is a fixed 1..len set, so no ad-hoc "+Add"
+  // (cap-at-5 is legacy month mode only).
+  const _addSeg=(!_cycleOn&&isA&&weeksThisPeriod.length<5)
     ?'<button class="wseg-add" onclick="addWeek()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add</button>'
     :'';
-  const _weekSegs=weeksThisPeriod.map(x=>'<button class="wseg '+(selW&&selW._localId===x._localId?'active':'')+'" onclick="setSelectedWeek(\''+x._localId+'\')">Week '+x.week+'</button>').join('');
+  // Cycle on → mark the live week with a subtle "· now" so it's visible
+  // which week the cycle is currently on.
+  const _weekSegs=weeksThisPeriod.map(x=>{
+    const _now=_cycleOn&&x.week===_cycleWeek;
+    return '<button class="wseg '+(selW&&selW._localId===x._localId?'active':'')+'" onclick="setSelectedWeek(\''+x._localId+'\')">Week '+x.week+(_now?' <span style="color:var(--blue);font-weight:700">· now</span>':'')+'</button>';
+  }).join('');
   // Render the block when there are weeks, OR when an admin can add the
   // first one (empty-state admin gets just the +Add segment). Non-admins
   // on an empty period fall through to the existing empty-state card.
   const weekTabsHtml=(weeksThisPeriod.length||isA)
     ?('<div class="mblock"><div class="wsel">'+_weekSegs+_addSeg+'</div></div>')
+    :'';
+  // Cycle on → small muted caption above the selector telling everyone
+  // where we are in the cycle.
+  const cycleHeader=_cycleOn
+    ?'<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Week '+_cycleWeek+' of '+_curUnit.cycleLengthWeeks+'</div>'
     :'';
 
   function techRow(tech,idx,cat,wRef){
@@ -5645,7 +5675,7 @@ function rSchedule(){
       +(S.editWeek===w._localId?rWEditor(w):'');
   }
 
-  return '<div style="height:16px"></div>'+segHtml+periodSelect+weekTabsHtml+bodyHtml+'<div style="height:16px"></div>'+draftEditor;
+  return '<div style="height:16px"></div>'+segHtml+periodSelect+cycleHeader+weekTabsHtml+bodyHtml+'<div style="height:16px"></div>'+draftEditor;
 }
 function setSchedMode(m){S.schedMode=m==='events'?'events':'curriculum';S.editWeek=false;render();}
 function setSchedPeriod(k){S.schedPeriod=k;S.sweek=null;render();}
