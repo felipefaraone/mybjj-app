@@ -5786,7 +5786,17 @@ function rSchedule(){
   // Cycle on → auto-center the live/selected week in the scrollable
   // selector once the DOM exists (guarded on the element being present).
   if(_cycleOn){
-    setTimeout(()=>{const el=document.querySelector('.wseg.active');if(el&&el.scrollIntoView)el.scrollIntoView({inline:'center',block:'nearest'});},0);
+    setTimeout(()=>{
+      const wrap=document.querySelector('.wsel');
+      const el=wrap&&wrap.querySelector('.wseg.active');
+      if(wrap&&el){
+        // center the active seg within the wrap's own scroll box only —
+        // setting scrollLeft directly can't scroll any ancestor (the
+        // hidden side panel), so it never drags the panel into view.
+        const target=el.offsetLeft-(wrap.clientWidth/2)+(el.offsetWidth/2);
+        wrap.scrollLeft=Math.max(0,target);
+      }
+    },0);
   }
   return '<div style="height:16px"></div>'+segHtml+periodSelect+cycleHeader+weekTabsHtml+bodyHtml+cycleEntry+'<div style="height:16px"></div>'+draftEditor;
 }
