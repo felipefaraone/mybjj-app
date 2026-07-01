@@ -3784,6 +3784,12 @@ function rClass(){
     // "N going" indicator, not a check-in button.
     const isStudentAdmin=me.role==='instructor'&&!!myStu;
     const isStaffViewer=isStaffOrOwner()&&!isStudentAdmin;
+    // Module 1 — a student whose account is on hold can't self check in.
+    // When they're not already checked in, the tappable check-in button
+    // is swapped for a non-interactive amber "on hold" pill. Staff
+    // viewers and already-checked-in students are unaffected.
+    const onHoldBlock=!!myStu&&myStu.standing==='on_hold'&&!isStaffViewer;
+    const onHoldPill=`<div style="background:var(--amber-bg);color:var(--amber-text);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;text-align:center;width:100%;line-height:1.2;cursor:default">On hold — contact office</div>`;
     // G9.2 — check-in is open from the start of the day until class
     // end. Two changes vs. previous behaviour:
     //   1. The pre-window "Opens at HH:MM" floor is gone — students
@@ -3831,14 +3837,14 @@ function rClass(){
       if(isPast){
         btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;
       } else if(isTomorrow){
-        btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;
+        btn=onHoldBlock?onHoldPill:`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;
       } else {
         const openOn=new Date(sd.getFullYear(),sd.getMonth(),sd.getDate()-1);
         const openLbl=DS[openOn.getDay()];
         btn=`<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);text-align:center;width:100%;line-height:1.2;background:var(--bg)">Check-in opens ${openLbl}</div>`;
       }
     }
-    else{btn=`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
+    else{btn=onHoldBlock?onHoldPill:`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
     // Batch — kids privacy hardening (E1, per-audience). Three-way
     // split for non-staff viewers: 'Kids' classes stay fully
     // count-only; 'All' (open-mat / mixed-age, e.g. Sat 9:30) shows
@@ -9412,6 +9418,13 @@ async function doCI(id){
   }
   const stu=myStudentRow();
   if(!stu){showSaveToast2('Sign in as a student to check in.','error');return;}
+  // Module 1 — account on hold blocks self check-in. !isStaffOrOwner()
+  // is belt-and-suspenders: an instructor who also has a student row is
+  // never self-blocked (the instructor add-to-class path is separate).
+  if(stu.standing==='on_hold' && !isStaffOrOwner()){
+    showSaveToast2('Your account is on hold. Please contact info@mybjj.com.au to check in.','error');
+    return;
+  }
   const c=_parseCID(id);if(!c){showSaveToast2('Class id malformed','error');return;}
   // G9 Phase 1 consolidation — additional past-time guard. rClass
   // hides the check-in button 60 min after class end, but this guard
@@ -10623,8 +10636,8 @@ function rEditStu(){
   const standingSection=isAdminViewer
     ?`<div class="slbl" style="margin-top:14px">Account standing</div>
 <div class="ef">
-<div class="erow"><div class="elbl">Account on hold</div><button class="toggle ${standingOn?'on':''}" id="es-standing" onclick="this.classList.toggle('on')"></button></div>
-<div class="erow"><div class="elbl">Hold note</div><input class="einput" id="es-holdnote" maxlength="200" placeholder="Optional — e.g. awaiting payment" value="${esc(holdNote)}" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Account on hold</div><button class="toggle ${standingOn?'on':''}" id="es-standing" onclick="this.classList.toggle('on');document.getElementById('es-holdnote-wrap').style.display=this.classList.contains('on')?'':'none'"></button></div>
+<div id="es-holdnote-wrap" style="display:${standingOn?'':'none'}"><div class="erow"><div class="elbl">Hold note</div><input class="einput" id="es-holdnote" maxlength="200" placeholder="Optional — e.g. awaiting payment" value="${esc(holdNote)}" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true"/></div></div>
 <div style="font-size:11px;color:var(--text3);padding:2px 14px 0">On hold blocks the student from checking themselves in. Any instructor can still add them to class.</div>
 </div>`
     :'';
