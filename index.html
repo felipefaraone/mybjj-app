@@ -1341,6 +1341,27 @@ const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',aut
 let ATTENDANCE=[];
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+// Curriculum cycle — maps a calendar date to the 1-based cycle week for a
+// unit. cycle_anchor_date is the Monday cycle week 1 begins on; after
+// cycleLengthWeeks weeks it loops back to week 1. Pure, no side effects.
+// Returns null when the unit has no anchor (cycle not configured) so
+// callers can fall back to existing behaviour.
+function cycleWeekForDate(unit, date){
+  if(!unit || !unit.cycleAnchorDate) return null;
+  const len = Math.max(1, parseInt(unit.cycleLengthWeeks,10) || 18);
+  const anchor = new Date(unit.cycleAnchorDate + 'T00:00:00');
+  const d = date ? new Date(date) : new Date();
+  // normalise both to local midnight to avoid DST/time-of-day drift
+  anchor.setHours(0,0,0,0);
+  d.setHours(0,0,0,0);
+  const msPerWeek = 7*24*60*60*1000;
+  const weeksElapsed = Math.floor((d - anchor) / msPerWeek);
+  // modulo that stays 0..len-1 even for dates BEFORE the anchor (negative)
+  const idx = ((weeksElapsed % len) + len) % len;
+  return idx + 1; // 1-based
+}
+// Convenience — "what cycle week is it today" for a unit.
+function currentCycleWeek(unit){return cycleWeekForDate(unit, new Date());}
 function isHol(d){return PH.has(dk(d));}
 function getDC(d){if(isHol(d))return [];return(TT[d.getDay()]||[]).map(c=>({...c,date:dk(d),id:dk(d)+'_'+c.time+'_'+c.id}));}
 // Mini-fix Batch 1 — schedule day strip spans 7 past + today + 6 future.
@@ -8190,7 +8211,7 @@ async function hydrateData(){
   let touched=false;
   try{
     const res=await Promise.allSettled([
-      c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email').order('name'),
+      c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email,cycle_anchor_date,cycle_length_weeks').order('name'),
       c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,parent_user:users!parent_user_id(full_name)'),
       // RLS-2 — staff.feedback dropped from the select; Head Instructor
       // Notes now live in public.staff_notes and are fetched lazily per
@@ -8223,7 +8244,7 @@ async function hydrateData(){
       // MOCK-FIX — empty array clears UNITS so an empty DB doesn't
       // present stale mock units as real.
       u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
-      UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active,_ownerUserId:r.owner_user_id||null,phone:r.phone||null,mobilePhone:r.mobile_phone||null,email:r.email||null}));
+      UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active,_ownerUserId:r.owner_user_id||null,phone:r.phone||null,mobilePhone:r.mobile_phone||null,email:r.email||null,cycleAnchorDate:r.cycle_anchor_date||null,cycleLengthWeeks:r.cycle_length_weeks||18}));
       touched=true;
     }else if(u.error){console.warn('[mybjj] hydrate units:',u.error);UNITS=[];}
     if(st.data&&st.data.length){
