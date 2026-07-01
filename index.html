@@ -1349,13 +1349,15 @@ function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0
 function cycleWeekForDate(unit, date){
   if(!unit || !unit.cycleAnchorDate) return null;
   const len = Math.max(1, parseInt(unit.cycleLengthWeeks,10) || 18);
-  const anchor = new Date(unit.cycleAnchorDate + 'T00:00:00');
-  const d = date ? new Date(date) : new Date();
-  // normalise both to local midnight to avoid DST/time-of-day drift
-  anchor.setHours(0,0,0,0);
-  d.setHours(0,0,0,0);
-  const msPerWeek = 7*24*60*60*1000;
-  const weeksElapsed = Math.floor((d - anchor) / msPerWeek);
+  // Parse anchor (YYYY-MM-DD) and target date into UTC-midnight day numbers.
+  // Using Date.UTC avoids DST: a "day" is always exactly 24h in UTC, so the
+  // day count between two calendar dates is exact regardless of local DST.
+  const _dayNum = (y,m,d)=>Math.floor(Date.UTC(y,m,d)/86400000);
+  const aParts = String(unit.cycleAnchorDate).slice(0,10).split('-').map(Number);
+  const anchorDays = _dayNum(aParts[0], aParts[1]-1, aParts[2]);
+  const dt = date ? new Date(date) : new Date();
+  const targetDays = _dayNum(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const weeksElapsed = Math.floor((targetDays - anchorDays) / 7);
   // modulo that stays 0..len-1 even for dates BEFORE the anchor (negative)
   const idx = ((weeksElapsed % len) + len) % len;
   return idx + 1; // 1-based
