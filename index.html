@@ -264,8 +264,8 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 @media(prefers-color-scheme:dark){.bedit{color:#4d90e0}}
 .divider{border-top:1px solid var(--border)}.row{display:flex;justify-content:space-between;align-items:center}
 .ctag{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;white-space:nowrap}
-.tn{background:#f3f4f6;color:#6b7280;border:1px solid var(--border)}.ta{background:#dbeafe;color:#1e40af}.tb{background:#ede9fe;color:#5b21b6}.tv{background:#fef3c7;color:#92400e}.to{background:#f1f5f9;color:#475569;border:1px solid var(--border)}.tm{background:#cffafe;color:#0e7490}.tj{background:#d1fae5;color:#065f46}.ti{background:#fce7f3;color:#9d174d}
-@media(prefers-color-scheme:dark){.tn{background:#1c1c1c;color:#9ca3af;border-color:#333}.ta{background:#0e2548;color:#93c5fd}.tb{background:#2e1065;color:#c4b5fd}.tv{background:#1c1407;color:#fde68a}.to{background:#1e293b;color:#94a3b8;border-color:#334155}.tm{background:#083344;color:#67e8f9}.tj{background:#022c22;color:#6ee7b7}.ti{background:#500724;color:#f9a8d4}}
+.tn{background:#f3f4f6;color:#6b7280;border:1px solid var(--border)}.tg{background:#dbeafe;color:#1e40af}.ta{background:#dbeafe;color:#1e40af}.tb{background:#ede9fe;color:#5b21b6}.tv{background:#fef3c7;color:#92400e}.to{background:#f1f5f9;color:#475569;border:1px solid var(--border)}.tm{background:#cffafe;color:#0e7490}.tj{background:#d1fae5;color:#065f46}.ti{background:#fce7f3;color:#9d174d}
+@media(prefers-color-scheme:dark){.tn{background:#1c1c1c;color:#9ca3af;border-color:#333}.tg{background:#0e2548;color:#93c5fd}.ta{background:#0e2548;color:#93c5fd}.tb{background:#2e1065;color:#c4b5fd}.tv{background:#1c1407;color:#fde68a}.to{background:#1e293b;color:#94a3b8;border-color:#334155}.tm{background:#083344;color:#67e8f9}.tj{background:#022c22;color:#6ee7b7}.ti{background:#500724;color:#f9a8d4}}
 .ast{display:flex;align-items:center}.aav{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:9px;border:2px solid var(--card);margin-left:-6px;flex-shrink:0}.aav:first-child{margin-left:0}
 .amor{background:var(--bg);border:2px solid var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;margin-left:-6px}
 .aexp{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;color:var(--blue);cursor:pointer}
@@ -420,17 +420,18 @@ const PROGRESSION_THRESHOLDS={
   brown: {classes_per_stripe:80, min_gi_ratio:0.7},
   black: {classes_per_stripe:null, min_gi_ratio:null}
 };
-const CT=[{id:'nogi',lbl:'No-Gi',tc:'tn',gi:false},{id:'alev',lbl:'All Levels',tc:'ta',gi:true},{id:'beg',lbl:'Beginner',tc:'tb',gi:true},{id:'adv',lbl:'Advanced',tc:'tv',gi:true},{id:'omat',lbl:'Open Mat',tc:'to',gi:false},{id:'mma',lbl:'MMA',tc:'tm',gi:false},{id:'jun',lbl:'Kids',tc:'tj',gi:true},{id:'jnogi',lbl:'Kids No-Gi',tc:'tn',gi:false},{id:'jmma',lbl:'Kids MMA',tc:'tm',gi:false},{id:'mini',lbl:'Mini Champs',tc:'ti',gi:false}];
-// G13 — gi/no-gi modality derived from class type. The CT.gi boolean
-// is too coarse for promotion math: it groups omat/mma/jmma/mini under
-// "not-gi" but those aren't traditional BJJ practice, so they count
-// toward students.total but NOT toward gi_classes / nogi_classes. The
-// SQL backfill in migration 48 uses the same map.
-//   gi   → alev, beg, adv, jun
-//   nogi → nogi, jnogi
-//   null → omat, mma, jmma, mini (count toward total only)
-const _MODALITY_GI=['alev','beg','adv','jun'];
-const _MODALITY_NOGI=['nogi','jnogi'];
+const CT=[{id:'nogi',lbl:'No-Gi',tc:'tn',gi:false},{id:'gi',lbl:'Gi',tc:'tg',gi:true},{id:'alev',lbl:'All Levels',tc:'ta',gi:true},{id:'beg',lbl:'Beginner',tc:'tb',gi:true},{id:'adv',lbl:'Advanced',tc:'tv',gi:true},{id:'omat',lbl:'Open Mat',tc:'to',gi:false},{id:'mma',lbl:'MMA',tc:'tm',gi:false},{id:'jun',lbl:'Kids',tc:'tj',gi:true},{id:'jnogi',lbl:'Kids No-Gi',tc:'tn',gi:false},{id:'jmma',lbl:'Kids MMA',tc:'tm',gi:false},{id:'mini',lbl:'Mini Champs',tc:'ti',gi:true}];
+// G13 — gi/no-gi modality derived from class type, driving gi_classes /
+// nogi_classes promotion counts (belt promotion is gi-based). Every mapped
+// type also counts toward students.total. Only open mat stays out of both
+// arrays: its gi/no-gi split is genuinely mixed, so it earns no gi/no-gi
+// promotion credit. This modality mapping is independent of the
+// class_value attendance weight (a separate, already-shipped system).
+//   gi   → gi, alev, beg, adv, jun, mini (kids train in gi)
+//   nogi → nogi, jnogi, mma, jmma
+//   null → omat only (mixed — counts toward total, no gi credit)
+const _MODALITY_GI=['gi','alev','beg','adv','jun','mini'];
+const _MODALITY_NOGI=['nogi','jnogi','mma','jmma'];
 function _modalityFromType(type){
   if(!type)return null;
   if(_MODALITY_GI.indexOf(type)>=0)return 'gi';
