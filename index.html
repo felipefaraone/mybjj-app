@@ -5708,10 +5708,29 @@ function rSchedule(){
     :'';
   // Cycle on → mark the live week with a subtle "· now" so it's visible
   // which week the cycle is currently on.
-  const _weekSegs=weeksThisPeriod.map(x=>{
+  const _mkWeekSeg=x=>{
     const _now=_cycleOn&&x.week===_cycleWeek;
     return '<button class="wseg '+(selW&&selW._localId===x._localId?'active':'')+'" onclick="setSelectedWeek(\''+x._localId+'\')">Week '+x.week+(_now?' <span style="color:var(--blue);font-weight:700">· now</span>':'')+'</button>';
-  }).join('');
+  };
+  // Cycle on + admin → render EVERY slot 1..len in numeric order: real
+  // rows as tappable segs, missing indices as dashed "ghost" segs that
+  // create the row on tap (fresh cycle has gaps like 1,2,6..18). Cycle
+  // on + non-admin sees only existing weeks; cycle off is unchanged.
+  let _weekSegs;
+  if(_cycleOn&&isA){
+    const _len=_curUnit.cycleLengthWeeks;
+    const _byIdx={};
+    weeksThisPeriod.forEach(x=>{if(_byIdx[x.week]===undefined)_byIdx[x.week]=x;});
+    const _segs=[];
+    for(let n=1;n<=_len;n++){
+      _segs.push(_byIdx[n]
+        ?_mkWeekSeg(_byIdx[n])
+        :'<button class="wseg-add" onclick="createCycleWeek('+n+')" title="Create Week '+n+'">Week '+n+'</button>');
+    }
+    _weekSegs=_segs.join('');
+  }else{
+    _weekSegs=weeksThisPeriod.map(_mkWeekSeg).join('');
+  }
   // Render the block when there are weeks, OR when an admin can add the
   // first one (empty-state admin gets just the +Add segment). Non-admins
   // on an empty period fall through to the existing empty-state card.
@@ -6072,6 +6091,12 @@ function rWEditor(w){
     }).join('');
   }
   const headerTxt=isDraft?'Add week':('Edit Week '+w.week);
+  // 18-week cycle — a monthless template week (week_start null while the
+  // unit's cycle is on) hides the Month picker entirely; saveW preserves
+  // week_start:null for it. Month-mode rows are byte-identical.
+  const _curUnitWE=UNITS.find(u=>u.name===S.unit)||null;
+  const _cycleOnWE=_curUnitWE?currentCycleWeek(_curUnitWE)!=null:false;
+  const _noMonth=!isDraft&&!w.weekStart&&_cycleOnWE;
   // Month picker — styled <select> (NOT <input type=month> — iOS quirks)
   // sourced from the same _monthSelectHTML the filter uses. Default
   // selection is the current week's stored month, falling back to the
@@ -6092,7 +6117,7 @@ function rWEditor(w){
     +'<div class="ef" style="margin-bottom:12px">'
       +'<div class="erow"><div class="elbl">Week #</div><input id="we-week-idx" type="number" min="1" value="'+(w.week||1)+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);text-align:right"/></div>'
     +'</div>'
-    +'<div class="slbl">Month</div><div style="margin-bottom:12px">'+monthPicker+'</div>'
+    +(_noMonth?'':'<div class="slbl">Month</div><div style="margin-bottom:12px">'+monthPicker+'</div>')
     +'<div class="slbl">Theme</div><div class="ef" style="margin-bottom:12px"><div class="erow"><input id="we-theme" value="'+(w.theme||'').replace(/"/g,'&quot;')+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/></div></div>'
     +'<div class="slbl">Programmes</div><div style="display:flex;flex-wrap:wrap;margin-bottom:14px">'+progToggles+'</div>'
     +'<div class="slbl">Notes</div><div class="ef" style="margin-bottom:12px"><textarea id="we-notes" dir="ltr" style="width:100%;min-height:60px;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);padding:12px;resize:none;text-align:left;direction:ltr">'+(w.notes||'')+'</textarea></div>'
@@ -11580,10 +11605,19 @@ async function saveW(lid){
   const notes=(document.getElementById('we-notes')||{}).value||'';
   const weekIdxRaw=Number((document.getElementById('we-week-idx')||{}).value||0);
   const weekIdx=Number.isFinite(weekIdxRaw)&&weekIdxRaw>=1?Math.floor(weekIdxRaw):1;
-  const monthKey=(document.getElementById('we-month')||{}).value||_monthKey(_parseISODate(w.weekStart))||_currentMonthKey();
-  const mp=_parseMonthKey(monthKey);
-  if(!mp){showSaveToast2('Pick a month','error');return;}
-  const weekStart=_dkFirstOfMonth(mp.monthIdx,mp.year);
+  // 18-week cycle — a monthless template week has no Month picker in the
+  // DOM and a null stored week_start; preserve null (never backfill a
+  // month). Month-mode rows resolve week_start from the picker as before.
+  const monthEl=document.getElementById('we-month');
+  let weekStart;
+  if(!monthEl&&!w.weekStart){
+    weekStart=null;
+  }else{
+    const monthKey=(monthEl||{}).value||_monthKey(_parseISODate(w.weekStart))||_currentMonthKey();
+    const mp=_parseMonthKey(monthKey);
+    if(!mp){showSaveToast2('Pick a month','error');return;}
+    weekStart=_dkFirstOfMonth(mp.monthIdx,mp.year);
+  }
   const payload={
     week_index:weekIdx,
     week_start:weekStart,
@@ -11609,7 +11643,7 @@ async function saveW(lid){
     const fresh={week:row.week_index,_dbId:row.id,_localId:row.id,weekStart:row.week_start,unitId:row.unit_id,theme:row.theme||'',color:row.color||'#1A5DAD',programs:row.programs||[],standUp:row.stand_up||[],ground:row.ground||[],notes:row.notes||'',video:''};
     if(dIdx>=0)SCHED.splice(dIdx,1,fresh);else SCHED.push(fresh);
     _sortSched();
-    S.schedPeriod=_monthKey(_parseISODate(fresh.weekStart));
+    if(fresh.weekStart)S.schedPeriod=_monthKey(_parseISODate(fresh.weekStart));
     S.sweek=fresh._localId;
     S.editWeek=false;
     render();
@@ -11633,10 +11667,41 @@ async function saveW(lid){
     showSaveToast2("Couldn't save week",'error');render();return;
   }
   _sortSched();
-  S.schedPeriod=_monthKey(_parseISODate(w.weekStart));
+  if(w.weekStart)S.schedPeriod=_monthKey(_parseISODate(w.weekStart));
   S.sweek=w._localId;
   S.editWeek=false;render();
   showSaveToast2('Week '+w.week+' saved.');
+}
+// 18-week cycle — create a missing template week from a ghost slot. Cycle
+// weeks are monthless (week_start stays null), so this inserts directly
+// rather than going through the month-based draft flow. On success it
+// pushes the mapped row and opens the editor so the admin lands in edit.
+let _creatingCycleWeek=false;
+async function createCycleWeek(n){
+  if(!isStaffOrOwner()||_creatingCycleWeek)return;
+  const curUnit=UNITS.find(u=>u.name===S.unit);
+  if(!curUnit||!curUnit._dbId){showSaveToast2('No unit selected','error');return;}
+  const idx=Math.max(1,parseInt(n,10)||1);
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  _creatingCycleWeek=true;
+  try{
+    const payload={unit_id:curUnit._dbId,week_index:idx,week_start:null,theme:'',programs:[],stand_up:[],ground:[],notes:''};
+    const r=await cli.from('programme_weeks').insert(payload).select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').single();
+    if((r&&r.error)||!r||!r.data)throw (r&&r.error)||new Error('no data');
+    const row=r.data;
+    const fresh={week:row.week_index,_dbId:row.id,_localId:row.id,weekStart:row.week_start,unitId:row.unit_id,theme:row.theme||'',color:row.color||'#1A5DAD',programs:row.programs||[],standUp:row.stand_up||[],ground:row.ground||[],notes:row.notes||'',video:''};
+    SCHED.push(fresh);
+    _sortSched();
+    S.sweek=fresh._localId;
+    render();
+    editW(fresh._localId);
+  }catch(e){
+    console.warn('[mybjj] createCycleWeek:',e);
+    showSaveToast2('Could not create week','error');
+  }finally{
+    _creatingCycleWeek=false;
+  }
 }
 // Batch programme-polish — addWeek: form-first draft, month-based.
 // Pre-fill: week_index = max+1 (unique per unit at the DB), month =
