@@ -9314,13 +9314,18 @@ function rAuth(){
   const emailHeader=`<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:18px"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;font-weight:700">Signing in as</div><div style="font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lockedEmail}</div></div><button onclick="resetAuthStep()" style="background:none;border:none;color:var(--blue);font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:6px 4px;flex-shrink:0">Not you?</button></div>`;
 
   // Step 1 — email entry (with inline "not authorized" error when present).
+  // Hierarchy: Google is the single solid primary; the email Continue is a
+  // secondary .bout outline, disabled until the email is a valid format.
+  // Spacing tightened ~28% vs step 2 (inline overrides only — the shared
+  // .adiv/.fg CSS is untouched so step 2A/2B keep their looser rhythm).
+  const _step1EmailValid=/^\S+@\S+\.\S+$/.test((S.authEmail||'').trim());
   const formStep1=`<button class="bmain gbtn" onclick="signInGoogle()" ${busy}><span class="glogo">${GICON}</span>Continue with Google</button>
-<div class="adiv"><span>or</span></div>
-<div class="fg">
-<div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email" value="${S.authEmail||''}" oninput="S.authEmail=this.value" onkeydown="if(event.key==='Enter')advanceAuthStep()" autofocus/></div>
+<div class="adiv" style="margin:10px 0"><span>or</span></div>
+<div class="fg" style="margin-bottom:10px">
+<div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email" value="${S.authEmail||''}" oninput="S.authEmail=this.value;{var _b=document.getElementById('auth-continue');if(_b){var _v=/^\\S+@\\S+\\.\\S+$/.test((this.value||'').trim());_b.disabled=!_v;_b.style.opacity=_v?'1':'.5';_b.style.cursor=_v?'pointer':'not-allowed';}}" onkeydown="if(event.key==='Enter')advanceAuthStep()" autofocus/></div>
 </div>
 ${msg}
-<button onclick="advanceAuthStep()" ${busy} style="${PRIMARY_STYLE};margin-top:14px">Continue</button>`;
+<button id="auth-continue" class="bout" onclick="advanceAuthStep()" ${busy} ${_step1EmailValid?'':'disabled'} style="margin-top:10px${_step1EmailValid?'':';opacity:.5;cursor:not-allowed'}">Continue</button>`;
 
   // Step 2A — has password. Sign in + Forgot + email-link fallback.
   const formStep2A=`${emailHeader}
