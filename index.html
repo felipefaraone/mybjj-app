@@ -8708,6 +8708,17 @@ function initPullToRefresh(){
   if(window._ptrBound===el)return; // already bound to this element
   try{PullToRefresh.destroyAll();}catch(_){}
   window._ptrBound=el;
+  // Day-strip scroll fix — at the top of .content (scrollTop 0) the PTR
+  // library holds touch gestures to evaluate a pull-down, stealing the
+  // first horizontal swipes on the .dstrip carousel (worse with a thumb).
+  // Flag gestures that start inside the strip so shouldPullToRefresh can
+  // bail. Bound here in the fresh-bind path (guarded by _ptrBound above)
+  // so re-inits never stack duplicate listeners on the same element.
+  el.addEventListener('touchstart', function(e){
+    window._ptrTouchInDstrip = !!(e.target && e.target.closest && e.target.closest('.dstrip'));
+  }, {passive:true, capture:true});
+  el.addEventListener('touchend', function(){ window._ptrTouchInDstrip = false; }, {passive:true});
+  el.addEventListener('touchcancel', function(){ window._ptrTouchInDstrip = false; }, {passive:true});
   // Two SVGs the library swaps between: clean down-arrow during pull,
   // spinner during refresh. The .mybjj-ptr-spinner class carries the
   // rotation animation (defined in the head <style>).
@@ -8738,6 +8749,7 @@ function initPullToRefresh(){
     // Suppress while a modal / sub-panel is open — pulling inside an
     // edit modal would otherwise refresh state mid-edit.
     shouldPullToRefresh: function(){
+      if(window._ptrTouchInDstrip) return false;
       const c = document.querySelector('.content');
       if(!c) return false;
       if(c.scrollTop > 0) return false;
