@@ -153,7 +153,7 @@ html,body{overscroll-behavior-y:none}
 /* Floating glassmorphism nav — all scoped under .bnav.glass / .content.glass-pad
    so GLASS_NAV=false leaves the flat bar above untouched. */
 .content.glass-pad{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
-.bnav.glass{position:absolute;left:20px;right:20px;bottom:calc(24px + env(safe-area-inset-bottom));padding:6px 4px;border:1px solid rgba(255,255,255,.6);border-radius:24px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);box-shadow:0 6px 24px rgba(0,0,0,.12);z-index:250;transform-origin:center bottom;transition:transform .2s ease,opacity .2s ease}
+.bnav.glass{position:absolute;left:20px;right:20px;bottom:calc(24px + env(safe-area-inset-bottom));padding:6px 4px;border:1px solid rgba(255,255,255,.6);border-radius:24px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);box-shadow:0 6px 24px rgba(0,0,0,.12);z-index:250;transform-origin:center bottom;transition:transform .32s cubic-bezier(.4,0,.2,1),opacity .32s cubic-bezier(.4,0,.2,1)}
 .bnav.glass .nlbl{display:none}
 .bnav.glass .nbtn{position:relative;padding:10px 0;color:#5a6472;transition:padding .2s ease}
 .bnav.glass .nbtn svg{width:22px;height:22px;position:relative;z-index:1;transition:width .2s ease,height .2s ease}
@@ -9486,8 +9486,14 @@ function _onNavScroll(e){
     const nav=document.querySelector('.bnav.glass');if(!nav)return;
     const st=c.scrollTop;
     const wasShrunk=!!window._navShrunk;
-    if(st>_navLastScroll&&st>40){window._navShrunk=true;nav.classList.add('shrunk');}
-    else if(st<_navLastScroll){window._navShrunk=false;nav.classList.remove('shrunk');}
+    const delta=st-_navLastScroll;
+    // Shrink on a real downward scroll (delta>2 avoids jitter).
+    if(delta>2&&st>40){window._navShrunk=true;nav.classList.add('shrunk');}
+    // Un-shrink ONLY on a meaningful upward swipe (delta<-8), so the tiny
+    // iOS bottom-overscroll bounce doesn't pop the bar back to full size.
+    else if(delta<-8){window._navShrunk=false;nav.classList.remove('shrunk');}
+    // Near the very top, always expanded.
+    if(st<=40){window._navShrunk=false;nav.classList.remove('shrunk');}
     _navLastScroll=st;
     // Re-align the pill after a shrink-state change so it measures in the
     // new scale (the absolute calc handles the scaled space correctly).
