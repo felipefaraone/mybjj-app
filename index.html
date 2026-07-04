@@ -2196,7 +2196,7 @@ function rMUnits(){
     sections+='<div style="margin-bottom:16px"><div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">'+(FLAG[code]||"")+' '+CC[code]+'</div>'+cards+'</div>';
   });
   var ccOptions=["AU","NZ","JP","KR","US"].map(function(c){return '<option value="'+c+'">'+CC[c]+'</option>';}).join("");
-  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Manage Units</div></div><div class="sbody">'+(S._deleteConfirm?rDeleteUnitConfirm():'')+sections+'<div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><select class="einput" id="nu-country" style="background:var(--card)">'+ccOptions+'</select></div><div class="erow"><div class="elbl">Address</div><input class="einput" id="nu-addr" placeholder="e.g. 120 Military Rd"/></div></div><button class="bblue" style="opacity:.5;cursor:not-allowed" disabled>Add unit</button><div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">Multi-unit setup is in beta. Contact support to add another unit.</div><div style="height:24px"></div></div></div>';
+  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Manage Units</div></div><div class="sbody">'+(S._deleteConfirm?rDeleteUnitConfirm():'')+sections+'<div class="slbl" style="margin-top:8px">Add new unit</div><div class="ef"><div class="erow"><div class="elbl">Name</div><input class="einput" id="nu-name" placeholder="e.g. Bondi Beach"/></div><div class="erow"><div class="elbl">City</div><input class="einput" id="nu-city" placeholder="e.g. Sydney, NSW"/></div><div class="erow"><div class="elbl">Country</div><select class="einput" id="nu-country" style="background:var(--card)">'+ccOptions+'</select></div><div class="erow"><div class="elbl">Address</div><input class="einput" id="nu-addr" placeholder="e.g. 120 Military Rd"/></div></div><button class="bblue" style="opacity:.5;cursor:not-allowed" disabled>Add unit</button><div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">Multi-unit setup is in beta. <a href="mailto:info@mybjj.com.au" style="color:var(--blue);text-decoration:underline">Contact support</a> to add another unit.</div><div style="height:24px"></div></div></div>';
 }
 // rStaffProf — layout mirrors rStuProf (header / stats / journey /
 // details / feedback / more) so students + instructors feel like
@@ -8042,13 +8042,16 @@ function rEditStaff(){
   const photoBlock=isSelf
     ?`<div onclick="openPhotoMenu('self')" title="Change photo" style="position:relative;cursor:pointer;display:inline-flex"><div style="width:72px;height:72px">${avStaff(s,72)}</div><div aria-hidden="true" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:#1A5DAD;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--card)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div><div style="font-size:11px;color:var(--text3);margin-top:6px">Tap photo to change</div>`
     :`${avStaff(s,72)}`;
-  const tab=['basic','training','contact'].indexOf(S.editStaffTab)>=0?S.editStaffTab:'basic';
+  const tab=['basic','training'].indexOf(S.editStaffTab)>=0?S.editStaffTab:'basic';
   const tabsHtml='<div class="stabs" style="margin-bottom:12px">'
     +'<button class="stab '+(tab==='basic'?'active':'')+'" onclick="setEditStaffTab(\'basic\')">Basic</button>'
     +'<button class="stab '+(tab==='training'?'active':'')+'" onclick="setEditStaffTab(\'training\')">Training</button>'
-    +'<button class="stab '+(tab==='contact'?'active':'')+'" onclick="setEditStaffTab(\'contact\')">Contact</button>'
     +'</div>';
   // -------- Basic --------
+  // Email display (read-only + Change email link) folded into Basic — a
+  // whole "Contact" tab for one non-editable field was an anti-pattern
+  // (staff has no phone column; social lives on the SOCIAL card).
+  const emailRow='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();closeEditStaff();openChangeEmail(\'staff\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
   const roleField=ownerEdit
     ?`<div class="erow"><div class="elbl">Role title</div><select class="esel" id="esf-roletitle">${ROLE_TITLES.map(rt=>`<option value="${esc(rt)}" ${rt===roleTitle?'selected':''}>${rt}</option>`).join('')}</select></div>`
     :`<div class="erow"><div class="elbl">Role title</div><div style="flex:1;font-size:13px;color:var(--text2);text-align:right">${esc(roleTitle||'—')}</div></div>`;
@@ -8058,6 +8061,7 @@ function rEditStaff(){
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="esf-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Initials</div><input class="einput" id="esf-initials" maxlength="3" value="${esc(initials)}" autocomplete="off" autocorrect="off" autocapitalize="characters" data-1p-ignore="true" data-lpignore="true"/></div>
 ${roleField}
+${emailRow}
 </div>`;
   // -------- Training --------
   const beltField=ownerEdit
@@ -8071,16 +8075,8 @@ ${beltField}
 ${degField}
 <div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="toggle ${hasMybjjGi?'on':''}" id="esf-hasmybjjgi" onclick="this.classList.toggle('on')"></button></div>
 </div>
-<div style="margin-top:12px;font-size:11px;color:var(--text3);line-height:1.5;padding:0 4px">Promotion history is automatically updated when you use the Promote button. To fix historical entries, contact support.</div>`;
-  // -------- Contact --------
-  const emailRow='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();closeEditStaff();openChangeEmail(\'staff\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
-  // Batch social-edit Change 6 — Social inputs moved out of the
-  // Contact tab. Edit social from the profile's SOCIAL card via
-  // openSocialEditor (modal). Contact tab is now Email-only for
-  // staff; this is intentionally thin (the staff Edit modal is
-  // identity + training + change-email shell).
-  const contactTab=`<div class="ef" style="margin-top:8px">${emailRow}</div>`;
-  const body=tab==='training'?trainingTab:tab==='contact'?contactTab:basicTab;
+<div style="margin-top:12px;font-size:11px;color:var(--text3);line-height:1.5;padding:0 4px">Promotion history is automatically updated when you use the Promote button. To fix historical entries, <a href="mailto:info@mybjj.com.au" style="color:var(--blue);text-decoration:underline">contact support</a>.</div>`;
+  const body=tab==='training'?trainingTab:basicTab;
   return `<div class="sub open"><div class="shdr"><button class="sback" onclick="closeEditStaff()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Cancel</button><div class="stitle">Edit profile</div></div><div class="sbody">
 ${tabsHtml}
 ${body}
