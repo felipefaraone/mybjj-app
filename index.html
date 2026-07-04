@@ -258,6 +258,8 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .bblue{width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
 .admin-action-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--blue);cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .admin-action-btn:hover{background:var(--blue-tint);border-color:var(--blue-mid)}
+.admin-action-btn.primary{background:var(--blue-tint);border-color:var(--blue-mid);color:var(--blue)}
+.admin-action-btn.primary:hover{background:var(--blue-mid)}
 .admin-action-btn:active{background:var(--blue-tint);transform:scale(.98)}
 /* Pull-to-refresh indicator — themed to blend with the app, not the
    library's vanilla black-on-white box. */
@@ -6329,9 +6331,11 @@ function rTrialsBlock(){
     const waiverOk=!!t.waiverSignedAt;
     const waiverChip='<span style="'+chipBase+';background:'+(waiverOk?'var(--green-bg)':'var(--amber-bg)')+';color:'+(waiverOk?'var(--green-text)':'var(--amber-text)')+';border:1px solid '+(waiverOk?'var(--green-border)':'var(--amber-border)')+'">'+(waiverOk?'WAIVER OK':'WAIVER PENDING')+'</span>';
     const displayName=(t.isKid&&t.kidName)?t.kidName:(t.name||'—');
-    const contactBits=[t.email,t.phone].filter(Boolean).join(' · ');
-    const contact=contactBits?'<div style="font-size:11px;color:var(--text3);margin-top:6px">'+contactBits+'</div>':'';
-    const prefDay=t.preferredDay?'<div style="font-size:11px;color:var(--text3);margin-top:4px">Prefers '+t.preferredDay+'</div>':'';
+    // Compact — email · phone · prefDay collapse onto one line. Each bit is
+    // its own span so flex-wrap breaks between them (not mid-value) and a
+    // long email wraps rather than overflowing on a narrow screen.
+    const metaBits=[t.email,t.phone,t.preferredDay?('Prefers '+t.preferredDay):null].filter(Boolean);
+    const meta=metaBits.length?'<div style="font-size:11px;color:var(--text3);margin-top:6px;display:flex;flex-wrap:wrap;gap:2px 8px;word-break:break-word">'+metaBits.map((b,i)=>'<span>'+(i>0?'· ':'')+b+'</span>').join('')+'</div>':'';
     // Module 1 action side — per-trial state actions. Mark attended only
     // appears while still booked; Convert is disabled for kid trials in
     // v1 (kid conversion needs manual setup). Lapse is destructive so it
@@ -6346,21 +6350,17 @@ function rTrialsBlock(){
     if(t.isKid){
       actBtns.push('<button class="admin-action-btn" disabled title="Kid conversion coming soon" style="opacity:.45;cursor:not-allowed;color:var(--text3)">'+iConvert+'Convert</button>');
     }else{
-      actBtns.push('<button class="admin-action-btn" onclick="convertTrialToMember(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
+      actBtns.push('<button class="admin-action-btn primary" onclick="convertTrialToMember(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
     }
     actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Reschedule</button>');
     actBtns.push('<button class="admin-action-btn" onclick="lapseTrial(\''+t._dbId+'\')" style="color:var(--red-text)">'+iLapse+'Lapse</button>');
     const actionsRow='<div style="display:flex;gap:8px;margin-top:12px">'+actBtns.join('')+'</div>';
     return '<div class="card">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
-      +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
       +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text)">'+displayName+'</span>'
-      +kidChip
+      +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+statusChip+waiverChip+kidChip+'</div>'
       +'</div>'
-      +statusChip+'</div>'
-      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'+waiverChip+'</div>'
-      +contact
-      +prefDay
+      +meta
       +actionsRow
       +'</div>';
   }).join('');
