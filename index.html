@@ -7530,11 +7530,15 @@ function rEmailEditModal(){
 // per the V1 spec — only owner/instructor flows wire through here.
 // ---------------------------------------------------------------------------
 function openChangeEmail(kind,sid){
-  if(!isOwner()&&!canEditClassCounts())return;
   if(kind!=='student'&&kind!=='staff')return;
   const target=kind==='staff'?STAFF.find(x=>x.id===sid):STUDENTS.find(x=>x.id===sid);
   if(!target||!target._dbId)return;
-  S.changeEmail={kind,sid,dbId:target._dbId,current:target.email||'',name:target.name||''};
+  // Self = the target row is linked to the signed-in user. Self can always
+  // change their own email (via Auth confirmation flow); changing SOMEONE
+  // ELSE's stays gated to owner / class-count editors (direct RPC).
+  const isSelf=!!(S.profile&&target._userId&&target._userId===S.profile.id);
+  if(!isSelf&&!isOwner()&&!canEditClassCounts())return;
+  S.changeEmail={kind,sid,dbId:target._dbId,current:target.email||'',name:target.name||'',isSelf};
   render();
   setTimeout(()=>{const el=document.getElementById('ce-input');if(el){el.focus();el.select&&el.select();}},20);
 }
@@ -7562,7 +7566,7 @@ function rChangeEmailModal(){
 
 async function executeChangeEmail(){
   if(!S.changeEmail)return;
-  const{kind,sid,dbId,current}=S.changeEmail;
+  const{kind,sid,dbId,current,isSelf}=S.changeEmail;
   const errEl=document.getElementById('ce-err');
   const errTxt=document.getElementById('ce-err-txt');
   const showErr=(m)=>{if(errEl&&errTxt){errTxt.textContent=m;errEl.style.display='flex';}};
@@ -7574,6 +7578,22 @@ async function executeChangeEmail(){
   if(email===(current||'').toLowerCase())return showErr('That’s already the current email.');
   const cli=initSupabase();
   if(!cli)return showErr('Connection issue. Try again.');
+  // SELF path — native Supabase Auth email change. Sends a confirmation
+  // link to the NEW address; the change only takes effect once the user
+  // clicks it, and the OLD email keeps working until then (zero lockout).
+  // Do NOT mirror target.email locally — the UI must keep showing the old
+  // address until the next hydrate after confirmation.
+  if(isSelf){
+    const{error}=await cli.auth.updateUser({email},{emailRedirectTo:'https://mybjj-app.com'});
+    if(error){
+      console.warn('[mybjj] auth.updateUser email:',error);
+      return showErr(friendlyMutationError(error)||error.message||'Could not start email change.');
+    }
+    closeChangeEmail();
+    showSaveToast2('Confirmation link sent to '+email+'. Click it to finish the change.');
+    return;
+  }
+  // ADMIN-of-other path — direct RPC (immediate change, existing behavior).
   const r=await cli.rpc('admin_change_user_email',{p_target_kind:kind,p_target_db_id:dbId,p_new_email:email});
   if(r&&r.error){
     console.warn('[mybjj] admin_change_user_email:',r.error);
@@ -8051,7 +8071,7 @@ function rEditStaff(){
   // Email display (read-only + Change email link) folded into Basic — a
   // whole "Contact" tab for one non-editable field was an anti-pattern
   // (staff has no phone column; social lives on the SOCIAL card).
-  const emailRow='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();closeEditStaff();openChangeEmail(\'staff\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
+  const emailRow='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'staff\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
   const roleField=ownerEdit
     ?`<div class="erow"><div class="elbl">Role title</div><select class="esel" id="esf-roletitle">${ROLE_TITLES.map(rt=>`<option value="${esc(rt)}" ${rt===roleTitle?'selected':''}>${rt}</option>`).join('')}</select></div>`
     :`<div class="erow"><div class="elbl">Role title</div><div style="flex:1;font-size:13px;color:var(--text2);text-align:right">${esc(roleTitle||'—')}</div></div>`;
