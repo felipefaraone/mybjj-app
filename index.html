@@ -6985,10 +6985,12 @@ function render(){
     // Glass-nav dynamics — slide the active pill to the current tab after
     // layout, and bind the scroll-shrink listener once. Both no-op / are
     // skipped when GLASS_NAV is off (flat nav fully reverts).
-    // Re-apply the current scroll-linked scale to the freshly rebuilt nav
-    // (synchronous → no full-size flash) and position the pill; bind the
-    // scroll listener once. _navShrinkApply calls _positionNavPill itself.
-    if(GLASS_NAV){const _cn=document.querySelector('.content');_navShrinkApply(_cn?_cn.scrollTop:0);_initNavShrink();}
+    // Re-apply the PERSISTED current scale to the freshly rebuilt nav
+    // (synchronous → no full-size flash; not recomputed from scrollTop,
+    // which reads 0 for a fresh tab and would snap the bar back to full)
+    // and position the pill; bind the scroll listener once. _navApplyScale
+    // calls _positionNavPill itself.
+    if(GLASS_NAV){_navApplyScale();_initNavShrink();}
     return;
   }
   if(S.authState==='pending'||S.authState==='rejected'){app.innerHTML=rPending();hideSplash();return;}
@@ -9471,43 +9473,51 @@ function _positionNavPill(){
   }
   window._navPillX=tx;
 }
-// Scroll-linked CONTINUOUS shrink for the glass nav (Instagram feel).
-// Instead of toggling a class at a threshold, the bar's scale/opacity are
-// interpolated from .content scrollTop and applied INLINE, so the bar
-// shrinks progressively in sync with scroll position. Bound ONCE to
-// document in the capture phase (scroll doesn't bubble; .content is
-// recreated every render). rAF-throttled. _navShrinkApply is also called
-// from render() so the current scale is re-applied to the freshly rebuilt
-// nav (no pop-to-full on tab switch / mid-scroll re-render).
-var _navScrollRAF=false,_navLastScroll=0;
-function _navShrinkApply(st){
+// Scroll-linked CONTINUOUS shrink for the glass nav (Instagram feel),
+// decoupled from scroll-event cadence via a lerp (smooth-follow) rAF loop.
+// Scroll only updates a TARGET (_navTargetScroll); a constant-60fps loop
+// eases the CURRENT scale/opacity toward the target each frame and applies
+// them inline, then pauses when settled. This fixes: fast-scroll stutter
+// (loop fills the frames sparse events skip), scroll-up lag (loop runs
+// regardless of iOS event cadence), and tab-switch reset (render re-applies
+// the PERSISTED _navCurScale, not a fresh scrollTop that reads 0).
+var _navTargetScroll=0,_navCurScale=1,_navCurOpacity=1,_navRAF=null;
+function _navTargetScale(){
+  const SHRINK_RANGE=240;
+  const progress=Math.min(1,_navTargetScroll/SHRINK_RANGE);
+  // scale 1.0→0.8, opacity 1.0→0.94 over the range.
+  return {scale:1-(progress*0.2),opacity:1-(progress*0.06)};
+}
+function _navApplyScale(){
   if(!GLASS_NAV)return;
   const nav=document.querySelector('.bnav.glass');if(!nav)return;
-  st=Math.max(0,st||0);
-  // Continuous progress 0→1 over the first SHRINK_RANGE px of scroll.
-  const SHRINK_RANGE=240;
-  const progress=Math.min(1,st/SHRINK_RANGE);
-  // Interpolate scale 1.0→0.8 and opacity 1.0→0.94, tied to scroll position.
-  const scale=1-(progress*0.2);
-  const opacity=1-(progress*0.06);
-  nav.style.transform='scale('+scale.toFixed(4)+')';
-  nav.style.opacity=opacity.toFixed(3);
-  window._navScale=scale;
-  _navLastScroll=st;
+  nav.style.transform='scale('+_navCurScale.toFixed(4)+')';
+  nav.style.opacity=_navCurOpacity.toFixed(3);
+  window._navScale=_navCurScale;
   // Keep the pill centred as the bar scales (_positionNavPill divides by
   // the live scale, so it stays aligned at any interpolated size).
   _positionNavPill();
+}
+function _navStartLoop(){
+  if(_navRAF!=null)return; // already running
+  const step=function(){
+    const t=_navTargetScale();
+    // Lerp factor .18 — smooth follow, symmetric in both directions.
+    _navCurScale+=(t.scale-_navCurScale)*0.18;
+    _navCurOpacity+=(t.opacity-_navCurOpacity)*0.18;
+    const done=Math.abs(t.scale-_navCurScale)<0.0008&&Math.abs(t.opacity-_navCurOpacity)<0.0008;
+    if(done){_navCurScale=t.scale;_navCurOpacity=t.opacity;}
+    _navApplyScale();
+    if(done){_navRAF=null;}else{_navRAF=requestAnimationFrame(step);}
+  };
+  _navRAF=requestAnimationFrame(step);
 }
 function _onNavScroll(e){
   if(!GLASS_NAV)return;
   const c=e&&e.target;
   if(!(c&&c.classList&&c.classList.contains('content')))return;
-  if(_navScrollRAF)return;
-  _navScrollRAF=true;
-  requestAnimationFrame(function(){
-    _navScrollRAF=false;
-    _navShrinkApply(c.scrollTop);
-  });
+  _navTargetScroll=Math.max(0,c.scrollTop);
+  _navStartLoop();
 }
 function _initNavShrink(){
   if(!GLASS_NAV||window._navShrinkBound)return;
