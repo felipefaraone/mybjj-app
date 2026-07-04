@@ -4313,7 +4313,7 @@ function rProfileArea(){
       const accountCard='<div class="slbl" style="margin-top:18px">Account</div>'
         +'<div class="card" style="padding:14px;display:flex;flex-direction:column;gap:12px">'
           +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+emailDisplay+'</div>'
-            +'<a href="#" onclick="event.preventDefault();showSaveToast2(\'Change-email flow coming soon.\');" style="color:var(--blue);font-size:12px;text-decoration:underline;display:inline-block;margin-top:4px">Change email</a></div>'
+            +'<a href="#" onclick="event.preventDefault();openMyEmailChange();" style="color:var(--blue);font-size:12px;text-decoration:underline;display:inline-block;margin-top:4px">Change email</a></div>'
           +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Phone</div><div style="font-size:14px;color:var(--text2)">'+phoneDisplay+'</div></div>'
         +'</div>';
       const editBtn='<div style="margin-top:18px"><button onclick="openEditMe()" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Edit Profile</button></div>';
@@ -7103,7 +7103,7 @@ async function bootAuth(){
   // routing happens via render()'s top gate on S.passwordRecovery.
   // No claim_profile, no hydrate; the recovery session that supabase-js
   // establishes from the fragment is enough for updateUser({password}).
-  c.auth.onAuthStateChange((ev)=>{
+  c.auth.onAuthStateChange((ev,session)=>{
     if(ev==='PASSWORD_RECOVERY'){
       // Belt-and-suspenders alongside the synchronous hash parse: if
       // somehow the URL slipped past _detectHashRecovery (e.g. a hash
@@ -7121,6 +7121,27 @@ async function bootAuth(){
       onAuthed();
     }
     else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;render();}
+    else if(ev==='USER_UPDATED'){
+      // Fired when a self-service email change is confirmed. Reflect the
+      // new email immediately (no manual reload): mirror onto S.profile /
+      // S.me + the linked self row, then re-hydrate rows from the DB (the
+      // trigger updated users/students/staff). Guarded on an actual email
+      // change so unrelated USER_UPDATED events (e.g. password) no-op.
+      if(S.passwordRecovery)return;
+      const newEmail=(session&&session.user&&session.user.email)?String(session.user.email).toLowerCase():null;
+      const curEmail=(S.profile&&S.profile.email)?String(S.profile.email).toLowerCase():null;
+      if(newEmail&&newEmail!==curEmail){
+        if(S.profile)S.profile.email=newEmail;
+        if(S.me)S.me.email=newEmail;
+        const uid=S.profile&&S.profile.id;
+        if(uid){
+          const st=STUDENTS.find(x=>x._userId===uid);if(st)st.email=newEmail;
+          const sf=STAFF.find(x=>x._userId===uid);if(sf)sf.email=newEmail;
+        }
+        render();
+        if(typeof hydrateData==='function')hydrateData();
+      }
+    }
   });
   try{
     const{data:{session}}=await c.auth.getSession();
@@ -7542,6 +7563,18 @@ function openChangeEmail(kind,sid){
   render();
   setTimeout(()=>{const el=document.getElementById('ce-input');if(el){el.focus();el.select&&el.select();}},20);
 }
+// Profile-based self change-email. A pure (non-training) parent has no
+// STUDENTS/STAFF row to target, but the self Auth flow operates on the
+// signed-in session, not a row — so open the modal off S.profile directly.
+// executeChangeEmail's self branch only reads current + isSelf (kind/sid/
+// dbId are for the admin RPC path, which self never reaches).
+function openMyEmailChange(){
+  if(!S.profile)return;
+  const nm=(typeof parseStaffName==='function'?parseStaffName((S.me&&S.me.name)||''):'')||'You';
+  S.changeEmail={kind:'self',sid:null,dbId:null,current:(S.profile.email||(S.me&&S.me.email)||''),name:nm,isSelf:true};
+  render();
+  setTimeout(()=>{const el=document.getElementById('ce-input');if(el){el.focus();el.select&&el.select();}},20);
+}
 function closeChangeEmail(){S.changeEmail=null;render();}
 
 function rChangeEmailModal(){
@@ -7556,7 +7589,7 @@ function rChangeEmailModal(){
   <div class="erow"><div class="elbl">New email</div><input id="ce-input" class="einput" type="email" autocomplete="off" placeholder="email@example.com" value=""/></div>
 </div>
 <div id="ce-err" class="inv" style="display:none;margin-top:0;margin-bottom:12px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="ce-err-txt"></span></div>
-<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:14px">They'll need to use the new email to sign in next time. The existing session stays valid until they sign out.</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:14px">${S.changeEmail.isSelf?'We\'ll send a confirmation link to the new email. Your current email stays active until you confirm.':'They\'ll need to use the new email to sign in next time. The existing session stays valid until they sign out.'}</div>
 <div style="display:flex;gap:10px">
   <button class="bsm" style="flex:1;padding:11px;border-radius:10px;font-size:14px" onclick="closeChangeEmail()">Cancel</button>
   <button class="bblue" style="flex:1;padding:11px" onclick="executeChangeEmail()">Update email</button>
@@ -7587,6 +7620,10 @@ async function executeChangeEmail(){
     const{error}=await cli.auth.updateUser({email},{emailRedirectTo:'https://mybjj-app.com'});
     if(error){
       console.warn('[mybjj] auth.updateUser email:',error);
+      const emsg=String(error.message||'').toLowerCase();
+      if(emsg.includes('already')||emsg.includes('registered')||emsg.includes('in use')){
+        return showErr('That email is already in use by another account.');
+      }
       return showErr(friendlyMutationError(error)||error.message||'Could not start email change.');
     }
     closeChangeEmail();
