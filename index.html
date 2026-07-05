@@ -4312,8 +4312,10 @@ function rProfileArea(){
       const phoneDisplay=phoneRaw?String(phoneRaw):'<span style="color:var(--text3)">Not set</span>';
       const accountCard='<div class="slbl" style="margin-top:18px">Account</div>'
         +'<div class="card" style="padding:14px;display:flex;flex-direction:column;gap:12px">'
-          +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+emailDisplay+'</div>'
-            +(S.hasGoogleIdentity?'<div style="color:var(--text3);font-size:12px;margin-top:4px">Email managed by Google</div>':'<a href="#" onclick="event.preventDefault();openMyEmailChange();" style="color:var(--blue);font-size:12px;text-decoration:underline;display:inline-block;margin-top:4px">Change email</a>')+'</div>'
+          // Invite-only model — the admin owns emails (email is the invite
+          // key). Self editors show the registered email read-only; no change
+          // link. Admin-of-other change stays on the roster (openChangeEmail).
+          +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+emailDisplay+'</div></div>'
           +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Phone</div><div style="font-size:14px;color:var(--text2)">'+phoneDisplay+'</div></div>'
         +'</div>';
       const editBtn='<div style="margin-top:18px"><button onclick="openEditMe()" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Edit Profile</button></div>';
@@ -8122,7 +8124,10 @@ function rEditStaff(){
   // Email display (read-only + Change email link) folded into Basic — a
   // whole "Contact" tab for one non-editable field was an anti-pattern
   // (staff has no phone column; social lives on the SOCIAL card).
-  const emailRow='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'staff\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
+  // Invite-only — email is admin-controlled. Self sees it read-only; only
+  // admin-of-other (owner editing another staff) keeps the change link.
+  const _emailChangeLink=isSelf?'':'<a href="#" onclick="event.preventDefault();openChangeEmail(\'staff\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a>';
+  const emailRow='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div>'+_emailChangeLink+'</div></div>';
   const roleField=ownerEdit
     ?`<div class="erow"><div class="elbl">Role title</div><select class="esel" id="esf-roletitle">${ROLE_TITLES.map(rt=>`<option value="${esc(rt)}" ${rt===roleTitle?'selected':''}>${rt}</option>`).join('')}</select></div>`
     :`<div class="erow"><div class="elbl">Role title</div><div style="flex:1;font-size:13px;color:var(--text2);text-align:right">${esc(roleTitle||'—')}</div></div>`;
@@ -11088,7 +11093,11 @@ ${trainStartRow}
   // -------- Contact (adult only) --------
   // G16a.1 — email row stacks: value on its own line (ellipsis on
   // overflow), Change email link below at smaller size.
-  const emailRowAdult='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div><a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a></div></div>';
+  // Invite-only — email is admin-controlled. Self sees it read-only; only
+  // admin-of-other (owner/instructor editing a student) keeps the change
+  // link (admin RPC path via openChangeEmail).
+  const _emailChangeLink=isSelf?'':'<a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a>';
+  const emailRowAdult='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div>'+_emailChangeLink+'</div></div>';
   const contactTab=`<div class="ef" style="margin-top:8px">${emailRowAdult}
 <div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" value="${esc(phone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
