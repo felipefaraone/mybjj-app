@@ -2124,8 +2124,7 @@ ${prefillBanner}
 ${isKids?'':`<div class="erow"><div class="elbl">Email</div><input id="add-email" class="einput" type="email" placeholder="email@example.com" value="${v('email')}" oninput="S._addForm.email=this.value" autocomplete="off"/></div>
 <div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-cc','S._addForm.cc=this.value',phoneCC)}<input id="add-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('phone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.phone=this.value" style="text-align:left" autocomplete="off"/></div></div>`}
 <div class="erow"><div class="elbl">Date of birth</div><input id="add-dob" class="einput" type="date" value="${v('dob')}" oninput="S._addForm.dob=this.value"/></div>
-<div class="erow"><div class="elbl">Started BJJ</div><input id="add-bjjstart" class="einput" type="month" value="${v('bjjStartMonth')}" oninput="S._addForm.bjjStartMonth=this.value"/></div>
-<div style="font-size:11px;color:var(--text3);padding:4px 14px 0">Optional. When this student first started practicing BJJ (anywhere).</div>
+<div class="erow"><div class="elbl">Started BJJ</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><input id="add-bjjstart" class="einput" type="month" value="${v('bjjStartMonth')}" oninput="S._addForm.bjjStartMonth=this.value" style="width:100%;box-sizing:border-box;min-width:0"/><div style="font-size:11px;color:var(--text3);line-height:1.4">Optional. When this student first started practicing BJJ (anywhere).</div></div></div>
 </div>
 <div class="slbl" style="margin-top:8px">Program & rank</div>
 <div class="ef">
@@ -8126,8 +8125,13 @@ function rEditStaff(){
   // (staff has no phone column; social lives on the SOCIAL card).
   // Invite-only — email is admin-controlled. Self sees it read-only; only
   // admin-of-other (owner editing another staff) keeps the change link.
-  const _emailChangeLink=isSelf?'':'<a href="#" onclick="event.preventDefault();openChangeEmail(\'staff\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a>';
-  const emailRow='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div>'+_emailChangeLink+'</div></div>';
+  const _emailChangeLink=isSelf?'':'<a href="#" onclick="event.preventDefault();openChangeEmail(\'staff\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-end">Change email</a>';
+  // Self (invite-only, no link) → right-aligned value matching First/Last
+  // name. Admin-of-other → value right-aligned with the change link
+  // right-aligned below it.
+  const emailRow=_emailChangeLink
+    ?'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end"><div style="font-size:13px;color:var(--text2);max-width:100%;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div>'+_emailChangeLink+'</div></div>'
+    :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;font-size:13px;color:var(--text2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div></div>';
   const roleField=ownerEdit
     ?`<div class="erow"><div class="elbl">Role title</div><select class="esel" id="esf-roletitle">${ROLE_TITLES.map(rt=>`<option value="${esc(rt)}" ${rt===roleTitle?'selected':''}>${rt}</option>`).join('')}</select></div>`
     :`<div class="erow"><div class="elbl">Role title</div><div style="flex:1;font-size:13px;color:var(--text2);text-align:right">${esc(roleTitle||'—')}</div></div>`;
@@ -11050,8 +11054,7 @@ function rEditStu(){
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
-<div class="erow"><div class="elbl">Started BJJ</div><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
-<div style="font-size:11px;color:var(--text3);padding:2px 14px 0">Optional. When this student first started practicing BJJ (anywhere).</div>
+<div class="erow"><div class="elbl">Started BJJ</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="width:100%;box-sizing:border-box;min-width:0"/><div style="font-size:11px;color:var(--text3);line-height:1.4">Optional. When this student first started practicing BJJ (anywhere).</div></div></div>
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
 </div>`;
   // -------- Training --------
