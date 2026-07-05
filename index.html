@@ -4313,7 +4313,7 @@ function rProfileArea(){
       const accountCard='<div class="slbl" style="margin-top:18px">Account</div>'
         +'<div class="card" style="padding:14px;display:flex;flex-direction:column;gap:12px">'
           +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+emailDisplay+'</div>'
-            +'<a href="#" onclick="event.preventDefault();openMyEmailChange();" style="color:var(--blue);font-size:12px;text-decoration:underline;display:inline-block;margin-top:4px">Change email</a></div>'
+            +(S.hasGoogleIdentity?'<div style="color:var(--text3);font-size:12px;margin-top:4px">Email managed by Google</div>':'<a href="#" onclick="event.preventDefault();openMyEmailChange();" style="color:var(--blue);font-size:12px;text-decoration:underline;display:inline-block;margin-top:4px">Change email</a>')+'</div>'
           +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Phone</div><div style="font-size:14px;color:var(--text2)">'+phoneDisplay+'</div></div>'
         +'</div>';
       const editBtn='<div style="margin-top:18px"><button onclick="openEditMe()" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Edit Profile</button></div>';
@@ -7120,7 +7120,7 @@ async function bootAuth(){
       if(S.passwordRecovery)return;
       onAuthed();
     }
-    else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;render();}
+    else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();}
     else if(ev==='USER_UPDATED'){
       // Fired when a self-service email change is confirmed. Reflect the
       // new email immediately (no manual reload): mirror onto S.profile /
@@ -7180,6 +7180,14 @@ async function onAuthed(){
     const{data,error}=await c.rpc('claim_profile');
     if(error){console.warn('[mybjj] claim_profile',error.message);S.authState='unauthenticated';S.authMsg=friendlyAuthError(error);render();return;}
     S.profile=data;
+    // Detect a Google OAuth identity. Its email is owned by Google and is
+    // immutable from our app, so auth.updateUser({email}) changes only the
+    // magic-link email while the Google login keeps the OLD one — two valid
+    // logins, wrong. We gate self email-change for these users (see
+    // openChangeEmail / openMyEmailChange). getUser() is authoritative for
+    // identities; non-blocking so it never delays the authed render — the
+    // flag only matters once the user taps "Change email".
+    c.auth.getUser().then(({data:_u})=>{const had=S.hasGoogleIdentity;S.hasGoogleIdentity=!!(_u&&_u.user&&(_u.user.identities||[]).some(i=>i&&i.provider==='google'));if(had!==S.hasGoogleIdentity)render();}).catch(()=>{S.hasGoogleIdentity=false;});
     if(data.status==='approved'){
       S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';
       // G14 — parent lands on Classes (their primary check-in surface)
@@ -7559,6 +7567,10 @@ function openChangeEmail(kind,sid){
   // ELSE's stays gated to owner / class-count editors (direct RPC).
   const isSelf=!!(S.profile&&target._userId&&target._userId===S.profile.id);
   if(!isSelf&&!isOwner()&&!canEditClassCounts())return;
+  // Google-identity users can't change their sign-in email here — Google
+  // owns that identity. Only blocks SELF changes; admin-of-other (RPC) is
+  // unaffected (the admin's own identity is irrelevant to the target).
+  if(isSelf&&S.hasGoogleIdentity){showSaveToast2("Your sign-in email is managed by your Google account and can't be changed here.");return;}
   S.changeEmail={kind,sid,dbId:target._dbId,current:target.email||'',name:target.name||'',isSelf};
   render();
   setTimeout(()=>{const el=document.getElementById('ce-input');if(el){el.focus();el.select&&el.select();}},20);
@@ -7570,6 +7582,8 @@ function openChangeEmail(kind,sid){
 // dbId are for the admin RPC path, which self never reaches).
 function openMyEmailChange(){
   if(!S.profile)return;
+  // Self-only entry point — a Google-identity user's email is immutable here.
+  if(S.hasGoogleIdentity){showSaveToast2("Your sign-in email is managed by your Google account and can't be changed here.");return;}
   const nm=(typeof parseStaffName==='function'?parseStaffName((S.me&&S.me.name)||''):'')||'You';
   S.changeEmail={kind:'self',sid:null,dbId:null,current:(S.profile.email||(S.me&&S.me.email)||''),name:nm,isSelf:true};
   render();
