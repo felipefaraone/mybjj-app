@@ -137,7 +137,8 @@ html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}bod
 .offline-strip{position:fixed;top:0;left:0;right:0;background:var(--amber-bg);color:var(--amber-text);border-bottom:1px solid var(--amber-border);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.4px;text-align:center;padding:4px 8px;z-index:9000;pointer-events:none}
 .update-strip{position:fixed;top:0;left:0;right:0;background:#1A5DAD;color:#fff;text-align:center;padding:6px 12px;font-family:Barlow,sans-serif;font-size:13px;z-index:9001;pointer-events:auto;display:flex;align-items:center;justify-content:center;gap:8px}
 .us-btn{background:#fff;color:#1A5DAD;border:0;padding:3px 10px;border-radius:4px;font-weight:700;cursor:pointer;font-family:Barlow Condensed,sans-serif;text-transform:uppercase;letter-spacing:.5px;font-size:12px}
-.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 16px 16px;-webkit-overflow-scrolling:touch;min-width:0;overscroll-behavior-y:contain}
+.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 16px 16px;-webkit-overflow-scrolling:touch;min-width:0;overscroll-behavior-y:contain;position:relative}
+.unit-switch-ov{position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--bg)}
 /* When any .cov overlay (incl. the Add week sheet) is mounted in the
    DOM, freeze the underlying scroll container so iOS can't chain a
    scroll touch from inside the sheet into the page behind. iOS Safari
@@ -1358,7 +1359,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -6640,7 +6641,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -8539,25 +8540,85 @@ function rPhotoQueue(){
   }).join('');
 }
 
+// Multi-unit — unit-scoped refetch. STUDENTS/STAFF/CLASSES carry no client
+// filter; RLS scopes them by current_unit(), so switching the active unit
+// requires re-fetching exactly these three (UNITS and the boot-only
+// backfills are NOT re-run). Shares its fetch + row-mapping with
+// hydrateData: hydrateData calls it on boot (after UNITS resolves, so uMap
+// is fresh), and pickUnit calls it after set_active_unit persists the switch.
+// uMap is rebuilt from the in-memory UNITS list (dbId → legacy id), identical
+// to hydrateData's uMap, so no units re-fetch is needed. Returns true when any
+// of the three arrays received rows (so hydrateData can set its touched flag).
+async function refetchUnitScopedData(){
+  const c=initSupabase(); if(!c) return false;
+  const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
+  const res=await Promise.allSettled([
+    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,parent_user:users!parent_user_id(full_name)'),
+    // RLS-2 — staff.feedback dropped from the select; Head Instructor
+    // Notes now live in public.staff_notes and are fetched lazily per
+    // STAFF row by _fetchStaffNotes when the owner opens the profile.
+    c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi,created_at'),
+    // Etapa 1 — schedule lives in public.classes. Join staff so we
+    // can render the instructor's clean display name without a
+    // second lookup. Order so rebuildTT sees a stable shape.
+    c.from('classes').select('id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
+  ]);
+  const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
+  const st=get(0),sf=get(1),cl=get(2);
+  let got=false;
+  if(st.data&&st.data.length){
+    // Etapa 5 — students.feedback JSONB is no longer the source of
+    // truth. Initialize each STUDENTS row with feedback:[]; the
+    // public.feedback fetch (in hydrateData) populates them after
+    // grouping by student_id.
+    // G9.3 — total/grade/gi_classes/nogi_classes/gi_grade are now
+    // numeric(5,2) on the DB (migration 47). supabase-js@2 returns
+    // Postgres numeric as String to avoid precision loss; wrap with
+    // Number() so downstream math (sort, eligibility, formatStat)
+    // compares numerically instead of lexicographically.
+    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
+    got=true;
+  }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
+  if(sf.data&&sf.data.length){
+    STAFF=sf.data.map(r=>{
+      // Strip any legacy "Prof." / "Professor " prefix at hydrate so
+      // every downstream consumer sees a clean name + matching
+      // initials.
+      const cleanName=parseStaffName(r.full_name);
+      const initials=_initialsFromName(cleanName)||r.initials||'??';
+      // Etapa 6 — in-memory STAFF rows carry role:'instructor' for
+      // everyone. Ownership is sourced from units.owner_user_id via
+      // isUnitOwner(s); role_title still distinguishes 'Head
+      // Professor' vs 'Professor' for BJJ-title rendering.
+      // Batch 2B: nickname column dropped; _rawFullName dropped because
+      // migration 34 cleans the staff.full_name source data.
+      // RLS-2 — _notes:null marks "not fetched yet" for the lazy
+      // staff_notes loader. feedback field removed (column unused
+      // post-migration 56; notes live in public.staff_notes).
+      return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,firstName:r.first_name||null,lastName:r.last_name||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],_notes:null,photoUrl:r.photo_url||null,socialHandles:r.social_handles||{},hasMybjjGi:!!r.has_mybjj_gi,_createdAt:r.created_at||null};
+    });
+    got=true;
+  }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
+  if(cl.data){
+    CLASSES=cl.data;
+    rebuildTT();
+    got=true;
+  }else if(cl.error){
+    console.warn('[mybjj] hydrate classes:',cl.error);
+    CLASSES=[];rebuildTT();
+  }
+  return got;
+}
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
   let touched=false;
   try{
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email,cycle_anchor_date,cycle_length_weeks').order('name'),
-      c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,parent_user:users!parent_user_id(full_name)'),
-      // RLS-2 — staff.feedback dropped from the select; Head Instructor
-      // Notes now live in public.staff_notes and are fetched lazily per
-      // STAFF row by _fetchStaffNotes when the owner opens the profile.
-      c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi,created_at'),
       c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
       c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
       c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
       c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
-      // Etapa 1 — schedule lives in public.classes. Join staff so we
-      // can render the instructor's clean display name without a
-      // second lookup. Order so rebuildTT sees a stable shape.
-      c.from('classes').select('id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
       // Etapa 5 — feedback hydrated from public.feedback. RLS scopes
       // rows automatically: staff of unit see every student's feedback;
       // students see their own; parents see their kid's. Each row is
@@ -8571,7 +8632,7 @@ async function hydrateData(){
       c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended']).order('booked_at',{ascending:false}),
     ]);
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-    const u=get(0),st=get(1),sf=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),cl=get(7),fb=get(8),tr=get(9);
+    const u=get(0),pm=get(1),ev=get(2),pw=get(3),at=get(4),fb=get(5),tr=get(6);
     const uMap={};
     if(u.data){
       // MOCK-FIX — empty array clears UNITS so an empty DB doesn't
@@ -8580,19 +8641,12 @@ async function hydrateData(){
       UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active,_ownerUserId:r.owner_user_id||null,phone:r.phone||null,mobilePhone:r.mobile_phone||null,email:r.email||null,cycleAnchorDate:r.cycle_anchor_date||null,cycleLengthWeeks:r.cycle_length_weeks||18}));
       touched=true;
     }else if(u.error){console.warn('[mybjj] hydrate units:',u.error);UNITS=[];}
-    if(st.data&&st.data.length){
-      // Etapa 5 — students.feedback JSONB is no longer the source of
-      // truth. Initialize each STUDENTS row with feedback:[]; the
-      // public.feedback fetch below populates them after grouping
-      // by student_id.
-      // G9.3 — total/grade/gi_classes/nogi_classes/gi_grade are now
-      // numeric(5,2) on the DB (migration 47). supabase-js@2 returns
-      // Postgres numeric as String to avoid precision loss; wrap with
-      // Number() so downstream math (sort, eligibility, formatStat)
-      // compares numerically instead of lexicographically.
-      STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
-      touched=true;
-    }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
+    // Students/staff/classes (RLS/unit-scoped) fetched + mapped by the shared
+    // refetchUnitScopedData — called here AFTER UNITS is mapped so its uMap is
+    // fresh, and BEFORE the promotions/origin/feedback steps that read STUDENTS.
+    // Same rows pickUnit re-fetches on a unit switch; UNITS + boot backfills
+    // stay in hydrateData only.
+    if(await refetchUnitScopedData())touched=true;
     if(tr.data){
       // Module 1 — trial bookings mapped to camelCase, same style as
       // STUDENTS. unit resolved via uMap (legacy id) so render can scope
@@ -8600,26 +8654,6 @@ async function hydrateData(){
       TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
       touched=true;
     }else if(tr.error)console.warn('[mybjj] hydrate trials:',tr.error);
-    if(sf.data&&sf.data.length){
-      STAFF=sf.data.map(r=>{
-        // Strip any legacy "Prof." / "Professor " prefix at hydrate so
-        // every downstream consumer sees a clean name + matching
-        // initials.
-        const cleanName=parseStaffName(r.full_name);
-        const initials=_initialsFromName(cleanName)||r.initials||'??';
-        // Etapa 6 — in-memory STAFF rows carry role:'instructor' for
-        // everyone. Ownership is sourced from units.owner_user_id via
-        // isUnitOwner(s); role_title still distinguishes 'Head
-        // Professor' vs 'Professor' for BJJ-title rendering.
-        // Batch 2B: nickname column dropped; _rawFullName dropped because
-        // migration 34 cleans the staff.full_name source data.
-        // RLS-2 — _notes:null marks "not fetched yet" for the lazy
-        // staff_notes loader. feedback field removed (column unused
-        // post-migration 56; notes live in public.staff_notes).
-        return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,firstName:r.first_name||null,lastName:r.last_name||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],_notes:null,photoUrl:r.photo_url||null,socialHandles:r.social_handles||{},hasMybjjGi:!!r.has_mybjj_gi,_createdAt:r.created_at||null};
-      });
-      touched=true;
-    }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
     if(pm.data){
       // Etapa 4 — public.promotions is the source of truth. Empty
       // arrays clear the in-memory log instead of falling back to
@@ -8701,14 +8735,7 @@ async function hydrateData(){
       ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,classValue:r.class_value!=null?Number(r.class_value):1}));
       touched=true;
     }else if(at.error)console.warn('[mybjj] hydrate attendance:',at.error);
-    if(cl.data){
-      CLASSES=cl.data;
-      rebuildTT();
-      touched=true;
-    }else if(cl.error){
-      console.warn('[mybjj] hydrate classes:',cl.error);
-      CLASSES=[];rebuildTT();
-    }
+    // CLASSES + rebuildTT() handled by refetchUnitScopedData() above.
     // Etapa 5 — group public.feedback rows by student_id and attach.
     // Each STUDENTS entry's `.feedback` array becomes the canonical
     // list rendered in rStuProf / rProgress (feedbackTab). Shape
@@ -9667,7 +9694,30 @@ function openSub(s){
 }
 function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;S.pwdReauthAttempts=0;S.pwdResetSent=false;S._addPrefillForName=null;S._addStuReturnTo=null;render();}
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
-function pickUnit(u){S.unit=u;S.unitOpen=false;rebuildTT();render();}
+async function pickUnit(u){
+  // Multi-unit — the dropdown selection is now persisted server-side
+  // (users.active_unit_id via set_active_unit) and drives an RLS-scoped
+  // refetch, because STUDENTS/STAFF/CLASSES carry no client unit filter.
+  const unit=UNITS.find(x=>x.name===u);
+  if(!unit||!unit._dbId||unit.active===false){showSaveToast2('Unit unavailable','error');return;}
+  if(u===S.unit&&!S._unitSwitching){S.unitOpen=false;render();return;}
+  const prevUnit=S.unit;
+  // Optimistic UI: header flips immediately; content shows the switching
+  // overlay (rApp gates it on S._unitSwitching). Nav + header stay live.
+  S.unit=u;S.unitOpen=false;S._unitSwitching=true;render();
+  const cli=initSupabase();
+  if(!cli){S.unit=prevUnit;S._unitSwitching=false;showSaveToast2("Couldn't switch unit — try again",'error');render();return;}
+  try{
+    const r=await cli.rpc('set_active_unit',{p_unit_id:unit._dbId});
+    if(r&&r.error)throw r.error;
+    await refetchUnitScopedData(); // refetch calls rebuildTT() after CLASSES
+    S._unitSwitching=false;render();
+  }catch(e){
+    console.warn('[mybjj] set_active_unit:',e);
+    S.unit=prevUnit;S._unitSwitching=false;
+    showSaveToast2("Couldn't switch unit — try again",'error');render();
+  }
+}
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
 // Parses the synthetic class id getDC() builds: 'YYYY-MM-DD_HH:MM_legacy'
 function _parseCID(id){const m=String(id||'').match(/^(\d{4}-\d{2}-\d{2})_(\d{2}:\d{2})_(.+)$/);if(!m)return null;return{date:m[1],time:m[2],legacy:m[3]};}
