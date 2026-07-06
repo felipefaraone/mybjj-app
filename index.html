@@ -153,9 +153,9 @@ html,body{overscroll-behavior-y:none}
 /* Floating glassmorphism nav — all scoped under .bnav.glass / .content.glass-pad
    so GLASS_NAV=false leaves the flat bar above untouched. */
 .content.glass-pad{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
-.bnav.glass{position:absolute;left:24px;right:24px;bottom:calc(24px + env(safe-area-inset-bottom));padding:8px 6px;border:1px solid rgba(255,255,255,.6);border-radius:999px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);box-shadow:0 6px 24px rgba(0,0,0,.12);z-index:250;transform-origin:center bottom}
+.bnav.glass{position:absolute;left:24px;right:24px;bottom:calc(24px + env(safe-area-inset-bottom));padding:6px 6px;border:1px solid rgba(255,255,255,.6);border-radius:999px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);box-shadow:0 6px 24px rgba(0,0,0,.12);z-index:250;transform-origin:center bottom}
 .bnav.glass .nlbl{display:none}
-.bnav.glass .nbtn{position:relative;padding:13px 0;color:#5a6472;transition:padding .2s ease}
+.bnav.glass .nbtn{position:relative;padding:9px 0;color:#5a6472;transition:padding .2s ease}
 .bnav.glass .nbtn svg{width:26px;height:26px;position:relative;z-index:1;transition:width .2s ease,height .2s ease}
 .bnav.glass .nbtn.active{color:var(--blue)}
 .bnav.glass .nbtn.active svg{stroke-width:2.2}
@@ -6999,7 +6999,7 @@ function render(){
     // which reads 0 for a fresh tab and would snap the bar back to full)
     // and position the pill; bind the scroll listener once. _navApplyScale
     // calls _positionNavPill itself.
-    if(GLASS_NAV){_navApplyScale();_initNavShrink();}
+    if(GLASS_NAV){_navScrollEl=document.querySelector('.content')||_navScrollEl;_navApplyScale();_initNavShrink();}
     return;
   }
   if(S.authState==='pending'||S.authState==='rejected'){app.innerHTML=rPending();hideSplash();return;}
@@ -9565,7 +9565,7 @@ function _positionNavPill(){
 // (loop fills the frames sparse events skip), scroll-up lag (loop runs
 // regardless of iOS event cadence), and tab-switch reset (render re-applies
 // the PERSISTED _navCurScale, not a fresh scrollTop that reads 0).
-var _navTargetScroll=0,_navCurScale=1,_navCurOpacity=1,_navRAF=null;
+var _navTargetScroll=0,_navCurScale=1,_navCurOpacity=1,_navRAF=null,_navScrollEl=null;
 function _navTargetScale(){
   const SHRINK_RANGE=240;
   const progress=Math.min(1,_navTargetScroll/SHRINK_RANGE);
@@ -9585,10 +9585,19 @@ function _navApplyScale(){
 function _navStartLoop(){
   if(_navRAF!=null)return; // already running
   const step=function(){
+    // Read the LIVE scroll position each frame so the target tracks real
+    // scrollTop (including during iOS momentum deceleration), not just the
+    // discrete scroll events. This removes the scroll-up return delay: a
+    // still-changing scrollTop keeps `done` false, so the bar follows the
+    // scroll instead of waiting for the next event.
+    if(_navScrollEl)_navTargetScroll=Math.max(0,_navScrollEl.scrollTop);
     const t=_navTargetScale();
     // Lerp factor .18 — smooth follow, symmetric in both directions.
     _navCurScale+=(t.scale-_navCurScale)*0.18;
     _navCurOpacity+=(t.opacity-_navCurOpacity)*0.18;
+    // Settled only when the scale has converged AND the target isn't moving
+    // (scroll stopped). Since the target is recomputed from live scrollTop
+    // above, an in-progress scroll keeps the gap open → loop stays alive.
     const done=Math.abs(t.scale-_navCurScale)<0.0008&&Math.abs(t.opacity-_navCurOpacity)<0.0008;
     if(done){_navCurScale=t.scale;_navCurOpacity=t.opacity;}
     _navApplyScale();
@@ -9600,6 +9609,7 @@ function _onNavScroll(e){
   if(!GLASS_NAV)return;
   const c=e&&e.target;
   if(!(c&&c.classList&&c.classList.contains('content')))return;
+  _navScrollEl=c; // loop reads live scrollTop off this each frame
   _navTargetScroll=Math.max(0,c.scrollTop);
   _navStartLoop();
 }
