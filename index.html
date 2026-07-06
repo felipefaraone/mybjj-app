@@ -10523,7 +10523,13 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
   S.classAdd.saving=true;
   const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
-  const unit=UNITS.find(u=>u.id===s.unit);
+  // Multi-unit — attendance.unit_id is the CLASS's unit (where the class
+  // happens), not the student's home unit, so an instructor adding a
+  // VISITING student writes their own unit (the attendance_update policy
+  // matches attendance.unit_id = current_unit()). Resolve the class row by
+  // tt.classId; fall back to the active unit when it can't be found.
+  const _cls=tt.classId?CLASSES.find(cl=>cl.id===tt.classId):null;
+  const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   const nowISO=new Date().toISOString();
   const cv=typeof classValue==='number'?classValue:1;
   const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:tt.classId||null,classDate:c.date,classTime:c.time,classType:tt.type||null,status:'present',confirmedBy:S.profile&&S.profile.id,confirmedAt:nowISO,classValue:cv};
@@ -10537,7 +10543,7 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   const _mod=_modalityFromType(tt.type);
   const _payload={
     student_id:s._dbId,
-    unit_id:unit&&unit._dbId||null,
+    unit_id:_unitId,
     class_id:tt.classId||null,
     class_legacy_id:tt.id||null,
     class_date:c.date,
