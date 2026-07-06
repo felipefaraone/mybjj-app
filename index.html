@@ -8274,7 +8274,12 @@ function _cropStart(file){
   const reader=new FileReader();
   reader.onload=e=>{
     const im=new Image();
-    im.onload=()=>{
+    // Open the crop UI only once the image is usable. Runs from whichever
+    // readiness signal fires first (decode() or onload); the `opened` guard
+    // makes it idempotent so the fallback path can't double-open.
+    let opened=false;
+    const _openCrop=()=>{
+      if(opened)return;opened=true;
       _crop.img=im;
       const w=im.naturalWidth,h=im.naturalHeight;
       const minDim=Math.min(w,h);
@@ -8284,8 +8289,12 @@ function _cropStart(file){
       S.cropOpen=true;render();
       requestAnimationFrame(_cropDraw);
     };
+    im.onload=_openCrop; // fallback when decode() is unsupported / rejects
     im.onerror=()=>showSaveToast2("Couldn't load image.",'error');
     im.src=e.target.result;
+    // Prefer decode(): guarantees the image is decode-ready before we draw
+    // it (iOS onload can fire before the image is decodable for canvas).
+    if(im.decode)im.decode().then(_openCrop).catch(()=>{});
   };
   reader.readAsDataURL(file);
 }
@@ -8345,6 +8354,11 @@ async function uploadCroppedPhoto(){
   const out=document.createElement('canvas');out.width=512;out.height=512;
   const ctx=out.getContext('2d');
   const sx=-_crop.x/_crop.scale,sy=-_crop.y/_crop.scale,sw=_CROP_SIZE/_crop.scale;
+  // Guard the drawImage race: on iOS, img.onload doesn't guarantee the
+  // image is decode-ready for canvas draw, so a not-yet-decoded source can
+  // draw partially → a cropped JPEG uploaded. decode() forces readiness
+  // (no-op if already decoded); fall back silently if it throws/unsupported.
+  try{ if(_crop.img&&_crop.img.decode) await _crop.img.decode(); }catch(_){}
   ctx.drawImage(_crop.img,sx,sy,sw,sw,0,0,512,512);
   const blob=await new Promise(res=>out.toBlob(res,'image/jpeg',0.85));
   // Self-upload path: goes through photo_approvals like every other photo,
