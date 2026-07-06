@@ -8562,9 +8562,24 @@ async function refetchUnitScopedData(){
     // can render the instructor's clean display name without a
     // second lookup. Order so rebuildTT sees a stable shape.
     c.from('classes').select('id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
+    c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
+    c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
+    c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
+    c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
+    // Etapa 5 — feedback hydrated from public.feedback. RLS scopes
+    // rows automatically: staff of unit see every student's feedback;
+    // students see their own; parents see their kid's. Each row is
+    // grouped by student_id below and attached to the matching
+    // STUDENTS row as `.feedback`, replacing whatever the JSONB
+    // students.feedback column produced.
+    c.from('feedback').select('id,student_id,instructor_id,text,date,created_at,instructor:staff!instructor_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(500),
+    // Module 1 — trial bookings. Scope to active trials only
+    // (booked|attended); converted/lapsed rows are excluded in the
+    // query so TRIALS only ever holds rows that still need action.
+    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended']).order('booked_at',{ascending:false}),
   ]);
   const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-  const st=get(0),sf=get(1),cl=get(2);
+  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8);
   let got=false;
   if(st.data&&st.data.length){
     // Etapa 5 — students.feedback JSONB is no longer the source of
@@ -8607,90 +8622,126 @@ async function refetchUnitScopedData(){
     console.warn('[mybjj] hydrate classes:',cl.error);
     CLASSES=[];rebuildTT();
   }
+  if(tr.data){
+    // Module 1 — trial bookings mapped to camelCase, same style as
+    // STUDENTS. unit resolved via uMap (legacy id) so render can scope
+    // to the current unit the same way the member roster does.
+    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
+    got=true;
+  }else if(tr.error)console.warn('[mybjj] hydrate trials:',tr.error);
+  if(pm.data){
+    // Etapa 4 — public.promotions is the source of truth. Empty
+    // arrays clear the in-memory log instead of falling back to
+    // the (now-removed) mock seed.
+    PROMOTION_LOG=pm.data.map(r=>{
+      const pb=r.promoted_by;
+      // Shape the joined staff row for staffDisplayName().
+      const promotedByStaff=pb?{
+        name:parseStaffName(pb.full_name||''),
+        belt:pb.belt,
+        deg:pb.degree,
+        role:'instructor',
+        roleTitle:pb.role_title||'Professor',
+      }:null;
+      return{
+        id:r.legacy_id||r.id,
+        _dbId:r.id,
+        studentId:r.student&&r.student.legacy_id,
+        studentName:r.student_name,
+        fromBelt:r.from_belt,
+        fromDeg:r.from_deg,
+        toBelt:r.to_belt,
+        toDeg:r.to_deg,
+        isNewBelt:r.is_new_belt,
+        type:r.type||null,
+        date:r.date,
+        promotedBy:r.promoted_by_name,
+        promotedById:r.promoted_by_id||null,
+        promotedByStaff,
+        unit:uMap[r.unit_id]||null,
+      };
+    });
+    got=true;
+  }else if(pm.error){
+    console.warn('[mybjj] hydrate promotions:',pm.error);
+    PROMOTION_LOG=[];
+  }
+  if(ev.data){
+    // MOCK-FIX — empty array clears EVENTS so the feed empty state
+    // renders instead of a stale mock seed.
+    EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,_dateIso:r.date||'',type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[],unitDbIds:r.unit_ids||[]}));
+    got=true;
+  }else if(ev.error){console.warn('[mybjj] hydrate events:',ev.error);EVENTS=[];}
+  if(pw.data){
+    // MOCK-FIX — empty array clears SCHED so the curriculum empty
+    // state renders instead of a stale mock seed.
+    SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,_localId:r.id,weekStart:r.week_start,unitId:r.unit_id,theme:r.theme||'',color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
+    _sortSched();
+    got=true;
+  }else if(pw.error){console.warn('[mybjj] hydrate programme_weeks:',pw.error);SCHED=[];}
+  if(at.data){
+    ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,classValue:r.class_value!=null?Number(r.class_value):1}));
+    got=true;
+  }else if(at.error)console.warn('[mybjj] hydrate attendance:',at.error);
+  // Etapa 5 — group public.feedback rows by student_id and attach.
+  // Each STUDENTS entry's `.feedback` array becomes the canonical
+  // list rendered in rStuProf / rProgress (feedbackTab). Shape
+  // matches what the existing render code reads: {ins, date, text,
+  // _dbId} so callers don't need rewriting.
+  if(fb.data){
+    const byStudent=new Map();
+    for(const r of fb.data){
+      const sid=r.student_id;if(!sid)continue;
+      const arr=byStudent.get(sid)||[];
+      const ins=r.instructor;
+      const insName=ins
+        ?staffDisplayName({name:parseStaffName(ins.full_name||''),belt:ins.belt,deg:ins.degree,role:'instructor',roleTitle:ins.role_title||'Professor'})
+        :'Instructor';
+      arr.push({
+        _dbId:r.id,
+        ins:insName,
+        insStaffId:r.instructor_id||null,
+        date:_fmtJnyDate(r.date)||r.date,
+        text:r.text||'',
+      });
+      byStudent.set(sid,arr);
+    }
+    for(const s of STUDENTS){
+      const list=byStudent.get(s._dbId);
+      s.feedback=list||[];
+    }
+    got=true;
+  }else if(fb.error){
+    console.warn('[mybjj] hydrate feedback:',fb.error);
+    for(const s of STUDENTS)s.feedback=[];
+  }
   return got;
 }
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
   let touched=false;
   try{
+    // Boot fetches ONLY units here; every unit-scoped array (students,
+    // staff, classes, promotions, events, sched, attendance, feedback,
+    // trials) is fetched + mapped by refetchUnitScopedData() below, so boot
+    // and unit-switch share one code path. hydrateData keeps only the UNITS
+    // hydration and the write-performing origin-belt backfill.
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email,cycle_anchor_date,cycle_length_weeks').order('name'),
-      c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
-      c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
-      c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
-      c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
-      // Etapa 5 — feedback hydrated from public.feedback. RLS scopes
-      // rows automatically: staff of unit see every student's feedback;
-      // students see their own; parents see their kid's. Each row is
-      // grouped by student_id below and attached to the matching
-      // STUDENTS row as `.feedback`, replacing whatever the JSONB
-      // students.feedback column produced.
-      c.from('feedback').select('id,student_id,instructor_id,text,date,created_at,instructor:staff!instructor_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(500),
-      // Module 1 — trial bookings. Scope to active trials only
-      // (booked|attended); converted/lapsed rows are excluded in the
-      // query so TRIALS only ever holds rows that still need action.
-      c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended']).order('booked_at',{ascending:false}),
     ]);
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-    const u=get(0),pm=get(1),ev=get(2),pw=get(3),at=get(4),fb=get(5),tr=get(6);
-    const uMap={};
+    const u=get(0);
     if(u.data){
       // MOCK-FIX — empty array clears UNITS so an empty DB doesn't
       // present stale mock units as real.
-      u.data.forEach(r=>{if(r.id)uMap[r.id]=r.legacy_id;});
       UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active,_ownerUserId:r.owner_user_id||null,phone:r.phone||null,mobilePhone:r.mobile_phone||null,email:r.email||null,cycleAnchorDate:r.cycle_anchor_date||null,cycleLengthWeeks:r.cycle_length_weeks||18}));
       touched=true;
     }else if(u.error){console.warn('[mybjj] hydrate units:',u.error);UNITS=[];}
-    // Students/staff/classes (RLS/unit-scoped) fetched + mapped by the shared
-    // refetchUnitScopedData — called here AFTER UNITS is mapped so its uMap is
-    // fresh, and BEFORE the promotions/origin/feedback steps that read STUDENTS.
-    // Same rows pickUnit re-fetches on a unit switch; UNITS + boot backfills
-    // stay in hydrateData only.
+    // Every unit-scoped array + feedback attach — refetched here AFTER UNITS
+    // maps (so its uMap is fresh) and BEFORE the origin-belt backfill, which
+    // reads STUDENTS + PROMOTION_LOG. pickUnit re-runs the exact same fetch on
+    // a unit switch, leaving the app identical to a fresh boot in that unit.
     if(await refetchUnitScopedData())touched=true;
-    if(tr.data){
-      // Module 1 — trial bookings mapped to camelCase, same style as
-      // STUDENTS. unit resolved via uMap (legacy id) so render can scope
-      // to the current unit the same way the member roster does.
-      TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
-      touched=true;
-    }else if(tr.error)console.warn('[mybjj] hydrate trials:',tr.error);
-    if(pm.data){
-      // Etapa 4 — public.promotions is the source of truth. Empty
-      // arrays clear the in-memory log instead of falling back to
-      // the (now-removed) mock seed.
-      PROMOTION_LOG=pm.data.map(r=>{
-        const pb=r.promoted_by;
-        // Shape the joined staff row for staffDisplayName().
-        const promotedByStaff=pb?{
-          name:parseStaffName(pb.full_name||''),
-          belt:pb.belt,
-          deg:pb.degree,
-          role:'instructor',
-          roleTitle:pb.role_title||'Professor',
-        }:null;
-        return{
-          id:r.legacy_id||r.id,
-          _dbId:r.id,
-          studentId:r.student&&r.student.legacy_id,
-          studentName:r.student_name,
-          fromBelt:r.from_belt,
-          fromDeg:r.from_deg,
-          toBelt:r.to_belt,
-          toDeg:r.to_deg,
-          isNewBelt:r.is_new_belt,
-          type:r.type||null,
-          date:r.date,
-          promotedBy:r.promoted_by_name,
-          promotedById:r.promoted_by_id||null,
-          promotedByStaff,
-          unit:uMap[r.unit_id]||null,
-        };
-      });
-      touched=true;
-    }else if(pm.error){
-      console.warn('[mybjj] hydrate promotions:',pm.error);
-      PROMOTION_LOG=[];
-    }
     // Batch 2a — origin-belt backfill. Runs after both STUDENTS and
     // PROMOTION_LOG are populated so the earliest-promotion lookup is
     // valid. Skips students whose journey already contains an entry
@@ -8718,56 +8769,8 @@ async function hydrateData(){
           .then(r=>{if(r&&r.error)console.warn('[mybjj] origin backfill update:',r.error);});
       });
     }catch(e){console.warn('[mybjj] origin backfill loop:',e);}
-    if(ev.data){
-      // MOCK-FIX — empty array clears EVENTS so the feed empty state
-      // renders instead of a stale mock seed.
-      EVENTS=ev.data.map(r=>({id:r.legacy_id,_dbId:r.id,title:r.title,date:r.date_text||r.date,_dateIso:r.date||'',type:r.type,desc:r.description||'',link:r.link||'',competing:r.competing_legacy_ids||[],supporting:r.supporting_legacy_ids||[],units:r.unit_legacy_ids||[],unitDbIds:r.unit_ids||[]}));
-      touched=true;
-    }else if(ev.error){console.warn('[mybjj] hydrate events:',ev.error);EVENTS=[];}
-    if(pw.data){
-      // MOCK-FIX — empty array clears SCHED so the curriculum empty
-      // state renders instead of a stale mock seed.
-      SCHED=pw.data.map(r=>({week:r.week_index,_dbId:r.id,_localId:r.id,weekStart:r.week_start,unitId:r.unit_id,theme:r.theme||'',color:r.color||'#1A5DAD',programs:r.programs||[],standUp:r.stand_up||[],ground:r.ground||[],notes:r.notes||'',video:''}));
-      _sortSched();
-      touched=true;
-    }else if(pw.error){console.warn('[mybjj] hydrate programme_weeks:',pw.error);SCHED=[];}
-    if(at.data){
-      ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,classValue:r.class_value!=null?Number(r.class_value):1}));
-      touched=true;
-    }else if(at.error)console.warn('[mybjj] hydrate attendance:',at.error);
-    // CLASSES + rebuildTT() handled by refetchUnitScopedData() above.
-    // Etapa 5 — group public.feedback rows by student_id and attach.
-    // Each STUDENTS entry's `.feedback` array becomes the canonical
-    // list rendered in rStuProf / rProgress (feedbackTab). Shape
-    // matches what the existing render code reads: {ins, date, text,
-    // _dbId} so callers don't need rewriting.
-    if(fb.data){
-      const byStudent=new Map();
-      for(const r of fb.data){
-        const sid=r.student_id;if(!sid)continue;
-        const arr=byStudent.get(sid)||[];
-        const ins=r.instructor;
-        const insName=ins
-          ?staffDisplayName({name:parseStaffName(ins.full_name||''),belt:ins.belt,deg:ins.degree,role:'instructor',roleTitle:ins.role_title||'Professor'})
-          :'Instructor';
-        arr.push({
-          _dbId:r.id,
-          ins:insName,
-          insStaffId:r.instructor_id||null,
-          date:_fmtJnyDate(r.date)||r.date,
-          text:r.text||'',
-        });
-        byStudent.set(sid,arr);
-      }
-      for(const s of STUDENTS){
-        const list=byStudent.get(s._dbId);
-        s.feedback=list||[];
-      }
-      touched=true;
-    }else if(fb.error){
-      console.warn('[mybjj] hydrate feedback:',fb.error);
-      for(const s of STUDENTS)s.feedback=[];
-    }
+    // EVENTS / SCHED / ATTENDANCE / feedback-attach are populated by
+    // refetchUnitScopedData() above (shared boot + unit-switch path).
     // Batch B — fire-and-forget cleanup of stale 'going' rows past
     // their class end time. The RPC (migration 64) flips them to
     // 'absent' for THIS user only; legacy backlog across all users
