@@ -7651,20 +7651,29 @@ async function executeChangeEmail(){
     showSaveToast2('Confirmation link sent to '+email+'. Click it to finish the change.');
     return;
   }
-  // ADMIN-of-other path — direct RPC (immediate change, existing behavior).
-  const r=await cli.rpc('admin_change_user_email',{p_target_kind:kind,p_target_db_id:dbId,p_new_email:email});
-  if(r&&r.error){
-    console.warn('[mybjj] admin_change_user_email:',r.error);
-    return showErr(friendlyMutationError(r.error)||r.error.message||'Could not update email.');
+  // ADMIN-of-other path — routed through the admin-change-email Edge
+  // Function so auth.users.email is synced too. The RPC alone updates the
+  // public tables (and enforces authorization) but can't reach the auth
+  // schema, which left magic links going to the OLD address. The function
+  // runs the RPC as the caller, then calls auth.admin.updateUserById.
+  const r=await cli.functions.invoke('admin-change-email',{body:{target_kind:kind,target_db_id:dbId,new_email:email}});
+  const efErr=(r&&r.error)?r.error:((r&&r.data&&r.data.error)?r.data.error:null);
+  if(efErr){
+    console.warn('[mybjj] admin-change-email:',efErr);
+    const em=(typeof efErr==='string')?efErr:(efErr.message||'Could not update email.');
+    return showErr(em);
   }
   // Mirror the change locally so the UI reflects it without a full
-  // hydrate. The RPC already updated users/students/staff/whitelist.
+  // hydrate. The function already updated users/students/staff/whitelist.
   const target=kind==='staff'?STAFF.find(x=>x.id===sid):STUDENTS.find(x=>x.id===sid);
   if(target)target.email=email;
   // If the caller changed their own linked profile's email, sync S.profile too.
   if(S.profile&&target&&target._userId===S.profile.id){S.profile.email=email;if(S.me)S.me.email=email;}
   closeChangeEmail();
-  showSaveToast2('Email updated to '+email);
+  // authUpdated:false = the member has no linked auth user yet (never
+  // signed in), so there was no sign-in email to sync — still a success.
+  const _authOff=r&&r.data&&r.data.authUpdated===false;
+  showSaveToast2(_authOff?('Email updated to '+email+' — they haven’t signed in yet.'):('Email updated to '+email));
 }
 
 async function saveEmailEditor(dispatch){
