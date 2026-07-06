@@ -9963,7 +9963,14 @@ async function doCI(id){
     return;
   }
   const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
-  const unit=UNITS.find(u=>u.id===stu.unit);
+  // Multi-unit — attendance.unit_id must be the CLASS's unit (where the
+  // class happens), not the student's home unit, so the active-unit
+  // instructor can confirm a visiting student (the attendance_update
+  // policy matches attendance.unit_id = current_unit()). Resolve the
+  // class row by t.classId; fall back to the active unit when it can't
+  // be found (or the slot has no classId).
+  const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
+  const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   const local={_dbId:'local-'+Date.now(),studentDbId:stu._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:'going'};
   ATTENDANCE.push(local);
   render();
@@ -9974,7 +9981,7 @@ async function doCI(id){
   // the existing row's id so the local-prefix reconciliation still
   // lands and we don't leak an orphan local row.
   const _mod=_modalityFromType(t.type);
-  const _payload={student_id:stu._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:'going'};
+  const _payload={student_id:stu._dbId,unit_id:_unitId,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:'going'};
   let r=null,_caught=null;
   try{
     r=await cli.from('attendance').upsert(_payload,{onConflict:'student_id,class_id,class_date',ignoreDuplicates:true}).select('id');
@@ -10245,7 +10252,12 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
   let row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
   const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
-  const unit=UNITS.find(u=>u.id===s.unit);
+  // Multi-unit — attendance.unit_id is the CLASS's unit (where the class
+  // happens), not the student's home unit, so the active-unit instructor
+  // can confirm a visiting student's presence. Resolve the class row by
+  // t.classId; fall back to the active unit if it can't be found.
+  const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
+  const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   const confirmed=newStatus==='going'?null:(S.profile&&S.profile.id);
   const confirmedAt=newStatus==='going'?null:new Date().toISOString();
   // For status==='present' we always write a numeric class_value.
@@ -10262,7 +10274,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
     if(!cli)return;
     // Batch A — keep gi consistent with modality on every new write.
     const _mod=_modalityFromType(t.type);
-    const payload={student_id:s._dbId,unit_id:unit&&unit._dbId||null,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
+    const payload={student_id:s._dbId,unit_id:_unitId,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
     if(isPresent)payload.class_value=cv;
     // Upsert with ignoreDuplicates:false so the instructor's mark
     // upgrades any pre-existing 'going' row in place (intended).
