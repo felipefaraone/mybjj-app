@@ -3751,7 +3751,9 @@ function rMonthPromos(){
   const _bCutoff=new Date();_bCutoff.setDate(_bCutoff.getDate()-7);
   const _bSeeKids=isStaffOrOwner();
   const recent=PROMOTION_LOG
-    .filter(p=>p&&p.isNewBelt&&new Date(p.date)>=_bCutoff&&(!_bCurUnit||p.unit===_bCurUnit))
+    // p.fromBelt guard drops initial-white entries (fromBelt null): they carry
+    // isNewBelt=true but aren't promotions, so they must not banner "→ white".
+    .filter(p=>p&&p.isNewBelt&&p.fromBelt&&new Date(p.date)>=_bCutoff&&(!_bCurUnit||p.unit===_bCurUnit))
     .map(p=>{const s=STUDENTS.find(x=>x.id===p.studentId);return{p,s};})
     .filter(({s})=>s&&(_bSeeKids||s.prog==='adult'))
     .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date));
@@ -6208,7 +6210,9 @@ function rRecentPromos(){
   const now=new Date('2026-03-31');
   const cutoff=new Date(now);cutoff.setDate(cutoff.getDate()-30);
   const recent=PROMOTION_LOG.filter(p=>{
-    const d=new Date(p.date);return d>=cutoff&&d<=now;
+    // Exclude initial-white entries (fromBelt null/empty): starting at white
+    // is not a promotion, so "X → white" must never render here.
+    const d=new Date(p.date);return d>=cutoff&&d<=now&&p.fromBelt;
   });
   if(!recent.length)return '';
   const cards=recent.map(p=>{
