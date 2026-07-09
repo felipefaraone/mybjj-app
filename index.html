@@ -1260,13 +1260,16 @@ function isUnitOwner(target,units){
 // instead of trusting role='owner' (which is being phased out by
 // migration 32).
 function staffTitle(target){
-  // G14 — Coach role retired. Non-black-belt instructors render as
-  // "Instructor"; non-owner black-belts remain "Professor"; head
-  // instructors (unit owners) remain "Head Professor".
-  if(!target)return 'Instructor';
+  // Multi-title — role_title (free text: Professor / Coach / Head Professor
+  // / Admin) is the source of truth and wins verbatim when set. Only when
+  // it's blank do we derive from ownership + belt: owner → Head Professor,
+  // black belt → Professor, below black → Coach (reverses G14's Instructor).
+  if(!target)return 'Coach';
+  const rt=String(target.role_title||target.roleTitle||'').trim();
+  if(rt)return rt;
   if(isUnitOwner(target)) return 'Head Professor';
   if(target.belt==='black') return 'Professor';
-  return 'Instructor';
+  return 'Coach';
 }
 
 // ---------------------------------------------------------------------------
@@ -1310,12 +1313,10 @@ function getStaffBJJTitle(s){
     if(deg>=7)return 'Master';        // coral belt (7th–8th)
     return 'Professor';               // 1st–6th degree
   }
-  // Pre-G17.2a.2 brown/purple Coach path required an explicit
-  // role_title to opt in. With role_title now taking the top priority
-  // the only path that lands here is "no role_title set" — no inferred
-  // Coach title from belt alone (that would be a regression in
-  // attribution for staff who haven't filled in role_title yet).
-  return null;
+  // Below black belt with no explicit role_title → Coach (reverses G14,
+  // which returned null here; the gym owner's rule is "teachers below
+  // black belt = Coach"). role_title above still overrides this.
+  return 'Coach';
 }
 // staffDisplayName — social-context renderer. Combines the BJJ title with
 // the cleaned name. Pass an opts.firstOnly=true to render just the first
@@ -4137,7 +4138,7 @@ function _renderProfileHeader(s,opts){
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.2;color:var(--text);word-break:break-word">'+cleanName+'</div>'
         +'<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-          +beltSVG(s.belt,s.deg||0,prog,110)
+          +(s.belt?beltSVG(s.belt,s.deg||0,prog,110):'')
           +badges.join('')
         +'</div>'
       +'</div>'
@@ -8119,11 +8120,16 @@ function rEditStaff(){
   // (Contact tab no longer renders esf-soc-* inputs).
   const ownerEdit=isOwner();
   const isSelf=isStaffSelf(s);
-  // G17.2c — "Coach" dropped from the dropdown. BJJ-title rendering
-  // still recognises Coach if a staff row carries it from earlier data,
-  // but it's no longer offered as a fresh selection.
-  const ROLE_TITLES=['Head Professor','Professor','Instructor'];
+  // Multi-title — the four supported titles (free text on public.staff):
+  // Professor (black belt), Coach (below black), Head Professor (head
+  // instructor / owner), Admin (non-teaching, may have no belt).
+  const ROLE_TITLES=['Professor','Coach','Head Professor','Admin'];
   const BELT_OPTS=['black','brown','purple','blue','white'];
+  // Default the selector to the current role_title when set, else a
+  // belt-derived suggestion (owner → Head Professor, black → Professor,
+  // below black → Coach). The admin picks; this is only the default.
+  const _roleSuggest=isUnitOwner(s)?'Head Professor':(String(beltVal||'').toLowerCase()==='black'?'Professor':'Coach');
+  const roleTitleSel=String(roleTitle||'').trim()||_roleSuggest;
   // Photo block: tap own avatar to upload (same photo_approvals flow
   // students use); admin views static avatar.
   const photoBlock=isSelf
@@ -8148,8 +8154,8 @@ function rEditStaff(){
     ?'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end"><div style="font-size:13px;color:var(--text2);max-width:100%;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div>'+_emailChangeLink+'</div></div>'
     :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;font-size:13px;color:var(--text2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div></div>';
   const roleField=ownerEdit
-    ?`<div class="erow"><div class="elbl">Role title</div><select class="esel" id="esf-roletitle">${ROLE_TITLES.map(rt=>`<option value="${esc(rt)}" ${rt===roleTitle?'selected':''}>${rt}</option>`).join('')}</select></div>`
-    :`<div class="erow"><div class="elbl">Role title</div><div style="flex:1;font-size:13px;color:var(--text2);text-align:right">${esc(roleTitle||'—')}</div></div>`;
+    ?`<div class="erow"><div class="elbl">Title</div><select class="esel" id="esf-roletitle">${ROLE_TITLES.map(rt=>`<option value="${esc(rt)}" ${rt===roleTitleSel?'selected':''}>${rt}</option>`).join('')}</select></div>`
+    :`<div class="erow"><div class="elbl">Title</div><div style="flex:1;font-size:13px;color:var(--text2);text-align:right">${esc(roleTitle||staffTitle(s))}</div></div>`;
   const basicTab=`<div class="ef" style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:4px;border-bottom:1px solid var(--border)">${photoBlock}</div>
 <div class="ef" style="margin-top:8px">
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="esf-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
