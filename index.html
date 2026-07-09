@@ -7908,41 +7908,46 @@ function staffInitialsAuto(fullName){
 function openAddStaff(){if(!isOwner())return;S.addStaff=true;render();setTimeout(()=>{const el=document.getElementById('as-fname');if(el)el.focus();},50);}
 function closeAddStaff(){S.addStaff=false;render();}
 function asAutoInitials(){
-  const fname=document.getElementById('as-fname');
+  const fn=document.getElementById('as-fname');
+  const ln=document.getElementById('as-lname');
   const init=document.getElementById('as-initials');
-  if(!fname||!init)return;
+  if(!init)return;
   if(init.dataset.touched==='1')return;
-  init.value=staffInitialsAuto(fname.value);
+  const full=(((fn&&fn.value)||'')+' '+((ln&&ln.value)||'')).trim();
+  init.value=staffInitialsAuto(full);
 }
 function asInitialsTouched(){const init=document.getElementById('as-initials');if(init)init.dataset.touched='1';}
 async function saveAddStaff(){
-  const fname=(document.getElementById('as-fname')?.value||'').trim();
+  const first=(document.getElementById('as-fname')?.value||'').trim();
+  const last=(document.getElementById('as-lname')?.value||'').trim();
+  const fullName=(first+' '+last).trim();
   const email=(document.getElementById('as-email')?.value||'').trim().toLowerCase();
-  const belt=document.getElementById('as-belt')?.value||'black';
+  const role=(document.getElementById('as-role')?.value||'Professor');
+  // Admin staff have no BJJ belt — send blank (the RPC allows null belt
+  // only for Admin). Teaching titles use the selected belt as before.
+  const beltSel=document.getElementById('as-belt')?.value||'black';
+  const belt=role==='Admin'?'':beltSel;
   const degree=parseInt(document.getElementById('as-degree')?.value||'0',10);
   const unitLegacy=document.getElementById('as-unit')?.value||'';
-  const initials=(document.getElementById('as-initials')?.value||'').trim()||staffInitialsAuto(fname);
-  const role=(document.getElementById('as-role')?.value||'professor');
+  const initials=(document.getElementById('as-initials')?.value||'').trim()||staffInitialsAuto(fullName);
   const err=document.getElementById('as-err'),errTxt=document.getElementById('as-err-txt');
   const showErr=(m)=>{if(err&&errTxt){errTxt.textContent=m;err.style.display='flex';}};
-  if(!fname)return showErr('Full name is required.');
+  if(!first)return showErr('First name is required.');
   if(!/^\S+@\S+\.\S+$/.test(email))return showErr('Please enter a valid email address.');
   if(!unitLegacy)return showErr('Please select a unit.');
   if(!Number.isInteger(degree)||degree<0||degree>6)return showErr('Degree must be 0–6.');
-  // The add-staff dropdown only offers 'professor'. Ownership is set
-  // on the units row in a separate flow (Manage Units), not while
-  // creating a staff account. Etapa 7's migration 39 tightens
-  // add_staff_member to reject any other p_role value server-side.
   const cli=initSupabase();
   if(!cli)return showErr('Connection issue. Please try again.');
   const btn=event&&event.target;if(btn)btn.disabled=true;
-  const r=await cli.rpc('add_staff_member',{p_full_name:fname,p_email:email,p_belt:belt,p_degree:degree,p_unit_legacy_id:unitLegacy,p_initials:initials,p_role:role});
+  // p_role carries the chosen title verbatim (Professor / Coach / Head
+  // Professor / Admin) → staff.role_title; first/last are stored too.
+  const r=await cli.rpc('add_staff_member',{p_full_name:fullName,p_email:email,p_belt:belt,p_degree:degree,p_unit_legacy_id:unitLegacy,p_initials:initials,p_role:role,p_first_name:first,p_last_name:last});
   if(btn)btn.disabled=false;
   if(r&&r.error){console.warn('[mybjj] add staff:',r.error);showErr(friendlyMutationError(r.error));return;}
   console.log('[mybjj] add staff OK');
   if(r&&r.data){
     const u=UNITS.find(x=>x.id===unitLegacy);
-    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,email:r.data.email||email,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:'instructor',roleTitle:r.data.role_title||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],_notes:null});
+    STAFF.push({id:r.data.legacy_id,_dbId:r.data.id,_userId:null,_active:true,name:r.data.full_name,firstName:r.data.first_name||first||null,lastName:r.data.last_name||last||null,email:r.data.email||email,belt:r.data.belt,deg:r.data.degree,initials:r.data.initials,role:'instructor',roleTitle:r.data.role_title||role||'Professor',unit:u?u.id:null,totalClasses:0,journey:[],_notes:null});
   }
   S.addStaff=false;render();
   showSaveToast2("Staff member added. They'll get access on next sign-in with "+email+".");
@@ -8079,11 +8084,12 @@ function rAddStaffModal(){
   return `<div class="cov" onclick="closeAddStaff()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
 <button onclick="closeAddStaff()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:4px;padding-right:40px">Add staff member</div>
-<div style="font-size:12px;color:var(--text2);margin-bottom:14px">New professor. They'll get access on first sign-in with this email.</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:14px">New staff member. They'll get access on first sign-in with this email.</div>
 <div class="ef" style="margin-bottom:0">
-<div class="erow"><div class="elbl">Full name</div><input class="einput" id="as-fname" placeholder="e.g. Maria Silva" oninput="asAutoInitials()"/></div>
+<div class="erow"><div class="elbl">First name</div><input class="einput" id="as-fname" placeholder="e.g. Maria" autocapitalize="words" oninput="asAutoInitials()"/></div>
+<div class="erow"><div class="elbl">Last name</div><input class="einput" id="as-lname" placeholder="e.g. Silva" autocapitalize="words" oninput="asAutoInitials()"/></div>
 <div class="erow"><div class="elbl">Email</div><input class="einput" id="as-email" type="email" placeholder="maria@example.com" autocapitalize="none" autocorrect="off"/></div>
-<div class="erow"><div class="elbl">Role</div><select class="esel" id="as-role"><option value="professor" selected>Professor</option></select></div>
+<div class="erow"><div class="elbl">Title</div><select class="esel" id="as-role"><option value="Professor" selected>Professor</option><option value="Coach">Coach</option><option value="Head Professor">Head Professor</option><option value="Admin">Admin</option></select></div>
 <div class="erow"><div class="elbl">Belt</div><select class="esel" id="as-belt"><option value="black" selected>Black</option><option value="brown">Brown</option><option value="purple">Purple</option><option value="blue">Blue</option><option value="white">White</option></select></div>
 <div class="erow"><div class="elbl">Degree</div><select class="esel" id="as-degree">${[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'">'+i+'</option>').join('')}</select></div>
 <div class="erow"><div class="elbl">Unit</div><select class="esel" id="as-unit">${unitOpts}</select></div>
