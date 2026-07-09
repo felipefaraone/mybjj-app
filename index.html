@@ -5090,8 +5090,23 @@ function rCommunityWall(){
     .filter(Boolean)
     .filter(({p})=>{const d=new Date(p.date);return !isNaN(d)&&d>=_wallCutoff;})
     .sort((a,b)=>new Date(b.p.date)-new Date(a.p.date));
+  // New adult members (white belt, degree 0) who joined in the last 30 days
+  // get a Welcome card in the SAME feed. Derived from STUDENTS.created_at
+  // (_createdAt), NOT from promotions rows — starting at white isn't a
+  // promotion. Adults only + unit-scoped, matching the promo cards. 30-day
+  // window (a member is "new" for 30 days; the Wall's promo window is 12mo).
+  const _welcomeCutoff=new Date();_welcomeCutoff.setDate(_welcomeCutoff.getDate()-30);
+  const welcomes=STUDENTS
+    .filter(s=>s&&s.prog==='adult'&&s.belt==='white'&&(s.deg|0)===0&&(!curUnit||s.unit===curUnit)&&s._createdAt)
+    .filter(s=>{const d=new Date(s._createdAt);return !isNaN(d)&&d>=_welcomeCutoff;})
+    .map(s=>({kind:'welcome',s,date:s._createdAt}));
+  // Interleave promotions + welcomes into one feed, newest first.
+  const feed=eligible.map(e=>({kind:'promo',p:e.p,s:e.s,date:e.p.date}))
+    .concat(welcomes)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
   const _wallShown=S.wallShown||5;
-  const rows=eligible.slice(0,_wallShown);
+  const rows=feed.slice(0,_wallShown);
+  // Empty state only when BOTH promotions and welcomes are empty.
   if(!rows.length){
     return '<div class="card" style="text-align:center;padding:32px 20px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No promotions yet</div>'
@@ -5103,10 +5118,31 @@ function rCommunityWall(){
   // so navigating away and back doesn't re-fetch unnecessarily, but
   // a new promotion landing in PROMOTION_LOG (different set) triggers
   // a fresh fetch automatically.
-  const promoIds=rows.map(r=>r.p._dbId).filter(Boolean);
+  const promoIds=rows.filter(r=>r.kind==='promo'&&r.p).map(r=>r.p._dbId).filter(Boolean);
   _ensureWallReactions(promoIds);
   const beltLabel=k=>(BA[k]||BK[k]||{label:k}).label;
-  const cards=rows.map(({p,s})=>{
+  const cards=rows.map(item=>{
+    if(item.kind==='welcome'){
+      // New adult member — same card container / avatar / fonts as a promo
+      // card. Eyebrow "New member", white belt visual (deg 0), no arrow, no
+      // stripe, no reactions row. Tappable to the profile like promo cards.
+      const s=item.s;
+      const wWhen=_promoWhen(item.date);
+      const wTap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:flex-start;gap:12px;padding:14px 14px 12px;cursor:pointer"';
+      const wEyebrow='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1';
+      const wName='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;line-height:1.2';
+      const wDate='font-size:11px;color:var(--text3);margin-top:4px';
+      return '<div class="card" style="margin-bottom:8px"><div '+wTap+'>'
+        +avStu(s,40)
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="'+wEyebrow+'">New member</div>'
+          +'<div style="'+wName+'">'+s.name+'</div>'
+          +'<div style="'+wDate+'">'+wWhen+'</div>'
+        +'</div>'
+        +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+bb('white',0,'adult')+'</div>'
+      +'</div></div>';
+    }
+    const {p,s}=item;
     const isBelt=!!p.isNewBelt||p.type==='belt';
     const deg=p.toDeg||0;
     const when=_promoWhen(p.date);
@@ -5159,7 +5195,7 @@ function rCommunityWall(){
       +ossHtml
     +'</div>';
   }).join('');
-  const _loadMore=(eligible.length>_wallShown)
+  const _loadMore=(feed.length>_wallShown)
     ?'<button onclick="wallLoadMore()" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--blue);cursor:pointer;margin-top:4px">Load more</button>'
     :'';
   return cards+_loadMore;
