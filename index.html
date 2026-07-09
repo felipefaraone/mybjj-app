@@ -5081,7 +5081,7 @@ function rCommunityWall(){
   // load-more pager reveals 5, then +10 per tap via S.wallShown.
   const _wallCutoff=new Date();_wallCutoff.setMonth(_wallCutoff.getMonth()-12);
   const eligible=PROMOTION_LOG
-    .filter(p=>p&&p.type!=='correction'&&(!curUnit||p.unit===curUnit))
+    .filter(p=>p&&p.type!=='correction'&&!p.hidden&&(!curUnit||p.unit===curUnit))
     .map(p=>{
       const s=STUDENTS.find(x=>x.id===p.studentId);
       if(!s||s.prog!=='adult')return null;
@@ -5097,7 +5097,7 @@ function rCommunityWall(){
   // window (a member is "new" for 30 days; the Wall's promo window is 12mo).
   const _welcomeCutoff=new Date();_welcomeCutoff.setDate(_welcomeCutoff.getDate()-30);
   const welcomes=STUDENTS
-    .filter(s=>s&&s.prog==='adult'&&s.belt==='white'&&(s.deg|0)===0&&(!curUnit||s.unit===curUnit)&&s._createdAt&&!String(s.id||'').startsWith('imp_'))
+    .filter(s=>s&&s.prog==='adult'&&s.belt==='white'&&(s.deg|0)===0&&(!curUnit||s.unit===curUnit)&&s._createdAt&&!s._welcomeHidden&&!String(s.id||'').startsWith('imp_'))
     .filter(s=>{const d=new Date(s._createdAt);return !isNaN(d)&&d>=_welcomeCutoff;})
     .map(s=>({kind:'welcome',s,date:s._createdAt}));
   // Interleave promotions + welcomes into one feed, newest first.
@@ -5121,6 +5121,13 @@ function rCommunityWall(){
   const promoIds=rows.filter(r=>r.kind==='promo'&&r.p).map(r=>r.p._dbId).filter(Boolean);
   _ensureWallReactions(promoIds);
   const beltLabel=k=>(BA[k]||BK[k]||{label:k}).label;
+  // Staff-only discreet "hide from Wall" kebab, absolutely positioned in the
+  // card corner. stopPropagation so it doesn't trigger the card's viewStu tap.
+  // Non-staff get an empty string → nothing renders.
+  const _wallStaff=isStaffOrOwner();
+  const _hideKebab=(call)=>_wallStaff
+    ?'<button onclick="event.stopPropagation();'+call+'" title="Hide from Wall" aria-label="Hide from Wall" style="position:absolute;top:6px;right:6px;z-index:2;width:28px;height:28px;border:none;background:none;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>'
+    :'';
   const cards=rows.map(item=>{
     if(item.kind==='welcome'){
       // New adult member — same card container / avatar / fonts as a promo
@@ -5132,7 +5139,7 @@ function rCommunityWall(){
       const wEyebrow='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1';
       const wName='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;line-height:1.2';
       const wDate='font-size:11px;color:var(--text3);margin-top:4px';
-      return '<div class="card" style="margin-bottom:8px"><div '+wTap+'>'
+      return '<div class="card" style="margin-bottom:8px;position:relative">'+_hideKebab('hideWelcomeConfirm(\''+s._dbId+'\')')+'<div '+wTap+'>'
         +avStu(s,40)
         +'<div style="flex:1;min-width:0">'
           +'<div style="'+wEyebrow+'">New member</div>'
@@ -5182,7 +5189,7 @@ function rCommunityWall(){
         +_stripeCaption
       +'</div>';
     }
-    return '<div class="card" style="margin-bottom:8px"><div '+tap+'>'
+    return '<div class="card" style="margin-bottom:8px;position:relative">'+_hideKebab('hidePromoConfirm(\''+p._dbId+'\')')+'<div '+tap+'>'
       +avStu(s,40)
       +'<div style="flex:1;min-width:0">'
         +'<div style="'+_eyebrowStyle+'">'+_eyebrow+'</div>'
@@ -5199,6 +5206,33 @@ function rCommunityWall(){
     ?'<button onclick="wallLoadMore()" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--blue);cursor:pointer;margin-top:4px">Load more</button>'
     :'';
   return cards+_loadMore;
+}
+// Wall hide — soft, reversible-by-SQL, staff-only. The card is removed from
+// the public feed (a flag); the underlying promotion / member record stays
+// valid. Distinct from reverting a promotion (which changes the belt).
+function hidePromoConfirm(dbId){
+  openConfirm({title:'Hide from Wall?',message:'Hide this from the Wall? It stays in the member’s history and can be restored later.',dangerLabel:'Hide',onConfirm:()=>hidePromo(dbId)});
+}
+function hideWelcomeConfirm(dbId){
+  openConfirm({title:'Hide from Wall?',message:'Hide this from the Wall? It stays in the member’s history and can be restored later.',dangerLabel:'Hide',onConfirm:()=>hideWelcome(dbId)});
+}
+async function hidePromo(dbId){
+  const p=PROMOTION_LOG.find(x=>x._dbId===dbId);if(!p)return;
+  const prev=p.hidden;p.hidden=true;render();       // optimistic: card disappears
+  const cli=initSupabase();
+  if(!cli){p.hidden=prev;render();showSaveToast2('Connection issue','error');return;}
+  const r=await cli.from('promotions').update({hidden:true}).eq('id',dbId);
+  if(r&&r.error){p.hidden=prev;render();console.warn('[mybjj] hidePromo:',r.error);showSaveToast2(friendlyMutationError(r.error)||'Could not hide','error');return;}
+  showSaveToast2('Hidden from Wall');
+}
+async function hideWelcome(dbId){
+  const s=STUDENTS.find(x=>x._dbId===dbId);if(!s)return;
+  const prev=s._welcomeHidden;s._welcomeHidden=true;render();
+  const cli=initSupabase();
+  if(!cli){s._welcomeHidden=prev;render();showSaveToast2('Connection issue','error');return;}
+  const r=await cli.from('students').update({welcome_hidden:true}).eq('id',dbId);
+  if(r&&r.error){s._welcomeHidden=prev;render();console.warn('[mybjj] hideWelcome:',r.error);showSaveToast2(friendlyMutationError(r.error)||'Could not hide','error');return;}
+  showSaveToast2('Hidden from Wall');
 }
 // Batch wall-4b — Oss reactions. The Wall card calls _ossControlHtml
 // with the promotion UUID; the control renders an outline / brand-blue-
@@ -8627,7 +8661,7 @@ async function refetchUnitScopedData(){
   const c=initSupabase(); if(!c) return false;
   const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
   const res=await Promise.allSettled([
-    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,parent_user:users!parent_user_id(full_name)'),
+    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,welcome_hidden,parent_user:users!parent_user_id(full_name)'),
     // RLS-2 — staff.feedback dropped from the select; Head Instructor
     // Notes now live in public.staff_notes and are fetched lazily per
     // STAFF row by _fetchStaffNotes when the owner opens the profile.
@@ -8636,7 +8670,7 @@ async function refetchUnitScopedData(){
     // can render the instructor's clean display name without a
     // second lookup. Order so rebuildTT sees a stable shape.
     c.from('classes').select('id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
-    c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
+    c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,hidden,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
     c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
     c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
     c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
@@ -8673,7 +8707,7 @@ async function refetchUnitScopedData(){
     // Postgres numeric as String to avoid precision loss; wrap with
     // Number() so downstream math (sort, eligibility, formatStat)
     // compares numerically instead of lexicographically.
-    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
+    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
     got=true;
   }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
   if(sf.data&&sf.data.length){
@@ -8741,6 +8775,7 @@ async function refetchUnitScopedData(){
         promotedById:r.promoted_by_id||null,
         promotedByStaff,
         unit:uMap[r.unit_id]||null,
+        hidden:!!r.hidden,
       };
     });
     got=true;
