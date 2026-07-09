@@ -1366,6 +1366,14 @@ const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',aut
 // DB id, the student row's _dbId, the class date/time, and a status of
 // 'going' | 'present' (Batch 2B removed 'absent').
 let ATTENDANCE=[];
+// Cross-unit visitors — students who train at another unit but checked into
+// a class at the ACTIVE unit. They aren't in the unit-scoped STUDENTS array,
+// so attendance rows can't resolve them for the going/present list or the
+// confirm action. Keyed by student DB uuid → minimal display-only shape
+// {id,_dbId,name,belt,prog,initials,unit,_visitor}. Populated per refetch from
+// the visitor_students_for_unit() RPC (staff-only, bounded to attendance at
+// the active unit). Ephemeral — deliberately NOT merged into STUDENTS.
+let VISITORS={};
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 // Curriculum cycle — maps a calendar date to the 1-based cycle week for a
@@ -1418,7 +1426,7 @@ function gattFor(date,time){
   if(!date||!time)return [];
   const rows=ATTENDANCE.filter(a=>a.classDate===date&&a.classTime===time);
   return rows.map(a=>{
-    const s=STUDENTS.find(x=>x._dbId===a.studentDbId);
+    const s=STUDENTS.find(x=>x._dbId===a.studentDbId)||VISITORS[a.studentDbId];
     return s?s.id:null;
   }).filter(Boolean);
 }
@@ -1793,7 +1801,7 @@ function rAttsStaff(rows,cid){
   const P=6;
   const restG=goingRows.length-P;
   const stackHtml=goingRows.length
-    ?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div class="ast">${goingRows.slice(0,P).map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId);return s?_stkAv(s,false):'';}).join('')}${restG>0?`<div class="amor">+${restG}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${goingRows.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">${exp?'Show less':'Show all'}</span></div>`
+    ?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div class="ast">${goingRows.slice(0,P).map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];return s?_stkAv(s,false):'';}).join('')}${restG>0?`<div class="amor">+${restG}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${goingRows.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">${exp?'Show less':'Show all'}</span></div>`
     :'';
   if(!visible.length){
     // Empty state when no check-ins. Action row still available so the
@@ -1835,7 +1843,7 @@ function rAttsStaff(rows,cid){
     return '<span title="class_value = '+v.toFixed(2)+'" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:'+accent+';background:'+bg+';border:1px solid '+border+';padding:1px 6px;border-radius:4px;margin-left:6px">'+lbl+'</span>';
   };
   return `<div class="divider" style="margin-top:12px;padding-top:12px">${stackHtml}${actionRow}<div style="height:10px"></div>${visible.map(r=>{
-    const s=STUDENTS.find(x=>x._dbId===r.studentDbId);if(!s)return '';
+    const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
     // G9.2 — strikethrough the student name when class_value === 0
     // (instructor marked "X — doesn't count") so the row visually
@@ -3842,7 +3850,7 @@ function rClass(){
     const myRow=myStu?rows.find(r=>r.studentDbId===myStu._dbId):null;
     const isIn=!!myRow&&(myRow.status==='going'||myRow.status==='present');
     const isCf=!!myRow&&myRow.status==='present';
-    const all=rows.filter(r=>r.status==='going'||r.status==='present').map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId);return s?s.id:null;}).filter(Boolean);
+    const all=rows.filter(r=>r.status==='going'||r.status==='present').map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];return s?s.id:null;}).filter(Boolean);
     // Owners and instructors are also staff viewers — they should see the
     // "N going" indicator, not a check-in button.
     const isStudentAdmin=me.role==='instructor'&&!!myStu;
@@ -8603,9 +8611,17 @@ async function refetchUnitScopedData(){
     // (booked|attended); converted/lapsed rows are excluded in the
     // query so TRIALS only ever holds rows that still need action.
     c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended']).order('booked_at',{ascending:false}),
+    // Cross-unit visitors — minimal display-only rows for students who
+    // attended a class at the active unit but train elsewhere. Staff-only +
+    // unit-bounded server-side; returns 0 rows for non-staff / no visitors.
+    c.rpc('visitor_students_for_unit'),
   ]);
   const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8);
+  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9);
+  // Rebuild the visitor map each refetch (empty on error / non-staff).
+  VISITORS={};
+  if(vs&&vs.data){for(const r of vs.data){if(r&&r.id)VISITORS[r.id]={id:r.id,_dbId:r.id,name:r.full_name,belt:r.belt,prog:r.prog,initials:r.initials,unit:uMap[r.unit_id]||null,_visitor:true};}}
+  else if(vs&&vs.error)console.warn('[mybjj] visitor_students_for_unit:',vs.error);
   let got=false;
   if(st.data&&st.data.length){
     // Etapa 5 — students.feedback JSONB is no longer the source of
@@ -10267,8 +10283,15 @@ async function refreshStudentStats(dbId){
 // to surface RLS-hidden rows (zero rowcount → toast + local
 // rollback), same idiom we use for events-persist; classValue gets
 // Number()-coerced so a string slips through to a real numeric.
+// Resolve the student for an attendance action by the id the render passed.
+// Normal roster students carry a legacy id; a cross-unit visitor's id IS its
+// DB uuid (VISITORS is keyed by uuid), so a legacy-id miss falls through to
+// the visitor map. Both shapes expose _dbId, which the write path keys off.
+function _attStudent(sid){
+  return STUDENTS.find(x=>x.id===sid)||VISITORS[sid]||null;
+}
 async function _setAttStatus(cid,sid,newStatus,classValue){
-  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
+  const s=_attStudent(sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
   let row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
@@ -10410,7 +10433,7 @@ async function confirmMarkPresent(value){
 function rMarkPSheet(){
   if(!S.markP)return '';
   const m=S.markP;
-  const s=STUDENTS.find(x=>x.id===m.sid);
+  const s=_attStudent(m.sid);
   const c=_parseCID(m.cid);
   if(!s||!c)return '';
   const d=new Date(c.date+'T00:00:00');
