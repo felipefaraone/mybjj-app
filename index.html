@@ -11802,18 +11802,21 @@ async function saveCls(){
   showSaveToast2(isAdd?'Class added.':'Class updated.');
 }
 function reqDel(cid,dow){
-  // Re-entry guard — a single Delete click can re-fire reqDel on the
-  // buttons that render() (a full innerHTML swap) recreates mid-click-
-  // dispatch: each recreated <button onclick="reqDel('...')"> re-receives
-  // the in-flight click, cascading across the class list (m1 → f3 → f4 …)
-  // until the browser hangs. Once a confirm is pending (S.cdel set), ignore
-  // further reqDel calls — the confirm's own .cov overlay is the only way
-  // to reach another Delete, so this never blocks legitimate use. A single
-  // click then opens exactly one confirm; cancelDel/confDel clear S.cdel.
-  if(S.cdel)return;
   const c=(TT[dow]||[]).find(x=>x.id===cid);
   if(!c)return;
-  S.cdel={...c,dow};render();
+  // Set the confirm state synchronously, but DEFER render() out of the click
+  // dispatch. render() rebuilds the whole app via innerHTML; running it
+  // synchronously inside the click recreates every inline-onclick Delete
+  // button while the click is still dispatching, and the recreated buttons
+  // re-fire the in-flight click across the class list (m1 → f3 → f4 …) →
+  // cascade / hang / a confirm for the wrong class. queueMicrotask runs
+  // render AFTER the click finishes dispatching, so the DOM is never rebuilt
+  // mid-event and reqDel fires exactly once per click. (The prior re-entry
+  // guard is gone: with the render deferred there is no re-fire to block, and
+  // the guard could leave S.cdel stale — a later Delete then no-ops or opens
+  // the previous class's confirm, the intermittent / misplaced symptom.)
+  S.cdel={...c,dow};
+  queueMicrotask(render);
 }
 // Hard delete now that migration 43 made attendance.class_id RESTRICT.
 // The DB raises 23503 (foreign_key_violation) when the class has any
@@ -11848,7 +11851,7 @@ async function confDel(){
   render();
   showSaveToast2('Class deleted.');
 }
-function cancelDel(){if(S.clsSaving)return;S.cdel=null;render();}
+function cancelDel(){if(S.clsSaving)return;S.cdel=null;queueMicrotask(render);/* deferred: closing the confirm mid-click re-exposes the list; a re-dispatched click could otherwise land on a recreated Delete button */}
 // Batch programme-redesign — editW/handlers now take _localId (UUID for
 // committed rows, 'draft' for the in-flight create row) so a week_index
 // collision (allowed since the DB doesn't UNIQUE on week_index) can't
