@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyBJJ — Schedule embed example</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:820px;margin:24px auto;padding:0 16px;color:#1a1a2e}
+  h1{font-size:20px}
+  h2{font-size:16px;margin-top:32px;border-bottom:2px solid #1A5DAD;padding-bottom:6px;color:#1A5DAD}
+  .muted{color:#777;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #eee}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#888}
+  .day-group{font-weight:700;background:#f5f7fa}
+  .week{border:1px solid #e5e8ee;border-radius:10px;padding:14px 16px;margin-top:12px}
+  .week.current{border-color:#1A5DAD;box-shadow:0 0 0 2px rgba(26,93,173,.12)}
+  .week h3{margin:0 0 4px;font-size:15px}
+  .now-tag{display:inline-block;background:#1A5DAD;color:#fff;font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:5px;margin-left:8px;text-transform:uppercase;vertical-align:middle}
+  .prog-list{margin:6px 0 0;padding-left:18px}
+  .prog-list li{margin:2px 0;font-size:14px}
+  .band-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#1A5DAD;font-weight:700;margin-top:10px}
+  .err{color:#b00;font-size:13px}
+</style>
+</head>
+<body>
+
+<h1>MyBJJ — Schedule embed example</h1>
+<p class="muted">
+  This standalone page shows how the academy website pulls the timetable and weekly curriculum
+  <strong>directly from the MyBJJ app</strong>. When the schedule changes in the app, this updates
+  automatically on next load. The app is the single source of truth; this page only reads.
+  <br>Give this file to whoever maintains the WordPress site as the reference for the embed.
+</p>
+
+<h2>This week's curriculum <span class="muted">(auto-detected from the cycle)</span></h2>
+<div id="thisweek"><p class="muted">Loading…</p></div>
+
+<h2>Full cycle <span class="muted">(all weeks, current one highlighted)</span></h2>
+<div id="curriculum"><p class="muted">Loading…</p></div>
+
+<h2>Class timetable</h2>
+<div id="timetable"><p class="muted">Loading…</p></div>
+
+<script>
+const SUPA = 'https://dcilltzgegqsrgatskhz.supabase.co';
+const ANON = 'sb_publishable_EdatFnl6MfCgyd7tv7wHRw_Z5msKQTC';
+const UNIT = 'c851cef5-d5b7-4d5b-b400-11f6ca760970';
+const headers = { apikey: ANON, Authorization: 'Bearer ' + ANON };
+
+const BANDS = [
+  ['fundamentals','Fundamentals'],['mixed','Mixed'],['advanced','Advanced'],
+  ['stand_up','Stand-up'],['ground','Ground'],['kids','Kids']
+];
+function bandsHtml(w){
+  return BANDS.map(function(pair){
+    var k=pair[0],label=pair[1];
+    var items=(w[k]||[]).filter(function(x){return x&&x.t;});
+    if(!items.length) return '';
+    return '<div class="band-label">'+label+'</div><ul class="prog-list">'
+      + items.map(function(i){return '<li>'+escapeHtml(i.t)+'</li>';}).join('') + '</ul>';
+  }).join('');
+}
+
+async function loadThisWeek(){
+  const url = SUPA + '/rest/v1/public_curriculum?unit_id=eq.' + UNIT
+    + '&is_current_week=eq.true'
+    + '&select=week_index,theme,cycle_week,fundamentals,mixed,advanced,kids,stand_up,ground';
+  const host = document.getElementById('thisweek');
+  try{
+    const rows = await (await fetch(url, { headers })).json();
+    if(!rows.length){ host.innerHTML = '<p class="muted">No cycle configured, or this week has no curriculum yet.</p>'; return; }
+    const w = rows[0];
+    const body = bandsHtml(w) || '<p class="muted">No items listed for this week.</p>';
+    host.innerHTML = '<div class="week current"><h3>Week '+w.week_index
+      + (w.theme ? ' — '+escapeHtml(w.theme) : '') + '<span class="now-tag">This week</span></h3>' + body + '</div>';
+  }catch(e){ host.innerHTML = '<p class="err">Could not load this week.</p>'; }
+}
+
+async function loadCurriculum(){
+  const url = SUPA + '/rest/v1/public_curriculum?unit_id=eq.' + UNIT
+    + '&select=week_index,theme,is_current_week,fundamentals,mixed,advanced,kids,stand_up,ground&order=week_index';
+  const host = document.getElementById('curriculum');
+  try{
+    const rows = await (await fetch(url, { headers })).json();
+    if(!rows.length){ host.innerHTML = '<p class="muted">No curriculum published yet.</p>'; return; }
+    host.innerHTML = rows.map(function(w){
+      var cur = w.is_current_week;
+      return '<div class="week'+(cur?' current':'')+'"><h3>Week '+w.week_index
+        + (w.theme ? ' — '+escapeHtml(w.theme) : '')
+        + (cur?'<span class="now-tag">This week</span>':'') + '</h3>'
+        + (bandsHtml(w) || '<p class="muted">No items listed.</p>') + '</div>';
+    }).join('');
+  }catch(e){ host.innerHTML = '<p class="err">Could not load curriculum.</p>'; }
+}
+
+async function loadTimetable(){
+  const url = SUPA + '/rest/v1/public_timetable?unit_id=eq.' + UNIT
+    + '&select=day_name,start_time,type_label,audience,duration_minutes';
+  const host = document.getElementById('timetable');
+  try{
+    const rows = await (await fetch(url, { headers })).json();
+    if(!rows.length){ host.innerHTML = '<p class="muted">No classes listed.</p>'; return; }
+    let html = '<table><thead><tr><th>Time</th><th>Class</th><th>For</th><th>Length</th></tr></thead><tbody>';
+    let currentDay = null;
+    rows.forEach(r => {
+      if(r.day_name !== currentDay){
+        currentDay = r.day_name;
+        html += '<tr class="day-group"><td colspan="4">'+escapeHtml(r.day_name)+'</td></tr>';
+      }
+      html += '<tr><td>'+escapeHtml(r.start_time)+'</td><td>'+escapeHtml(r.type_label)
+        + '</td><td>'+escapeHtml(r.audience)+'</td><td>'+r.duration_minutes+' min</td></tr>';
+    });
+    html += '</tbody></table>';
+    host.innerHTML = html;
+  }catch(e){ host.innerHTML = '<p class="err">Could not load timetable.</p>'; }
+}
+
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => (
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+loadThisWeek();
+loadCurriculum();
+loadTimetable();
+</script>
+
+</body>
+</html>
