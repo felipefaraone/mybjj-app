@@ -11802,6 +11802,15 @@ async function saveCls(){
   showSaveToast2(isAdd?'Class added.':'Class updated.');
 }
 function reqDel(cid,dow){
+  // Re-entry guard — a single Delete click can re-fire reqDel on the
+  // buttons that render() (a full innerHTML swap) recreates mid-click-
+  // dispatch: each recreated <button onclick="reqDel('...')"> re-receives
+  // the in-flight click, cascading across the class list (m1 → f3 → f4 …)
+  // until the browser hangs. Once a confirm is pending (S.cdel set), ignore
+  // further reqDel calls — the confirm's own .cov overlay is the only way
+  // to reach another Delete, so this never blocks legitimate use. A single
+  // click then opens exactly one confirm; cancelDel/confDel clear S.cdel.
+  if(S.cdel)return;
   const c=(TT[dow]||[]).find(x=>x.id===cid);
   if(!c)return;
   S.cdel={...c,dow};render();
