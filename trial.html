@@ -46,6 +46,11 @@
   .seg button.on{background:var(--blue);border-color:var(--blue);color:#fff}
   .unitcard{width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:12px;padding:14px;cursor:pointer;margin-bottom:10px;transition:.12s}
   .unitcard.on{border-color:var(--blue);background:var(--blue-tint)}
+  /* Availability chips (multi-select) */
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:9px 15px;cursor:pointer;
+    font-family:'Barlow',sans-serif;font-weight:600;font-size:14px;color:var(--ink2);transition:.12s;user-select:none}
+  .chip.on{border-color:var(--blue);background:var(--blue-tint);color:var(--blue)}
   .unitcard .nm{font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.3px}
   .unitcard .ad{font-size:13px;color:var(--ink2);margin-top:2px}
   /* Waiver */
@@ -93,8 +98,8 @@
         <div class="ad">2/120 Military Rd, Neutral Bay NSW 2089</div>
       </button>
       <button type="button" class="unitcard" data-unit="cd">
-        <div class="nm">Camperdown</div>
-        <div class="ad">Camperdown NSW</div>
+        <div class="nm">Camperdown (HQ)</div>
+        <div class="ad">Shop 20, 119-125 Parramatta Road, Camperdown NSW</div>
       </button>
     </div>
 
@@ -136,8 +141,13 @@
         <input type="tel" id="phone" autocomplete="tel" inputmode="tel" placeholder="04XX XXX XXX" />
       </label>
       <label class="field">
-        <span class="lab">Preferred day / time</span>
-        <input type="text" id="preferred_day" placeholder="e.g. Weekday evenings, Saturday morning" />
+        <span class="lab">When are you usually free? (helps us find your trial time)</span>
+        <div class="chips" id="availChips">
+          <div class="chip" data-avail="Weekday mornings">Weekday mornings</div>
+          <div class="chip" data-avail="Weekday evenings">Weekday evenings</div>
+          <div class="chip" data-avail="Saturday">Saturday</div>
+          <div class="chip" data-avail="I'm flexible">I'm flexible</div>
+        </div>
       </label>
       <label class="field">
         <span class="lab">How did you hear about us?</span>
@@ -227,7 +237,7 @@
   var TURNSTILE_SITE_KEY = "0x4AAAAAADzwYmJWCVteEQfI";
 
   // ---- state ----
-  var state = { unit: null, aud: "adult", cfToken: "" };
+  var state = { unit: null, aud: "adult", cfToken: "", avail: [] };
 
   // ---- el helpers ----
   function $(id){ return document.getElementById(id); }
@@ -271,6 +281,16 @@
   });
   applyAud();
 
+  // ---- availability chips (multi-select) ----
+  Array.prototype.forEach.call(document.querySelectorAll("#availChips .chip"), function(chip){
+    chip.addEventListener("click", function(){
+      var v = chip.getAttribute("data-avail");
+      var i = state.avail.indexOf(v);
+      if (i >= 0) { state.avail.splice(i,1); chip.classList.remove("on"); }
+      else { state.avail.push(v); chip.classList.add("on"); }
+    });
+  });
+
   // ---- Turnstile (explicit render so it works inside an iframe) ----
   window.onloadTurnstileCallback = function(){
     if (!window.turnstile) return;
@@ -312,16 +332,27 @@
 
     var kid = state.aud === "kid";
     var missing = [];
+    var badFormat = [];
 
     if (!state.unit) { showFormErr("Please choose which academy."); return; }
-    if (kid && !val("kid_name")) { setErr("kid_name",true); missing.push("kid"); }
-    if (!val("first_name")) { setErr("first_name",true); missing.push("f"); }
-    if (!val("last_name"))  { setErr("last_name",true);  missing.push("l"); }
-    if (!EMAIL_RE.test(val("email"))) { setErr("email",true); missing.push("e"); }
-    if (!validAUPhone(val("phone"))) { setErr("phone",true); missing.push("p"); }
-    if (!val("waiver_name")){ setErr("waiver_name",true);missing.push("w"); }
+    if (kid && !val("kid_name")) { setErr("kid_name",true); missing.push("child's name"); }
+    if (!val("first_name")) { setErr("first_name",true); missing.push("first name"); }
+    if (!val("last_name"))  { setErr("last_name",true);  missing.push("last name"); }
+    // Email: distinguish empty from bad format
+    if (!val("email")) { setErr("email",true); missing.push("email"); }
+    else if (!EMAIL_RE.test(val("email"))) { setErr("email",true); badFormat.push("a valid email address"); }
+    // Phone: distinguish empty from bad format
+    if (!val("phone")) { setErr("phone",true); missing.push("phone"); }
+    else if (!validAUPhone(val("phone"))) { setErr("phone",true); badFormat.push("a valid Australian phone number (e.g. 0412 345 678)"); }
+    if (!val("waiver_name")){ setErr("waiver_name",true); missing.push("your signature (type your name in the waiver section)"); }
 
-    if (missing.length) { showFormErr("Please check the highlighted fields (a valid email and Australian phone number are required)."); return; }
+    if (missing.length || badFormat.length) {
+      var parts = [];
+      if (missing.length) parts.push("Please fill in: " + missing.join(", ") + ".");
+      if (badFormat.length) parts.push("Please enter " + badFormat.join(" and ") + ".");
+      showFormErr(parts.join(" "));
+      return;
+    }
     if (!$("agree").checked) { showFormErr("Please tick the box to accept the waiver."); return; }
     if (!state.cfToken) { showFormErr("Please complete the 'I'm human' check."); return; }
 
@@ -333,7 +364,7 @@
       email: val("email"),
       phone: val("phone"),
       how_heard: val("how_heard"),
-      preferred_day: val("preferred_day"),
+      preferred_day: state.avail.join(", "),
       is_kid: kid,
       kid_name: kid ? val("kid_name") : "",
       waiver_agreed: true,
