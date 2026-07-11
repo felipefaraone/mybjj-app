@@ -1384,6 +1384,13 @@ let ATTENDANCE=[];
 // the visitor_students_for_unit() RPC (staff-only, bounded to attendance at
 // the active unit). Ephemeral — deliberately NOT merged into STUDENTS.
 let VISITORS={};
+// Unit-independent "self" student cache. STUDENTS is re-scoped to the
+// ACTIVE unit on every unit switch, so a student who sets their active unit
+// to a DIFFERENT academy drops out of STUDENTS. MY_STUDENT holds the
+// caller's own student row (fetched once at auth, RLS-allowed via
+// user_id=auth.uid()) so cross-unit self check-in still resolves "me".
+// Set in hydrateData (never in refetchUnitScopedData), cleared on logout.
+let MY_STUDENT=null;
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 // Curriculum cycle — maps a calendar date to the 1-based cycle week for a
@@ -1454,7 +1461,10 @@ function myStudentRow(){
     const k=parentSelectedChild();
     if(k)return k;
   }
-  return STUDENTS.find(x=>x._userId===S.profile.id)||null;
+  // Prefer the STUDENTS row (freshest, same-unit copy); fall back to the
+  // unit-independent MY_STUDENT cache only when the user is active in a
+  // different unit and so has dropped out of the active-unit STUDENTS set.
+  return STUDENTS.find(x=>x._userId===S.profile.id) || (MY_STUDENT && MY_STUDENT._userId===S.profile.id ? MY_STUDENT : null);
 }
 // Batch programme-fixup — viewer's "person" legacy_id for any surface
 // that stores either a student OR staff reference (e.g.
@@ -7125,7 +7135,7 @@ function render(){
 // Etapa 3 — doLogin demo helper deleted. Real auth lives entirely in
 // signInGoogle / signInMagic / signInWithEmail and the email-step
 // flow in rAuth.
-function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.classAdd=null;if(sb)sb.auth.signOut();render();}
+function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.classAdd=null;if(sb)sb.auth.signOut();render();}
 
 function friendlyAuthError(err){
   if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
@@ -7232,7 +7242,7 @@ async function bootAuth(){
       if(S.passwordRecovery)return;
       onAuthed();
     }
-    else if(ev==='SIGNED_OUT'){S.profile=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();}
+    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();}
     else if(ev==='USER_UPDATED'){
       // Fired when a self-service email change is confirmed. Reflect the
       // new email immediately (no manual reload): mirror onto S.profile /
@@ -8864,6 +8874,30 @@ async function refetchUnitScopedData(){
   }
   return got;
 }
+// Fetch the caller's OWN student row, unit-independently. The students
+// RLS policy anchors on user_id = auth.uid() with no unit clause, so this
+// returns the self row regardless of the active unit. Mapped into the same
+// shape STUDENTS rows use (the subset myStudentRow / doCI need) and cached
+// in MY_STUDENT so cross-unit self check-in resolves "me" even after the
+// active-unit STUDENTS set no longer contains the user. Null for
+// non-students (pure instructor / parent with no own student row).
+async function loadMyStudent(){
+  const c=initSupabase();
+  if(!c||!S.profile||!S.profile.id){MY_STUDENT=null;return;}
+  try{
+    const{data:_selfStu,error}=await c.from('students')
+      .select('id,legacy_id,user_id,belt,degree,prog,initials,full_name,unit_id,standing,hold_note')
+      .eq('user_id',S.profile.id).maybeSingle();
+    if(error){console.warn('[mybjj] loadMyStudent:',error.message);return;}
+    MY_STUDENT=_selfStu?{
+      id:_selfStu.legacy_id,_dbId:_selfStu.id,_userId:_selfStu.user_id,
+      belt:_selfStu.belt,deg:_selfStu.degree,prog:_selfStu.prog,
+      initials:_selfStu.initials,name:_selfStu.full_name,
+      unit:(UNITS.find(u=>u&&u._dbId===_selfStu.unit_id)||{}).id||null,
+      standing:_selfStu.standing||'ok',holdNote:_selfStu.hold_note||null
+    }:null;
+  }catch(e){console.warn('[mybjj] loadMyStudent ex:',e);}
+}
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
   let touched=false;
@@ -8889,6 +8923,10 @@ async function hydrateData(){
     // reads STUDENTS + PROMOTION_LOG. pickUnit re-runs the exact same fetch on
     // a unit switch, leaving the app identical to a fresh boot in that unit.
     if(await refetchUnitScopedData())touched=true;
+    // Unit-independent self cache for cross-unit check-in. Runs once per
+    // hydrate (auth path only — NOT on unit switch, which calls
+    // refetchUnitScopedData directly), AFTER UNITS maps so unit resolves.
+    await loadMyStudent();
     // Batch 2a — origin-belt backfill. Runs after both STUDENTS and
     // PROMOTION_LOG are populated so the earliest-promotion lookup is
     // valid. Skips students whose journey already contains an entry
