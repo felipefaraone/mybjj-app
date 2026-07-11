@@ -3946,7 +3946,13 @@ function rClass(){
       const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
       attBlock=rAtts(_adultsOnly,c.id);
     }else{
-      attBlock=rAtts(all,c.id);
+      // 'Adults' (and any other audience): a kid added to an adults class
+      // (e.g. a child who showed up to No-Gi) must not leak by name or in
+      // the count to peer adults. Apply the same kid-filter as 'All' —
+      // rAtts derives "N going" from array length, so this drops the kid
+      // from both the avatar list and the count.
+      const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
+      attBlock=rAtts(_adultsOnly,c.id);
     }
     return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
