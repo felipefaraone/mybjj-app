@@ -316,6 +316,12 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .badd{background:none;border:1.5px dashed var(--border2);border-radius:8px;padding:8px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);cursor:pointer;display:flex;align-items:center;gap:6px;width:100%;letter-spacing:.5px}
 .cov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;overscroll-behavior:contain;touch-action:none}
 .csheet{background:var(--surface);border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:500px;margin-left:auto;margin-right:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+/* Desktop-only: horizontally center a .cov's sheet in the viewport. The
+   .cov is fixed inset:0 (full viewport), so on a wide screen a left-
+   aligned sheet looks stranded beside the 430px app column. Scoped to
+   min-width:431px (viewport wider than #app's 430px max), so mobile —
+   where the viewport IS the app column — is left exactly as-is. */
+@media(min-width:431px){.cov-center{justify-content:center}}
 .gibd{display:flex;border-radius:8px;overflow:hidden;margin-top:8px;border:1px solid var(--border)}.giseg{flex:1;padding:8px 10px;text-align:center}.giseg:first-child{border-right:1px solid var(--border)}.giv{font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1}.gil{font-size:10px;color:var(--text3);margin-top:1px;font-family:'Barlow Condensed',sans-serif;font-weight:600;letter-spacing:.5px}
 .gnote{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;padding:8px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border)}
 .tl{padding:8px 0 4px;position:relative}.tlline{position:absolute;left:19px;top:0;bottom:0;width:2px;background:var(--border)}
@@ -3269,7 +3275,7 @@ function rConfirmModal(){
   const message=String(c.message||'');
   const dangerLabel=String(c.dangerLabel||'Delete');
   const busy=!!c.busy;
-  return `<div class="cov" onclick="${busy?'':'closeConfirm()'}" style="align-items:center;z-index:10000"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:340px;width:calc(100% - 32px);margin:0 16px;padding:22px">
+  return `<div class="cov cov-center" onclick="${busy?'':'closeConfirm()'}" style="align-items:center;z-index:10000"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:340px;width:calc(100% - 32px);margin:0 16px;padding:22px">
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:6px">${title}</div>
 <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${message}</div>
 <div style="display:flex;gap:10px">
@@ -11741,7 +11747,7 @@ function openEditCls(cid,dow){
   if(!c)return;
   S.editCls={...c};S.editDow=dow;S.addCls=false;S._cet=c.type;S._cea=c.aud;render();
 }
-function closeCEdit(){S.editCls=null;S.addCls=false;S._cet=null;S._cea=null;render();}
+function closeCEdit(){S.editCls=null;S.addCls=false;S._cet=null;S._cea=null;S._clsFormSnapshot=null;render();}
 // B1 — setCet/setCea now toggle classes in the DOM instead of calling
 // render(). Re-rendering the whole modal would wipe the user's in-DOM
 // choices for time / duration / instructor (those <input>/<select>
@@ -11767,17 +11773,33 @@ async function saveCls(skipDupConfirm){
   if(S.clsSaving)return;
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue. Please try again.','error');return;}
-  const dow=parseInt(document.getElementById('ce-dow')?.value||S.editDow||2,10);
-  const time=(document.getElementById('ce-time')?.value||'').slice(0,5);
-  const dur=parseInt(document.getElementById('ce-dur')?.value||60,10);
+  // Snapshot every form field ONCE, on the first pass. The duplicate
+  // confirm opens via openConfirm → render(), which re-renders rCEdit and
+  // (in Add mode, where there is no S.editCls backing the inputs) resets
+  // #ce-time et al to empty. So the second pass (skipDupConfirm) must NOT
+  // re-read the DOM — it reuses S._clsFormSnapshot instead. The reader
+  // below is shared so the defensive fallback matches the first pass.
   // B2 — instructor select starts on a disabled placeholder option
   // (value=""), so a missing pick reads as ''. type and audience start
   // as null in Add mode; we resolve from in-form state first, then
   // the row in Edit mode, then leave as the empty value so the
   // validations below fire.
-  const insName=document.getElementById('ce-ins')?.value||'';
-  const type=S._cet||(S.editCls&&S.editCls.type)||null;
-  const aud=S._cea||(S.editCls&&S.editCls.aud)||null;
+  const readForm=()=>({
+    dow:parseInt(document.getElementById('ce-dow')?.value||S.editDow||2,10),
+    time:(document.getElementById('ce-time')?.value||'').slice(0,5),
+    dur:parseInt(document.getElementById('ce-dur')?.value||60,10),
+    insName:document.getElementById('ce-ins')?.value||'',
+    type:S._cet||(S.editCls&&S.editCls.type)||null,
+    aud:S._cea||(S.editCls&&S.editCls.aud)||null
+  });
+  let form;
+  if(skipDupConfirm){
+    form=S._clsFormSnapshot||readForm();
+  } else {
+    form=readForm();
+    S._clsFormSnapshot=form;
+  }
+  const {dow,time,dur,insName,type,aud}=form;
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showSaveToast2('Time must be HH:MM.','error');return;}
   if(!(dur>=15&&dur<=240)){showSaveToast2('Duration must be 15–240 minutes.','error');return;}
   if(!type||!CT.some(t=>t.id===type)){showSaveToast2('Pick a class type.','error');return;}
@@ -11817,10 +11839,11 @@ async function saveCls(skipDupConfirm){
   } else if(S.editCls&&S.editCls.classId){
     r=await cli.from('classes').update(payload).eq('id',S.editCls.classId).select(_CLS_SELECT).single();
   } else {
-    S.clsSaving=false;render();showSaveToast2('Nothing to save.','error');return;
+    S.clsSaving=false;S._clsFormSnapshot=null;render();showSaveToast2('Nothing to save.','error');return;
   }
   S.clsSaving=false;
   if(r&&r.error){
+    S._clsFormSnapshot=null;
     console.warn('[mybjj] saveCls:',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');
     render();return;
