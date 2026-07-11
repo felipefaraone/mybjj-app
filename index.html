@@ -3274,7 +3274,7 @@ function rConfirmModal(){
 <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${message}</div>
 <div style="display:flex;gap:10px">
 <button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeConfirm()" ${busy?'disabled':''}>Cancel</button>
-<button style="flex:1;background:var(--red);color:#fff;border:none;border-radius:10px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="confirmExecute()" ${busy?'disabled':''}>${busy?'Working…':dangerLabel}</button>
+<button style="flex:1;background:${c.confirmColor||'var(--red)'};color:#fff;border:none;border-radius:10px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="confirmExecute()" ${busy?'disabled':''}>${busy?'Working…':dangerLabel}</button>
 </div>
 </div></div>`;
 }
@@ -6365,6 +6365,9 @@ function rARosterListInner(){
     // studentEligibility() has no callers after this batch.
     const egd=_egDisplay(s);
     const isElig=egd.isReady;
+    // ON HOLD badge — staff/admin only (never exposed to student/parent
+    // viewers). Same amber tokens as the PHOTO PENDING pill.
+    const onHoldBadge=(s.standing==='on_hold'&&isStaffOrOwner())?'<span style="display:inline-flex;align-items:center;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;text-transform:uppercase">On hold</span>':'';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     const giSince=Math.max(s.giGrade||0,0);
     const noGiSince=Math.max((s.grade||0)-giSince,0);
@@ -6396,7 +6399,7 @@ function rARosterListInner(){
     return '<div class="card" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
       +'<div style="display:flex;align-items:center;gap:10px">'+avStu(s,34)
-      +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+(isElig?'<span title="Eligible for promotion" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-text)"></span>':'')+s.name+'</div>'
+      +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+(isElig?'<span title="Eligible for promotion" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-text)"></span>':'')+s.name+onHoldBadge+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div></div></div>'
       +bb(s.belt,s.deg||0,s.prog,'left')+'</div>'
       +totalLine
@@ -6610,15 +6613,18 @@ function rStaff(){
     // Roster role label — "Owner" badge derives from units.owner_user_id
     // (Batch 2A). Etapa 6 dropped the legacy s.role==='owner' fallback;
     // all in-memory staff rows carry role:'instructor' now.
-    const roleLbl=isUnitOwner(s)?'Owner':'Professor';
+    const roleLbl=isUnitOwner(s)?'Owner':staffTitle(s);
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     const degLbl=s.deg>0?' · '+s.deg+(s.deg===1?'st':s.deg===2?'nd':s.deg===3?'rd':'th')+' degree':'';
+    // Admin staff have belt=null — omit the belt segment (and its
+    // separator) entirely, so the subtitle reads "Title · Unit".
+    const beltSeg=s.belt?(' · '+b.label+degLbl):'';
     const editBtn=showEdit?'<button onclick="event.stopPropagation();openEditStaff(\''+s.id+'\')" title="Edit" style="background:none;border:1px solid var(--border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
     const remBtn=showRemove?'<button onclick="event.stopPropagation();openRemoveStaff(\''+s.id+'\')" title="Remove" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>':'';
     const actions=(showEdit||showRemove)?'<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">'+editBtn+remBtn+'</div>':'';
     const emailLine=s.email?'<div style="font-size:11px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.email+'</div>':'';
     const inviteRow=inviteStatusRow(s,'staff');
-    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+' · '+b.label+degLbl+' · '+unitName+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
+    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+beltSeg+' · '+unitName+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
   }).join('');
   return header+rows;
 }
@@ -8003,17 +8009,25 @@ function asAutoInitials(){
   init.value=staffInitialsAuto(full);
 }
 function asInitialsTouched(){const init=document.getElementById('as-initials');if(init)init.dataset.touched='1';}
+// Add-staff form reactivity — Admin is a non-practitioner title, so the
+// Belt + Degree rows hide when Admin is selected and reappear otherwise.
+function asRoleChange(){
+  const isAdmin=(document.getElementById('as-role')?.value)==='Admin';
+  ['as-belt-row','as-degree-row'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=isAdmin?'none':'';});
+}
 async function saveAddStaff(){
   const first=(document.getElementById('as-fname')?.value||'').trim();
   const last=(document.getElementById('as-lname')?.value||'').trim();
   const fullName=(first+' '+last).trim();
   const email=(document.getElementById('as-email')?.value||'').trim().toLowerCase();
   const role=(document.getElementById('as-role')?.value||'Professor');
-  // Admin staff have no BJJ belt — send blank (the RPC allows null belt
-  // only for Admin). Teaching titles use the selected belt as before.
+  // Admin is a non-practitioner title — send belt=null AND degree=null so
+  // the record is explicit (no misleading Black/0 defaults). Teaching
+  // titles use the selected belt + degree.
+  const isAdmin=role==='Admin';
   const beltSel=document.getElementById('as-belt')?.value||'black';
-  const belt=role==='Admin'?'':beltSel;
-  const degree=parseInt(document.getElementById('as-degree')?.value||'0',10);
+  const belt=isAdmin?null:beltSel;
+  const degree=isAdmin?null:parseInt(document.getElementById('as-degree')?.value||'0',10);
   const unitLegacy=document.getElementById('as-unit')?.value||'';
   const initials=(document.getElementById('as-initials')?.value||'').trim()||staffInitialsAuto(fullName);
   const err=document.getElementById('as-err'),errTxt=document.getElementById('as-err-txt');
@@ -8021,7 +8035,7 @@ async function saveAddStaff(){
   if(!first)return showErr('First name is required.');
   if(!/^\S+@\S+\.\S+$/.test(email))return showErr('Please enter a valid email address.');
   if(!unitLegacy)return showErr('Please select a unit.');
-  if(!Number.isInteger(degree)||degree<0||degree>6)return showErr('Degree must be 0–6.');
+  if(!isAdmin&&(!Number.isInteger(degree)||degree<0||degree>6))return showErr('Degree must be 0–6.');
   const cli=initSupabase();
   if(!cli)return showErr('Connection issue. Please try again.');
   const btn=event&&event.target;if(btn)btn.disabled=true;
@@ -8175,9 +8189,9 @@ function rAddStaffModal(){
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="as-fname" placeholder="e.g. Maria" autocapitalize="words" oninput="asAutoInitials()"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="as-lname" placeholder="e.g. Silva" autocapitalize="words" oninput="asAutoInitials()"/></div>
 <div class="erow"><div class="elbl">Email</div><input class="einput" id="as-email" type="email" placeholder="maria@example.com" autocapitalize="none" autocorrect="off"/></div>
-<div class="erow"><div class="elbl">Title</div><select class="esel" id="as-role"><option value="Professor" selected>Professor</option><option value="Coach">Coach</option><option value="Head Professor">Head Professor</option><option value="Admin">Admin</option></select></div>
-<div class="erow"><div class="elbl">Belt</div><select class="esel" id="as-belt"><option value="black" selected>Black</option><option value="brown">Brown</option><option value="purple">Purple</option><option value="blue">Blue</option><option value="white">White</option></select></div>
-<div class="erow"><div class="elbl">Degree</div><select class="esel" id="as-degree">${[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'">'+i+'</option>').join('')}</select></div>
+<div class="erow"><div class="elbl">Title</div><select class="esel" id="as-role" onchange="asRoleChange()"><option value="Professor" selected>Professor</option><option value="Coach">Coach</option><option value="Head Professor">Head Professor</option><option value="Admin">Admin</option></select></div>
+<div class="erow" id="as-belt-row"><div class="elbl">Belt</div><select class="esel" id="as-belt"><option value="black" selected>Black</option><option value="brown">Brown</option><option value="purple">Purple</option><option value="blue">Blue</option><option value="white">White</option></select></div>
+<div class="erow" id="as-degree-row"><div class="elbl">Degree</div><select class="esel" id="as-degree">${[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'">'+i+'</option>').join('')}</select></div>
 <div class="erow"><div class="elbl">Unit</div><select class="esel" id="as-unit">${unitOpts}</select></div>
 <div class="erow"><div class="elbl">Initials</div><input class="einput" id="as-initials" maxlength="3" placeholder="MS" oninput="asInitialsTouched()"/></div>
 </div>
@@ -11744,13 +11758,12 @@ function setCea(a){
   els.forEach(el=>{el.classList.toggle('on',el.getAttribute('data-ce-cea')===a);});
 }
 // saveCls persists to public.classes. Insert on add, update on edit.
-// Catches the unique-index violation (23505 on
-// classes_unit_day_time_type_idx, migration 36) and surfaces a
-// friendly toast — the constraint is the FULL combo (unit, day, time,
-// type), so two classes at the same time-of-day with different
-// types/audiences (e.g. Fri 17:00 mma Adults + jmma Kids) are fine.
+// The hard DB UNIQUE (unit_id, day_of_week, time, type) was dropped in
+// migration 79 — Camperdown HQ runs legit simultaneous same-type classes
+// (2 mats). Duplicate protection is now a soft client-side confirm below;
+// skipDupConfirm bypasses it on the confirmed "Create anyway" retry.
 const _CLS_SELECT='id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)';
-async function saveCls(){
+async function saveCls(skipDupConfirm){
   if(S.clsSaving)return;
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue. Please try again.','error');return;}
@@ -11777,6 +11790,26 @@ async function saveCls(){
   if(!instructor_id){showSaveToast2('Pick a valid instructor.','error');return;}
   const payload={unit_id:unitDbId,day_of_week:dow,time,type,instructor_id,duration_minutes:dur,audience:aud,active:true};
   const isAdd=S.addCls;
+  // Soft duplicate guard (replaces the DB UNIQUE dropped in migration 79).
+  // Same (unit, day, time, type) as an existing class → confirm before
+  // writing, excluding the record being edited. NB (single mat) still gets
+  // the confirm as an accident guard. skipDupConfirm=true on the retry.
+  if(!skipDupConfirm){
+    const editId=(S.editCls&&S.editCls.classId)||null;
+    const dupe=CLASSES.find(x=>x&&x.id!==editId&&x.unit_id===unitDbId&&x.day_of_week===dow&&String(x.time||'').slice(0,5)===time&&x.type===type);
+    if(dupe){
+      const typeLabel=(CT.find(t=>t.id===type)||CT[0]).lbl;
+      const dayLabel=DL[dow];
+      openConfirm({
+        title:'Class already exists',
+        message:'A '+typeLabel+' class already exists on '+dayLabel+' at '+time+' at this unit. Create another anyway?',
+        dangerLabel:'Create anyway',
+        confirmColor:'var(--blue)',
+        onConfirm:()=>saveCls(true)
+      });
+      return;
+    }
+  }
   S.clsSaving=true;render();
   let r;
   if(isAdd){
@@ -11788,10 +11821,6 @@ async function saveCls(){
   }
   S.clsSaving=false;
   if(r&&r.error){
-    if(r.error.code==='23505'){
-      showSaveToast2('A class with the same day, time, and type already exists in this unit.','error');
-      render();return;
-    }
     console.warn('[mybjj] saveCls:',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');
     render();return;
