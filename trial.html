@@ -133,7 +133,7 @@
       </label>
       <label class="field">
         <span class="lab">Phone<span class="req">*</span></span>
-        <input type="tel" id="phone" autocomplete="tel" inputmode="tel" />
+        <input type="tel" id="phone" autocomplete="tel" inputmode="tel" placeholder="04XX XXX XXX" />
       </label>
       <label class="field">
         <span class="lab">Preferred day / time</span>
@@ -223,10 +223,8 @@
   var ENDPOINT = "https://dcilltzgegqsrgatskhz.supabase.co/functions/v1/trial-booking";
   // Must match CURRENT_WAIVER_VERSION in the Edge Function.
   var WAIVER_VERSION = "2026-07-nsw-v1-PLACEHOLDER";
-  // Cloudflare Turnstile SITE key (public). REPLACE with the real site key.
-  // 1x00000000000000000000AA is Cloudflare's "always passes" TEST key — use it
-  // for local/testing only.
-  var TURNSTILE_SITE_KEY = "0x4AAAAAADzvdqNO2kTmjN7C";
+  // Cloudflare Turnstile SITE key (public). Widget "MyBJJ trial form" (recreated).
+  var TURNSTILE_SITE_KEY = "0x4AAAAAADzwYmJWCVteEQfI";
 
   // ---- state ----
   var state = { unit: null, aud: "adult", cfToken: "" };
@@ -291,6 +289,12 @@
 
   // ---- validation + submit ----
   var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  // Australian phone: mobile 04xx xxx xxx, or landline 0x xxxx xxxx, or +61 form.
+  // Strip spaces/dashes/parens first, then test. Not a lookup — just format.
+  function validAUPhone(raw){
+    var d = (raw||"").replace(/[\s\-()]/g,"");
+    return /^(\+?61|0)[2-478]\d{8}$/.test(d);
+  }
 
   function showFormErr(msg){
     var box = $("formerr");
@@ -314,10 +318,10 @@
     if (!val("first_name")) { setErr("first_name",true); missing.push("f"); }
     if (!val("last_name"))  { setErr("last_name",true);  missing.push("l"); }
     if (!EMAIL_RE.test(val("email"))) { setErr("email",true); missing.push("e"); }
-    if (!val("phone"))      { setErr("phone",true);      missing.push("p"); }
+    if (!validAUPhone(val("phone"))) { setErr("phone",true); missing.push("p"); }
     if (!val("waiver_name")){ setErr("waiver_name",true);missing.push("w"); }
 
-    if (missing.length) { showFormErr("Please fill in the highlighted fields."); return; }
+    if (missing.length) { showFormErr("Please check the highlighted fields (a valid email and Australian phone number are required)."); return; }
     if (!$("agree").checked) { showFormErr("Please tick the box to accept the waiver."); return; }
     if (!state.cfToken) { showFormErr("Please complete the 'I'm human' check."); return; }
 
