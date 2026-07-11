@@ -28,3 +28,9 @@ begin
     raise notice 'No matching (unit_id,day_of_week,time,type) unique constraint found';
   end if;
 end $$;
+
+-- The hard duplicate protection also existed as a standalone unique INDEX
+-- (classes_unit_day_time_type_idx), separate from the constraint the DO
+-- block above drops. Drop it too so simultaneous same-type classes are
+-- allowed. Idempotent: no-op if the index is already gone.
+drop index if exists public.classes_unit_day_time_type_idx;
