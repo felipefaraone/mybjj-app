@@ -1835,13 +1835,18 @@ function rAttsStaff(rows,cid){
       const tone=r.status==='present'?'var(--green-text)':r.status==='absent'?'var(--red-text)':'var(--text3)';
       return `<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;color:${tone};letter-spacing:.5px">${lbl.toUpperCase()}</div>`;
     }
-    if(r.status==='present')return `<button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
-    if(r.status==='absent')return `<button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`;
+    // Discreet remove affordance (trash) — deletes the attendance row
+    // (removeAtt), secondary to Present/Absent. Shown in every editable
+    // state; never in the locked branch above.
+    const removeBtn=`<button class="bsm" onclick="removeAtt('${cid}','${s.id}')" title="Remove from class" aria-label="Remove from class" style="color:var(--text3);padding:6px 9px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>`;
+    if(r.status==='present')return `<button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`+removeBtn;
+    if(r.status==='absent')return `<button class="bsm" onclick="markG('${cid}','${s.id}')" title="Back to going">Undo</button>`+removeBtn;
     // G9.3 — going state now shows both Present (opens picker sheet)
     // and Absent (direct write, no sheet — closes the
     // "instructor forgot to mark me" dispute path).
     return `<button class="bsm bpre" onclick="markP('${cid}','${s.id}')">Present</button>`
-      +`<button class="bsm" onclick="markA('${cid}','${s.id}')" style="color:var(--red-text);border-color:var(--red-border);background:var(--red-bg)">Absent</button>`;
+      +`<button class="bsm" onclick="markA('${cid}','${s.id}')" style="color:var(--red-text);border-color:var(--red-border);background:var(--red-bg)">Absent</button>`
+      +removeBtn;
   };
   const statusPill=r=>{
     if(r.status==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">PRESENT</span>';
@@ -10556,6 +10561,60 @@ function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
 // class_value is sent; recompute_student_stats's WHERE status='present'
 // clause keeps absent rows out of every stat sum.
 function markA(cid,sid){return _setAttStatus(cid,sid,'absent');}
+// Remove-from-class — a real DELETE of the attendance row (unlike markG,
+// which only sets status back to 'going', or markA, which records a false
+// no-show). For attendees added by mistake: leaves the student with NO
+// record for this class. Staff/owner only reach this (rAttsStaff); RLS
+// (attendance_delete: is_admin OR is_staff OR self/parent) permits it.
+function removeAtt(cid,sid){
+  const s=_attStudent(sid);if(!s||!s._dbId)return;
+  const c=_parseCID(cid);if(!c)return;
+  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  if(!row){showSaveToast2('No attendance record to remove.','error');return;}
+  const first=(s.name||'').split(' ')[0]||'this student';
+  openConfirm({
+    title:'Remove from class',
+    message:'Remove '+first+' from this class? This deletes the attendance record.',
+    dangerLabel:'Remove',
+    onConfirm:()=>_doRemoveAtt(s._dbId,c.date,c.time,first)
+  });
+}
+async function _doRemoveAtt(studentDbId,date,time,first){
+  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===studentDbId&&a.classDate===date&&a.classTime===time);
+  if(ix<0)return;
+  const removed=ATTENDANCE.splice(ix,1)[0];
+  render();
+  const cli=initSupabase();
+  if(!cli||!removed._dbId)return;
+  // Optimistic add that never synced (local- prefix): drop any pending
+  // queue item so we don't sync a ghost upsert later — no DB call needed.
+  if(String(removed._dbId).startsWith('local-')){
+    const pending=queueFindByLocalId(removed._dbId);
+    if(pending)queueRemove(pending.qid);
+    try{render();}catch(_){}
+    return;
+  }
+  let r=null,_caught=null;
+  try{
+    r=await cli.from('attendance').delete().eq('id',removed._dbId);
+  }catch(e){_caught=e;}
+  // Network failure → enqueue the delete; don't restore (user removed it).
+  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    queueEnqueue({op:'delete',table:'attendance',rowId:removed._dbId,userId:(S.profile&&S.profile.id)||null});
+    try{render();}catch(_){}
+    return;
+  }
+  if(r&&r.error){
+    // Rollback — the DB row survives, so restore the in-memory row.
+    ATTENDANCE.push(removed);
+    console.warn('[mybjj] removeAtt delete failed:',r.error);
+    showSaveToast2(friendlyMutationError(r.error),'error');
+    render();return;
+  }
+  await refreshStudentStats(studentDbId);
+  showSaveToast2((first||'Student')+' removed');
+  drainAttendanceQueue();
+}
 function openMarkPSheet(cid,sid,walkin){
   S.markP={cid,sid,walkin:!!walkin};
   render();
