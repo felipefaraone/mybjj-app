@@ -10431,7 +10431,11 @@ async function refreshStudentStats(dbId){
 // DB uuid (VISITORS is keyed by uuid), so a legacy-id miss falls through to
 // the visitor map. Both shapes expose _dbId, which the write path keys off.
 function _attStudent(sid){
-  return STUDENTS.find(x=>x.id===sid)||VISITORS[sid]||null;
+  // STUDENTS (active unit) → VISITORS (staff cross-unit cache) → the
+  // "+ Add student" cross-unit picker cache. The last one lets the walk-in
+  // add flow (openMarkPSheet → rMarkPSheet header) resolve a visiting student
+  // who is only in S.classAdd._extra until the next refetch repopulates VISITORS.
+  return STUDENTS.find(x=>x.id===sid)||VISITORS[sid]||(S.classAdd&&S.classAdd._extra&&S.classAdd._extra[sid])||null;
 }
 async function _setAttStatus(cid,sid,newStatus,classValue){
   const s=_attStudent(sid);if(!s||!s._dbId)return;
@@ -10597,16 +10601,57 @@ function rMarkPSheet(){
 // or late arrival on the spot. State carries the synthetic class id +
 // search box + "all programmes" toggle. The per-class class_type tells
 // us the default programme filter (kids classes default to kids).
+// Debounce timer for the cross-unit (search_students_all_units) picker query.
+let _casRpcTimer=null;
 function openClassAddStudent(cid){
   if(!canEditClassCounts()&&!isStaffOrOwner())return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
-  S.classAdd={cid,q:'',allProgs:false,saving:false};
+  // _extra caches cross-unit (visiting) students fetched by the RPC, keyed by
+  // legacy_id, so the add-resolvers / _attStudent can find a student who isn't
+  // in the active-unit STUDENTS array. Reset here on open and on close.
+  S.classAdd={cid,q:'',allProgs:false,saving:false,_extra:{}};
   render();
   setTimeout(()=>{const el=document.getElementById('cas-input');if(el)el.focus();},20);
 }
-function closeClassAddStudent(){S.classAdd=null;render();}
-function setClassAddQ(v){if(!S.classAdd)return;S.classAdd.q=v;_renderClassAddList();}
+function closeClassAddStudent(){if(_casRpcTimer){clearTimeout(_casRpcTimer);_casRpcTimer=null;}S.classAdd=null;render();}
+function setClassAddQ(v){if(!S.classAdd)return;S.classAdd.q=v;_renderClassAddList();_casScheduleCrossFetch(v);}
 function toggleClassAddAllProgs(){if(!S.classAdd)return;S.classAdd.allProgs=!S.classAdd.allProgs;render();setTimeout(()=>{const el=document.getElementById('cas-input');if(el){el.focus();}},10);}
+// Cross-unit visitor search (Case 2). STUDENTS is scoped to the ACTIVE unit,
+// so a student from another academy isn't in the client. search_students_all_units
+// (staff-gated in-body, min 2 chars, all active units) surfaces them. Debounced
+// ~250ms so it never fires per keystroke; a stale-response guard drops an older
+// query that no longer matches the current needle.
+function _casScheduleCrossFetch(rawQ){
+  if(_casRpcTimer){clearTimeout(_casRpcTimer);_casRpcTimer=null;}
+  const needle=String(rawQ||'').trim();
+  if(needle.length<2)return;
+  _casRpcTimer=setTimeout(()=>{_casRpcTimer=null;_casDoCrossFetch(needle);},250);
+}
+async function _casDoCrossFetch(needle){
+  if(!S.classAdd)return;
+  const cli=initSupabase();if(!cli)return;
+  let rows=null;
+  try{
+    const r=await cli.rpc('search_students_all_units',{p_query:needle});
+    if(r&&r.error){console.warn('[mybjj] search_students_all_units:',r.error.message);return;}
+    rows=r&&r.data;
+  }catch(e){console.warn('[mybjj] search_students_all_units ex:',e);return;}
+  // Stale guard — the picker closed, or the query moved on while in flight.
+  if(!S.classAdd)return;
+  if(String(S.classAdd.q||'').trim().toLowerCase()!==needle.toLowerCase())return;
+  // Reset + repopulate the cross-unit cache for THIS needle. Done here (not in
+  // _classAddListHTML, which re-renders on every keystroke AND during the
+  // mark-present flow) so wiping _extra can never strand the visitor for the
+  // add-resolvers / _attStudent header lookup mid-add.
+  const extra={};
+  (rows||[]).forEach(r=>{
+    if(!r||!r.legacy_id)return;
+    const u=UNITS.find(x=>x&&x._dbId===r.unit_id)||{};
+    extra[r.legacy_id]={id:r.legacy_id,_dbId:r.id,name:r.full_name,belt:r.belt,deg:r.degree,prog:r.prog,initials:r.initials,unit:u.id||null,_unitName:u.name||null,_visitor:true};
+  });
+  S.classAdd._extra=extra;
+  _renderClassAddList();
+}
 
 // Mutates only the results <div> on each keystroke so the search input
 // doesn't lose focus from a full render() round-trip.
@@ -10645,22 +10690,44 @@ function _classAddListHTML(){
     });
   }
   list=list.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  if(!list.length){
-    return '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No matching students.</div>';
-  }
-  return list.slice(0,50).map(s=>{
+  // Cross-unit visitors — merged in from the debounced search_students_all_units
+  // cache (S.classAdd._extra, keyed by legacy_id). Deduped against the local
+  // list and anyone already on the class, gated to needle>=2 (only fetched
+  // then), and filtered by the SAME audience/allProgs rules as the local list
+  // (so a visiting kid only shows on an Adults class when "Show all
+  // programmes" is on). NOT re-fetched here.
+  const localIds=new Set(list.map(s=>s.id));
+  const extraRows=(needle.length>=2?Object.values(S.classAdd._extra||{}):[]).filter(s=>{
+    if(!s||!s.id||!s._dbId)return false;
+    if(localIds.has(s.id))return false;
+    if(attDbIds.has(s._dbId))return false;
+    if((s.name||'').toLowerCase().indexOf(needle)<0)return false;
+    if(!allProgs){
+      if(classAud==='Kids'&&s.prog!=='kids')return false;
+      if(classAud==='Adults'&&s.prog!=='adult')return false;
+    }
+    return true;
+  }).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const rowHTML=(s,visitorUnit)=>{
     const already=attDbIds.has(s._dbId);
     const b=(s.prog==='kids'?BK:BA)[s.belt]||BA.white;
     const dim=already?'opacity:.5;cursor:not-allowed':'cursor:pointer';
     const onclick=already?'':`onclick="addStudentToClass('${cid}','${s.id}')"`;
     const tag=already?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">ALREADY IN</span>':'';
     const progChip='<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;color:'+(s.prog==='kids'?'var(--amber-text)':'var(--text3)')+';letter-spacing:.5px;margin-left:6px">'+s.prog.toUpperCase()+'</span>';
+    const unitChip=visitorUnit?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:6px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px">'+String(visitorUnit).toUpperCase()+'</span>':'';
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);'+dim+'" '+onclick+'>'
       +avStu(s,34)
-      +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+s.name+progChip+tag+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+s.name+progChip+unitChip+tag+'</div>'
       +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt</div></div>'
       +'</div>';
-  }).join('');
+  };
+  const localHTML=list.slice(0,50).map(s=>rowHTML(s,null)).join('');
+  const extraHTML=extraRows.slice(0,30).map(s=>rowHTML(s,s._unitName)).join('');
+  if(!localHTML&&!extraHTML){
+    return '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No matching students.</div>';
+  }
+  return localHTML+extraHTML;
 }
 
 function rClassAddStudentModal(){
@@ -10695,7 +10762,7 @@ function rClassAddStudentModal(){
 async function addStudentToClass(cid,legacyId){
   if(!S.classAdd||S.classAdd.saving)return;
   const c=_parseCID(cid);if(!c)return;
-  const s=STUDENTS.find(x=>x.id===legacyId);if(!s||!s._dbId)return;
+  const s=STUDENTS.find(x=>x.id===legacyId)||(S.classAdd&&S.classAdd._extra&&S.classAdd._extra[legacyId])||null;if(!s||!s._dbId)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
   const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
@@ -10704,7 +10771,7 @@ async function addStudentToClass(cid,legacyId){
 async function _doAddStudentToClass(cid,legacyId,classValue){
   if(!S.classAdd||S.classAdd.saving)return;
   const c=_parseCID(cid);if(!c)return;
-  const s=STUDENTS.find(x=>x.id===legacyId);if(!s||!s._dbId)return;
+  const s=STUDENTS.find(x=>x.id===legacyId)||(S.classAdd&&S.classAdd._extra&&S.classAdd._extra[legacyId])||null;if(!s||!s._dbId)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
   const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
