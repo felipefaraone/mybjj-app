@@ -8643,8 +8643,20 @@ async function approvePhoto(id){
   const cli=initSupabase();if(!cli)return;
   const row=(S.photoQueue||[]).find(r=>r.id===id);if(!row)return;
   S.photoQueue=(S.photoQueue||[]).filter(r=>r.id!==id);render();
-  const r=await cli.from('photo_approvals').update({status:'approved',approved_by_id:S.profile&&S.profile.id,approved_at:new Date().toISOString()}).eq('id',id);
+  // Guard on status='pending' + read the affected rowcount, so a stale
+  // queue can't overwrite another instructor's decision. Mirrors migration
+  // 83's DB-side guard on reject_photo.
+  const r=await cli.from('photo_approvals').update({status:'approved',approved_by_id:S.profile&&S.profile.id,approved_at:new Date().toISOString()}).eq('id',id).eq('status','pending').select('id');
   if(r&&r.error){console.warn('[mybjj] photo approval fail:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');loadPhotoQueue();return;}
+  // Zero rows → someone else already decided this photo. Must NOT fall
+  // through to the photo_url publish below (that would republish an
+  // already-rejected photo / clobber the other instructor's decision).
+  if(!r||!r.data||!r.data.length){
+    console.warn('[mybjj] photo approve: 0 rows (already decided by someone else)');
+    showSaveToast2('Already decided by another instructor','error');
+    loadPhotoQueue();
+    return;
+  }
   console.log('[mybjj] photo approval OK');
   if(row.student_id){
     const upd=await cli.from('students').update({photo_url:row.photo_url}).eq('id',row.student_id);
@@ -8676,7 +8688,20 @@ async function rejectPhoto(id){
   const cli=initSupabase();if(!cli)return;
   S.photoQueue=(S.photoQueue||[]).filter(r=>r.id!==id);render();
   const r=await cli.rpc('reject_photo',{p_id:id,p_reason:reason||null});
-  if(r&&r.error){console.warn('[mybjj] photo rejected fail:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');loadPhotoQueue();return;}
+  if(r&&r.error){
+    // reject_photo (migration 83) raises already_decided when another
+    // instructor already decided the row — show the conflict message and
+    // do NOT let the storage delete leave a broken avatar.
+    const msg=String(r.error.message||'');
+    if(msg.indexOf('already_decided')>=0){
+      showSaveToast2('Already decided by another instructor','error');
+    }else{
+      console.warn('[mybjj] photo rejected fail:',r.error);
+      showSaveToast2(friendlyMutationError(r.error),'error');
+    }
+    loadPhotoQueue();
+    return;
+  }
   console.log('[mybjj] photo rejected OK');
   showSaveToast2('Photo rejected.');
 }
