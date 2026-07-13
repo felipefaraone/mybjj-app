@@ -44,11 +44,13 @@ const SYDNEY_TZ = "Australia/Sydney";
 
 // Trial-bookable class types. MUST mirror trial.html's TRIAL_TYPES allow-list,
 // but defined INDEPENDENTLY here — the page's list is a UX affordance, this is the
-// control. The academy advertises exactly these six as trial entry points; a
-// first-timer must not book, say, an advanced class or an unsupervised open mat,
-// even with a tampered/replayed request. Everything else (adv, gi, fund, jmma,
-// omat, any future code) is rejected below.
-const TRIAL_TYPE_CODES = new Set(["beg", "alev", "nogi", "mma", "jun", "mini"]);
+// control. The academy advertises these seven as trial entry points (jmma = Kids
+// MMA, a real entry point). A first-timer must not book, even with a tampered or
+// replayed request, the two live types deliberately left out:
+//   adv  — their own site gates it at "3 stripe white belt+"
+//   omat — unsupervised open training, not a first class
+// (gi/fund are member class flavours with no trial card either.)
+const TRIAL_TYPE_CODES = new Set(["beg", "alev", "nogi", "mma", "jmma", "jun", "mini"]);
 
 // No slot may be booked within this window of "now" (Australia/Sydney) — a class
 // starting in a few minutes helps nobody and the front desk cannot prepare.

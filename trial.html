@@ -61,10 +61,15 @@
   .sumbar b{font-family:'Barlow Condensed';letter-spacing:.4px}
   .sumbar .muted{color:var(--blue-mid);font-weight:600}
   @media(max-width:900px){.sumbar{display:block}}
+  /* Step 5: the wizard is over — the summary bar has no job left. */
+  .sumbar.done{display:none}
 
   main{padding:28px 0 60px}
   .split{display:grid;grid-template-columns:1fr 300px;gap:30px;align-items:start}
   @media(max-width:900px){.split{grid-template-columns:1fr;gap:0}}
+  /* Step 5: drop the right-hand rail, collapse to a single centred column. */
+  .split.wizard-done{grid-template-columns:1fr;max-width:640px;margin:0 auto}
+  .split.wizard-done > div:last-child{display:none}
 
   .screen{display:none}
   .screen.on{display:block;animation:fade .2s ease}
@@ -161,16 +166,21 @@
   .formerr{background:var(--red-bg);color:var(--red);border-radius:10px;padding:11px 13px;font-size:13.5px;font-weight:600;margin-bottom:16px;display:none}
 
   /* booked (step 5) */
-  .bookedbar{display:flex;align-items:center;gap:14px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:var(--radius);padding:16px 18px;margin-bottom:22px}
-  .bookedbar .tk{width:40px;height:40px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .bookedbar .tk svg{width:20px;height:20px}
-  .bookedbar b{display:block;font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.4px;text-transform:uppercase;color:var(--green)}
-  .bookedbar span{font-size:14px;color:#2b6a48}
-  .slotline{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:22px}
-  .slotline .lbl{font-family:'Barlow Condensed';font-weight:700;font-size:11.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink3);margin-bottom:4px}
-  .slotline .val{font-family:'Barlow Condensed';font-weight:700;font-size:20px;letter-spacing:.3px}
-  .healthcta{margin-top:6px}
-  .healthcta .sub{font-size:13.5px;color:var(--ink3);margin-top:12px;line-height:1.5;text-align:center}
+  /* step 5 — single centred card. One confirmation, one slot, one CTA. */
+  .booked{max-width:640px;margin:0 auto;text-align:center}
+  .booked .bk-tick{width:60px;height:60px;border-radius:50%;background:var(--green-bg);color:var(--green);display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+  .booked .bk-tick svg{width:30px;height:30px}
+  .booked .bk-h{font-family:'Barlow Condensed';font-weight:700;font-size:30px;letter-spacing:.4px;text-transform:uppercase;margin-bottom:22px}
+  .bk-slot{margin-bottom:26px;line-height:1.34}
+  .bk-slot .when{font-family:'Barlow Condensed';font-weight:700;font-size:25px;letter-spacing:.3px;color:var(--ink)}
+  .bk-slot .what{font-family:'Barlow Condensed';font-weight:700;font-size:19px;letter-spacing:.3px;color:var(--blue);margin-top:3px}
+  .bk-slot .addr{font-size:14px;color:var(--ink2);margin-top:7px}
+  .bk-cta{font-size:18px;padding:18px}
+  .booked .bk-sub{font-size:14.5px;color:var(--ink2);margin-top:13px;line-height:1.5}
+  .bk-prep{margin-top:30px;padding-top:22px;border-top:1px solid var(--line)}
+  .bk-prep .h{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink3);margin-bottom:10px}
+  .bk-prep .l{font-size:14.5px;color:var(--ink2);line-height:1.95}
+  .bk-fine{font-size:12.5px;color:var(--ink3);margin-top:24px;line-height:1.5}
 
   .hide{display:none !important}
   .loading{color:var(--ink2);font-size:15px;padding:6px 0}
@@ -207,7 +217,7 @@
 <!-- Mobile compact summary bar -->
 <div class="sumbar" id="sumbar"><span class="muted">Choose your free trial</span></div>
 
-<main><div class="wrap"><div class="split">
+<main><div class="wrap"><div class="split" id="split">
   <div>
 
     <!-- ===== 1 · UNIT ===== -->
@@ -270,20 +280,30 @@
       <div class="actionbar"><button class="btn primary" id="bookBtn">Confirm my booking</button><span class="hintline">Your spot is saved right away</span></div>
     </section>
 
-    <!-- ===== 5 · BOOKED ===== -->
+    <!-- ===== 5 · BOOKED — single centred card. One confirmation, one slot, one CTA.
+         The summary rail (steps 1-4's wizard aid) is hidden here via .wizard-done;
+         nothing on this screen repeats information another element already carried. -->
     <section class="screen" id="s5">
-      <div class="bookedbar">
-        <div class="tk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-        <div><b>Your spot is booked</b><span>We've saved your details. One last step below.</span></div>
-      </div>
-      <div class="slotline">
-        <div class="lbl">Your trial</div>
-        <div class="val" id="bookedSlot">—</div>
-      </div>
-      <div class="lead"><h2>One last thing — your health check</h2><p>About three minutes, mostly yes or no. Do it now and walk straight onto the mats when you arrive.</p></div>
-      <div class="healthcta">
-        <a class="btn primary block" id="waiverCta" href="#">Complete your health check</a>
-        <p class="sub">You can also complete it later from the link we've emailed you — but it needs to be done before you train.</p>
+      <div class="booked">
+        <div class="bk-tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <h2 class="bk-h">You're booked</h2>
+        <!-- the slot, ONCE, as the hero -->
+        <div class="bk-slot">
+          <div class="when" id="bk_when">—</div>
+          <div class="what" id="bk_what">—</div>
+          <div class="addr" id="bk_addr" style="display:none"></div>
+        </div>
+        <!-- the CTA — the only action on the page -->
+        <a class="btn primary block bk-cta" id="waiverCta" href="#">Complete your health check</a>
+        <p class="bk-sub">Three minutes, mostly yes or no. Do it now and walk straight onto the mats.</p>
+        <!-- quiet "before you arrive" — no icons, no boxes -->
+        <div class="bk-prep">
+          <div class="h">Before you arrive</div>
+          <div class="l">Arrive 10 minutes early</div>
+          <div class="l">Wear a t-shirt and shorts. No jewellery.</div>
+          <div class="l">We'll lend you everything else.</div>
+        </div>
+        <p class="bk-fine">You can also use the link we emailed you — but it must be done before you train.</p>
       </div>
     </section>
 
@@ -319,10 +339,20 @@
   var TURNSTILE_SITE_KEY = "0x4AAAAAADzwYmJWCVteEQfI";
   var SYDNEY_TZ = "Australia/Sydney";
 
-  // ---- static COPY MAP, keyed by public_timetable.type_code -----------------
-  // Descriptions, gradients and age hints. A type_code NOT in this map still
-  // renders (type_label + neutral gradient, no description). We NEVER invent a
-  // card for a type that isn't in the live timetable.
+  // ---- static COPY MAP ------------------------------------------------------
+  // Copy for the class cards: optional display `title` (overrides the timetable's
+  // type_label), gradient, description and age hint. Keyed on `type_code` OR, for
+  // the few classes whose label depends on who's in the room, `type_code:audience`
+  // (see copyFor() — specific pair wins, plain type_code is the fallback). A
+  // type_code with no entry still renders (type_label + neutral gradient, no
+  // description). We NEVER invent a card for a type that isn't in the timetable.
+  //
+  // DISPLAY-LAYER PATCH over a DATA problem: Camperdown's Teens BJJ (13+) is
+  // stored as type='alev' with audience='Kids', so on type_code alone it would
+  // read "All Levels" inside "Kids & Teens" — a parent won't recognise their
+  // 14-year-old in that. The `alev:Kids` entry relabels it. The real fix is to
+  // give the Teens class its OWN type_code in `classes`; until then this pair
+  // carries the label. Do not remove this comment — the debt is still here.
   var COPY = {
     gi:   { grad:"g1", desc:"Classic Jiu-Jitsu in the gi. Grips, control and submissions with the uniform.", age:"" },
     nogi: { grad:"g3", desc:"Wrestling-style grappling. Shorts and a rash guard, no uniform needed.", age:"" },
@@ -331,21 +361,26 @@
     adv:  { grad:"g7", desc:"Higher pace and finer detail for experienced grapplers.", age:"" },
     fund: { grad:"g2", desc:"The core positions, escapes and principles everything else is built on.", age:"" },
     mma:  { grad:"g4", desc:"Striking, takedowns and ground game combined. High energy, serious cardio.", age:"" },
-    jmma: { grad:"g4", desc:"MMA built for juniors — striking and grappling, coached safely.", age:"6+" },
+    jmma: { grad:"g4", title:"Kids MMA", desc:"Striking and grappling for kids. Coordination, confidence, and a lot of energy burned.", age:"6+" },
     jun:  { grad:"g5", desc:"Jiu-Jitsu for juniors. Confidence, discipline and real skills, the fun way.", age:"" },
     mini: { grad:"g6", desc:"First steps on the mats. Games, movement and a lot of laughing.", age:"3-5" },
-    omat: { grad:"g5", desc:"Open training. Roll, drill and put your own game together.", age:"" }
+    omat: { grad:"g5", desc:"Open training. Roll, drill and put your own game together.", age:"" },
+    // (type_code, audience)-specific — see the DISPLAY-LAYER PATCH note above.
+    "alev:Kids": { grad:"g7", title:"Teens BJJ", desc:"Real training and real skills, with people their own age.", age:"13+" }
   };
+  // Specific (type_code, audience) pair wins; plain type_code is the fallback.
+  function copyFor(tc, aud){ return COPY[tc+":"+aud] || COPY[tc] || null; }
 
   // ---- TRIAL-BOOKABLE type_code allow-list ----------------------------------
-  // The academy advertises exactly these six as trial entry points, so these are
-  // the ONLY class types a first-timer may book. Cards are still derived from the
-  // live timetable (correct — move a class, the page follows), but everything
-  // outside this set (adv, gi, fund, jmma, omat, any future code) stays invisible:
-  // a beginner does not debut in an advanced class or an unsupervised open mat.
-  // This is a UX affordance only — the Edge Function enforces the same six codes
+  // The academy advertises these seven as trial entry points, so these are the
+  // ONLY class types a first-timer may book (jmma = Kids MMA, a real entry point:
+  // "Striking — Adults & Kids 6+"). Cards are still derived from the live timetable
+  // (correct — move a class, the page follows), but two live types stay invisible:
+  //   adv  — their own site gates it at "3 stripe white belt+"
+  //   omat — unsupervised open training, not a first class
+  // This is a UX affordance only — the Edge Function enforces the same set
   // server-side, because a client-side list is not a control.
-  var TRIAL_TYPES = { beg:1, alev:1, nogi:1, mma:1, jun:1, mini:1 };
+  var TRIAL_TYPES = { beg:1, alev:1, nogi:1, mma:1, jmma:1, jun:1, mini:1 };
 
   // No slot is bookable within this many minutes of "now" (Australia/Sydney) — a
   // class starting in 18 minutes helps nobody and the front desk can't prepare.
@@ -463,7 +498,15 @@
     $("s"+n).classList.add("on");
     window.scrollTo({ top:0, behavior:"smooth" });
   }
-  function go(n){ paintSummary(); setStepper(n); show(n); if(n===4) ensureTurnstile(); }
+  function go(n){
+    paintSummary(); setStepper(n); show(n);
+    // Step 5: the wizard is done — drop the summary rail (desktop) and the
+    // compact bar (mobile) so the health-check CTA is the only thing on screen.
+    var done = (n===5);
+    $("split").classList.toggle("wizard-done", done);
+    $("sumbar").classList.toggle("done", done);
+    if(n===4) ensureTurnstile();
+  }
 
   Array.prototype.forEach.call(document.querySelectorAll(".backlink[data-go]"), function(b){
     b.addEventListener("click", function(){ go(parseInt(b.getAttribute("data-go"),10)); });
@@ -529,14 +572,18 @@
       items.push({ audience:r.audience, type_code:r.type_code, type_label:r.type_label, duration:r.duration_minutes });
     });
     function cardHtml(it){
-      var c = COPY[it.type_code] || null;
+      var c = copyFor(it.type_code, it.audience);
       var grad = c ? c.grad : "gneutral";
+      // A COPY `title` overrides the timetable label (e.g. alev:Kids → "Teens BJJ",
+      // jmma → "Kids MMA"); `label` flows through data-tl into the summary + booked
+      // screen so the whole flow shows the name the parent recognises.
+      var label = (c && c.title) ? c.title : it.type_label;
       var badgeBits=[]; if(c && c.age) badgeBits.push(c.age); if(it.duration) badgeBits.push(it.duration+" MIN");
       var badge = badgeBits.length ? '<span class="badge">'+esc(badgeBits.join(" · "))+'</span>' : "";
       var hint = c ? '<span class="hint">'+esc(c.desc)+'</span>' : '<span class="hint"></span>';
-      return '<button type="button" class="clscard" data-aud="'+esc(it.audience)+'" data-tc="'+esc(it.type_code)+'" data-tl="'+esc(it.type_label)+'" data-dur="'+esc(it.duration||"")+'">'+
-        '<div class="ph '+grad+'">'+badge+'<h3>'+esc(it.type_label)+'</h3></div>'+
-        '<div class="bd">'+hint+'<div class="foot"><span class="meta">'+esc(it.type_label)+'</span><span class="pick">Choose</span></div></div>'+
+      return '<button type="button" class="clscard" data-aud="'+esc(it.audience)+'" data-tc="'+esc(it.type_code)+'" data-tl="'+esc(label)+'" data-dur="'+esc(it.duration||"")+'">'+
+        '<div class="ph '+grad+'">'+badge+'<h3>'+esc(label)+'</h3></div>'+
+        '<div class="bd">'+hint+'<div class="foot"><span class="meta">'+esc(label)+'</span><span class="pick">Choose</span></div></div>'+
       '</button>';
     }
     function group(aud){
@@ -721,16 +768,19 @@
   // ============================================================================
   function onBooked(token, kidMode){
     state.booked=true;
-    // Plain-English slot line: "Monday 20 Jul, 6:00 PM · No-Gi · Neutral Bay"
-    var line;
-    if(state.fallback){
-      line = "Flexible time · " + state.typeLabel + " · " + state.unit.name + " — we'll confirm your slot";
-    } else {
-      line = state.slot.dayLabel + ", " + state.slot.timeLabel + " · " + state.typeLabel + " · " + state.unit.name;
-    }
-    $("bookedSlot").textContent = line;
-    $("sm_health").textContent = "Still to do";
-    $("sm_health").classList.remove("empty");
+    // The slot, ONCE, as three hero lines:
+    //   Wednesday 15 Jul · 6:00 AM   (or "Flexible time" for the fallback path)
+    //   No-Gi · Neutral Bay
+    //   120 Military Rd, Neutral Bay NSW   (address from public_units; omit if null)
+    $("bk_when").textContent = state.fallback
+      ? "Flexible time — we'll confirm your slot"
+      : (state.slot.dayLabel + " · " + state.slot.timeLabel);
+    $("bk_what").textContent = state.typeLabel + " · " + state.unit.name;
+    var u = state.unit || {};
+    var addr = u.address ? (u.address + (u.city ? ", " + u.city : "")) : "";
+    var addrEl = $("bk_addr");
+    if(addr){ addrEl.textContent = addr; addrEl.style.display=""; }
+    else{ addrEl.textContent=""; addrEl.style.display="none"; }   // Camperdown has no address
 
     // CTA → /waiver.html?t=<token> (+ k / n so waiver.html can prefill)
     var participant = kidMode ? val("kid_name") : val("first_name");
