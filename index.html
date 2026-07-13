@@ -7871,7 +7871,41 @@ async function sendMagicLink(email, opts){
   }
 }
 
-function photoSrc(path){return path?(SUPABASE_URL+'/storage/v1/object/public/avatars/'+path):'';}
+// Migration 84 made the `avatars` bucket PRIVATE. Public URLs 404, so every
+// avatar path must be exchanged for a short-lived signed URL. SIGNED caches
+// them (path -> {url, exp}); resolveSignedUrls batches the exchange so the
+// roster's 117 avatars cost ONE request, never one-per-avatar. photoSrc stays
+// synchronous (it's called from render()) and reads the cache only.
+const SIGNED = {};          // path -> { url, exp }   (exp = epoch ms)
+const SIGNED_TTL = 3600;    // seconds — 1 hour
+
+// Resolve many paths in ONE request. The roster renders 117 avatars; we must
+// never issue one request per avatar.
+async function resolveSignedUrls(paths){
+  const cli = initSupabase(); if(!cli) return;
+  const now = Date.now();
+  const need = (paths||[])
+    .filter(Boolean)
+    .filter(p => !SIGNED[p] || SIGNED[p].exp < now + 60000)   // refresh 1min before expiry
+    .filter((p,i,a) => a.indexOf(p) === i);                    // dedupe
+  if(!need.length) return;
+  try{
+    const r = await cli.storage.from('avatars').createSignedUrls(need, SIGNED_TTL);
+    if(r && r.data){
+      r.data.forEach(function(row){
+        if(row && row.path && row.signedUrl){
+          SIGNED[row.path] = { url: row.signedUrl, exp: now + SIGNED_TTL*1000 };
+        }
+      });
+    }
+  }catch(e){ console.warn('[mybjj] signed urls:', e); }
+}
+
+function photoSrc(path){
+  if(!path) return '';
+  const hit = SIGNED[path];
+  return (hit && hit.exp > Date.now()) ? hit.url : '';   // empty -> caller falls back to initials
+}
 function avStu(s,size){
   size=size||38;
   // Batch — kids privacy hardening (E2.2). Kids never render their
@@ -8570,6 +8604,9 @@ async function uploadCroppedPhoto(){
         showSaveToast2(friendlyMutationError(upd.error),'error');
         return;
       }
+      // Private bucket — warm a signed URL for the just-uploaded path before
+      // render() so a staff/owner self-photo doesn't blank until next hydrate.
+      await resolveSignedUrls([path]);
       S.cropOpen=false;_crop.img=null;_crop.sid=null;
       showSaveToast2('Photo updated.');
       loadMyPhotoApproval();
@@ -8637,6 +8674,10 @@ async function loadPhotoQueue(){
     if(r&&r.error){console.warn('[mybjj] photo queue:',r.error);S.photoQueue=[];}
     else{S.photoQueue=(r&&r.data)||[];}
   }catch(e){console.warn('[mybjj] photo queue exception:',e);S.photoQueue=[];}
+  // Private bucket — the pending-photo thumbnails render via photoSrc too, so
+  // warm their signed URLs in one batch or instructors would approve blind
+  // (grey boxes). Display-only; no approval logic touched.
+  await resolveSignedUrls((S.photoQueue||[]).map(r=>r.photo_url));
   S.photoQueueLoading=false;render();
 }
 async function approvePhoto(id){
@@ -8658,6 +8699,10 @@ async function approvePhoto(id){
     return;
   }
   console.log('[mybjj] photo approval OK');
+  // Private bucket — resolve a signed URL for the just-approved path BEFORE
+  // the publish branches call render(), so the new avatar shows immediately
+  // instead of blanking to initials until the next hydrate.
+  await resolveSignedUrls([row.photo_url]);
   if(row.student_id){
     const upd=await cli.from('students').update({photo_url:row.photo_url}).eq('id',row.student_id);
     if(upd&&upd.error)console.warn('[mybjj] student photo_url update:',upd.error);
@@ -8902,6 +8947,15 @@ async function refetchUnitScopedData(){
     console.warn('[mybjj] hydrate feedback:',fb.error);
     for(const s of STUDENTS)s.feedback=[];
   }
+  // Bucket is private (migration 84) — batch-resolve signed URLs for the
+  // freshly-loaded roster + instructors in ONE request so their avatars
+  // render. On a unit switch the new unit's students aren't in the cache;
+  // this warms them before pickUnit's render(). On boot hydrateData warms
+  // again (profile photo), but the cache guard makes that a no-op request.
+  await resolveSignedUrls([
+    ...STUDENTS.map(s => s.photoUrl),
+    ...STAFF.map(s => s.photoUrl)
+  ]);
   return got;
 }
 // Fetch the caller's OWN student row, unit-independently. The students
@@ -9002,6 +9056,15 @@ async function hydrateData(){
           .catch(function(){});
       }
     }catch(_){}
+    // Private bucket (migration 84) — warm signed URLs for every avatar path
+    // in one call before the first real render(). refetchUnitScopedData above
+    // already resolved STUDENTS/STAFF (so those are cache hits here); this
+    // adds the caller's own profile photo, which may not be in either array.
+    await resolveSignedUrls([
+      ...STUDENTS.map(s => s.photoUrl),
+      ...STAFF.map(s => s.photoUrl),
+      (S.profile && S.profile.photo_url) || null
+    ]);
     if(touched){enrichMeFromHydrate();console.log('[mybjj] hydrated from Supabase');S.hydrating=false;render();if(canEditClassCounts())loadPhotoQueue();loadMyPhotoApproval();loadNotifications();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
     else{console.warn('[mybjj] hydration returned no rows — keeping local fallback');S.hydrating=false;render();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
   }catch(e){

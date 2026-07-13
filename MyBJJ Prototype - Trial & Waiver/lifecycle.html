@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>myBJJ — Trial lifecycle</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --blue:#1A5DAD;--blue-dark:#124680;--blue-tint:#eaf1fa;--blue-mid:#c3d8ef;
+  --text:#16202b;--text2:#5a6a78;--text3:#93a0ac;
+  --border:#e3e8ee;--bg:#f4f6f9;--card:#fff;
+  --green:#1e7d47;--green-bg:#e8f6ee;--green-border:#bfe5cf;
+  --amber:#8a5a00;--amber-bg:#fff4e0;--amber-border:#f0dcb4;
+  --red:#c0392b;--red-bg:#fdecea;--red-border:#f3c9c3;
+  --grey:#7d8a97;--grey-bg:#eef1f4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#e7ebf0;font-family:'Barlow',system-ui,sans-serif;color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;padding:0 0 60px}
+.wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+
+.protonav{background:#0f1720;padding:10px 0}
+.protonav .inner{max-width:1160px;margin:0 auto;padding:0 24px;display:flex;gap:6px;align-items:center}
+.protonav a{text-decoration:none;padding:8px 18px;border-radius:20px;font-family:'Barlow Condensed';font-weight:700;font-size:12.5px;letter-spacing:.7px;text-transform:uppercase;color:#8a97a3;transition:.14s;white-space:nowrap}
+.protonav a:hover{color:#fff}
+.protonav a.on{background:var(--blue);color:#fff}
+.protonav .lbl{margin-left:auto;color:#5a6a78;font-size:11px;letter-spacing:.5px}
+@media(max-width:680px){.protonav .lbl{display:none}.protonav a{padding:8px 12px;font-size:11px}}
+
+.head{text-align:center;padding:38px 0 26px}
+.head h1{font-family:'Barlow Condensed';font-weight:700;font-size:33px;letter-spacing:.6px;text-transform:uppercase}
+.head p{color:var(--text2);font-size:16.5px;margin-top:7px;max-width:640px;margin-left:auto;margin-right:auto}
+
+/* the machine */
+.machine{background:#fff;border:1px solid var(--border);border-radius:18px;padding:30px;margin-bottom:26px}
+.lane{display:flex;align-items:center;gap:0;flex-wrap:wrap;justify-content:center}
+.node{border:2px solid var(--border);background:#fff;border-radius:12px;padding:14px 20px;min-width:132px;text-align:center;cursor:pointer;transition:.16s;position:relative}
+.node:hover{border-color:var(--blue-mid);transform:translateY(-2px)}
+.node.on{border-color:var(--blue);background:var(--blue-tint);box-shadow:0 6px 18px rgba(26,93,173,.14)}
+.node .st{font-family:'Barlow Condensed';font-weight:700;font-size:14.5px;letter-spacing:.9px;text-transform:uppercase}
+.node .sub{font-size:11.5px;color:var(--text3);margin-top:2px}
+.node.booked .st{color:var(--blue)}
+.node.attended .st{color:var(--green)}
+.node.noshow .st{color:var(--amber)}
+.node.member .st{color:var(--green)}
+.node.lapsed .st{color:var(--grey)}
+.node .newtag{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--amber);color:#fff;font-family:'Barlow Condensed';font-weight:700;font-size:9px;letter-spacing:.7px;padding:2px 8px;border-radius:4px;white-space:nowrap}
+.arrow{display:flex;flex-direction:column;align-items:center;padding:0 6px;min-width:96px}
+.arrow .lbl{font-size:11px;color:var(--text3);text-align:center;line-height:1.3;margin-bottom:3px;font-weight:500}
+.arrow .ln{display:flex;align-items:center;width:100%;color:var(--text3)}
+.arrow .ln .bar{flex:1;height:2px;background:currentColor;opacity:.35}
+.arrow .ln svg{width:11px;height:11px;flex-shrink:0}
+.arrow.auto .lbl{color:var(--amber);font-weight:600}
+.arrow.auto .ln{color:var(--amber)}
+.branch{display:flex;flex-direction:column;gap:14px}
+@media(max-width:900px){
+  .lane{flex-direction:column;align-items:stretch}
+  .arrow{min-width:0;padding:8px 0;flex-direction:row;gap:8px;justify-content:center}
+  .arrow .ln{width:40px}
+  .branch{gap:10px}
+}
+
+/* detail panel */
+.detail{display:grid;grid-template-columns:1fr 380px;gap:26px;align-items:start}
+@media(max-width:960px){.detail{grid-template-columns:1fr}}
+.card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:26px}
+.card .tag{display:inline-block;font-family:'Barlow Condensed';font-weight:700;font-size:11px;letter-spacing:1px;border-radius:5px;padding:3px 10px;margin-bottom:12px}
+.card h3{font-family:'Barlow Condensed';font-weight:700;font-size:23px;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px}
+.card p{color:var(--text2);font-size:15.5px;margin-bottom:16px}
+.who{display:flex;align-items:center;gap:9px;background:var(--bg);border-radius:9px;padding:11px 13px;margin-bottom:16px;font-size:14px}
+.who svg{width:16px;height:16px;color:var(--text3);flex-shrink:0}
+.who b{font-weight:600}
+.rows{border-top:1px solid var(--border);padding-top:14px}
+.row{display:flex;gap:11px;padding:9px 0;font-size:14.5px;align-items:flex-start}
+.row .dot{width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:8px}
+.row span{color:var(--text2)}
+.row b{color:var(--text)}
+.gap{background:var(--red-bg);border:1px solid var(--red-border);border-radius:11px;padding:14px 16px;margin-top:16px}
+.gap h5{font-family:'Barlow Condensed';font-weight:700;font-size:11.5px;letter-spacing:1px;text-transform:uppercase;color:var(--red);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.gap h5 svg{width:14px;height:14px}
+.gap p{font-size:14px;color:#8c2f22;margin:0;line-height:1.5}
+.fix{background:var(--green-bg);border:1px solid var(--green-border);border-radius:11px;padding:14px 16px;margin-top:11px}
+.fix h5{font-family:'Barlow Condensed';font-weight:700;font-size:11.5px;letter-spacing:1px;text-transform:uppercase;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.fix h5 svg{width:14px;height:14px}
+.fix p{font-size:14px;color:#1c5e39;margin:0;line-height:1.5}
+
+/* mini phone */
+.mini{background:#0f1720;border-radius:26px;padding:8px;position:sticky;top:18px}
+@media(max-width:960px){.mini{position:static;max-width:360px;margin:0 auto}}
+.miniscr{background:var(--bg);border-radius:20px;padding:14px;min-height:320px}
+.mtitle{font-family:'Barlow Condensed';font-weight:700;font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--text3);margin-bottom:10px}
+.trl{background:#fff;border:1px solid var(--border);border-radius:13px;padding:14px}
+.trl.hot{border-color:var(--amber-border);background:#fffdf8}
+.trl .tp{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px}
+.trl .n{flex:1;font-family:'Barlow Condensed';font-weight:700;font-size:17px}
+.bg{font-family:'Barlow Condensed';font-weight:700;font-size:9px;letter-spacing:.5px;padding:3px 7px;border-radius:5px;white-space:nowrap}
+.b-bk{background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid)}
+.b-at{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.b-ns{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-border)}
+.b-mb{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.b-lp{background:var(--grey-bg);color:var(--grey);border:1px solid #d6dce2}
+.b-ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.trl .c{font-size:12px;color:var(--text2);line-height:1.5}
+.trl .wn{display:flex;align-items:center;gap:6px;background:var(--blue-tint);border-radius:7px;padding:7px 9px;margin-top:8px;font-size:12px;color:var(--blue-dark);font-weight:600}
+.trl .wn svg{width:12px;height:12px;flex-shrink:0}
+.trl .wn.past{background:var(--grey-bg);color:var(--grey)}
+.acts{display:grid;gap:5px;margin-top:10px}
+.acts.c4{grid-template-columns:repeat(4,1fr)}
+.acts.c3{grid-template-columns:repeat(3,1fr)}
+.acts.c2{grid-template-columns:repeat(2,1fr)}
+.acts button{border:1px solid var(--border);background:#fff;border-radius:7px;padding:8px 2px;font-family:'Barlow Condensed';font-weight:700;font-size:10px;letter-spacing:.3px;color:var(--text2)}
+.acts button.p{background:var(--blue-tint);border-color:var(--blue-mid);color:var(--blue)}
+.acts button.d{color:var(--red)}
+.acts button:disabled{opacity:.35}
+.mnote{background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:9px;padding:9px 11px;margin-top:9px;font-size:11px;color:var(--amber);line-height:1.4;display:flex;gap:6px}
+.mnote svg{width:12px;height:12px;flex-shrink:0;margin-top:1px}
+.flag{position:fixed;right:14px;bottom:14px;background:rgba(15,23,32,.9);color:#fff;font-size:11px;padding:7px 14px;border-radius:20px;z-index:99}
+</style>
+</head>
+<body>
+
+<div class="protonav"><div class="inner">
+  <a href="index.html">Public booking</a>
+  <a href="app.html">What the team sees</a>
+  <a href="lifecycle.html" class="on">Trial lifecycle</a>
+  <span class="lbl">PROTOTYPE — dummy data</span>
+</div></div>
+
+<div class="wrap">
+  <div class="head">
+    <h1>What happens to a trial</h1>
+    <p>From the moment they book to the moment they're a member — or they're not. Click any state to see who does what, and where it breaks today.</p>
+  </div>
+
+  <div class="machine">
+    <div class="lane">
+      <div class="node booked on" onclick="pick(this,'booked')">
+        <div class="st">Booked</div><div class="sub">Spot is saved</div>
+      </div>
+
+      <div class="arrow">
+        <div class="lbl">Teacher marks<br/>them present</div>
+        <div class="ln"><span class="bar"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="9 18 15 12 9 6"/></svg></div>
+      </div>
+
+      <div class="branch">
+        <div class="node attended" onclick="pick(this,'attended')">
+          <div class="st">Attended</div><div class="sub">They turned up</div>
+        </div>
+        <div class="node noshow" onclick="pick(this,'noshow')">
+          <span class="newtag">NEW</span>
+          <div class="st">No-show</div><div class="sub">Class passed, nobody came</div>
+        </div>
+      </div>
+
+      <div class="arrow">
+        <div class="lbl">Patricia<br/>decides</div>
+        <div class="ln"><span class="bar"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="9 18 15 12 9 6"/></svg></div>
+      </div>
+
+      <div class="branch">
+        <div class="node member" onclick="pick(this,'member')">
+          <div class="st">Member</div><div class="sub">They joined</div>
+        </div>
+        <div class="node lapsed" onclick="pick(this,'lapsed')">
+          <div class="st">Lapsed</div><div class="sub">Lead gone cold</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-top:22px;padding-top:18px;border-top:1px dashed var(--border);color:var(--text3);font-size:14px">
+      <b style="color:var(--text2)">Reschedule</b> can happen from Booked or No-show — it puts them back to Booked with a new class.
+    </div>
+  </div>
+
+  <div class="detail">
+    <div class="card" id="pane"></div>
+    <div class="mini"><div class="miniscr" id="mini"></div></div>
+  </div>
+</div>
+
+<div class="flag">PROTOTYPE · dummy data</div>
+
+<script>
+var ICO_USER='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+var ICO_CAL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
+var ICO_WARN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
+var ICO_OK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+var ICO_CLOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+
+var S={
+  booked:{
+    tagc:'var(--blue-tint)',tagt:'var(--blue)',tag:'STATE 1',
+    h:'Booked',
+    p:'They picked a gym, a class and a time. The spot is saved the moment they hit confirm — before the health waiver, so we never lose the lead.',
+    who:'<b>Nobody has to do anything.</b> It arrives on its own.',
+    whoico:ICO_USER,
+    rows:[
+      ['Trial appears in <b>Patricia\'s Trials tab</b> and inside the <b>teacher\'s class card</b>'],
+      ['Confirmation email goes out with the waiver link'],
+      ['If the waiver is still unsigned a day out, the app <b>reminds them by itself</b>']
+    ],
+    gap:null,
+    fix:{h:'Already works',p:'This is the part we\'ve built. The booking, the email, the two views, the reminder.'},
+    mini:{
+      title:'Trials · Upcoming',
+      badges:'<span class="bg b-bk">BOOKED</span><span class="bg b-ok">WAIVER OK</span>',
+      when:'Tonight 6:00PM · No-Gi', past:false, hot:false,
+      acts:'<div class="acts c4"><button disabled>Attended</button><button class="p">Convert</button><button>Reschedule</button><button class="d">Lapse</button></div>',
+      note:null
+    }
+  },
+  attended:{
+    tagc:'var(--green-bg)',tagt:'var(--green)',tag:'STATE 2',
+    h:'Attended',
+    p:'They turned up and trained. This is the moment the sale is warmest — and the moment Patricia should be calling.',
+    who:'<b>The teacher</b> marks them present in the class, same as any student. Patricia never has to be told.',
+    whoico:ICO_OK,
+    rows:[
+      ['Teacher taps <b>Present</b> on the trial in his class card'],
+      ['The trial flips to Attended <b>by itself</b> — nobody messages anybody'],
+      ['Trial attendance <b>does not</b> count toward belt promotion (the clock only starts when they join)']
+    ],
+    gap:{h:'Today it\'s backwards',p:'Patricia marks Attended by hand, from memory, in the Trials list — usually the next day. The teacher was standing right there and had no way to say so.'},
+    fix:{h:'The fix',p:'The trial already sits in the teacher\'s class card. Let him mark Present there. Attended becomes a by-product of the class, not a chore for Patricia.'},
+    mini:{
+      title:'Trials · Attended',
+      badges:'<span class="bg b-at">ATTENDED</span><span class="bg b-ok">WAIVER OK</span>',
+      when:'Attended Mon 13 Jul · No-Gi', past:true, hot:false,
+      acts:'<div class="acts c3"><button class="p">Convert to member</button><button>Reschedule</button><button class="d">Lapse</button></div>',
+      note:'Marked present by Professor John Luhr, in the class. Patricia did nothing.'
+    }
+  },
+  noshow:{
+    tagc:'var(--amber-bg)',tagt:'var(--amber)',tag:'STATE 3 · NEW',
+    h:'No-show',
+    p:'The class came and went and nobody marked them present. Right now these people quietly rot as "Booked" forever, and nobody notices.',
+    who:'<b>Nobody.</b> The app works it out on its own once the class is over.',
+    whoico:ICO_CLOCK,
+    rows:[
+      ['The class ends, no attendance was marked → the trial becomes <b>No-show</b>'],
+      ['It moves to a <b>Needs follow-up</b> list so Patricia can ring them'],
+      ['From here she can <b>Reschedule</b> them into another class, or <b>Lapse</b> them']
+    ],
+    gap:{h:'This state does not exist today',p:'The database only knows booked, attended and lapsed. Someone who books and never shows sits in "Booked" indefinitely. The Trials list slowly fills with ghosts, and the ones worth chasing are lost in the pile.'},
+    fix:{h:'The fix',p:'Add a No-show state that the app sets by itself when the class has passed unmarked. Suddenly Patricia has an actual call list instead of a graveyard.'},
+    mini:{
+      title:'Trials · Needs follow-up',
+      badges:'<span class="bg b-ns">NO-SHOW</span><span class="bg b-ok">WAIVER OK</span>',
+      when:'Missed Mon 13 Jul · No-Gi', past:true, hot:true,
+      acts:'<div class="acts c3"><button class="p">Reschedule</button><button>Convert</button><button class="d">Lapse</button></div>',
+      note:'Didn\'t show. Give them a ring — most people just got busy.'
+    }
+  },
+  member:{
+    tagc:'var(--green-bg)',tagt:'var(--green)',tag:'STATE 4',
+    h:'Member',
+    p:'They signed up. The trial becomes a real student, and everything the waiver collected travels with them.',
+    who:'<b>Patricia</b> taps Convert. One action.',
+    whoico:ICO_USER,
+    rows:[
+      ['A student is created — white belt, zero classes, clock starts <b>now</b>'],
+      ['Health flags, emergency contact and the signed waiver land on their <b>profile</b>'],
+      ['The trial row is kept as history — we never lose where they came from'],
+      ['They get an invite to sign in and see their own progress']
+    ],
+    gap:{h:'Kids can\'t convert',p:'The Convert button is greyed out for every kid trial — "coming soon". Kids are 63 of the 117 students. Patricia converts an adult in one tap, and has to create a kid by hand, from scratch, retyping everything.'},
+    fix:{h:'The fix',p:'Make kid conversion work: link the parent, carry the date of birth, drop them in the kids programme. Same one tap.'},
+    mini:{
+      title:'Roster · Members',
+      badges:'<span class="bg b-mb">MEMBER</span><span class="bg b-ok">WAIVER OK</span>',
+      when:'Joined 13 Jul · White belt', past:false, hot:false,
+      acts:'<div class="acts c2"><button class="p">View profile</button><button>Health tab</button></div>',
+      note:'Asthma and knee injury carried over from the waiver. Nobody re-typed a thing.'
+    }
+  },
+  lapsed:{
+    tagc:'var(--grey-bg)',tagt:'var(--grey)',tag:'STATE 5',
+    h:'Lapsed',
+    p:'They\'re not coming. Not a member, not chasing anymore — but never deleted. People come back.',
+    who:'<b>Patricia</b>, once she\'s decided the lead is cold.',
+    whoico:ICO_USER,
+    rows:[
+      ['Drops out of the active Trials list'],
+      ['Kept forever as history — for remarketing, and to know what didn\'t work'],
+      ['Can be brought back: if they ring in six months, reschedule them']
+    ],
+    gap:{h:'Nothing chases them first',p:'Someone who books and vanishes gets no nudge at all. The academy loses them without ever having sent a "we missed you — want to pick another time?"'},
+    fix:{h:'The fix',p:'One automatic follow-up before anyone gives up. It costs nothing and it saves the ones who just got busy.'},
+    mini:{
+      title:'Trials · Lapsed',
+      badges:'<span class="bg b-lp">LAPSED</span>',
+      when:'Booked 13 Jul · never came', past:true, hot:false,
+      acts:'<div class="acts c2"><button class="p">Reschedule</button><button>Convert</button></div>',
+      note:'Kept for remarketing. If they come back, one tap and they\'re booked again.'
+    }
+  }
+};
+
+function pick(el,k){
+  document.querySelectorAll('.node').forEach(function(n){n.classList.remove('on')});
+  el.classList.add('on');
+  var s=S[k];
+  var rows=s.rows.map(function(r){return '<div class="row"><span class="dot"></span><span>'+r[0]+'</span></div>';}).join('');
+  var html='<span class="tag" style="background:'+s.tagc+';color:'+s.tagt+'">'+s.tag+'</span>'+
+    '<h3>'+s.h+'</h3><p>'+s.p+'</p>'+
+    '<div class="who">'+s.whoico+'<span>'+s.who+'</span></div>'+
+    '<div class="rows">'+rows+'</div>';
+  if(s.gap) html+='<div class="gap"><h5>'+ICO_WARN+'Today</h5><p>'+s.gap.p+'</p></div>';
+  if(s.fix) html+='<div class="fix"><h5>'+ICO_OK+(s.fix.h||'The fix')+'</h5><p>'+s.fix.p+'</p></div>';
+  document.getElementById('pane').innerHTML=html;
+
+  var m=s.mini;
+  document.getElementById('mini').innerHTML=
+    '<div class="mtitle">'+m.title+'</div>'+
+    '<div class="trl'+(m.hot?' hot':'')+'">'+
+      '<div class="tp"><span class="n">Felipe Faraone</span>'+m.badges+'</div>'+
+      '<div class="c">felipefaraone@gmail.com · 0493 323 969</div>'+
+      '<div class="wn'+(m.past?' past':'')+'">'+ICO_CAL+m.when+'</div>'+
+      (m.note?'<div class="mnote">'+ICO_WARN+'<span>'+m.note+'</span></div>':'')+
+      m.acts+
+    '</div>';
+}
+pick(document.querySelector('.node'),'booked');
+</script>
+</body>
+</html>
