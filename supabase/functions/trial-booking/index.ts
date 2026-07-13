@@ -42,6 +42,18 @@ const ALLOWED_ORIGINS = [
 const BOOKING_HORIZON_DAYS = 8;
 const SYDNEY_TZ = "Australia/Sydney";
 
+// Trial-bookable class types. MUST mirror trial.html's TRIAL_TYPES allow-list,
+// but defined INDEPENDENTLY here — the page's list is a UX affordance, this is the
+// control. The academy advertises exactly these six as trial entry points; a
+// first-timer must not book, say, an advanced class or an unsupervised open mat,
+// even with a tampered/replayed request. Everything else (adv, gi, fund, jmma,
+// omat, any future code) is rejected below.
+const TRIAL_TYPE_CODES = new Set(["beg", "alev", "nogi", "mma", "jun", "mini"]);
+
+// No slot may be booked within this window of "now" (Australia/Sydney) — a class
+// starting in a few minutes helps nobody and the front desk cannot prepare.
+const LEAD_TIME_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 // ---- helpers ----------------------------------------------------------------
 
 function corsHeaders(origin: string | null) {
@@ -93,6 +105,34 @@ function sydneyTodayStr(): string {
 // Weekday (0=Sun..6=Sat) for a 'YYYY-MM-DD' calendar date, timezone-independent.
 function weekdayOf(dateStr: string): number {
   return new Date(dateStr + "T00:00:00Z").getUTCDay();
+}
+
+// Australia/Sydney's UTC offset (minutes east of UTC) at a given instant. Derived
+// by formatting the instant as Sydney wall-clock and diffing from the instant —
+// so DST (+10 vs +11) is handled without a timezone library.
+function sydneyOffsetMinutes(ms: number): number {
+  const dtf = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SYDNEY_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+  const p: Record<string, string> = {};
+  dtf.formatToParts(new Date(ms)).forEach((x) => { if (x.type !== "literal") p[x.type] = x.value; });
+  const asUTC = Date.UTC(
+    +p.year, +p.month - 1, +p.day,
+    +(p.hour === "24" ? "0" : p.hour), +p.minute, +p.second,
+  );
+  return Math.round((asUTC - ms) / 60000);
+}
+
+// Interpret 'YYYY-MM-DD' + 'HH:MM' as a Sydney wall-clock time → epoch ms. Start
+// from the naive UTC reading, then subtract Sydney's offset at (approximately)
+// that instant. The offset is stable except in the ~1h DST-transition window,
+// which is immaterial to a 2-hour lead-time gate.
+function sydneyWallToEpoch(dateStr: string, timeStr: string): number {
+  const naive = Date.parse(dateStr + "T" + hhmm(timeStr) + ":00Z");
+  const offMin = sydneyOffsetMinutes(naive);
+  return naive - offMin * 60000;
 }
 
 async function verifyTurnstile(token: string, ip: string | null): Promise<boolean> {
@@ -195,7 +235,7 @@ Deno.serve(async (req) => {
 
     const { data: cls, error: clsErr } = await supabase
       .from("classes")
-      .select("id, unit_id, day_of_week, time, active, audience")
+      .select("id, unit_id, day_of_week, time, active, audience, type")
       .eq("id", classId)
       .maybeSingle();
 
@@ -205,12 +245,25 @@ Deno.serve(async (req) => {
     if (weekdayOf(classDate) !== cls.day_of_week) return bad("That day doesn't match the class. Please pick another time.", origin);
     if (hhmm(String(cls.time)) !== clientTime) return bad("That time is no longer on the schedule. Please pick another time.", origin);
 
+    // Only the six advertised trial entry points are bookable — reject anything
+    // else (adv/gi/fund/jmma/omat/…) even if a tampered client sent its class_id.
+    if (!TRIAL_TYPE_CODES.has(String(cls.type))) {
+      return bad("That class isn't available for a free trial. Please pick another.", origin);
+    }
+
     // Date must sit inside [today, today + horizon] in Sydney.
     const todayStr = sydneyTodayStr();
     const maxStr = new Date(new Date(todayStr + "T00:00:00Z").getTime() + BOOKING_HORIZON_DAYS * 86400000)
       .toISOString().slice(0, 10);
     if (classDate < todayStr || classDate > maxStr) {
       return bad("Please pick a time within the next week.", origin);
+    }
+
+    // 2-hour lead time: the booked start (Sydney wall-clock) must be at least 2h
+    // out. Mirrors trial.html's LEAD_MIN filter; enforced here because the client
+    // grid is only an affordance.
+    if (sydneyWallToEpoch(classDate, String(cls.time)) - Date.now() < LEAD_TIME_MS) {
+      return bad("That class starts too soon to book. Please pick a later time.", origin);
     }
 
     // is_kid is DERIVED from the class, never taken from the client.

@@ -106,6 +106,7 @@
   .unitcard .pin{width:40px;height:40px;border-radius:10px;background:var(--blue-tint);color:var(--blue);display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .unitcard.on .pin{background:var(--blue);color:#fff}
   .unitcard .nm{font-family:'Barlow Condensed';font-weight:700;font-size:19px;letter-spacing:.3px}
+  .unitcard .ad{font-size:13px;color:var(--ink2);margin-top:4px;line-height:1.4}
 
   /* class cards */
   .grouphdr{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink3);margin:22px 0 11px}
@@ -336,11 +337,26 @@
     omat: { grad:"g5", desc:"Open training. Roll, drill and put your own game together.", age:"" }
   };
 
+  // ---- TRIAL-BOOKABLE type_code allow-list ----------------------------------
+  // The academy advertises exactly these six as trial entry points, so these are
+  // the ONLY class types a first-timer may book. Cards are still derived from the
+  // live timetable (correct — move a class, the page follows), but everything
+  // outside this set (adv, gi, fund, jmma, omat, any future code) stays invisible:
+  // a beginner does not debut in an advanced class or an unsupervised open mat.
+  // This is a UX affordance only — the Edge Function enforces the same six codes
+  // server-side, because a client-side list is not a control.
+  var TRIAL_TYPES = { beg:1, alev:1, nogi:1, mma:1, jun:1, mini:1 };
+
+  // No slot is bookable within this many minutes of "now" (Australia/Sydney) — a
+  // class starting in 18 minutes helps nobody and the front desk can't prepare.
+  var LEAD_MIN = 120;
+
   // ---- state ----------------------------------------------------------------
   var state = {
     rows: [],          // every public_timetable row
-    units: [],         // [{id,name}]
-    unit: null,        // {id,name}
+    unitsMeta: [],     // every public_units row (carries address / legacy_id)
+    units: [],         // bookable units [{id,name,legacy_id,address,city}]
+    unit: null,        // {id,name,legacy_id,address,city}
     typeCode: null, typeLabel: null, audience: null, duration: null,
     slot: null,        // {class_id,date,time,timeLabel,dayLabel}
     fallback: false,   // "none of these times work" path
@@ -376,7 +392,9 @@
   // Projects the weekly grid (public_timetable rows for the selected unit + type
   // + audience) onto the next 7 DAYS starting today in Australia/Sydney. Emits a
   // slot on each date whose weekday === the class's day_of_week, dropping any
-  // occurrence TODAY whose start time has already passed. Returns day groups.
+  // occurrence starting less than LEAD_MIN (2h) from now. Returns day groups; a
+  // day left empty simply doesn't render, and an empty window falls through to
+  // the "none of these times work" fallback (buildSlots handles both).
   // ============================================================================
   function projectSlots(){
     var syd = sydneyNow();
@@ -389,9 +407,11 @@
       var dateStr = d.toISOString().slice(0,10);
       var dow = d.getUTCDay();
       var daySlots = matches.filter(function(r){ return r.day_of_week===dow; });
-      if(i===0){
-        daySlots = daySlots.filter(function(r){ return hhmmToMin(r.start_time_raw) > syd.minutes; });
-      }
+      // 2-hour lead time: a slot's absolute offset from today's Sydney midnight
+      // (day i * 1440 min + start minute) must be at least LEAD_MIN past "now".
+      // Applied to EVERY day (handles the cross-midnight edge), replacing the old
+      // "drop today's already-passed" rule that let an 18-min-away class book.
+      daySlots = daySlots.filter(function(r){ return (i*1440 + hhmmToMin(r.start_time_raw)) >= syd.minutes + LEAD_MIN; });
       if(!daySlots.length) continue;
       daySlots.sort(function(a,b){ return hhmmToMin(a.start_time_raw)-hhmmToMin(b.start_time_raw); });
       groups.push({
@@ -450,29 +470,46 @@
   });
 
   // ============================================================================
-  // STEP 1 — UNIT (distinct unit_id/unit_name from the timetable)
+  // STEP 1 — UNIT (cards from public_units, filtered to units that have classes)
   // ============================================================================
   function pinSvg(){ return '<div class="pin"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>'; }
+
+  // Apply a unit choice (from a card tap OR the deep-link). advance=true jumps
+  // straight to step 2 — used only by the ?unit= pre-selection.
+  function selectUnit(u, advance){
+    if(!u) return;
+    state.unit=u;
+    // changing unit invalidates downstream choices
+    state.typeCode=state.typeLabel=state.audience=null; state.slot=null; state.fallback=false;
+    Array.prototype.forEach.call($("unitWrap").querySelectorAll(".unitcard"), function(b){ b.classList.toggle("on", b.getAttribute("data-uid")===u.id); });
+    $("c1").disabled=false; $("h1").textContent="Ready — continue";
+    paintSummary();
+    if(advance){ buildClasses(); go(2); }
+  }
+
   function buildUnits(){
-    var seen={}, list=[];
-    state.rows.forEach(function(r){ if(r.unit_id && !seen[r.unit_id]){ seen[r.unit_id]=1; list.push({id:r.unit_id,name:r.unit_name}); } });
-    list.sort(function(a,b){ return a.name.localeCompare(b.name); });
+    // Only units that actually have classes (rows in public_timetable) can be
+    // booked — a unit in public_units with no timetable rows is never offered.
+    var hasClasses={};
+    state.rows.forEach(function(r){ if(r.unit_id) hasClasses[r.unit_id]=1; });
+    // Cards come from public_units (it carries the address); keep only bookable.
+    var list=(state.unitsMeta||[])
+      .filter(function(u){ return u.unit_id && hasClasses[u.unit_id]; })
+      .map(function(u){ return { id:u.unit_id, name:u.unit_name, legacy_id:String(u.legacy_id||"").toLowerCase(), address:u.address||"", city:u.city||"" }; });
+    list.sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });
     state.units=list;
-    if(!list.length){ $("unitWrap").innerHTML='<div class="emptynote">No classes are published right now. Please call us on 0406 456 766 and we\'ll book you in.</div>'; return; }
+    if(!list.length){ $("unitWrap").className=""; $("unitWrap").innerHTML='<div class="emptynote">No classes are published right now. Please call us on 0406 456 766 and we\'ll book you in.</div>'; return; }
     $("unitWrap").className="cards";
     $("unitWrap").innerHTML = list.map(function(u){
-      return '<button type="button" class="unitcard" data-uid="'+esc(u.id)+'">'+pinSvg()+'<div><div class="nm">'+esc(u.name)+'</div></div></button>';
+      // Address line only when there IS an address; city appended if present. A
+      // unit with a null address renders with no line at all (no empty row).
+      var addr = u.address ? '<div class="ad">'+esc(u.address+(u.city?", "+u.city:""))+'</div>' : "";
+      return '<button type="button" class="unitcard" data-uid="'+esc(u.id)+'">'+pinSvg()+'<div><div class="nm">'+esc(u.name)+'</div>'+addr+'</div></button>';
     }).join("");
     Array.prototype.forEach.call($("unitWrap").querySelectorAll(".unitcard"), function(btn){
       btn.addEventListener("click", function(){
         var uid=btn.getAttribute("data-uid");
-        state.unit = state.units.filter(function(x){return x.id===uid;})[0];
-        // changing unit invalidates downstream choices
-        state.typeCode=state.typeLabel=state.audience=null; state.slot=null; state.fallback=false;
-        Array.prototype.forEach.call($("unitWrap").querySelectorAll(".unitcard"), function(b){ b.classList.remove("on"); });
-        btn.classList.add("on");
-        $("c1").disabled=false; $("h1").textContent="Ready — continue";
-        paintSummary();
+        selectUnit(state.units.filter(function(x){return x.id===uid;})[0], false);
       });
     });
   }
@@ -486,6 +523,7 @@
     var seen={}, items=[];
     state.rows.forEach(function(r){
       if(r.unit_id!==state.unit.id) return;
+      if(!TRIAL_TYPES[r.type_code]) return;   // trial entry points only (see TRIAL_TYPES)
       var key=r.audience+"|"+r.type_code;
       if(seen[key]) return; seen[key]=1;
       items.push({ audience:r.audience, type_code:r.type_code, type_label:r.type_label, duration:r.duration_minutes });
@@ -705,29 +743,35 @@
   }
 
   // ============================================================================
-  // BOOT — read the live timetable, then build step 1
+  // BOOT — read the live timetable + unit directory, then build step 1
   // ============================================================================
-  function loadTimetable(){
-    var url = SUPA + "/rest/v1/public_timetable?select=class_id,unit_id,unit_name,day_of_week,day_name,start_time,start_time_raw,duration_minutes,audience,type_code,type_label&order=day_of_week,start_time_raw";
-    fetch(url, { headers:{ apikey:ANON, Authorization:"Bearer "+ANON } })
-      .then(function(r){ return r.json(); })
-      .then(function(rows){
-        state.rows = Array.isArray(rows) ? rows : [];
-        buildUnits();
-        // Single academy → auto-select and let them continue straight away.
-        if(state.units.length===1){
-          var only=$("unitWrap").querySelector(".unitcard");
-          if(only) only.click();
-        }
-      })
-      .catch(function(){
-        $("unitWrap").className="";
-        $("unitWrap").innerHTML='<div class="emptynote">We couldn\'t load the timetable. Please refresh, or call us on 0406 456 766 and we\'ll book you in.</div>';
-      });
+  function loadData(){
+    var h = { apikey:ANON, Authorization:"Bearer "+ANON };
+    var tUrl = SUPA + "/rest/v1/public_timetable?select=class_id,unit_id,unit_name,day_of_week,day_name,start_time,start_time_raw,duration_minutes,audience,type_code,type_label&order=day_of_week,start_time_raw";
+    var uUrl = SUPA + "/rest/v1/public_units?select=unit_id,legacy_id,unit_name,address,city,phone,email";
+    Promise.all([
+      fetch(tUrl, { headers:h }).then(function(r){ return r.json(); }),
+      fetch(uUrl, { headers:h }).then(function(r){ return r.json(); })
+    ]).then(function(res){
+      state.rows      = Array.isArray(res[0]) ? res[0] : [];
+      state.unitsMeta = Array.isArray(res[1]) ? res[1] : [];
+      buildUnits();
+      if(!state.units.length) return;
+      // Deep link: ?unit=<legacy_id> (e.g. nb|cd), matched against public_units —
+      // NOT a hard-coded map, and never trusted beyond pre-selection (the EF
+      // re-derives unit_id from the view). Unknown/missing → normal step 1.
+      var qs = (new URLSearchParams(location.search).get("unit")||"").trim().toLowerCase();
+      var deep = qs ? state.units.filter(function(u){ return u.legacy_id===qs; })[0] : null;
+      if(deep){ selectUnit(deep, true); }
+      else if(state.units.length===1){ selectUnit(state.units[0], false); } // single academy → pre-select
+    }).catch(function(){
+      $("unitWrap").className="";
+      $("unitWrap").innerHTML='<div class="emptynote">We couldn\'t load the timetable. Please refresh, or call us on 0406 456 766 and we\'ll book you in.</div>';
+    });
   }
 
   paintSummary();
-  loadTimetable();
+  loadData();
 })();
 </script>
 </body>
