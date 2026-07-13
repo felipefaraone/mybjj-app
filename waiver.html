@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Health Waiver | myBJJ</title>
+<meta name="robots" content="noindex"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet"/>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+<style>
+:root{
+  --blue:#1A5DAD;--blue-dark:#124680;--blue-tint:#eef4fb;--blue-mid:#7ba4d3;
+  --ink:#16202b;--ink2:#5a6a78;--ink3:#93a0ac;
+  --line:#e1e7ee;--bg:#f5f7fa;--card:#fff;
+  --green:#1e7d47;--green-bg:#e8f6ee;--green-border:#bfe5cf;
+  --amber:#8a5a00;--amber-bg:#fff6e6;--amber-border:#f0dcb4;
+  --red:#c0392b;--red-bg:#fdecea;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);font-family:'Barlow',system-ui,sans-serif;color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:680px;margin:0 auto;padding:0 20px}
+
+/* header — minimal, checkout style */
+.hdr{background:var(--blue-dark);border-bottom:3px solid var(--blue)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;height:70px}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none}
+.brand img{width:42px;height:42px;border-radius:50%;background:#fff}
+.brand span{font-family:'Barlow Condensed';font-weight:700;font-size:21px;letter-spacing:1px;text-transform:uppercase;color:#fff}
+.callus{display:flex;align-items:center;gap:7px;text-decoration:none;color:#cfe0f2;font-weight:600;font-size:14px;padding:8px 14px;border:1px solid rgba(255,255,255,.22);border-radius:22px}
+.callus svg{width:14px;height:14px}
+@media(max-width:520px){.callus span{display:none}}
+
+/* progress */
+.steps{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+.steps .wrap{display:flex;padding:0}
+.stp{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 4px;
+  font-family:'Barlow Condensed';font-weight:700;font-size:12.5px;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--ink3);border-bottom:3px solid transparent;transition:.2s}
+.stp .n{width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--ink3);display:flex;align-items:center;justify-content:center;font-size:11.5px;flex-shrink:0}
+.stp .n svg{width:11px;height:11px}
+.stp.on{color:var(--blue);border-bottom-color:var(--blue)}
+.stp.on .n{background:var(--blue);color:#fff}
+.stp.done .n{background:var(--green);color:#fff}
+@media(max-width:640px){.stp span.tx{display:none}}
+
+main{padding:30px 0 60px}
+.screen{display:none}
+.screen.on{display:block;animation:fade .2s ease}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.lead{margin-bottom:22px}
+.lead h1{font-family:'Barlow Condensed';font-weight:700;font-size:29px;letter-spacing:.4px;text-transform:uppercase;line-height:1.12}
+.lead p{color:var(--ink2);font-size:16px;margin-top:7px}
+.who{display:flex;gap:10px;background:var(--blue-tint);border-radius:10px;padding:13px 15px;margin-bottom:20px;font-size:14.5px;color:var(--blue-dark);line-height:1.45}
+.who svg{width:18px;height:18px;flex-shrink:0;margin-top:1px}
+.who b{font-weight:700}
+
+/* form */
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+@media(max-width:560px){.formgrid{grid-template-columns:1fr}}
+.field{display:block}
+.field.full{grid-column:1/-1}
+.field .lab{display:block;font-size:13.5px;font-weight:600;color:var(--ink2);margin-bottom:6px}
+.field .req{color:var(--red)}
+.field .hint{display:block;font-size:12.5px;color:var(--ink3);margin-top:5px}
+input[type=text],input[type=email],input[type=tel],input[type=date],select{
+  width:100%;border:1.5px solid var(--line);border-radius:9px;padding:13px 14px;background:#fff;
+  font-family:'Barlow';font-size:16px;color:var(--ink);outline:none;height:48px;transition:.14s}
+input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,93,173,.11)}
+input.err,select.err{border-color:var(--red)}
+.grouphdr{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink3);margin:24px 0 11px}
+.chips{display:flex;flex-wrap:wrap;gap:9px}
+.chip{border:1.5px solid var(--line);background:#fff;border-radius:22px;padding:10px 17px;cursor:pointer;font-weight:600;font-size:14.5px;color:var(--ink2);user-select:none;transition:.12s}
+.chip.on{border-color:var(--blue);background:var(--blue-tint);color:var(--blue)}
+
+/* yes/no */
+.ynrow{background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.ynrow .q{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:34px}
+.ynrow .q .t{font-size:15.5px;font-weight:500;flex:1;line-height:1.4}
+.ynbtns{display:flex;gap:7px;flex-shrink:0}
+.ynbtns button{border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:9px 19px;font-family:'Barlow Condensed';font-weight:700;font-size:13.5px;letter-spacing:.6px;cursor:pointer;color:var(--ink2);min-width:64px;transition:.12s}
+.ynbtns button.no.on{background:var(--green-bg);border-color:var(--green-border);color:var(--green)}
+.ynbtns button.yes.on{background:var(--amber-bg);border-color:var(--amber-border);color:var(--amber)}
+.ynrow .detail{display:none;margin-top:12px}
+.ynrow .detail.open{display:block}
+
+/* legal + signature */
+.legal{background:#fbfcfd;border:1px solid var(--line);border-radius:10px;padding:16px;max-height:230px;overflow-y:auto;font-size:13.5px;color:var(--ink2);line-height:1.6}
+.legal p{margin-bottom:10px}
+.legal p:last-child{margin-bottom:0}
+.legal b{color:var(--ink)}
+.agree{display:flex;gap:11px;align-items:flex-start;margin-top:16px;cursor:pointer}
+.agree input{margin-top:3px;width:19px;height:19px;flex-shrink:0;accent-color:var(--blue)}
+.agree span{font-size:14.5px;font-weight:500}
+.sigwrap{position:relative;border:1.5px dashed var(--line);border-radius:10px;background:#fbfcfd;overflow:hidden;margin-top:8px}
+.sigwrap canvas{display:block;width:100%;height:170px;touch-action:none;cursor:crosshair}
+.sigclear{position:absolute;top:8px;right:8px;background:#fff;border:1px solid var(--line);border-radius:7px;padding:5px 12px;font-family:'Barlow';font-weight:600;font-size:12.5px;color:var(--ink2);cursor:pointer;z-index:2}
+.sighint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:14px;pointer-events:none}
+.sighint.gone{display:none}
+
+.cf{margin:18px 0 4px;min-height:66px}
+.actionbar{margin-top:26px;padding-top:20px;border-top:1px solid var(--line);display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+.btn{border:none;border-radius:9px;padding:15px 34px;font-family:'Barlow Condensed';font-weight:700;font-size:16.5px;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;transition:.14s}
+.btn.primary{background:var(--blue);color:#fff}
+.btn.primary:hover:not(:disabled){background:var(--blue-dark)}
+.btn.primary:disabled{opacity:.35;cursor:not-allowed}
+.btn.green{background:var(--green);color:#fff}
+.back{background:none;border:none;color:var(--blue);font-weight:600;font-size:14.5px;cursor:pointer;font-family:'Barlow';display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:0}
+.back svg{width:15px;height:15px}
+.hintline{font-size:13.5px;color:var(--ink3)}
+.formerr{background:var(--red-bg);color:var(--red);border-radius:10px;padding:12px 14px;font-size:14px;font-weight:600;margin-bottom:18px;display:none}
+
+/* states */
+.state{text-align:center;padding:50px 20px}
+.state .ico{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+.state .ico.ok{background:var(--green-bg);color:var(--green)}
+.state .ico.bad{background:var(--red-bg);color:var(--red)}
+.state .ico svg{width:36px;height:36px}
+.state h2{font-family:'Barlow Condensed';font-weight:700;font-size:30px;letter-spacing:.5px;text-transform:uppercase}
+.state p{color:var(--ink2);font-size:16px;margin-top:9px;max-width:460px;margin-left:auto;margin-right:auto}
+.badge{display:inline-flex;align-items:center;gap:8px;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:8px;padding:9px 17px;font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:.9px;margin-top:18px}
+.foot{background:#12181f;color:#9aa7b4;padding:26px 0;margin-top:40px;text-align:center;font-size:13px}
+.foot a{color:#9aa7b4}
+.priv{display:flex;gap:9px;background:var(--blue-tint);border-radius:9px;padding:11px 13px;margin-top:20px;font-size:12.5px;color:var(--blue-dark);line-height:1.45}
+.priv svg{width:14px;height:14px;flex-shrink:0;margin-top:1px}
+</style>
+</head>
+<body>
+
+<header class="hdr"><div class="wrap">
+  <a class="brand" href="https://mybjj.com.au"><img src="/icon-192.png" alt=""/><span>myBJJ</span></a>
+  <a class="callus" href="tel:+61406456766">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+    <span>0406 456 766</span>
+  </a>
+</div></header>
+
+<div class="steps" id="steps"><div class="wrap">
+  <div class="stp on" id="p1"><span class="n">1</span><span class="tx">About</span></div>
+  <div class="stp" id="p2"><span class="n">2</span><span class="tx">Training</span></div>
+  <div class="stp" id="p3"><span class="n">3</span><span class="tx">Health</span></div>
+  <div class="stp" id="p4"><span class="n">4</span><span class="tx">Sign</span></div>
+</div></div>
+
+<main><div class="wrap">
+
+  <!-- LOADING -->
+  <div class="screen on" id="loading">
+    <div class="state"><p>Loading your form…</p></div>
+  </div>
+
+  <!-- BAD TOKEN -->
+  <div class="screen" id="badlink">
+    <div class="state">
+      <div class="ico bad"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg></div>
+      <h2>This link isn't valid</h2>
+      <p id="badmsg">It may have expired, or already been used. Give us a call and we'll sort it out in a minute — or just fill it in when you arrive.</p>
+      <div class="actionbar" style="justify-content:center;border:none"><a class="btn primary" href="tel:+61406456766" style="text-decoration:none">Call the gym</a></div>
+    </div>
+  </div>
+
+  <div class="formerr" id="formerr"></div>
+
+  <!-- STEP 1 · ABOUT -->
+  <section class="screen" id="s1">
+    <div class="lead">
+      <h1>Health check</h1>
+      <p>Takes about three minutes, mostly yes or no. Do it now and walk straight onto the mats — no paperwork at reception.</p>
+    </div>
+    <div class="who" id="whobox"></div>
+    <div class="formgrid">
+      <label class="field"><span class="lab">Date of birth<span class="req"> *</span></span><input type="date" id="dob"/></label>
+      <label class="field"><span class="lab">Gender</span>
+        <select id="gender"><option value="">Select…</option><option>Female</option><option>Male</option><option>Other</option><option>Prefer not to say</option></select></label>
+      <label class="field full"><span class="lab">Address<span class="req"> *</span></span><input type="text" id="address" placeholder="Street, suburb, postcode"/></label>
+      <label class="field"><span class="lab">Occupation</span><input type="text" id="occupation" placeholder="e.g. Hospitality, student"/></label>
+      <label class="field"><span class="lab">How did you hear about us?</span><input type="text" id="how_heard" placeholder="Google, a friend, walked past…"/>
+        <span class="hint">If a member referred you, name them here so we can thank them.</span></label>
+    </div>
+
+    <div class="grouphdr">Emergency contact</div>
+    <div class="formgrid">
+      <label class="field"><span class="lab">Their name<span class="req"> *</span></span><input type="text" id="em_name"/></label>
+      <label class="field"><span class="lab">Their phone<span class="req"> *</span></span><input type="tel" id="em_phone" placeholder="0412 345 678"/></label>
+      <label class="field full"><span class="lab">Relationship to you<span class="req"> *</span></span>
+        <select id="em_rel"><option value="">Select…</option><option>Partner / spouse</option><option>Parent</option><option>Sibling</option><option>Friend</option><option>Other</option></select></label>
+    </div>
+
+    <div class="actionbar"><button class="btn primary" onclick="go(2)">Continue</button><span class="hintline">Step 1 of 4</span></div>
+  </section>
+
+  <!-- STEP 2 · TRAINING -->
+  <section class="screen" id="s2">
+    <button class="back" onclick="go(1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
+    <div class="lead"><h1>Your training</h1><p>Helps your coach pitch the first class right.</p></div>
+
+    <div class="grouphdr" style="margin-top:0">What brings you in? Pick any.</div>
+    <div class="chips" id="goals">
+      <div class="chip" onclick="tog(this)">Fitness</div>
+      <div class="chip" onclick="tog(this)">Self-defence</div>
+      <div class="chip" onclick="tog(this)">Weight loss</div>
+      <div class="chip" onclick="tog(this)">New challenge</div>
+      <div class="chip" onclick="tog(this)">Competition</div>
+      <div class="chip" onclick="tog(this)">Martial arts knowledge</div>
+      <div class="chip" onclick="tog(this)">Social &amp; fun</div>
+    </div>
+
+    <div class="grouphdr">Experience</div>
+    <div class="ynrow" data-k="trained_before">
+      <div class="q"><span class="t">Trained martial arts before?</span>
+        <span class="ynbtns"><button class="no" onclick="yn(this,false)">No</button><button class="yes" onclick="yn(this,true)">Yes</button></span></div>
+      <div class="detail">
+        <div class="formgrid" style="gap:12px">
+          <label class="field"><span class="lab">Style</span><input type="text" id="ma_style" placeholder="e.g. Judo"/></label>
+          <label class="field"><span class="lab">Rank</span><input type="text" id="ma_rank" placeholder="e.g. Blue belt"/></label>
+          <label class="field"><span class="lab">Academy</span><input type="text" id="ma_gym"/></label>
+          <label class="field"><span class="lab">Years</span><input type="text" id="ma_years" placeholder="2"/></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="actionbar"><button class="btn primary" onclick="go(3)">Continue</button><span class="hintline">Step 2 of 4</span></div>
+  </section>
+
+  <!-- STEP 3 · HEALTH -->
+  <section class="screen" id="s3">
+    <button class="back" onclick="go(2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
+    <div class="lead"><h1>Medical history</h1><p id="medlead">Saying yes just means your coach keeps an eye out. It rarely stops anyone training.</p></div>
+    <div id="med"></div>
+    <div class="actionbar"><button class="btn primary" onclick="go(4)">Continue</button><span class="hintline">Step 3 of 4</span></div>
+  </section>
+
+  <!-- STEP 4 · SIGN -->
+  <section class="screen" id="s4">
+    <button class="back" onclick="go(3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
+    <div class="lead"><h1>Sign and you're done</h1></div>
+
+    <div class="legal">
+      <p id="legal-minor" style="display:none"><b>Parent / guardian.</b> I am the parent or legal guardian of the participant named above and I have authority to sign this on their behalf.</p>
+      <p>If you answered <b>yes</b> to any statements in the medical history, it is recommended you consult your Medical Practitioner or appropriate Allied Health Professional before engaging in exercise. You may be requested to provide a medical clearance before commencing exercise.</p>
+      <p>By signing this form, I acknowledge that I have read and understood this waiver. I acknowledge that I have no injuries, physical restrictions, disabilities or any predispositions to sickness or injury, which may be aggravated or adversely affected as a result of my participation.</p>
+      <p>I acknowledge and recognise that martial arts training (Brazilian Jiu-Jitsu, Judo, Submission Grappling and Mixed Martial Arts &mdash; including children's martial arts) may be a hazardous activity, and therefore I train at my own risk and will not seek to penalise, prosecute or claim compensation from the organisers, sponsors, trainers or participants of the programs for any injury, loss or damages.</p>
+      <p><b>The information in this form is strictly confidential</b> and subject to laws and regulations contained in the Privacy Laws, enacted December 2001.</p>
+    </div>
+
+    <label class="agree">
+      <input type="checkbox" id="agree"/>
+      <span id="agreetx">I have read and accept the waiver above.</span>
+    </label>
+
+    <div class="grouphdr" id="siglab">Sign below</div>
+    <div class="sigwrap">
+      <canvas id="sigpad"></canvas>
+      <button type="button" class="sigclear" onclick="clearSig()">Clear</button>
+      <div class="sighint" id="sighint">Draw your signature with your finger or mouse</div>
+    </div>
+    <div class="field" style="margin-top:16px">
+      <span class="lab" id="namelab">Type your full name<span class="req"> *</span></span>
+      <input type="text" id="signed_by"/>
+    </div>
+
+    <div class="cf" id="cf"></div>
+
+    <div class="priv">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span>Your answers stay with the academy. Your coach only sees what keeps you safe on the mat.</span>
+    </div>
+
+    <div class="actionbar"><button class="btn green" id="submitBtn" onclick="submitWaiver()">Sign and finish</button><span class="hintline">Step 4 of 4</span></div>
+  </section>
+
+  <!-- DONE -->
+  <section class="screen" id="done">
+    <div class="state">
+      <div class="ico ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h2>All done</h2>
+      <p>You're cleared to train. Walk straight onto the mats when you arrive — no paperwork, no queue.</p>
+      <span class="badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>WAIVER COMPLETE</span>
+    </div>
+  </section>
+
+</div></main>
+
+<footer class="foot"><div class="wrap">
+  myBJJ · Brazilian Jiu-Jitsu, Self Defence &amp; Mixed Martial Arts<br/>
+  <a href="tel:+61406456766">0406 456 766</a> · <a href="mailto:info@mybjj.com.au">info@mybjj.com.au</a>
+</div></footer>
+
+<script>
+(function(){
+"use strict";
+
+var ENDPOINT = "https://dcilltzgegqsrgatskhz.supabase.co/functions/v1/waiver-submit";
+var WAIVER_VERSION = "2026-07-nsw-v1";                      // must match the Edge Function
+var TURNSTILE_SITE_KEY = "0x4AAAAAADzwYmJWCVteEQfI";
+
+var TOKEN = new URLSearchParams(location.search).get("t") || "";
+var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+var st = { minor:false, cfToken:"", yn:{}, goals:[] };
+
+function $(id){ return document.getElementById(id); }
+function val(id){ var e=$(id); return e ? (e.value||"").trim() : ""; }
+function show(id){
+  document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("on"); });
+  $(id).classList.add("on");
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function setSteps(n){
+  [1,2,3,4].forEach(function(i){
+    var el=$("p"+i); el.classList.remove("on","done");
+    var num=el.querySelector(".n");
+    if(i<n){ el.classList.add("done"); num.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>'; }
+    else { num.textContent=i; }
+    if(i===n) el.classList.add("on");
+  });
+}
+window.go = function(n){ $("formerr").style.display="none"; setSteps(n); show("s"+n); };
+window.tog = function(el){ el.classList.toggle("on"); };
+window.yn = function(btn,isYes){
+  var row=btn.closest(".ynrow");
+  row.querySelectorAll(".ynbtns button").forEach(function(b){ b.classList.remove("on"); });
+  btn.classList.add("on");
+  st.yn[row.getAttribute("data-k")] = isYes;
+  var d=row.querySelector(".detail");
+  if(d) d.classList.toggle("open", isYes);
+};
+
+// ---- medical questions ----
+var MED = [
+  ["takes_medication",    "Do you take any medication regularly?",            "Which medication?"],
+  ["has_diabetes",        "Diabetes?",                                        "Type 1 or type 2?"],
+  ["has_heart_condition", "Heart problems, angina, or chest pain when active?","Tell us briefly"],
+  ["has_bp",              "High blood pressure or high cholesterol?",          "Tell us briefly"],
+  ["has_asthma",          "Lung disorder — asthma, emphysema?",                "Do you carry an inhaler?"],
+  ["has_epilepsy",        "Epilepsy, seizures or convulsions?",                "Tell us briefly"],
+  ["has_dizzy",           "Dizzy spells or fainting?",                         "Tell us briefly"],
+  ["has_concussion",      "Any concussion in the last 12 months?",             "When, and how bad?"],
+  ["has_recent_injury",   "Any serious muscle or joint injury in the last 12 months?","What, and where?"],
+  ["is_pregnant",         "Are you pregnant?",                                 ""],
+  ["has_allergies",       "Any allergies we should know about?",               "Which allergies?"],
+  ["has_other",           "Any other medical reason that might stop you exercising?","Tell us briefly"]
+];
+$("med").innerHTML = MED.map(function(m){
+  return '<div class="ynrow" data-k="'+m[0]+'">'+
+    '<div class="q"><span class="t">'+m[1]+'</span>'+
+    '<span class="ynbtns"><button class="no" onclick="yn(this,false)">No</button><button class="yes" onclick="yn(this,true)">Yes</button></span></div>'+
+    (m[2] ? '<div class="detail"><input type="text" id="d_'+m[0]+'" placeholder="'+m[2]+'"/></div>' : '')+
+    '</div>';
+}).join("");
+
+// ---- signature pad ----
+var sigDirty = false, sigCtx = null;
+(function(){
+  var c = $("sigpad");
+  var ctx = c.getContext("2d"); sigCtx = ctx;
+  var drawing = false;
+  function resize(){
+    var r = c.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    var keep = sigDirty ? c.toDataURL() : null;
+    c.width = r.width * dpr; c.height = r.height * dpr;
+    ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr,dpr);
+    ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#16202b";
+    if(keep){ var img=new Image(); img.onload=function(){ ctx.drawImage(img,0,0,r.width,r.height); }; img.src=keep; }
+  }
+  function pos(e){
+    var r=c.getBoundingClientRect();
+    var t=(e.touches && e.touches[0]) || e;
+    return { x:t.clientX-r.left, y:t.clientY-r.top };
+  }
+  function start(e){ e.preventDefault(); drawing=true; var p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y);
+    if(!sigDirty){ sigDirty=true; $("sighint").classList.add("gone"); } }
+  function move(e){ if(!drawing) return; e.preventDefault(); var p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); }
+  function end(){ drawing=false; }
+  c.addEventListener("mousedown",start); c.addEventListener("mousemove",move);
+  window.addEventListener("mouseup",end);
+  c.addEventListener("touchstart",start,{passive:false});
+  c.addEventListener("touchmove",move,{passive:false});
+  c.addEventListener("touchend",end);
+  window.clearSig = function(){
+    var r=c.getBoundingClientRect();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,c.width,c.height);
+    var dpr=window.devicePixelRatio||1; ctx.scale(dpr,dpr);
+    ctx.lineWidth=2.2; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle="#16202b";
+    sigDirty=false; $("sighint").classList.remove("gone");
+  };
+  setTimeout(resize,60);
+  window.addEventListener("resize",resize);
+})();
+
+// ---- Turnstile ----
+window.onloadTurnstileCallback = function(){
+  if(!window.turnstile) return;
+  window.turnstile.render("#cf", {
+    sitekey: TURNSTILE_SITE_KEY,
+    callback: function(t){ st.cfToken = t; },
+    "error-callback": function(){ st.cfToken = ""; },
+    "expired-callback": function(){ st.cfToken = ""; }
+  });
+};
+(function waitCf(n){
+  if(window.turnstile && window.turnstile.render){ window.onloadTurnstileCallback(); return; }
+  if(n>0) setTimeout(function(){ waitCf(n-1); }, 200);
+})(25);
+
+// ---- boot ----
+if(!UUID_RE.test(TOKEN)){
+  $("steps").style.display = "none";
+  show("badlink");
+} else {
+  // We don't fetch the booking (the endpoint only writes). The page renders for
+  // both cases; the minor wording is driven by ?k=1 in the emailed link.
+  st.minor = new URLSearchParams(location.search).get("k") === "1";
+  var name = new URLSearchParams(location.search).get("n") || "";
+  $("whobox").innerHTML = st.minor
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'+
+      '<span>You are completing this <b>on behalf of your child</b>'+(name?(' ('+name+')'):'')+', as their parent or legal guardian. The health questions below are about <b>them</b>; the signature at the end is <b>yours</b>.</span>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>'+
+      '<span>Everything here stays private with the academy. It takes about three minutes.</span>';
+  if(st.minor){
+    $("legal-minor").style.display = "block";
+    $("agreetx").textContent = "I am the parent or legal guardian and I accept this waiver on behalf of my child.";
+    $("namelab").innerHTML = 'Type your name (parent or guardian)<span class="req"> *</span>';
+    $("siglab").textContent = "Sign below (parent or guardian)";
+    $("medlead").textContent = "About your child. Saying yes just means the coach keeps an eye out — it rarely stops anyone training.";
+  }
+  show("s1");
+}
+
+// ---- submit ----
+function err(msg){
+  var b=$("formerr"); b.textContent=msg; b.style.display="block";
+  b.scrollIntoView({behavior:"smooth",block:"center"});
+}
+window.submitWaiver = function(){
+  $("formerr").style.display="none";
+
+  if(!val("signed_by")){ err("Please type your name to sign."); return; }
+  if(!$("agree").checked){ err("Please tick the box to accept the waiver."); return; }
+  if(!sigDirty){ err("Please draw your signature in the box."); return; }
+  if(!st.cfToken){ err("Please complete the 'I'm human' check."); return; }
+
+  // Build the safety-notes line the coach reads mat-side.
+  var notes = [];
+  MED.forEach(function(m){
+    if(st.yn[m[0]] === true){
+      var d = m[2] ? val("d_"+m[0]) : "";
+      notes.push(m[1].replace(/\?$/,"") + (d ? (" — " + d) : ""));
+    }
+  });
+
+  st.goals = Array.prototype.slice.call(document.querySelectorAll("#goals .chip.on")).map(function(c){ return c.textContent.trim(); });
+
+  var payload = {
+    turnstileToken: st.cfToken,
+    token: TOKEN,
+    waiver_text_version: WAIVER_VERSION,
+    agreed: true,
+    signed_by_name: val("signed_by"),
+    signed_by_relationship: st.minor ? "parent" : "self",
+    signature: $("sigpad").toDataURL("image/png"),
+
+    emergency_name: val("em_name"),
+    emergency_phone: val("em_phone"),
+    emergency_relationship: val("em_rel"),
+
+    has_asthma:          st.yn.has_asthma === true,
+    has_heart_condition: st.yn.has_heart_condition === true,
+    has_diabetes:        st.yn.has_diabetes === true,
+    has_epilepsy:        st.yn.has_epilepsy === true,
+    is_pregnant:         st.yn.is_pregnant === true,
+    takes_medication:    st.yn.takes_medication === true,
+    has_allergies:       st.yn.has_allergies === true,
+    has_recent_injury:   st.yn.has_recent_injury === true,
+    safety_notes:        notes.join(" · ") || null,
+
+    answers: {
+      dob: val("dob"), gender: val("gender"), address: val("address"),
+      occupation: val("occupation"), how_heard: val("how_heard"),
+      goals: st.goals,
+      trained_before: st.yn.trained_before === true,
+      martial_arts: {
+        style: val("ma_style"), rank: val("ma_rank"),
+        academy: val("ma_gym"), years: val("ma_years")
+      },
+      medical: MED.reduce(function(acc,m){
+        acc[m[0]] = { answer: st.yn[m[0]] === true, detail: m[2] ? val("d_"+m[0]) : "" };
+        return acc;
+      }, {})
+    }
+  };
+
+  var btn=$("submitBtn");
+  btn.disabled=true; btn.textContent="Saving…";
+
+  fetch(ENDPOINT, {
+    method:"POST",
+    headers:{ "content-type":"application/json" },
+    body: JSON.stringify(payload)
+  }).then(function(r){
+    return r.json().then(function(d){ return { ok:r.ok, status:r.status, d:d }; });
+  }).then(function(res){
+    if(res.ok && res.d && res.d.ok){
+      $("steps").style.display="none";
+      show("done");
+      return;
+    }
+    btn.disabled=false; btn.textContent="Sign and finish";
+    if(res.status===404 || res.status===410){
+      $("steps").style.display="none";
+      $("badmsg").textContent = res.status===410
+        ? "This link has expired. Give us a call, or just fill it in when you arrive."
+        : "We couldn't find this booking. Give us a call and we'll sort it out.";
+      show("badlink");
+    }
+    else if(res.status===403){ err("The human check failed. Please refresh and try again."); }
+    else if(res.status===422){ err("Please check the highlighted fields and try again."); }
+    else { err("Something went wrong. Please try again in a moment."); }
+    if(window.turnstile){ window.turnstile.reset("#cf"); st.cfToken=""; }
+  }).catch(function(){
+    btn.disabled=false; btn.textContent="Sign and finish";
+    err("Network error. Please check your connection and try again.");
+    if(window.turnstile){ window.turnstile.reset("#cf"); st.cfToken=""; }
+  });
+};
+
+})();
+</script>
+</body>
+</html>
