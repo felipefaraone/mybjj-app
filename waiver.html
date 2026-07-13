@@ -316,7 +316,22 @@ function setSteps(n){
     if(i===n) el.classList.add("on");
   });
 }
-window.go = function(n){ $("formerr").style.display="none"; setSteps(n); show("s"+n); };
+window.go = function(n){
+  $("formerr").style.display="none";
+  if(n===3) applyGender();
+  setSteps(n); show("s"+n);
+  if(n===4 && window.sigResize) setTimeout(window.sigResize, 30);
+};
+function applyGender(){
+  var male = val("gender") === "Male";
+  var row = document.querySelector('.ynrow[data-k="is_pregnant"]');
+  if(!row) return;
+  row.style.display = male ? "none" : "block";
+  if(male){
+    st.yn.is_pregnant = false;
+    row.querySelectorAll(".ynbtns button").forEach(function(b){ b.classList.remove("on"); });
+  }
+}
 window.tog = function(el){ el.classList.toggle("on"); };
 window.yn = function(btn,isYes){
   var row=btn.closest(".ynrow");
@@ -358,6 +373,7 @@ var sigDirty = false, sigCtx = null;
   var drawing = false;
   function resize(){
     var r = c.getBoundingClientRect();
+    if(!r.width || !r.height) return;   // hidden step 4 measures 0x0
     var dpr = window.devicePixelRatio || 1;
     var keep = sigDirty ? c.toDataURL() : null;
     c.width = r.width * dpr; c.height = r.height * dpr;
@@ -387,7 +403,7 @@ var sigDirty = false, sigCtx = null;
     ctx.lineWidth=2.2; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle="#16202b";
     sigDirty=false; $("sighint").classList.remove("gone");
   };
-  setTimeout(resize,60);
+  window.sigResize = resize;
   window.addEventListener("resize",resize);
 })();
 
