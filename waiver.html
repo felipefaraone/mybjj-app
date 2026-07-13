@@ -99,6 +99,15 @@ input.err,select.err{border-color:var(--red)}
 .sighint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:14px;pointer-events:none}
 .sighint.gone{display:none}
 
+.allno{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1.5px solid var(--line);border-radius:11px;padding:15px 17px;margin-bottom:14px}
+.allno .txt b{display:block;font-size:15px;font-weight:600;margin-bottom:2px}
+.allno .txt span{font-size:13.5px;color:var(--ink3);line-height:1.4}
+.allnobtn{flex-shrink:0;border:1.5px solid var(--green-border);background:var(--green-bg);color:var(--green);border-radius:9px;padding:11px 18px;font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:.7px;text-transform:uppercase;cursor:pointer;white-space:nowrap}
+.allnobtn.done{background:var(--line);border-color:var(--line);color:var(--ink3);cursor:default}
+.reviewnote{display:none;gap:10px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:13px 15px;margin-bottom:16px;font-size:14px;color:var(--amber);line-height:1.45}
+.reviewnote.on{display:flex}
+.reviewnote svg{width:17px;height:17px;flex-shrink:0;margin-top:1px}
+@media(max-width:560px){.allno{flex-direction:column;align-items:stretch;gap:12px}.allnobtn{width:100%}}
 .cf{margin:18px 0 4px;min-height:66px}
 .actionbar{margin-top:26px;padding-top:20px;border-top:1px solid var(--line);display:flex;align-items:center;gap:13px;flex-wrap:wrap}
 .btn{border:none;border-radius:9px;padding:15px 34px;font-family:'Barlow Condensed';font-weight:700;font-size:16.5px;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;transition:.14s}
@@ -227,6 +236,14 @@ input.err,select.err{border-color:var(--red)}
   <section class="screen" id="s3">
     <button class="back" onclick="go(2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
     <div class="lead"><h1>Medical history</h1><p id="medlead">Saying yes just means your coach keeps an eye out. It rarely stops anyone training.</p></div>
+    <div class="allno" id="allnobox">
+      <div class="txt"><b>Nothing to declare?</b><span id="allnosub">Mark them all no, then read back through and change any that apply.</span></div>
+      <button type="button" class="allnobtn" id="allnobtn" onclick="markAllNo()">Mark all no</button>
+    </div>
+    <div class="reviewnote" id="reviewnote">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span>All marked <b>no</b>. Please read back through and switch any that apply — this is what keeps you safe on the mat.</span>
+    </div>
     <div id="med"></div>
     <div class="actionbar"><button class="btn primary" onclick="go(4)">Continue</button><span class="hintline">Step 3 of 4</span></div>
   </section>
@@ -396,9 +413,34 @@ window.yn = function(btn,isYes){
   row.querySelectorAll(".ynbtns button").forEach(function(b){ b.classList.remove("on"); });
   btn.classList.add("on");
   st.yn[row.getAttribute("data-k")] = isYes;
+  row.style.borderColor = "";
   var d=row.querySelector(".detail");
   if(d) d.classList.toggle("open", isYes);
+  if(isYes) resetAllNo();
 };
+window.markAllNo = function(){
+  document.querySelectorAll('#med .ynrow').forEach(function(row){
+    if(row.style.display === "none") return;
+    st.yn[row.getAttribute("data-k")] = false;
+    row.querySelectorAll(".ynbtns button").forEach(function(b){ b.classList.remove("on"); });
+    var no = row.querySelector(".ynbtns button.no");
+    if(no) no.classList.add("on");
+    var d = row.querySelector(".detail");
+    if(d) d.classList.remove("open");
+    row.style.borderColor = "";
+  });
+  var b = $("allnobtn");
+  b.classList.add("done"); b.textContent = "All marked no";
+  $("allnosub").textContent = "Now read back through and switch any that apply.";
+  $("reviewnote").classList.add("on");
+  $("formerr").style.display = "none";
+};
+function resetAllNo(){
+  var b = $("allnobtn");
+  b.classList.remove("done"); b.textContent = "Mark all no";
+  $("allnosub").textContent = "Mark them all no, then read back through and change any that apply.";
+  $("reviewnote").classList.remove("on");
+}
 
 // ---- medical questions ----
 var MED = [
