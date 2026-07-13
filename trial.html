@@ -12,396 +12,722 @@
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <style>
   :root{
-    --blue:#1A5DAD; --blue-dark:#124680; --blue-tint:#eaf1fa;
-    --ink:#16202b; --ink2:#5a6a78; --ink3:#8a97a3;
-    --line:#e3e8ee; --bg:#f4f6f9; --card:#ffffff;
-    --red:#c0392b; --red-bg:#fdecea; --amber-bg:#fff4e0; --amber-text:#8a5a00;
-    --green:#1e7d47; --green-bg:#e8f6ee;
-    --radius:14px;
+    --blue:#1A5DAD; --blue-dark:#124680; --blue-tint:#eef4fb; --blue-mid:#7ba4d3;
+    --ink:#16202b; --ink2:#5a6a78; --ink3:#93a0ac;
+    --line:#e1e7ee; --bg:#f5f7fa; --card:#fff;
+    --green:#1e7d47; --green-bg:#e8f6ee; --green-border:#bfe5cf;
+    --amber:#8a5a00; --amber-bg:#fff6e6; --amber-border:#f0dcb4;
+    --red:#c0392b; --red-bg:#fdecea;
+    --radius:12px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{background:var(--bg);color:var(--ink);font-family:'Barlow',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-  body{padding:0;line-height:1.45}
-  .wrap{max-width:520px;margin:0 auto;padding:20px 16px 48px}
-  .brandbar{display:flex;align-items:center;gap:10px;margin-bottom:18px}
-  .brandbar .logo{width:40px;height:40px;border-radius:50%;object-fit:contain;background:var(--blue);flex-shrink:0}
-  .brandbar h1{font-family:'Barlow Condensed';font-weight:700;font-size:22px;letter-spacing:.3px;text-transform:uppercase;color:var(--ink)}
-  .lede{color:var(--ink2);font-size:15px;margin-bottom:20px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:14px}
-  .sect-label{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);margin-bottom:12px}
-  label.field{display:block;margin-bottom:14px}
-  label.field:last-child{margin-bottom:0}
+  body{line-height:1.5}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 18px}
+
+  /* header — minimal checkout style */
+  .hdr{background:var(--blue-dark);border-bottom:3px solid var(--blue)}
+  .hdr .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;gap:16px}
+  .brand{display:flex;align-items:center;gap:11px;text-decoration:none}
+  .brand img{width:40px;height:40px;border-radius:50%;background:#fff;object-fit:contain;flex-shrink:0}
+  .brand span{font-family:'Barlow Condensed';font-weight:700;font-size:21px;letter-spacing:1px;text-transform:uppercase;color:#fff}
+  .callus{display:flex;align-items:center;gap:8px;text-decoration:none;color:#cfe0f2;font-weight:600;font-size:14px;padding:8px 14px;border:1px solid rgba(255,255,255,.22);border-radius:22px}
+  .callus svg{width:14px;height:14px}
+  @media(max-width:520px){.callus span{display:none}}
+
+  /* banner */
+  .banner{background:linear-gradient(rgba(18,70,128,.78),rgba(18,70,128,.78)),linear-gradient(120deg,#2b6cb0,#0e3a63);padding:34px 0;text-align:center}
+  .banner h1{font-family:'Barlow Condensed';font-weight:700;font-size:32px;letter-spacing:.6px;text-transform:uppercase;color:#fff;line-height:1.08}
+  .banner p{color:#d5e4f4;font-size:15px;margin-top:6px}
+  @media(max-width:520px){.banner{padding:24px 0}.banner h1{font-size:25px}}
+
+  /* stepper — 5 steps, sticky, visible from step 1 */
+  .stepper{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .stepper .wrap{display:flex;padding:0}
+  .stp{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 4px;
+    font-family:'Barlow Condensed';font-weight:700;font-size:12.5px;letter-spacing:.7px;text-transform:uppercase;
+    color:var(--ink3);border-bottom:3px solid transparent;transition:.2s}
+  .stp .n{width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--ink3);display:flex;align-items:center;justify-content:center;font-size:11.5px;flex-shrink:0}
+  .stp .n svg{width:11px;height:11px}
+  .stp.on{color:var(--blue);border-bottom-color:var(--blue)}
+  .stp.on .n{background:var(--blue);color:#fff}
+  .stp.done{color:var(--ink2)}
+  .stp.done .n{background:var(--green);color:#fff}
+  @media(max-width:680px){.stp span.tx{display:none}.stp{padding:12px 3px}}
+
+  /* mobile compact summary bar (collapses the summary card) */
+  .sumbar{display:none;position:sticky;top:47px;z-index:19;background:var(--blue-tint);border-bottom:1px solid var(--line);
+    padding:9px 18px;font-size:13px;color:var(--blue-dark);font-weight:600}
+  .sumbar b{font-family:'Barlow Condensed';letter-spacing:.4px}
+  .sumbar .muted{color:var(--blue-mid);font-weight:600}
+  @media(max-width:900px){.sumbar{display:block}}
+
+  main{padding:28px 0 60px}
+  .split{display:grid;grid-template-columns:1fr 300px;gap:30px;align-items:start}
+  @media(max-width:900px){.split{grid-template-columns:1fr;gap:0}}
+
+  .screen{display:none}
+  .screen.on{display:block;animation:fade .2s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .backlink{display:inline-flex;align-items:center;gap:6px;color:var(--blue);font-weight:600;font-size:14px;background:none;border:none;cursor:pointer;font-family:'Barlow';padding:0;margin-bottom:14px}
+  .backlink svg{width:14px;height:14px}
+  .lead{margin-bottom:20px}
+  .lead h2{font-family:'Barlow Condensed';font-weight:700;font-size:27px;letter-spacing:.3px;text-transform:uppercase;line-height:1.12}
+  .lead p{color:var(--ink2);font-size:15px;margin-top:6px}
+
+  /* summary card (desktop) */
+  .summary{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;position:sticky;top:64px}
+  @media(max-width:900px){.summary{display:none}}
+  .summary .sh{background:var(--blue-tint);padding:12px 16px;border-bottom:1px solid var(--line)}
+  .summary .sh h4{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1.1px;text-transform:uppercase;color:var(--blue)}
+  .summary .sh p{font-size:12px;color:var(--blue-dark);opacity:.75;margin-top:1px}
+  .summary .rows{padding:2px 16px 8px}
+  .summary .row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;border-bottom:1px solid var(--line)}
+  .summary .row:last-child{border-bottom:none}
+  .summary .row .k{color:var(--ink2);font-size:13.5px;flex-shrink:0}
+  .summary .row .v{font-weight:600;font-size:13.5px;text-align:right;color:var(--ink)}
+  .summary .row .v.empty{color:var(--ink3);font-weight:400;font-style:italic}
+
+  /* action bar */
+  .actionbar{margin-top:24px;padding-top:20px;border-top:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .btn{border:none;border-radius:10px;padding:14px 30px;font-family:'Barlow Condensed';font-weight:700;font-size:16px;letter-spacing:.7px;text-transform:uppercase;cursor:pointer;transition:.14s;white-space:nowrap}
+  .btn.primary{background:var(--blue);color:#fff}
+  .btn.primary:hover:not(:disabled){background:var(--blue-dark)}
+  .btn.primary:disabled{opacity:.35;cursor:not-allowed}
+  .btn.block{width:100%;text-align:center;padding:16px}
+  .hintline{font-size:13px;color:var(--ink3)}
+
+  /* unit cards */
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:620px){.cards{grid-template-columns:1fr}}
+  .unitcard{text-align:left;background:var(--card);border:2px solid var(--line);border-radius:var(--radius);padding:18px;cursor:pointer;transition:.15s;font-family:'Barlow';display:flex;gap:13px;align-items:flex-start}
+  .unitcard:hover{border-color:var(--blue-mid)}
+  .unitcard.on{border-color:var(--blue);background:var(--blue-tint)}
+  .unitcard .pin{width:40px;height:40px;border-radius:10px;background:var(--blue-tint);color:var(--blue);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .unitcard.on .pin{background:var(--blue);color:#fff}
+  .unitcard .nm{font-family:'Barlow Condensed';font-weight:700;font-size:19px;letter-spacing:.3px}
+
+  /* class cards */
+  .grouphdr{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink3);margin:22px 0 11px}
+  .grouphdr:first-child{margin-top:0}
+  .clsgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  @media(max-width:620px){.clsgrid{grid-template-columns:1fr}}
+  .clscard{background:var(--card);border:2px solid var(--line);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:.15s;text-align:left;padding:0;font-family:'Barlow';display:flex;flex-direction:column}
+  .clscard:hover{border-color:var(--blue-mid);transform:translateY(-2px)}
+  .clscard.on{border-color:var(--blue)}
+  .clscard .ph{height:96px;position:relative;display:flex;align-items:flex-end;padding:12px 15px}
+  .clscard .ph h3{font-family:'Barlow Condensed';font-weight:700;font-size:20px;letter-spacing:.4px;text-transform:uppercase;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.42)}
+  .clscard .ph .badge{position:absolute;top:10px;right:10px;background:rgba(255,255,255,.94);color:var(--blue);font-family:'Barlow Condensed';font-weight:700;font-size:11px;letter-spacing:.5px;padding:3px 9px;border-radius:5px}
+  .clscard .bd{padding:13px 15px;flex:1;display:flex;flex-direction:column}
+  .clscard .hint{font-size:13.5px;color:var(--ink2);line-height:1.45;flex:1}
+  .clscard .foot{display:flex;justify-content:space-between;align-items:center;padding-top:11px;margin-top:11px;border-top:1px solid var(--line)}
+  .clscard .meta{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--ink3)}
+  .clscard .pick{font-family:'Barlow Condensed';font-weight:700;font-size:12.5px;letter-spacing:.6px;color:var(--blue);text-transform:uppercase}
+  .g1{background:linear-gradient(135deg,#1A5DAD,#4b86c9)}.g2{background:linear-gradient(135deg,#124680,#2f74b8)}
+  .g3{background:linear-gradient(135deg,#0e3a63,#3b7cc4)}.g4{background:linear-gradient(135deg,#2f3a47,#1A5DAD)}
+  .g5{background:linear-gradient(135deg,#2c6cb0,#79aade)}.g6{background:linear-gradient(135deg,#5b8fc9,#9cc0e8)}
+  .g7{background:linear-gradient(135deg,#1A5DAD,#0e3a63)}.gneutral{background:linear-gradient(135deg,#5a6a78,#93a0ac)}
+
+  /* slots */
+  .dayblock{margin-bottom:18px}
+  .dayblock .d{font-family:'Barlow Condensed';font-weight:700;font-size:15px;letter-spacing:.6px;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:11px}
+  .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:11px}
+  .slot{background:var(--card);border:2px solid var(--line);border-radius:10px;padding:12px 8px;cursor:pointer;font-family:'Barlow Condensed';font-weight:700;font-size:16px;letter-spacing:.3px;color:var(--ink);transition:.14s;text-align:center}
+  .slot:hover{border-color:var(--blue-mid)}
+  .slot small{display:block;font-family:'Barlow';font-weight:500;font-size:11px;color:var(--ink3);letter-spacing:0;margin-top:2px}
+  .slot.on{border-color:var(--blue);background:var(--blue);color:#fff}
+  .slot.on small{color:rgba(255,255,255,.8)}
+  .nowork{margin-top:20px;font-size:14px}
+  .nowork a{color:var(--blue);font-weight:600;cursor:pointer;text-decoration:underline}
+  .emptynote{color:var(--ink2);font-size:15px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+
+  /* forms */
+  .formgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:620px){.formgrid{grid-template-columns:1fr}}
+  label.field{display:block}
+  label.field.full{grid-column:1/-1}
   label.field .lab{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:6px}
-  label.field .lab .req{color:var(--red);margin-left:2px}
+  label.field .req{color:var(--red)}
   input[type=text],input[type=email],input[type=tel],select,textarea{
-    width:100%;border:1px solid var(--line);border-radius:10px;padding:12px 13px;
-    font-family:'Barlow',sans-serif;font-size:15px;color:var(--ink);background:#fff;outline:none;
-  }
+    width:100%;border:1.5px solid var(--line);border-radius:10px;padding:12px 13px;background:#fff;
+    font-family:'Barlow';font-size:15px;color:var(--ink);outline:none;transition:.14s}
   input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,93,173,.12)}
   input.err,select.err,textarea.err{border-color:var(--red);box-shadow:0 0 0 3px rgba(192,57,43,.10)}
-  /* Segmented unit / audience toggle */
-  .seg{display:flex;gap:8px}
-  .seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:10px;padding:12px 10px;cursor:pointer;
-    font-family:'Barlow Condensed';font-weight:700;font-size:15px;letter-spacing:.4px;text-transform:uppercase;color:var(--ink2);transition:.12s}
-  .seg button.on{background:var(--blue);border-color:var(--blue);color:#fff}
-  .unitcard{width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:12px;padding:14px;cursor:pointer;margin-bottom:10px;transition:.12s}
-  .unitcard.on{border-color:var(--blue);background:var(--blue-tint)}
-  /* Availability chips (multi-select) */
-  .chips{display:flex;flex-wrap:wrap;gap:8px}
-  .chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:9px 15px;cursor:pointer;
-    font-family:'Barlow',sans-serif;font-weight:600;font-size:14px;color:var(--ink2);transition:.12s;user-select:none}
-  .chip.on{border-color:var(--blue);background:var(--blue-tint);color:var(--blue)}
-  .unitcard .nm{font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.3px}
-  .unitcard .ad{font-size:13px;color:var(--ink2);margin-top:2px}
-  /* Waiver */
-  .waiverbox{border:1px solid var(--line);border-radius:10px;background:#fbfcfd;padding:13px;max-height:210px;overflow-y:auto;font-size:13px;color:var(--ink2);line-height:1.5}
-  .waiverbox h4{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink);margin:10px 0 5px}
-  .waiverbox h4:first-child{margin-top:0}
-  .placeholder-note{background:var(--amber-bg);color:var(--amber-text);border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:10px;font-weight:600}
-  .agree{display:flex;gap:10px;align-items:flex-start;margin-top:14px;cursor:pointer}
-  .agree input{margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:var(--blue)}
-  .agree span{font-size:13.5px;color:var(--ink);font-weight:500}
-  .cf{margin:16px 0 6px;min-height:65px}
-  .submit{width:100%;background:var(--blue);color:#fff;border:none;border-radius:12px;padding:15px;
-    font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:.12s}
-  .submit:hover{background:var(--blue-dark)}
-  .submit:disabled{opacity:.5;cursor:not-allowed}
-  .formerr{background:var(--red-bg);color:var(--red);border-radius:10px;padding:11px 13px;font-size:13.5px;font-weight:600;margin-bottom:14px;display:none}
+  textarea{min-height:84px;resize:vertical}
+  .kidnote{display:flex;gap:10px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:13.5px;color:var(--amber);line-height:1.45}
+  .kidnote svg{width:17px;height:17px;flex-shrink:0;margin-top:1px}
+  .cf{margin:16px 0 4px;min-height:65px}
+  .formerr{background:var(--red-bg);color:var(--red);border-radius:10px;padding:11px 13px;font-size:13.5px;font-weight:600;margin-bottom:16px;display:none}
+
+  /* booked (step 5) */
+  .bookedbar{display:flex;align-items:center;gap:14px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:var(--radius);padding:16px 18px;margin-bottom:22px}
+  .bookedbar .tk{width:40px;height:40px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .bookedbar .tk svg{width:20px;height:20px}
+  .bookedbar b{display:block;font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.4px;text-transform:uppercase;color:var(--green)}
+  .bookedbar span{font-size:14px;color:#2b6a48}
+  .slotline{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:22px}
+  .slotline .lbl{font-family:'Barlow Condensed';font-weight:700;font-size:11.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--ink3);margin-bottom:4px}
+  .slotline .val{font-family:'Barlow Condensed';font-weight:700;font-size:20px;letter-spacing:.3px}
+  .healthcta{margin-top:6px}
+  .healthcta .sub{font-size:13.5px;color:var(--ink3);margin-top:12px;line-height:1.5;text-align:center}
+
   .hide{display:none !important}
-  .foot{text-align:center;color:var(--ink3);font-size:12px;margin-top:18px}
-  /* Success */
-  .success{text-align:center;padding:34px 18px}
-  .success .tick{width:64px;height:64px;border-radius:50%;background:var(--green-bg);color:var(--green);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:32px}
-  .success h2{font-family:'Barlow Condensed';font-weight:700;font-size:24px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}
-  .success p{color:var(--ink2);font-size:15px}
+  .loading{color:var(--ink2);font-size:15px;padding:6px 0}
+  .foot{text-align:center;color:var(--ink3);font-size:12px;margin-top:26px}
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <div class="brandbar">
-    <img class="logo" src="/icon-192.png" alt="myBJJ" />
-    <h1>Book a Free Trial</h1>
-  </div>
-  <p class="lede">Try a class on us. Fill this in and the team will be in touch to confirm your time.</p>
+<header class="hdr"><div class="wrap">
+  <a class="brand" href="https://mybjj.com.au">
+    <img src="/icon-192.png" alt="myBJJ" />
+    <span>myBJJ</span>
+  </a>
+  <a class="callus" href="tel:+61406456766">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+    <span>0406 456 766</span>
+  </a>
+</div></header>
 
-  <!-- ============ FORM ============ -->
-  <form id="form" novalidate>
+<section class="banner">
+  <h1>Book Your Free Trial</h1>
+  <p>One free class, no strings. A few quick steps and you're on the mats.</p>
+</section>
 
-    <div class="formerr" id="formerr"></div>
+<!-- STEPPER — health check visible from step 1 -->
+<div class="stepper"><div class="wrap">
+  <div class="stp on" id="p1"><span class="n">1</span><span class="tx">Unit</span></div>
+  <div class="stp" id="p2"><span class="n">2</span><span class="tx">Class</span></div>
+  <div class="stp" id="p3"><span class="n">3</span><span class="tx">Time</span></div>
+  <div class="stp" id="p4"><span class="n">4</span><span class="tx">Details</span></div>
+  <div class="stp" id="p5"><span class="n">5</span><span class="tx">Health check</span></div>
+</div></div>
 
-    <!-- Unit (hidden if ?unit= is in the URL) -->
-    <div class="card" id="unitCard">
-      <div class="sect-label">Which academy</div>
-      <button type="button" class="unitcard" data-unit="nb">
-        <div class="nm">Neutral Bay</div>
-        <div class="ad">2/120 Military Rd, Neutral Bay NSW 2089</div>
-      </button>
-      <button type="button" class="unitcard" data-unit="cd">
-        <div class="nm">Camperdown (HQ)</div>
-        <div class="ad">Shop 20, 119-125 Parramatta Road, Camperdown NSW</div>
-      </button>
-    </div>
+<!-- Mobile compact summary bar -->
+<div class="sumbar" id="sumbar"><span class="muted">Choose your free trial</span></div>
 
-    <!-- Who is the trial for -->
-    <div class="card">
-      <div class="sect-label">Who is this trial for</div>
-      <div class="seg" id="audSeg">
-        <button type="button" data-aud="adult" class="on">Myself (adult)</button>
-        <button type="button" data-aud="kid">My child</button>
-      </div>
-    </div>
+<main><div class="wrap"><div class="split">
+  <div>
 
-    <!-- Child block (kid only) -->
-    <div class="card hide" id="kidCard">
-      <div class="sect-label">Child's details</div>
-      <label class="field">
-        <span class="lab">Child's full name<span class="req">*</span></span>
-        <input type="text" id="kid_name" autocomplete="off" />
-      </label>
-    </div>
+    <!-- ===== 1 · UNIT ===== -->
+    <section class="screen on" id="s1">
+      <div class="lead"><h2>Where do you want to train?</h2><p>Pick whichever academy is easier to get to.</p></div>
+      <div id="unitWrap" class="loading">Loading academies…</div>
+      <div class="actionbar"><button class="btn primary" id="c1" disabled>Continue</button><span class="hintline" id="h1">Pick an academy to continue</span></div>
+    </section>
 
-    <!-- Contact block. Label adapts: adult = your details; kid = parent/guardian -->
-    <div class="card">
-      <div class="sect-label" id="contactLabel">Your details</div>
-      <label class="field">
-        <span class="lab">First name<span class="req">*</span></span>
-        <input type="text" id="first_name" autocomplete="given-name" />
-      </label>
-      <label class="field">
-        <span class="lab">Last name<span class="req">*</span></span>
-        <input type="text" id="last_name" autocomplete="family-name" />
-      </label>
-      <label class="field">
-        <span class="lab">Email<span class="req">*</span></span>
-        <input type="email" id="email" autocomplete="email" inputmode="email" />
-      </label>
-      <label class="field">
-        <span class="lab">Phone<span class="req">*</span></span>
-        <input type="tel" id="phone" autocomplete="tel" inputmode="tel" placeholder="04XX XXX XXX" />
-      </label>
-      <label class="field">
-        <span class="lab">When are you usually free? (helps us find your trial time)</span>
-        <div class="chips" id="availChips">
-          <div class="chip" data-avail="Weekday mornings">Weekday mornings</div>
-          <div class="chip" data-avail="Weekday evenings">Weekday evenings</div>
-          <div class="chip" data-avail="Saturday">Saturday</div>
-          <div class="chip" data-avail="I'm flexible">I'm flexible</div>
-        </div>
-      </label>
-      <label class="field">
-        <span class="lab">How did you hear about us?</span>
-        <select id="how_heard">
-          <option value="">Select…</option>
-          <option>Google search</option>
-          <option>Instagram / Facebook</option>
-          <option>Friend or family</option>
-          <option>Walked past</option>
-          <option>Other</option>
-        </select>
-      </label>
-    </div>
+    <!-- ===== 2 · CLASS ===== -->
+    <section class="screen" id="s2">
+      <button class="backlink" data-go="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
+      <div class="lead"><h2>Pick your class</h2><p>New to it? Every one of these welcomes first-timers.</p></div>
+      <div id="classWrap" class="loading">…</div>
+      <div class="actionbar"><button class="btn primary" id="c2" disabled>Continue</button><span class="hintline">Pick a class to continue</span></div>
+    </section>
 
-    <!-- Waiver -->
-    <div class="card">
-      <div class="sect-label">Waiver &amp; acknowledgement</div>
+    <!-- ===== 3 · TIME ===== -->
+    <section class="screen" id="s3">
+      <button class="backlink" data-go="2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
+      <div class="lead"><h2>When suits you?</h2><p>These are the real sessions running over the next week.</p></div>
+      <div id="slotWrap"></div>
+      <div class="nowork" id="noWork">None of these times work? <a id="noWorkLink">Tell us your availability instead</a></div>
+      <div class="actionbar"><button class="btn primary" id="c3" disabled>Continue</button><span class="hintline">Pick a session to continue</span></div>
+    </section>
 
-      <div class="placeholder-note" id="phNote">
-        PLACEHOLDER TEXT — replace with the academy's lawyer-reviewed waiver before going live.
+    <!-- ===== 4 · DETAILS ===== -->
+    <section class="screen" id="s4">
+      <button class="backlink" data-go="3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
+      <div class="lead"><h2 id="s4h">Your details</h2><p>This locks in your spot. The health check is the very last step.</p></div>
+
+      <div class="formerr" id="formerr"></div>
+
+      <div class="kidnote" id="kidnote" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>You're booking for your child. The <b>participant</b> is your child; everything below is <b>you</b>, the parent or guardian.</span>
       </div>
 
-      <div class="waiverbox" id="waiverBox">
-        <!-- Adult waiver text -->
-        <div id="waiverAdult">
-          <h4>Assumption of Risk</h4>
-          <p>I understand that Brazilian Jiu-Jitsu, grappling, and related martial-arts training involve inherent risks of physical injury, and I voluntarily accept those risks.</p>
-          <h4>Release &amp; Indemnity</h4>
-          <p>To the extent permitted by law, I release myBJJ, its instructors, staff and premises owners from liability for injury or loss arising from my participation, except where caused by their gross negligence.</p>
-          <h4>Health &amp; Emergency</h4>
-          <p>I confirm I am in adequate health to train, and I consent to staff arranging emergency medical assistance if needed.</p>
-          <h4>Your Consumer Rights</h4>
-          <p>Nothing in this waiver excludes any rights or guarantees I have under the Australian Consumer Law that cannot lawfully be excluded.</p>
-        </div>
-        <!-- Kid waiver text -->
-        <div id="waiverKid" class="hide">
-          <h4>Parent / Guardian Acknowledgement</h4>
-          <p>I am the parent or legal guardian of the child named above, and I have authority to accept this waiver on their behalf.</p>
-          <h4>Assumption of Risk</h4>
-          <p>I understand that Brazilian Jiu-Jitsu and related training involve inherent risks of physical injury to my child, and I voluntarily accept those risks on their behalf.</p>
-          <h4>Release &amp; Indemnity</h4>
-          <p>To the extent permitted by law, I release myBJJ, its instructors, staff and premises owners from liability for injury or loss arising from my child's participation, except where caused by their gross negligence.</p>
-          <h4>Health &amp; Emergency</h4>
-          <p>I confirm my child is in adequate health to train, and I consent to staff arranging emergency medical assistance for my child if needed.</p>
-          <h4>Your Consumer Rights</h4>
-          <p>Nothing in this waiver excludes any rights or guarantees under the Australian Consumer Law that cannot lawfully be excluded.</p>
-        </div>
+      <div class="formgrid">
+        <label class="field full" id="kidField" style="display:none"><span class="lab" id="kidLab">Child's full name<span class="req"> *</span></span><input type="text" id="kid_name" autocomplete="off" /></label>
+        <label class="field" id="availField" style="display:none;grid-column:1/-1"><span class="lab">When are you usually free?<span class="req"> *</span></span><textarea id="avail" placeholder="e.g. Weekday evenings after 6, or Saturday mornings"></textarea></label>
+        <label class="field"><span class="lab" id="fnLab">First name<span class="req"> *</span></span><input type="text" id="first_name" autocomplete="given-name" /></label>
+        <label class="field"><span class="lab" id="lnLab">Last name<span class="req"> *</span></span><input type="text" id="last_name" autocomplete="family-name" /></label>
+        <label class="field"><span class="lab" id="emLab">Email<span class="req"> *</span></span><input type="email" id="email" autocomplete="email" inputmode="email" /></label>
+        <label class="field"><span class="lab" id="phLab">Phone<span class="req"> *</span></span><input type="tel" id="phone" autocomplete="tel" inputmode="tel" placeholder="0412 345 678" /></label>
+        <label class="field full"><span class="lab">How did you hear about us?</span>
+          <select id="how_heard">
+            <option value="">Select…</option>
+            <option>Google search</option>
+            <option>Instagram / Facebook</option>
+            <option>Friend or family</option>
+            <option>Walked past</option>
+            <option>Other</option>
+          </select>
+        </label>
       </div>
 
-      <label class="agree">
-        <input type="checkbox" id="agree" />
-        <span id="agreeText">I have read and accept the waiver above.</span>
-      </label>
+      <div class="cf" id="cf"></div>
 
-      <label class="field" style="margin-top:14px">
-        <span class="lab" id="signLab">Type your full name to sign<span class="req">*</span></span>
-        <input type="text" id="waiver_name" autocomplete="off" placeholder="Full name" />
-      </label>
-    </div>
+      <div class="actionbar"><button class="btn primary" id="bookBtn">Confirm my booking</button><span class="hintline">Your spot is saved right away</span></div>
+    </section>
 
-    <!-- Turnstile -->
-    <div class="cf" id="cf"></div>
+    <!-- ===== 5 · BOOKED ===== -->
+    <section class="screen" id="s5">
+      <div class="bookedbar">
+        <div class="tk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div><b>Your spot is booked</b><span>We've saved your details. One last step below.</span></div>
+      </div>
+      <div class="slotline">
+        <div class="lbl">Your trial</div>
+        <div class="val" id="bookedSlot">—</div>
+      </div>
+      <div class="lead"><h2>One last thing — your health check</h2><p>About three minutes, mostly yes or no. Do it now and walk straight onto the mats when you arrive.</p></div>
+      <div class="healthcta">
+        <a class="btn primary block" id="waiverCta" href="#">Complete your health check</a>
+        <p class="sub">You can also complete it later from the link we've emailed you — but it needs to be done before you train.</p>
+      </div>
+    </section>
 
-    <button type="submit" class="submit" id="submitBtn">Book my free trial</button>
-
-    <p class="foot">myBJJ · Brazilian Jiu-Jitsu &amp; Mixed Martial Arts</p>
-  </form>
-
-  <!-- ============ SUCCESS ============ -->
-  <div class="success hide" id="success">
-    <div class="tick">&#10003;</div>
-    <h2>You're booked in</h2>
-    <p id="successMsg">Thanks! The team will be in touch shortly to confirm your trial time. See you on the mats.</p>
   </div>
 
-</div>
+  <!-- summary card (desktop) -->
+  <div>
+    <div class="summary" id="summaryCard">
+      <div class="sh"><h4>Your free trial</h4><p>Fills in as you go</p></div>
+      <div class="rows">
+        <div class="row"><span class="k">Academy</span><span class="v empty" id="sm_unit">Not chosen yet</span></div>
+        <div class="row"><span class="k">Class</span><span class="v empty" id="sm_class">Not chosen yet</span></div>
+        <div class="row"><span class="k">Day</span><span class="v empty" id="sm_day">Not chosen yet</span></div>
+        <div class="row"><span class="k">Time</span><span class="v empty" id="sm_time">Not chosen yet</span></div>
+        <div class="row"><span class="k">Health check</span><span class="v empty" id="sm_health">After booking</span></div>
+      </div>
+    </div>
+  </div>
+
+</div></div>
+
+<p class="foot">myBJJ · Brazilian Jiu-Jitsu &amp; Mixed Martial Arts</p>
+</main>
 
 <script>
 (function(){
   "use strict";
 
-  // ---- config ----
-  var ENDPOINT = "https://dcilltzgegqsrgatskhz.supabase.co/functions/v1/trial-booking";
-  // Must match CURRENT_WAIVER_VERSION in the Edge Function.
-  var WAIVER_VERSION = "2026-07-nsw-v1-PLACEHOLDER";
-  // Cloudflare Turnstile SITE key (public). Widget "MyBJJ trial form" (recreated).
+  // ---- config (READ the public view with the publishable key; WRITE only via EF) ----
+  var SUPA = "https://dcilltzgegqsrgatskhz.supabase.co";
+  var ANON = "sb_publishable_EdatFnl6MfCgyd7tv7wHRw_Z5msKQTC";
+  var ENDPOINT = SUPA + "/functions/v1/trial-booking";
   var TURNSTILE_SITE_KEY = "0x4AAAAAADzwYmJWCVteEQfI";
+  var SYDNEY_TZ = "Australia/Sydney";
 
-  // ---- state ----
-  var state = { unit: null, aud: "adult", cfToken: "", avail: [] };
+  // ---- static COPY MAP, keyed by public_timetable.type_code -----------------
+  // Descriptions, gradients and age hints. A type_code NOT in this map still
+  // renders (type_label + neutral gradient, no description). We NEVER invent a
+  // card for a type that isn't in the live timetable.
+  var COPY = {
+    gi:   { grad:"g1", desc:"Classic Jiu-Jitsu in the gi. Grips, control and submissions with the uniform.", age:"" },
+    nogi: { grad:"g3", desc:"Wrestling-style grappling. Shorts and a rash guard, no uniform needed.", age:"" },
+    alev: { grad:"g2", desc:"Everyone trains together, from day one to black belt. Drills scale to you.", age:"" },
+    beg:  { grad:"g1", desc:"New to it? Start here. Zero experience needed — everyone's in the same boat.", age:"" },
+    adv:  { grad:"g7", desc:"Higher pace and finer detail for experienced grapplers.", age:"" },
+    fund: { grad:"g2", desc:"The core positions, escapes and principles everything else is built on.", age:"" },
+    mma:  { grad:"g4", desc:"Striking, takedowns and ground game combined. High energy, serious cardio.", age:"" },
+    jmma: { grad:"g4", desc:"MMA built for juniors — striking and grappling, coached safely.", age:"6+" },
+    jun:  { grad:"g5", desc:"Jiu-Jitsu for juniors. Confidence, discipline and real skills, the fun way.", age:"" },
+    mini: { grad:"g6", desc:"First steps on the mats. Games, movement and a lot of laughing.", age:"3-5" },
+    omat: { grad:"g5", desc:"Open training. Roll, drill and put your own game together.", age:"" }
+  };
+
+  // ---- state ----------------------------------------------------------------
+  var state = {
+    rows: [],          // every public_timetable row
+    units: [],         // [{id,name}]
+    unit: null,        // {id,name}
+    typeCode: null, typeLabel: null, audience: null, duration: null,
+    slot: null,        // {class_id,date,time,timeLabel,dayLabel}
+    fallback: false,   // "none of these times work" path
+    cfToken: "",
+    cfRendered: false,
+    booked: false      // guard against double-submit
+  };
 
   // ---- el helpers ----
   function $(id){ return document.getElementById(id); }
-  function val(id){ return ($(id).value || "").trim(); }
-  function setErr(id, on){ $(id).classList.toggle("err", !!on); }
+  function val(id){ var e=$(id); return (e&&e.value||"").trim(); }
+  function setErr(id,on){ var e=$(id); if(e) e.classList.toggle("err",!!on); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
 
-  // ---- unit: pre-select from ?unit=nb|cd, else show the cards ----
-  var params = new URLSearchParams(location.search);
-  var urlUnit = (params.get("unit") || "").toLowerCase();
-  if (urlUnit === "nb" || urlUnit === "cd") {
-    state.unit = urlUnit;
-    $("unitCard").classList.add("hide");
+  var DOW = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  // 'HH:MM[:SS]' -> minutes since midnight
+  function hhmmToMin(t){ t=String(t||""); var p=t.split(":"); return (parseInt(p[0],10)||0)*60+(parseInt(p[1],10)||0); }
+
+  // "Now" in Australia/Sydney -> { dateStr:'YYYY-MM-DD', minutes:Number }
+  function sydneyNow(){
+    var f = new Intl.DateTimeFormat("en-CA",{ timeZone:SYDNEY_TZ, year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false });
+    var o = {}; f.formatToParts(new Date()).forEach(function(p){ if(p.type!=="literal") o[p.type]=p.value; });
+    var hh = (o.hour==="24") ? "00" : o.hour;   // some engines emit 24 at midnight
+    return { dateStr:o.year+"-"+o.month+"-"+o.day, minutes:(parseInt(hh,10)||0)*60+(parseInt(o.minute,10)||0) };
   }
-  Array.prototype.forEach.call(document.querySelectorAll(".unitcard"), function(btn){
-    btn.addEventListener("click", function(){
-      state.unit = btn.getAttribute("data-unit");
-      Array.prototype.forEach.call(document.querySelectorAll(".unitcard"), function(b){ b.classList.remove("on"); });
-      btn.classList.add("on");
-    });
-  });
+  // A 'YYYY-MM-DD' string + n days -> UTC Date (date arithmetic, tz-safe)
+  function addDays(dateStr,n){ var d=new Date(dateStr+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d; }
 
-  // ---- audience toggle (adult / kid) ----
-  function applyAud(){
-    var kid = state.aud === "kid";
-    $("kidCard").classList.toggle("hide", !kid);
-    $("waiverAdult").classList.toggle("hide", kid);
-    $("waiverKid").classList.toggle("hide", !kid);
-    $("contactLabel").textContent = kid ? "Parent / guardian details" : "Your details";
-    $("agreeText").textContent = kid
-      ? "I am the parent/legal guardian and I accept this waiver on behalf of my child."
-      : "I have read and accept the waiver above.";
-    $("signLab").innerHTML = (kid ? "Type your name (parent/guardian) to sign" : "Type your full name to sign") + '<span class="req">*</span>';
+  // ============================================================================
+  // SLOT PROJECTION — the real point of this build.
+  // Projects the weekly grid (public_timetable rows for the selected unit + type
+  // + audience) onto the next 7 DAYS starting today in Australia/Sydney. Emits a
+  // slot on each date whose weekday === the class's day_of_week, dropping any
+  // occurrence TODAY whose start time has already passed. Returns day groups.
+  // ============================================================================
+  function projectSlots(){
+    var syd = sydneyNow();
+    var matches = state.rows.filter(function(r){
+      return r.unit_id===state.unit.id && r.type_code===state.typeCode && r.audience===state.audience;
+    });
+    var groups = [];
+    for(var i=0;i<7;i++){
+      var d = addDays(syd.dateStr,i);
+      var dateStr = d.toISOString().slice(0,10);
+      var dow = d.getUTCDay();
+      var daySlots = matches.filter(function(r){ return r.day_of_week===dow; });
+      if(i===0){
+        daySlots = daySlots.filter(function(r){ return hhmmToMin(r.start_time_raw) > syd.minutes; });
+      }
+      if(!daySlots.length) continue;
+      daySlots.sort(function(a,b){ return hhmmToMin(a.start_time_raw)-hhmmToMin(b.start_time_raw); });
+      groups.push({
+        label: DOW[dow]+" "+d.getUTCDate()+" "+MON[d.getUTCMonth()],
+        dateStr: dateStr,
+        slots: daySlots.map(function(r){
+          return { class_id:r.class_id, timeLabel:r.start_time, time:String(r.start_time_raw||"").slice(0,5) };
+        })
+      });
+    }
+    return groups;
   }
-  Array.prototype.forEach.call(document.querySelectorAll("#audSeg button"), function(btn){
-    btn.addEventListener("click", function(){
-      state.aud = btn.getAttribute("data-aud");
-      Array.prototype.forEach.call(document.querySelectorAll("#audSeg button"), function(b){ b.classList.remove("on"); });
-      btn.classList.add("on");
-      applyAud();
-    });
-  });
-  applyAud();
 
-  // ---- availability chips (multi-select) ----
-  Array.prototype.forEach.call(document.querySelectorAll("#availChips .chip"), function(chip){
-    chip.addEventListener("click", function(){
-      var v = chip.getAttribute("data-avail");
-      var i = state.avail.indexOf(v);
-      if (i >= 0) { state.avail.splice(i,1); chip.classList.remove("on"); }
-      else { state.avail.push(v); chip.classList.add("on"); }
+  // ---- summary paint (desktop card + mobile bar) ----
+  function setV(id,txt){
+    var e=$(id); if(!e) return;
+    if(txt){ e.textContent=txt; e.classList.remove("empty"); }
+    else{ e.textContent="Not chosen yet"; e.classList.add("empty"); }
+  }
+  function paintSummary(){
+    setV("sm_unit", state.unit ? state.unit.name : "");
+    setV("sm_class", state.typeLabel || "");
+    var dayTxt = state.fallback ? "Flexible" : (state.slot ? state.slot.dayLabel : "");
+    var timeTxt = state.fallback ? "You'll tell us" : (state.slot ? state.slot.timeLabel : "");
+    setV("sm_day", dayTxt);
+    setV("sm_time", timeTxt);
+    // mobile bar
+    var bar = $("sumbar");
+    var bits = [];
+    if(state.unit) bits.push(esc(state.unit.name));
+    if(state.typeLabel) bits.push(esc(state.typeLabel));
+    if(!state.fallback && state.slot) bits.push(esc(state.slot.dayLabel+", "+state.slot.timeLabel));
+    else if(state.fallback) bits.push("Flexible time");
+    bar.innerHTML = bits.length ? "<b>"+bits.join(" · ")+"</b>" : '<span class="muted">Choose your free trial</span>';
+  }
+
+  // ---- step navigation ----
+  function setStepper(n){
+    [1,2,3,4,5].forEach(function(i){
+      var el=$("p"+i); el.classList.remove("on","done");
+      var nEl=el.querySelector(".n");
+      if(i<n){ el.classList.add("done"); nEl.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>'; }
+      else{ nEl.textContent=i; }
+      if(i===n) el.classList.add("on");
     });
+  }
+  function show(n){
+    document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("on"); });
+    $("s"+n).classList.add("on");
+    window.scrollTo({ top:0, behavior:"smooth" });
+  }
+  function go(n){ paintSummary(); setStepper(n); show(n); if(n===4) ensureTurnstile(); }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".backlink[data-go]"), function(b){
+    b.addEventListener("click", function(){ go(parseInt(b.getAttribute("data-go"),10)); });
   });
 
-  // ---- Turnstile (explicit render so it works inside an iframe) ----
-  window.onloadTurnstileCallback = function(){
-    if (!window.turnstile) return;
+  // ============================================================================
+  // STEP 1 — UNIT (distinct unit_id/unit_name from the timetable)
+  // ============================================================================
+  function pinSvg(){ return '<div class="pin"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>'; }
+  function buildUnits(){
+    var seen={}, list=[];
+    state.rows.forEach(function(r){ if(r.unit_id && !seen[r.unit_id]){ seen[r.unit_id]=1; list.push({id:r.unit_id,name:r.unit_name}); } });
+    list.sort(function(a,b){ return a.name.localeCompare(b.name); });
+    state.units=list;
+    if(!list.length){ $("unitWrap").innerHTML='<div class="emptynote">No classes are published right now. Please call us on 0406 456 766 and we\'ll book you in.</div>'; return; }
+    $("unitWrap").className="cards";
+    $("unitWrap").innerHTML = list.map(function(u){
+      return '<button type="button" class="unitcard" data-uid="'+esc(u.id)+'">'+pinSvg()+'<div><div class="nm">'+esc(u.name)+'</div></div></button>';
+    }).join("");
+    Array.prototype.forEach.call($("unitWrap").querySelectorAll(".unitcard"), function(btn){
+      btn.addEventListener("click", function(){
+        var uid=btn.getAttribute("data-uid");
+        state.unit = state.units.filter(function(x){return x.id===uid;})[0];
+        // changing unit invalidates downstream choices
+        state.typeCode=state.typeLabel=state.audience=null; state.slot=null; state.fallback=false;
+        Array.prototype.forEach.call($("unitWrap").querySelectorAll(".unitcard"), function(b){ b.classList.remove("on"); });
+        btn.classList.add("on");
+        $("c1").disabled=false; $("h1").textContent="Ready — continue";
+        paintSummary();
+      });
+    });
+  }
+  $("c1").addEventListener("click", function(){ if(!state.unit) return; buildClasses(); go(2); });
+
+  // ============================================================================
+  // STEP 2 — CLASS (distinct type_code at unit, grouped by audience)
+  // ============================================================================
+  function buildClasses(){
+    // distinct (audience,type_code) present at the selected unit
+    var seen={}, items=[];
+    state.rows.forEach(function(r){
+      if(r.unit_id!==state.unit.id) return;
+      var key=r.audience+"|"+r.type_code;
+      if(seen[key]) return; seen[key]=1;
+      items.push({ audience:r.audience, type_code:r.type_code, type_label:r.type_label, duration:r.duration_minutes });
+    });
+    function cardHtml(it){
+      var c = COPY[it.type_code] || null;
+      var grad = c ? c.grad : "gneutral";
+      var badgeBits=[]; if(c && c.age) badgeBits.push(c.age); if(it.duration) badgeBits.push(it.duration+" MIN");
+      var badge = badgeBits.length ? '<span class="badge">'+esc(badgeBits.join(" · "))+'</span>' : "";
+      var hint = c ? '<span class="hint">'+esc(c.desc)+'</span>' : '<span class="hint"></span>';
+      return '<button type="button" class="clscard" data-aud="'+esc(it.audience)+'" data-tc="'+esc(it.type_code)+'" data-tl="'+esc(it.type_label)+'" data-dur="'+esc(it.duration||"")+'">'+
+        '<div class="ph '+grad+'">'+badge+'<h3>'+esc(it.type_label)+'</h3></div>'+
+        '<div class="bd">'+hint+'<div class="foot"><span class="meta">'+esc(it.type_label)+'</span><span class="pick">Choose</span></div></div>'+
+      '</button>';
+    }
+    function group(aud){
+      var g=items.filter(function(x){return x.audience===aud;});
+      g.sort(function(a,b){ return a.type_label.localeCompare(b.type_label); });
+      return g.map(cardHtml).join("");
+    }
+    var adults=group("Adults"), kids=group("Kids");
+    var html="";
+    if(adults) html+='<div class="grouphdr">Adults</div><div class="clsgrid">'+adults+"</div>";
+    if(kids)   html+='<div class="grouphdr">Kids &amp; Teens</div><div class="clsgrid">'+kids+"</div>";
+    if(!html)  html='<div class="emptynote">No classes listed for this academy yet. Please call us on 0406 456 766.</div>';
+    $("classWrap").className=""; $("classWrap").innerHTML=html;
+
+    Array.prototype.forEach.call($("classWrap").querySelectorAll(".clscard"), function(btn){
+      btn.addEventListener("click", function(){
+        state.audience = btn.getAttribute("data-aud");
+        state.typeCode = btn.getAttribute("data-tc");
+        state.typeLabel = btn.getAttribute("data-tl");
+        state.duration = btn.getAttribute("data-dur");
+        state.slot=null; state.fallback=false;
+        Array.prototype.forEach.call($("classWrap").querySelectorAll(".clscard"), function(b){ b.classList.remove("on"); });
+        btn.classList.add("on");
+        $("c2").disabled=false;
+        paintSummary();
+      });
+    });
+    // if the class step is re-entered, reflect any prior pick
+    $("c2").disabled = !state.typeCode;
+  }
+  $("c2").addEventListener("click", function(){ if(!state.typeCode) return; buildSlots(); go(3); });
+
+  // ============================================================================
+  // STEP 3 — TIME
+  // ============================================================================
+  function buildSlots(){
+    var groups = projectSlots();
+    var dur = state.duration ? (state.duration+" min") : "";
+    var html="";
+    groups.forEach(function(gp){
+      html+='<div class="dayblock"><div class="d">'+esc(gp.label)+'</div><div class="slots">';
+      gp.slots.forEach(function(s){
+        html+='<button type="button" class="slot" data-cid="'+esc(s.class_id)+'" data-date="'+esc(gp.dateStr)+'" data-time="'+esc(s.time)+'" data-tl="'+esc(s.timeLabel)+'" data-day="'+esc(gp.label)+'">'+esc(s.timeLabel)+(dur?'<small>'+esc(dur)+'</small>':"")+'</button>';
+      });
+      html+='</div></div>';
+    });
+    if(!groups.length){
+      html='<div class="emptynote">No '+esc(state.typeLabel)+' sessions in the next 7 days. Use the link below and we\'ll find you a time.</div>';
+    }
+    $("slotWrap").innerHTML=html;
+    $("c3").disabled = !(state.slot && !state.fallback);
+
+    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".slot"), function(btn){
+      btn.addEventListener("click", function(){
+        state.fallback=false;
+        state.slot = {
+          class_id: btn.getAttribute("data-cid"),
+          date: btn.getAttribute("data-date"),
+          time: btn.getAttribute("data-time"),
+          timeLabel: btn.getAttribute("data-tl"),
+          dayLabel: btn.getAttribute("data-day")
+        };
+        Array.prototype.forEach.call($("slotWrap").querySelectorAll(".slot"), function(b){ b.classList.remove("on"); });
+        btn.classList.add("on");
+        $("c3").disabled=false;
+        paintSummary();
+      });
+    });
+  }
+  // "None of these times work" → fallback: jump to details with a free-text field
+  $("noWorkLink").addEventListener("click", function(){
+    state.fallback=true; state.slot=null;
+    applyDetailsMode();
+    go(4);
+  });
+  $("c3").addEventListener("click", function(){ if(!state.slot||state.fallback) return; applyDetailsMode(); go(4); });
+
+  // ============================================================================
+  // STEP 4 — DETAILS
+  // ============================================================================
+  function applyDetailsMode(){
+    // kidMode ONLY when a real Kids class slot was chosen (the class decides it —
+    // there is no adult/kid toggle). The fallback path has no class → not kid.
+    var kidMode = (!state.fallback && state.audience==="Kids");
+    $("kidField").style.display = kidMode ? "block" : "none";
+    $("kidnote").style.display  = kidMode ? "flex" : "none";
+    $("availField").style.display = state.fallback ? "block" : "none";
+    $("s4h").textContent = kidMode ? "Parent / guardian details" : "Your details";
+    $("fnLab").innerHTML = (kidMode ? "Parent / guardian first name" : "First name") + '<span class="req"> *</span>';
+    $("lnLab").innerHTML = (kidMode ? "Parent / guardian last name" : "Last name") + '<span class="req"> *</span>';
+    $("emLab").innerHTML = (kidMode ? "Parent / guardian email" : "Email") + '<span class="req"> *</span>';
+    $("phLab").innerHTML = (kidMode ? "Parent / guardian phone" : "Phone") + '<span class="req"> *</span>';
+  }
+
+  // ---- Turnstile (explicit render; only once, when step 4 is first shown) ----
+  function ensureTurnstile(){
+    if(state.cfRendered) return;
+    if(!(window.turnstile && window.turnstile.render)){
+      // api.js may still be loading — retry shortly
+      setTimeout(ensureTurnstile, 200); return;
+    }
     window.turnstile.render("#cf", {
       sitekey: TURNSTILE_SITE_KEY,
-      callback: function(t){ state.cfToken = t; },
-      "error-callback": function(){ state.cfToken = ""; },
-      "expired-callback": function(){ state.cfToken = ""; }
+      callback: function(t){ state.cfToken=t; },
+      "error-callback": function(){ state.cfToken=""; },
+      "expired-callback": function(){ state.cfToken=""; }
     });
-  };
-  // api.js may load before or after this script; poll briefly.
-  (function waitCf(n){
-    if (window.turnstile && window.turnstile.render) { window.onloadTurnstileCallback(); return; }
-    if (n > 0) setTimeout(function(){ waitCf(n-1); }, 200);
-  })(25);
+    state.cfRendered=true;
+  }
 
-  // ---- validation + submit ----
   var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-  // Australian phone: mobile 04xx xxx xxx, or landline 0x xxxx xxxx, or +61 form.
-  // Strip spaces/dashes/parens first, then test. Not a lookup — just format.
-  function validAUPhone(raw){
-    var d = (raw||"").replace(/[\s\-()]/g,"");
-    return /^(\+?61|0)[2-478]\d{8}$/.test(d);
-  }
+  // Australian phone — SAME rule as waiver.html. Strip spaces/dashes/parens first.
+  function validAUPhone(raw){ var d=(raw||"").replace(/[\s\-()]/g,""); return /^(\+?61|0)[2-478]\d{8}$/.test(d); }
 
-  function showFormErr(msg){
-    var box = $("formerr");
-    box.textContent = msg;
-    box.style.display = "block";
-    box.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+  function showFormErr(msg){ var b=$("formerr"); b.textContent=msg; b.style.display="block"; b.scrollIntoView({behavior:"smooth",block:"center"}); }
 
-  $("form").addEventListener("submit", function(e){
-    e.preventDefault();
-    $("formerr").style.display = "none";
+  $("bookBtn").addEventListener("click", function(){
+    if(state.booked) return;
+    $("formerr").style.display="none";
+    ["first_name","last_name","email","phone","kid_name","avail"].forEach(function(id){ setErr(id,false); });
 
-    // clear field errors
-    ["first_name","last_name","email","phone","waiver_name","kid_name"].forEach(function(id){ setErr(id,false); });
+    var kidMode = (!state.fallback && state.audience==="Kids");
+    var missing=[], badFormat=[];
 
-    var kid = state.aud === "kid";
-    var missing = [];
-    var badFormat = [];
+    if(kidMode && !val("kid_name")){ setErr("kid_name",true); missing.push("child's name"); }
+    if(state.fallback && !val("avail")){ setErr("avail",true); missing.push("your availability"); }
+    if(!val("first_name")){ setErr("first_name",true); missing.push("first name"); }
+    if(!val("last_name")){ setErr("last_name",true); missing.push("last name"); }
+    if(!val("email")){ setErr("email",true); missing.push("email"); }
+    else if(!EMAIL_RE.test(val("email"))){ setErr("email",true); badFormat.push("a valid email address"); }
+    if(!val("phone")){ setErr("phone",true); missing.push("phone"); }
+    else if(!validAUPhone(val("phone"))){ setErr("phone",true); badFormat.push("a valid Australian phone number (e.g. 0412 345 678)"); }
 
-    if (!state.unit) { showFormErr("Please choose which academy."); return; }
-    if (kid && !val("kid_name")) { setErr("kid_name",true); missing.push("child's name"); }
-    if (!val("first_name")) { setErr("first_name",true); missing.push("first name"); }
-    if (!val("last_name"))  { setErr("last_name",true);  missing.push("last name"); }
-    // Email: distinguish empty from bad format
-    if (!val("email")) { setErr("email",true); missing.push("email"); }
-    else if (!EMAIL_RE.test(val("email"))) { setErr("email",true); badFormat.push("a valid email address"); }
-    // Phone: distinguish empty from bad format
-    if (!val("phone")) { setErr("phone",true); missing.push("phone"); }
-    else if (!validAUPhone(val("phone"))) { setErr("phone",true); badFormat.push("a valid Australian phone number (e.g. 0412 345 678)"); }
-    if (!val("waiver_name")){ setErr("waiver_name",true); missing.push("your signature (type your name in the waiver section)"); }
-
-    if (missing.length || badFormat.length) {
-      var parts = [];
-      if (missing.length) parts.push("Please fill in: " + missing.join(", ") + ".");
-      if (badFormat.length) parts.push("Please enter " + badFormat.join(" and ") + ".");
-      showFormErr(parts.join(" "));
-      return;
+    if(missing.length || badFormat.length){
+      var parts=[];
+      if(missing.length) parts.push("Please fill in: "+missing.join(", ")+".");
+      if(badFormat.length) parts.push("Please enter "+badFormat.join(" and ")+".");
+      showFormErr(parts.join(" ")); return;
     }
-    if (!$("agree").checked) { showFormErr("Please tick the box to accept the waiver."); return; }
-    if (!state.cfToken) { showFormErr("Please complete the 'I'm human' check."); return; }
+    if(!state.cfToken){ showFormErr("Please complete the 'I'm human' check."); return; }
 
     var payload = {
       turnstileToken: state.cfToken,
-      unit_legacy_id: state.unit,
+      unit_id: state.unit.id,
       first_name: val("first_name"),
       last_name: val("last_name"),
       email: val("email"),
       phone: val("phone"),
       how_heard: val("how_heard"),
-      preferred_day: state.avail.join(", "),
-      is_kid: kid,
-      kid_name: kid ? val("kid_name") : "",
-      waiver_agreed: true,
-      waiver_signed_by_name: val("waiver_name"),
-      waiver_text_version: WAIVER_VERSION
+      class_id: state.fallback ? "" : (state.slot ? state.slot.class_id : ""),
+      class_date: state.fallback ? "" : (state.slot ? state.slot.date : ""),
+      class_time: state.fallback ? "" : (state.slot ? state.slot.time : ""),
+      preferred_day: state.fallback ? val("avail") : "",
+      kid_name: kidMode ? val("kid_name") : ""
     };
 
-    var btn = $("submitBtn");
-    btn.disabled = true;
-    btn.textContent = "Booking…";
+    var btn=$("bookBtn"); btn.disabled=true; btn.textContent="Booking…";
 
-    fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload)
-    }).then(function(r){
-      return r.json().then(function(d){ return { ok: r.ok, status: r.status, d: d }; });
-    }).then(function(res){
-      if (res.ok && res.d && res.d.ok) {
-        $("form").classList.add("hide");
-        $("success").classList.remove("hide");
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        return;
-      }
-      btn.disabled = false;
-      btn.textContent = "Book my free trial";
-      if (res.status === 403) { showFormErr("The human check failed. Please refresh and try again."); }
-      else if (res.status === 422) { showFormErr("Please check your details and try again."); }
-      else { showFormErr("Something went wrong. Please try again in a moment."); }
-      if (window.turnstile) { window.turnstile.reset("#cf"); state.cfToken = ""; }
-    }).catch(function(){
-      btn.disabled = false;
-      btn.textContent = "Book my free trial";
-      showFormErr("Network error. Please check your connection and try again.");
-      if (window.turnstile) { window.turnstile.reset("#cf"); state.cfToken = ""; }
-    });
+    fetch(ENDPOINT, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(payload) })
+      .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, d:d }; }); })
+      .then(function(res){
+        if(res.ok && res.d && res.d.ok){ onBooked(res.d.waiver_token, kidMode); return; }
+        btn.disabled=false; btn.textContent="Confirm my booking";
+        // 403 = Turnstile (machine code body); 400/500 carry a human message in
+        // .error; anything else is a generic fallback.
+        var msg;
+        if(res.status===403){ msg="The human check failed. Please refresh and try again."; }
+        else if((res.status===400||res.status===500) && res.d && res.d.error){ msg=res.d.error; }
+        else{ msg="Something went wrong. Please try again in a moment."; }
+        showFormErr(msg);
+        if(window.turnstile && state.cfRendered){ window.turnstile.reset("#cf"); state.cfToken=""; }
+      })
+      .catch(function(){
+        btn.disabled=false; btn.textContent="Confirm my booking";
+        showFormErr("Network error. Please check your connection and try again.");
+        if(window.turnstile && state.cfRendered){ window.turnstile.reset("#cf"); state.cfToken=""; }
+      });
   });
+
+  // ============================================================================
+  // STEP 5 — BOOKED + health-check hand-off
+  // ============================================================================
+  function onBooked(token, kidMode){
+    state.booked=true;
+    // Plain-English slot line: "Monday 20 Jul, 6:00 PM · No-Gi · Neutral Bay"
+    var line;
+    if(state.fallback){
+      line = "Flexible time · " + state.typeLabel + " · " + state.unit.name + " — we'll confirm your slot";
+    } else {
+      line = state.slot.dayLabel + ", " + state.slot.timeLabel + " · " + state.typeLabel + " · " + state.unit.name;
+    }
+    $("bookedSlot").textContent = line;
+    $("sm_health").textContent = "Still to do";
+    $("sm_health").classList.remove("empty");
+
+    // CTA → /waiver.html?t=<token> (+ k / n so waiver.html can prefill)
+    var participant = kidMode ? val("kid_name") : val("first_name");
+    var href = "/waiver.html?t=" + encodeURIComponent(token || "");
+    if(kidMode) href += "&k=1";
+    if(participant) href += "&n=" + encodeURIComponent(participant);
+    $("waiverCta").setAttribute("href", href);
+
+    go(5);
+  }
+
+  // ============================================================================
+  // BOOT — read the live timetable, then build step 1
+  // ============================================================================
+  function loadTimetable(){
+    var url = SUPA + "/rest/v1/public_timetable?select=class_id,unit_id,unit_name,day_of_week,day_name,start_time,start_time_raw,duration_minutes,audience,type_code,type_label&order=day_of_week,start_time_raw";
+    fetch(url, { headers:{ apikey:ANON, Authorization:"Bearer "+ANON } })
+      .then(function(r){ return r.json(); })
+      .then(function(rows){
+        state.rows = Array.isArray(rows) ? rows : [];
+        buildUnits();
+        // Single academy → auto-select and let them continue straight away.
+        if(state.units.length===1){
+          var only=$("unitWrap").querySelector(".unitcard");
+          if(only) only.click();
+        }
+      })
+      .catch(function(){
+        $("unitWrap").className="";
+        $("unitWrap").innerHTML='<div class="emptynote">We couldn\'t load the timetable. Please refresh, or call us on 0406 456 766 and we\'ll book you in.</div>';
+      });
+  }
+
+  paintSummary();
+  loadTimetable();
 })();
 </script>
 </body>

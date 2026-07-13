@@ -4,12 +4,19 @@
 // booking form (mybjj-app.com/trial.html). It:
 //   1. validates the Cloudflare Turnstile token server-side (the real spam gate),
 //   2. validates the payload,
-//   3. inserts into public.trial_bookings with the service role,
-//      forcing trial_status='booked' and stamping the waiver.
+//   3. if a concrete class was picked, RE-VALIDATES it against the live timetable
+//      (the client is never trusted — see the class validation block below),
+//   4. inserts into public.trial_bookings with the service role (trial_status='booked'),
+//   5. returns the row's waiver_token so the page can hand off to /waiver.html?t=...
+//
+// The waiver is NO LONGER collected here — Phase 2 moved it to waiver.html, keyed
+// by waiver_token. This function does not stamp waiver_signed_* anymore.
 //
 // Because the insert happens here (service role), the public page carries NO
-// Supabase credentials, and the anon INSERT policy on trial_bookings can be
-// removed once this is live (see deploy notes).
+// Supabase WRITE credentials (it only READS public_timetable with the publishable
+// key), and the anon INSERT policy on trial_bookings is dropped and stays dropped.
+//
+// Deploy with --no-verify-jwt (public endpoint).
 //
 // Secrets required (supabase secrets set ...):
 //   TURNSTILE_SECRET   - Cloudflare Turnstile secret key
@@ -29,16 +36,11 @@ const ALLOWED_ORIGINS = [
   "https://www.mybjj-app.com",
 ];
 
-// Map the two live units' legacy ids to accept a friendly ?unit=nb|cd.
-// The function resolves legacy -> uuid from the units table, so no uuid is
-// hard-coded here; this set just whitelists which legacy ids the form may send.
-const ALLOWED_UNIT_LEGACY = new Set(["nb", "cd"]);
-
-// The waiver version the CURRENT page text corresponds to. The page sends its
-// own version too; we trust the server value as the source of truth for what
-// was actually accepted, and reject a mismatch so an old cached page can't
-// record acceptance of text we no longer show.
-const CURRENT_WAIVER_VERSION = "2026-07-nsw-v1-PLACEHOLDER";
+// The visitor can be no more than this many days ahead. The page projects the
+// live weekly grid onto the next 7 days; we allow 8 (one day of slack) so a
+// timezone edge never rejects a legitimate booking. Computed in Australia/Sydney.
+const BOOKING_HORIZON_DAYS = 8;
+const SYDNEY_TZ = "Australia/Sydney";
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -59,10 +61,38 @@ function json(body: unknown, status: number, origin: string | null) {
   });
 }
 
+// A rejection the page can show verbatim. Always 400 with a short human message.
+function bad(message: string, origin: string | null) {
+  return json({ ok: false, error: message }, 400, origin);
+}
+
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function str(v: unknown, max = 200): string {
   return (typeof v === "string" ? v : "").trim().slice(0, max);
+}
+
+// 'HH:MM:SS' | 'HH:MM' -> 'HH:MM' so a Postgres `time` ('18:00:00') compares
+// equal to what the page sends ('18:00').
+function hhmm(v: string): string {
+  return String(v || "").slice(0, 5);
+}
+
+// Today's date in Australia/Sydney as 'YYYY-MM-DD' (calendar date, not UTC).
+function sydneyTodayStr(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: SYDNEY_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+// Weekday (0=Sun..6=Sat) for a 'YYYY-MM-DD' calendar date, timezone-independent.
+function weekdayOf(dateStr: string): number {
+  return new Date(dateStr + "T00:00:00Z").getUTCDay();
 }
 
 async function verifyTurnstile(token: string, ip: string | null): Promise<boolean> {
@@ -114,78 +144,115 @@ Deno.serve(async (req) => {
     return json({ error: "turnstile_failed" }, 403, origin);
   }
 
-  // 2. Validate payload.
-  const unitLegacy = str(payload.unit_legacy_id, 16).toLowerCase();
+  // 2. Validate the lead fields (shared by both the slot path and the fallback).
+  const unitId = str(payload.unit_id, 40);
   const firstName = str(payload.first_name, 80);
   const lastName = str(payload.last_name, 80);
   const email = str(payload.email, 160).toLowerCase();
   const phone = str(payload.phone, 40);
   const howHeard = str(payload.how_heard, 200);
-  const preferredDay = str(payload.preferred_day, 200);
-  const isKid = payload.is_kid === true;
+  const preferredDay = str(payload.preferred_day, 400);
   const kidName = str(payload.kid_name, 120);
-  const waiverName = str(payload.waiver_signed_by_name, 160);
-  const waiverAgreed = payload.waiver_agreed === true;
-  const waiverVersion = str(payload.waiver_text_version, 60);
 
-  const errors: string[] = [];
-  if (!ALLOWED_UNIT_LEGACY.has(unitLegacy)) errors.push("unit");
-  if (!firstName) errors.push("first_name");
-  if (!lastName) errors.push("last_name");
-  if (!EMAIL_RE.test(email)) errors.push("email");
-  if (!phone) errors.push("phone");
-  if (!waiverAgreed) errors.push("waiver_agreed");
-  if (!waiverName) errors.push("waiver_signed_by_name");
-  // The accepted text must match the version this function currently serves.
-  if (waiverVersion !== CURRENT_WAIVER_VERSION) errors.push("waiver_version");
-  // For a kid trial the child's name is required (the parent's name goes in
-  // first/last + waiver_signed_by_name — the guardian who accepts).
-  if (isKid && !kidName) errors.push("kid_name");
+  if (!UUID_RE.test(unitId)) return bad("Please choose which academy.", origin);
+  if (!firstName) return bad("Please enter your first name.", origin);
+  if (!lastName) return bad("Please enter your last name.", origin);
+  if (!EMAIL_RE.test(email)) return bad("Please enter a valid email address.", origin);
+  if (!phone) return bad("Please enter a phone number.", origin);
 
-  if (errors.length) {
-    return json({ error: "validation", fields: errors }, 422, origin);
-  }
-
-  // 3. Resolve unit uuid and insert with the service role.
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // Unit must exist and be active. This resolves the uuid we insert AND lets the
+  // class check below confirm the picked class actually belongs to this unit.
   const { data: unitRow, error: unitErr } = await supabase
     .from("units")
     .select("id")
-    .eq("legacy_id", unitLegacy)
+    .eq("id", unitId)
     .eq("active", true)
     .maybeSingle();
+  if (unitErr || !unitRow) return bad("That academy isn't available. Please pick another.", origin);
 
-  if (unitErr || !unitRow) {
-    return json({ error: "unit_not_found" }, 422, origin);
+  // ---- CLASS VALIDATION BLOCK ------------------------------------------------
+  // Everything the client sent about the class is re-derived from the DB here.
+  // NEVER trust the client: not the unit link, not the weekday, not the time,
+  // not whether it's a kids class.
+  const classId = str(payload.class_id, 40);
+  const classDate = str(payload.class_date, 10);
+  const clientTime = hhmm(str(payload.class_time, 8));
+
+  let isKid = false;
+  let insertClassId: string | null = null;
+  let insertClassDate: string | null = null;
+  let insertClassTime: string | null = null;
+
+  if (classId) {
+    // A concrete slot was picked — validate it against the live timetable.
+    if (!UUID_RE.test(classId)) return bad("That class could not be found. Please pick another time.", origin);
+    if (!DATE_RE.test(classDate)) return bad("That date is invalid. Please pick another time.", origin);
+
+    const { data: cls, error: clsErr } = await supabase
+      .from("classes")
+      .select("id, unit_id, day_of_week, time, active, audience")
+      .eq("id", classId)
+      .maybeSingle();
+
+    if (clsErr || !cls) return bad("That class could not be found. Please pick another time.", origin);
+    if (cls.active !== true) return bad("That class is no longer running. Please pick another time.", origin);
+    if (cls.unit_id !== unitRow.id) return bad("That class isn't at the academy you chose.", origin);
+    if (weekdayOf(classDate) !== cls.day_of_week) return bad("That day doesn't match the class. Please pick another time.", origin);
+    if (hhmm(String(cls.time)) !== clientTime) return bad("That time is no longer on the schedule. Please pick another time.", origin);
+
+    // Date must sit inside [today, today + horizon] in Sydney.
+    const todayStr = sydneyTodayStr();
+    const maxStr = new Date(new Date(todayStr + "T00:00:00Z").getTime() + BOOKING_HORIZON_DAYS * 86400000)
+      .toISOString().slice(0, 10);
+    if (classDate < todayStr || classDate > maxStr) {
+      return bad("Please pick a time within the next week.", origin);
+    }
+
+    // is_kid is DERIVED from the class, never taken from the client.
+    isKid = cls.audience === "Kids";
+    if (isKid && !kidName) return bad("Please add your child's name.", origin);
+
+    insertClassId = cls.id;
+    insertClassDate = classDate;
+    insertClassTime = hhmm(String(cls.time)); // canonical DB value, not the client's
+  } else {
+    // Fallback path ("None of these times work") — we only have free-text
+    // availability. is_kid stays false (no class → no derived audience).
+    if (!preferredDay) return bad("Please tell us when you're usually free.", origin);
   }
 
+  // 3. Insert with the service role.
   const nowISO = new Date().toISOString();
-  const { error: insErr } = await supabase.from("trial_bookings").insert({
-    unit_id: unitRow.id,
-    first_name: firstName,
-    last_name: lastName,
-    email,
-    phone,
-    how_heard: howHeard || null,
-    preferred_day: preferredDay || null,
-    is_kid: isKid,
-    kid_name: isKid ? kidName : null,
-    trial_status: "booked",
-    booked_at: nowISO,
-    waiver_signed_at: nowISO,
-    waiver_signed_by_name: waiverName,
-    // Trust the SERVER version, not whatever the client claimed.
-    waiver_text_version: CURRENT_WAIVER_VERSION,
-  });
+  const { data: inserted, error: insErr } = await supabase
+    .from("trial_bookings")
+    .insert({
+      unit_id: unitRow.id,
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      phone,
+      how_heard: howHeard || null,
+      preferred_day: preferredDay || null,
+      is_kid: isKid,
+      kid_name: isKid ? kidName : null,
+      class_id: insertClassId,
+      class_date: insertClassDate,
+      class_time: insertClassTime,
+      trial_status: "booked",
+      booked_at: nowISO,
+    })
+    .select("id, waiver_token")
+    .single();
 
-  if (insErr) {
-    console.error("[trial-booking] insert error:", insErr.message);
-    return json({ error: "insert_failed" }, 500, origin);
+  if (insErr || !inserted) {
+    console.error("[trial-booking] insert error:", insErr?.message);
+    return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
   }
 
-  return json({ ok: true }, 200, origin);
+  return json({ ok: true, waiver_token: inserted.waiver_token }, 200, origin);
 });

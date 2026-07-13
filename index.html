@@ -1910,12 +1910,11 @@ function rTL(journey,subject){
   const arr=Array.isArray(journey)?journey:[];
   const s=subject||null;
   // V2 — current-item meta line shows the class count only for staff
-  // viewers. Predicate matches the E3 staff-detection at line 3636
-  // (rAttsStaff vs rAtts in the class roster): owner/instructor minus
-  // the instructor-who-also-trains-themselves case (isStudentAdmin).
+  // viewers (owner/instructor). Staff status is an independent fact: it does
+  // NOT depend on whether the viewer also has a students row, mirroring the
+  // class-roster surface. _myStuForJny is still needed below for _isOwnJourney.
   const _myStuForJny=(typeof myStudentRow==='function')?myStudentRow():null;
-  const _isStudentAdminJny=!!(S.me&&S.me.role==='instructor'&&_myStuForJny);
-  const _viewerIsStaff=(typeof isStaffOrOwner==='function')&&isStaffOrOwner()&&!_isStudentAdminJny;
+  const _viewerIsStaff=(typeof isStaffOrOwner==='function')&&isStaffOrOwner();
   // V2 refinement — "You are here" pill only renders on the viewer's
   // own journey. myStudentRow() already routes parent-with-active-kid
   // to that kid's row (per the parent-switcher batches), so a parent
@@ -3887,15 +3886,18 @@ function rClass(){
     const isIn=!!myRow&&(myRow.status==='going'||myRow.status==='present');
     const isCf=!!myRow&&myRow.status==='present';
     const all=rows.filter(r=>r.status==='going'||r.status==='present').map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];return s?s.id:null;}).filter(Boolean);
-    // Owners and instructors are also staff viewers — they should see the
-    // "N going" indicator, not a check-in button.
-    const isStudentAdmin=me.role==='instructor'&&!!myStu;
-    const isStaffViewer=isStaffOrOwner()&&!isStudentAdmin;
+    // Staff (owner/instructor) and student are INDEPENDENT facts, not an XOR.
+    // isStaff alone drives the roster surface (attBlock below); the presence
+    // of the viewer's own students row (myStu) alone drives the self check-in
+    // button. A professor who trains at his own academy legitimately gets BOTH:
+    // the roster AND his own "I'm going". A staff member with no students row
+    // (e.g. the dev admin) gets the roster but no button.
+    const isStaff=isStaffOrOwner();
     // Module 1 — a student whose account is on hold can't self check in.
     // When they're not already checked in, the tappable check-in button
-    // is swapped for a non-interactive amber "on hold" pill. Staff
-    // viewers and already-checked-in students are unaffected.
-    const onHoldBlock=!!myStu&&myStu.standing==='on_hold'&&!isStaffViewer;
+    // is swapped for a non-interactive amber "on hold" pill. Staff are never
+    // blocked; already-checked-in students are unaffected.
+    const onHoldBlock=!!myStu&&myStu.standing==='on_hold'&&!isStaff;
     const onHoldPill=`<div style="background:var(--amber-bg);color:var(--amber-text);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;text-align:center;width:100%;line-height:1.2;cursor:default">On hold — contact office</div>`;
     // G9.2 — check-in is open from the start of the day until class
     // end. Two changes vs. previous behaviour:
@@ -3909,10 +3911,12 @@ function rClass(){
     const endMin=startMin+(c.dur||60);
     const isEnded=isT&&_now!=null&&_now>endMin;
     let cc='card';let btn='';
-    // Batch 8-FE Item 2 — staff/admin top-right pill removed (duplicated
-    // the avatar-stack "N going" row below). Right column collapses
-    // when btn=='' via the conditional render below.
-    if(isStaffViewer){btn='';}
+    // The self check-in column renders ONLY for a viewer with their own
+    // students row (myStu). No row → no button (dev-admin staff, or a parent
+    // with no active kid). Staff WITH a row fall through and get the button,
+    // independent of the roster block below. Right column collapses when
+    // btn=='' via the conditional render at the card's return.
+    if(!myStu){btn='';}
     else if(isCf){cc='card stc';btn=`<button class="bconf"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Present</button>`;}
     else if(isIn){
       cc='card stp';
@@ -3959,7 +3963,7 @@ function rClass(){
     // stay hidden; 'Adults' (and any other audience) renders the
     // full roster. Staff path is unchanged.
     let attBlock;
-    if(isStaffViewer){
+    if(isStaff){
       attBlock=rAttsStaff(rows,c.id);
     }else if(c.aud==='Kids'){
       attBlock=rAttsCountOnly(all);
@@ -3978,7 +3982,7 @@ function rClass(){
       const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
       attBlock=rAtts(_adultsOnly,c.id);
     }
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&(me.role==='student'||isStudentAdmin)?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
+    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
 
 
