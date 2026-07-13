@@ -316,12 +316,70 @@ function setSteps(n){
     if(i===n) el.classList.add("on");
   });
 }
+function err(msg){
+  var b=$("formerr"); b.textContent=msg; b.style.display="block";
+  b.scrollIntoView({behavior:"smooth",block:"center"});
+}
+
 window.go = function(n){
   $("formerr").style.display="none";
+  // Validate the step we're LEAVING, not the one we're entering. Moving
+  // backwards is always allowed.
+  var cur = currentStep();
+  if(n > cur && !validateStep(cur)) return;
   if(n===3) applyGender();
   setSteps(n); show("s"+n);
   if(n===4 && window.sigResize) setTimeout(window.sigResize, 30);
 };
+
+function currentStep(){
+  for(var i=1;i<=4;i++){ if($("s"+i).classList.contains("on")) return i; }
+  return 1;
+}
+function mark(id, bad){
+  var el = $(id); if(!el) return;
+  el.classList.toggle("err", !!bad);
+}
+function validateStep(n){
+  var missing = [];
+  ["dob","address","em_name","em_phone","em_rel"].forEach(function(id){ mark(id,false); });
+
+  if(n === 1){
+    if(!val("dob")){      mark("dob",true);      missing.push("date of birth"); }
+    if(!val("address")){  mark("address",true);  missing.push("address"); }
+    if(!val("em_name")){  mark("em_name",true);  missing.push("emergency contact name"); }
+    if(!val("em_phone")){ mark("em_phone",true); missing.push("emergency contact phone"); }
+    if(!val("em_rel")){   mark("em_rel",true);   missing.push("their relationship to you"); }
+    if(missing.length){
+      err("Please fill in: " + missing.join(", ") + ".");
+      return false;
+    }
+  }
+
+  if(n === 3){
+    // Every medical question must be answered — a blank is not a "no".
+    var unanswered = [];
+    document.querySelectorAll('#med .ynrow').forEach(function(row){
+      if(row.style.display === "none") return;             // pregnancy hidden for Male
+      var k = row.getAttribute("data-k");
+      if(st.yn[k] === undefined){
+        unanswered.push(row);
+        row.style.borderColor = "var(--red)";
+      } else {
+        row.style.borderColor = "";
+      }
+    });
+    if(unanswered.length){
+      err("Please answer every health question — " + unanswered.length + " still blank.");
+      unanswered[0].scrollIntoView({behavior:"smooth", block:"center"});
+      return false;
+    }
+  }
+
+  return true;
+}
+// Hide the pregnancy question for anyone who said Male, and clear any answer
+// they may have given before changing it (so no phantom is_pregnant=true).
 function applyGender(){
   var male = val("gender") === "Male";
   var row = document.querySelector('.ynrow[data-k="is_pregnant"]');
@@ -373,7 +431,11 @@ var sigDirty = false, sigCtx = null;
   var drawing = false;
   function resize(){
     var r = c.getBoundingClientRect();
-    if(!r.width || !r.height) return;   // hidden step 4 measures 0x0
+    // The canvas lives inside step 4, which is display:none until the user gets
+    // there — a hidden element measures 0x0, and scaling a zero-sized canvas
+    // leaves the context unusable. So resize() is called when step 4 is SHOWN,
+    // not on load. (window.sigResize below.)
+    if(!r.width || !r.height) return;
     var dpr = window.devicePixelRatio || 1;
     var keep = sigDirty ? c.toDataURL() : null;
     c.width = r.width * dpr; c.height = r.height * dpr;
@@ -381,6 +443,7 @@ var sigDirty = false, sigCtx = null;
     ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#16202b";
     if(keep){ var img=new Image(); img.onload=function(){ ctx.drawImage(img,0,0,r.width,r.height); }; img.src=keep; }
   }
+  window.sigResize = resize;
   function pos(e){
     var r=c.getBoundingClientRect();
     var t=(e.touches && e.touches[0]) || e;
@@ -403,7 +466,6 @@ var sigDirty = false, sigCtx = null;
     ctx.lineWidth=2.2; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle="#16202b";
     sigDirty=false; $("sighint").classList.remove("gone");
   };
-  window.sigResize = resize;
   window.addEventListener("resize",resize);
 })();
 
@@ -447,10 +509,6 @@ if(!UUID_RE.test(TOKEN)){
 }
 
 // ---- submit ----
-function err(msg){
-  var b=$("formerr"); b.textContent=msg; b.style.display="block";
-  b.scrollIntoView({behavior:"smooth",block:"center"});
-}
 window.submitWaiver = function(){
   $("formerr").style.display="none";
 
