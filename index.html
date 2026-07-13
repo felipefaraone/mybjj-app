@@ -1391,6 +1391,15 @@ let VISITORS={};
 // user_id=auth.uid()) so cross-unit self check-in still resolves "me".
 // Set in hydrateData (never in refetchUnitScopedData), cleared on logout.
 let MY_STUDENT=null;
+// Unit-independent cache of the signed-in user's KIDS (parent_user_id =
+// auth.uid()). Same rationale as MY_STUDENT: STUDENTS is re-scoped to the
+// active unit on every switch, so a kid whose home unit differs from the
+// parent's active unit drops out of STUDENTS and their switcher chip would
+// vanish. MY_KIDS keeps every linked kid visible + checkinable regardless of
+// active unit (attendance_insert RLS anchors on parent_user_id, no unit
+// clause). Fetched ONCE at auth alongside loadMyStudent; NEVER rebuilt by
+// refetchUnitScopedData / the unit switch. Cleared on logout / SIGNED_OUT.
+let MY_KIDS=[];
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 // Curriculum cycle — maps a calendar date to the 1-based cycle week for a
@@ -3988,16 +3997,12 @@ function _parentChildLsKey(){return _PARENT_CHILD_LS_PREFIX+((S.profile&&S.profi
 function setParentChild(id){
   S.parentChild=id||null;
   try{localStorage.setItem(_parentChildLsKey(),S.parentChild||'');}catch(_){}
-  // Align the active unit with the active kid so Classes / Programme
-  // / Members render the unit the kid trains at. Only fires when a kid
-  // is actually selected (self-active leaves the unit alone).
-  if(S.parentChild){
-    const kid=STUDENTS.find(s=>s.id===S.parentChild);
-    if(kid&&kid.unit){
-      const u=UNITS.find(x=>x.id===kid.unit);
-      if(u&&u.name&&u.name!==S.unit){pickUnit(u.name);return;}
-    }
-  }
+  // The active unit belongs to the USER, not the selected kid. Selecting a
+  // child must NEVER move the dropdown — the kid stays visible via the
+  // unit-independent MY_KIDS cache (parentChildren fallback), and check-in
+  // works at any unit because attendance stamps the CLASS's unit. (Previously
+  // this force-switched to the kid's home unit, which trapped a parent trying
+  // to take their child to a class at another unit.)
   render();
 }
 // Restore the persisted active kid on hydrate. Called from
@@ -7140,7 +7145,7 @@ function render(){
 // Etapa 3 — doLogin demo helper deleted. Real auth lives entirely in
 // signInGoogle / signInMagic / signInWithEmail and the email-step
 // flow in rAuth.
-function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.classAdd=null;if(sb)sb.auth.signOut();render();}
+function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.classAdd=null;if(sb)sb.auth.signOut();render();}
 
 function friendlyAuthError(err){
   if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
@@ -7247,7 +7252,7 @@ async function bootAuth(){
       if(S.passwordRecovery)return;
       onAuthed();
     }
-    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();}
+    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();}
     else if(ev==='USER_UPDATED'){
       // Fired when a self-service email change is confirmed. Reflect the
       // new email immediately (no manual reload): mirror onto S.profile /
@@ -7491,7 +7496,17 @@ function parentChildren(userId){
   // the signed-in user, preserving every existing caller.
   const uid=userId||((S.profile&&S.profile.id)||null);
   if(!uid) return [];
-  return STUDENTS.filter(s=>s._parentUserId===uid&&s._active!==false);
+  const local=STUDENTS.filter(s=>s._parentUserId===uid&&s._active!==false);
+  // Prefer the STUDENTS rows when present (freshest, same-unit copy). Only the
+  // SELF path (no explicit userId) may fall back to the unit-independent
+  // MY_KIDS cache — when the active unit differs from the kid's home unit the
+  // kid isn't in STUDENTS, and without this its switcher chip would vanish.
+  // The explicit-userId path (admin viewing X's kids) stays scoped to what
+  // that viewer can actually see.
+  if(!userId && !local.length && MY_KIDS.length){
+    return MY_KIDS.filter(k=>k._active!==false);
+  }
+  return local;
 }
 // Training parent = the signed-in user has their own students row by
 // user_id. Independent of which kid is active in the switcher — uses
@@ -8982,6 +8997,30 @@ async function loadMyStudent(){
     }:null;
   }catch(e){console.warn('[mybjj] loadMyStudent ex:',e);}
 }
+// Fetch the caller's linked kids, unit-independently. Mirrors loadMyStudent:
+// the students RLS grants SELECT on parent_user_id = auth.uid() with no unit
+// clause, so this returns every linked kid regardless of the active unit.
+// Mapped into the SAME shape STUDENTS rows use so parentChildren()'s fallback,
+// the switcher chips, and myStudentRow()/doCI all consume them unchanged.
+// Runs ONCE per hydrate (auth path) — NOT on unit switch — so a unit change
+// never drops a kid from view. Empty array for users with no kids.
+async function loadMyKids(){
+  const c=initSupabase();
+  if(!c||!S.profile||!S.profile.id){MY_KIDS=[];return;}
+  try{
+    const{data,error}=await c.from('students')
+      .select('id,legacy_id,user_id,parent_user_id,belt,degree,prog,initials,full_name,unit_id,photo_url,active,standing,hold_note')
+      .eq('parent_user_id',S.profile.id);
+    if(error){console.warn('[mybjj] loadMyKids:',error.message);return;}
+    MY_KIDS=(data||[]).map(r=>({
+      id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,
+      name:r.full_name,belt:r.belt,deg:r.degree,prog:r.prog,initials:r.initials,
+      unit:(UNITS.find(u=>u&&u._dbId===r.unit_id)||{}).id||null,
+      photoUrl:r.photo_url||null,_active:r.active!==false,
+      standing:r.standing||'ok',holdNote:r.hold_note||null
+    }));
+  }catch(e){console.warn('[mybjj] loadMyKids ex:',e);MY_KIDS=[];}
+}
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
   let touched=false;
@@ -9011,6 +9050,10 @@ async function hydrateData(){
     // hydrate (auth path only — NOT on unit switch, which calls
     // refetchUnitScopedData directly), AFTER UNITS maps so unit resolves.
     await loadMyStudent();
+    // Unit-independent kids cache — same one-shot auth-path treatment as
+    // loadMyStudent so a linked kid stays visible + checkinable no matter
+    // which unit the parent's dropdown is on. Never re-run on unit switch.
+    await loadMyKids();
     // Batch 2a — origin-belt backfill. Runs after both STUDENTS and
     // PROMOTION_LOG are populated so the earliest-promotion lookup is
     // valid. Skips students whose journey already contains an entry
@@ -9063,6 +9106,7 @@ async function hydrateData(){
     await resolveSignedUrls([
       ...STUDENTS.map(s => s.photoUrl),
       ...STAFF.map(s => s.photoUrl),
+      ...MY_KIDS.map(k => k.photoUrl),   // switcher chips for cross-unit kids
       (S.profile && S.profile.photo_url) || null
     ]);
     if(touched){enrichMeFromHydrate();console.log('[mybjj] hydrated from Supabase');S.hydrating=false;render();if(canEditClassCounts())loadPhotoQueue();loadMyPhotoApproval();loadNotifications();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
