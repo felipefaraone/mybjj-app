@@ -812,14 +812,13 @@ const PROMO_CRITERIA={
     {belt:'brown', marker:'4th_stripe',label:'4th stripe', classes:60,months:4},
     {belt:'brown', marker:'promotion', label:'Black belt', classes:40,months:4}
   ],
-  // B3b-1 — Kids criteria transcribed verbatim from
-  // documentation/07-promotion-criteria.md "Completo (dados do John)"
-  // table (John Luhr, 18 May 2026). Belt keys match students.belt
-  // lowercase (compound belts use the slash form). Only the eight
-  // complete belts are listed here — orange / orange/black /
-  // green/white / green / green/black stay omitted on purpose so
-  // those kids continue to surface the "Promotion criteria pending"
-  // state until John + Mario sign off the remaining numbers.
+  // Kids criteria from John Luhr (18 May 2026 table + 14 Jul 2026 sign-off of the
+  // last five belts). Belt keys match students.belt lowercase (compound belts use
+  // the slash form). ALL 13 kids belts are now present. green/black's promotion is
+  // BLUE — the last kids belt bridges to the adult system in the calendar year the
+  // student turns 16 (teacher-awarded, never automatic, not blocked here). Blue
+  // itself is deliberately NOT listed under kids: getNextMarker resolves any blue+
+  // belt to the adults path, so a 16-year-old on blue follows the adult criteria.
   kids:[
     {belt:'white',        marker:'1st_stripe',label:'1st stripe',         classes:6, months:1},
     {belt:'white',        marker:'2nd_stripe',label:'2nd stripe',         classes:8, months:2},
@@ -860,23 +859,57 @@ const PROMO_CRITERIA={
     {belt:'orange/white', marker:'2nd_stripe',label:'2nd stripe',         classes:26,months:1},
     {belt:'orange/white', marker:'3rd_stripe',label:'3rd stripe',         classes:26,months:2},
     {belt:'orange/white', marker:'4th_stripe',label:'4th stripe',         classes:26,months:2},
-    {belt:'orange/white', marker:'promotion', label:'Orange belt',        classes:20,months:2}
+    {belt:'orange/white', marker:'promotion', label:'Orange belt',        classes:20,months:2},
+    {belt:'orange',       marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'orange',       marker:'2nd_stripe',label:'2nd stripe',         classes:26,months:1},
+    {belt:'orange',       marker:'3rd_stripe',label:'3rd stripe',         classes:26,months:2},
+    {belt:'orange',       marker:'4th_stripe',label:'4th stripe',         classes:26,months:2},
+    {belt:'orange',       marker:'promotion', label:'Orange/Black belt',  classes:20,months:2},
+    {belt:'orange/black', marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'orange/black', marker:'2nd_stripe',label:'2nd stripe',         classes:26,months:1},
+    {belt:'orange/black', marker:'3rd_stripe',label:'3rd stripe',         classes:26,months:2},
+    {belt:'orange/black', marker:'4th_stripe',label:'4th stripe',         classes:26,months:2},
+    {belt:'orange/black', marker:'promotion', label:'Green/White belt',   classes:20,months:2},
+    {belt:'green/white',  marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'green/white',  marker:'2nd_stripe',label:'2nd stripe',         classes:26,months:1},
+    {belt:'green/white',  marker:'3rd_stripe',label:'3rd stripe',         classes:26,months:2},
+    {belt:'green/white',  marker:'4th_stripe',label:'4th stripe',         classes:26,months:2},
+    {belt:'green/white',  marker:'promotion', label:'Green belt',         classes:20,months:2},
+    {belt:'green',        marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'green',        marker:'2nd_stripe',label:'2nd stripe',         classes:26,months:1},
+    {belt:'green',        marker:'3rd_stripe',label:'3rd stripe',         classes:26,months:2},
+    {belt:'green',        marker:'4th_stripe',label:'4th stripe',         classes:26,months:2},
+    {belt:'green',        marker:'promotion', label:'Green/Black belt',   classes:20,months:2},
+    {belt:'green/black',  marker:'1st_stripe',label:'1st stripe',         classes:10,months:1},
+    {belt:'green/black',  marker:'2nd_stripe',label:'2nd stripe',         classes:26,months:1},
+    {belt:'green/black',  marker:'3rd_stripe',label:'3rd stripe',         classes:26,months:2},
+    {belt:'green/black',  marker:'4th_stripe',label:'4th stripe',         classes:26,months:2},
+    // Last kids belt. Its promotion is BLUE — the bridge into the adult system,
+    // available in the calendar year the student turns 16. Age-gated by JUDGEMENT,
+    // not by code: John awards it whenever he decides. Never auto, never blocked.
+    {belt:'green/black',  marker:'promotion', label:'Blue belt',          classes:20,months:2,ageGated:true,note:'Awarded in the calendar year they turn 16'}
   ]
 };
-// getNextMarker — looks up the row in PROMO_CRITERIA the student is
-// working toward. Returns null for black belt (no further markers)
-// and for kid belts that don't yet have published criteria (orange,
-// orange/black, green/white, green, green/black). Reads student.deg
-// (in-memory degree slot; hydrate maps students.degree → deg).
-// B3b-1 — prog-aware path selection. Adults path unchanged; kids
-// belts (including compound IBJJF slash keys like 'grey/white') now
-// resolve against PROMO_CRITERIA.kids transcribed from John's table.
+// getNextMarker — looks up the row in PROMO_CRITERIA the student is working toward.
+// Returns null for black belt (no further markers). Reads student.deg (in-memory
+// degree slot; hydrate maps students.degree → deg).
+//
+// The criteria come from the BELT, not the programme (John, 14 Jul 2026): a
+// 16-year-old on BLUE is still prog='kids' (they're not 18) but follows the ADULT
+// path — 40 classes for the 1st stripe, not "criteria pending". That is NOT an edge
+// case, it is the normal life of every 16- and 17-year-old in the academy. Only
+// 'white' exists in both systems, so it alone falls back to prog to break the tie
+// (kids white = 6 classes to the 1st stripe; adult white = 10).
 function getNextMarker(student){
   if(!student)return null;
-  if(student.belt==='black')return null;
-  const path=student.prog==='kids'?PROMO_CRITERIA.kids:PROMO_CRITERIA.adults;
-  if(!path)return null;
   const belt=String(student.belt||'').toLowerCase();
+  if(belt==='black')return null;
+  let path;
+  if(belt!=='white'&&BELT_ORDER_A.indexOf(belt)>=0)path=PROMO_CRITERIA.adults;      // blue / purple / brown
+  else if(belt!=='white'&&BELT_ORDER_K.indexOf(belt)>=0)path=PROMO_CRITERIA.kids;   // any kids colour
+  else if(belt==='white')path=(student.prog==='kids')?PROMO_CRITERIA.kids:PROMO_CRITERIA.adults;
+  else path=null;                                                                   // unknown belt
+  if(!path)return null;
   const degree=student.deg||0;
   if(degree<4){
     const markerKey=['1st_stripe','2nd_stripe','3rd_stripe','4th_stripe'][degree];
@@ -901,11 +934,8 @@ function getLastMarkerDate(student){
 function getEligibilityStatus(student){
   if(!student)return null;
   if(student.belt==='black')return null;
-  // B3b-1 — kids no longer short-circuit to pending. getNextMarker
-  // returns a row for any kid belt with published criteria; the
-  // pending state is reserved for the kid belts John hasn't sent
-  // numbers for yet (orange, orange/black, green/white, green,
-  // green/black).
+  // Every kids belt now has published criteria (14 Jul 2026 sign-off), so the
+  // pending state is now only a safety net for an unrecognised belt key.
   const next=getNextMarker(student);
   if(!next){
     if(student.prog==='kids'){
@@ -2750,19 +2780,27 @@ function rStuProf(){
   const editHandler=(isSelf||(isAdminViewer&&isRosterEntry)||isParentOnOwnKid)
     ?"openEditStu('"+s.id+"')"
     :'';
-  // DOB vs programme mismatch — a cheap integrity nudge for staff (item 5). Amber,
-  // never a block: the DOB may itself be the wrong value, and the app must never
-  // stop a correction. Over 18 in kids, or under 16 in adults. Only when a DOB
-  // exists (most rows have none today; it starts working as waivers fill it in).
+  // Age nudges for staff — the TWO events the app must not conflate (John,
+  // 14 Jul 2026). Amber, never a block: the DOB may itself be wrong, and the app
+  // must never stop a correction. Only fire when a DOB exists (most rows have none
+  // today; it starts working as Patricia enters them).
+  //   - PROGRAMME (actual 18th birthday): kids at 18+ → move to adults; adults
+  //     under 18 → they aren't hidden from the going-list like a kid is.
+  //   - BELTS (calendar year of turning 16): a kid on a kids belt becomes eligible
+  //     for their blue belt — the one John will actually use.
   const _dobAge=_ageFromDob(s.dob);
-  let _progDobWarn='';
+  const _ageWarns=[];
   if(isAdminViewer&&_dobAge!=null){
-    if(isKids&&_dobAge>18)_progDobWarn='Date of birth says '+_dobAge+" — but they're in the kids programme.";
-    else if(!isKids&&_dobAge<16)_progDobWarn='Date of birth says '+_dobAge+" — but they're in the adults programme.";
+    if(isKids&&_dobAge>=18)_ageWarns.push('Turned '+_dobAge+' — should they be moved to the adults programme?');
+    else if(!isKids&&_dobAge<18)_ageWarns.push('Under 18 but in the adults programme. Kids are hidden from the adult class list; this student is not.');
+    const _birthYr=parseInt(String(s.dob).slice(0,4),10);
+    const _thisYr=new Date().getFullYear();
+    if(isKids&&_birthYr&&(_thisYr-_birthYr>=16)&&BELT_ORDER_K.indexOf(String(s.belt||'').toLowerCase())>=0){
+      _ageWarns.push('Eligible for their blue belt.');
+    }
   }
-  const _progDobWarnHtml=_progDobWarn
-    ?'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:12.5px;color:var(--amber-text);line-height:1.5;display:flex;gap:8px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>'+_progDobWarn+'</span></div>'
-    :'';
+  const _amberLine=(txt)=>'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:12.5px;color:var(--amber-text);line-height:1.5;display:flex;gap:8px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>'+txt+'</span></div>';
+  const _progDobWarnHtml=_ageWarns.map(_amberLine).join('');
   return `<div class="sub open">
 <div class="shdr"><button class="sback" onclick="profileBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> ${backLbl}</button><div class="stitle">${s.name}</div></div>
 <div class="sbody">
@@ -12140,11 +12178,14 @@ function rEditStu(){
   const beltVisual=isAdminViewer
     ?'<div class="ef" style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,storedProg)+'<span style="font-size:11px;color:var(--text3)">(belt is set via Promote)</span></div>'
     :'';
-  // ---- Programme control (admin-only) — prog + belt move together ----
-  // prog decides the belt system AND is a child-safety control (kids are hidden
-  // from the adult going-list). A belt must be valid in the programme it lands in,
-  // so a change to a non-shared belt forces an explicit belt decision — never
-  // auto-converted (there is no honest grey/black → coloured-belt lookup).
+  // ---- Programme control (admin-only) ----
+  // prog is a child-safety control (kids are hidden from the adult going-list) and
+  // it sets the guardian requirement. It does NOT dictate the belt: John does not
+  // want belt restrictions — an 18-year-old on an orange belt is legitimately
+  // possible (they stopped training before blue). So the belt select is offered but
+  // NEVER forced; a belt outside the new system's list is a WARNING, not a gate,
+  // and the save proceeds. The belt is left untouched unless the professor changes
+  // it here.
   const _progChanged=draftProg!==storedProg;
   const _newOrder=isKids?BELT_ORDER_K:BELT_ORDER_A;
   const _beltMap=isKids?BK:BA;
@@ -12153,18 +12194,17 @@ function rEditStu(){
   const _curBeltLbl=s.belt?((BK[s.belt]||BA[s.belt]||{label:s.belt}).label):null;
   const _progBtn=(val,lbl)=>{const on=draftProg===val;return '<button type="button" onclick="setEditStuProg(\''+val+'\')" style="flex:1;padding:9px 10px;border-radius:8px;border:1px solid '+(on?'var(--blue)':'var(--border)')+';background:'+(on?'var(--blue)':'transparent')+';color:'+(on?'#fff':'var(--text2)')+';font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.4px;cursor:pointer">'+lbl+'</button>';};
   let _beltGate='';
-  if(_progChanged){
-    if(_beltValidNew){
-      // Only 'white' is shared across both systems — keep it, say so quietly.
-      _beltGate='<div style="font-size:12px;color:var(--text3);padding:8px 14px 2px;line-height:1.5">Belt stays '+esc(_curBeltLbl||'white')+'.</div>';
-    }else{
-      const _chosen=draftOr(D.belt,'white');
-      const _opts=_newOrder.map(k=>'<option value="'+k+'" '+(k===_chosen?'selected':'')+'>'+((_beltMap[k]||{label:k}).label)+'</option>').join('');
-      const _msg=_curBeltLbl
-        ?esc(_curBeltLbl)+" belt doesn't exist in the "+_sysWord+' system. Pick their '+_sysWord+' belt.'
-        :'This student has no belt yet. Pick their '+_sysWord+' belt.';
-      _beltGate='<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 12px;margin:8px 14px 4px;font-size:12px;color:var(--amber-text);line-height:1.5">'+_msg+'</div><div class="erow"><div class="elbl">New belt</div><select class="esel" id="es-belt">'+_opts+'</select></div>';
-    }
+  if(_progChanged&&!_beltValidNew){
+    // The current belt isn't in the new system. Warn — don't block. Offer the belt
+    // select (default: keep the current belt) so they CAN change it if they want.
+    const _chosen=draftOr(D.belt,s.belt||'white');
+    const _optKeys=_newOrder.slice();
+    if(s.belt&&_optKeys.indexOf(s.belt)<0)_optKeys.unshift(s.belt);   // keep current belt selectable
+    const _opts=_optKeys.map(k=>'<option value="'+k+'" '+(k===_chosen?'selected':'')+'>'+((_beltMap[k]||BK[k]||BA[k]||{label:k}).label)+'</option>').join('');
+    const _msg=_curBeltLbl
+      ?esc(_curBeltLbl)+" isn't a "+_sysWord+" belt — check this is right."
+      :'This student has no belt yet.';
+    _beltGate='<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 12px;margin:8px 14px 4px;font-size:12px;color:var(--amber-text);line-height:1.5">'+_msg+'</div><div class="erow"><div class="elbl">Belt</div><select class="esel" id="es-belt">'+_opts+'</select></div>';
   }
   const progSection=isAdminViewer
     ?'<div class="slbl" style="margin-top:8px">Programme</div><div class="ef"><div class="erow"><div class="elbl">Programme</div><div style="display:flex;gap:6px;flex:1;min-width:0">'+_progBtn('adult','Adults')+_progBtn('kids','Kids')+'</div></div>'+_beltGate+'</div>'
@@ -12291,9 +12331,10 @@ async function saveEditStu(){
   const isAdminViewer=isStaffOrOwner();
   const wasKids=(s.prog||'adult')==='kids';
   // ---- Programme + belt (admin-only; the controls render only for isAdminViewer).
-  // prog and belt MOVE TOGETHER: a belt must be valid in the programme it lands in,
-  // or the record is corrupt (a grey-belt adult, a purple-belt kid). Never auto-
-  // convert a belt — a non-shared belt forces an explicit choice from the gate.
+  // Changing prog does NOT force a belt change (John: no belt restrictions). The
+  // belt select only appears as a WARNING when the current belt isn't in the new
+  // system; if the professor picks a belt there, honour it, otherwise leave the
+  // belt exactly as it was. The save always proceeds.
   let progOut=s.prog||'adult';
   if(isAdminViewer&&(D.prog==='kids'||D.prog==='adult'))progOut=D.prog;
   const willKids=progOut==='kids';
@@ -12301,15 +12342,10 @@ async function saveEditStu(){
   let beltOut=s.belt;
   if(isAdminViewer&&progChanged){
     const newOrder=willKids?BELT_ORDER_K:BELT_ORDER_A;
-    if(newOrder.indexOf(s.belt)>=0){
-      beltOut=s.belt;                       // valid in the new system (only 'white' overlaps) — keep it
-    }else{
-      const chosen=(D.belt!==undefined?String(D.belt||'').trim():'');
-      if(!chosen||newOrder.indexOf(chosen)<0){
-        const _lbl=s.belt?((BK[s.belt]||BA[s.belt]||{label:s.belt}).label)+" belt doesn't exist in the "+(willKids?'kids':'adult')+' system. ':'';
-        return showErr(_lbl+'Pick their '+(willKids?'kids':'adult')+' belt.');
-      }
-      beltOut=chosen;
+    const beltInvalidNew=newOrder.indexOf(s.belt)<0;   // the only case the belt select renders
+    if(beltInvalidNew&&D.belt!==undefined){
+      const chosen=String(D.belt||'').trim();
+      if(chosen)beltOut=chosen;                         // professor changed it — honour it
     }
   }
   const isKids=willKids;   // guardian-field logic keys off the OUTGOING programme
