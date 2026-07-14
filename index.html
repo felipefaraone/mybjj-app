@@ -294,7 +294,7 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .ctag{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;white-space:nowrap}
 .tn{background:#f3f4f6;color:#6b7280;border:1px solid var(--border)}.tg{background:#dbeafe;color:#1e40af}.ta{background:#dbeafe;color:#1e40af}.tb{background:#ede9fe;color:#5b21b6}.tv{background:#fef3c7;color:#92400e}.to{background:#f1f5f9;color:#475569;border:1px solid var(--border)}.tm{background:#cffafe;color:#0e7490}.tj{background:#d1fae5;color:#065f46}.ti{background:#fce7f3;color:#9d174d}
 @media(prefers-color-scheme:dark){.tn{background:#1c1c1c;color:#9ca3af;border-color:#333}.tg{background:#0e2548;color:#93c5fd}.ta{background:#0e2548;color:#93c5fd}.tb{background:#2e1065;color:#c4b5fd}.tv{background:#1c1407;color:#fde68a}.to{background:#1e293b;color:#94a3b8;border-color:#334155}.tm{background:#083344;color:#67e8f9}.tj{background:#022c22;color:#6ee7b7}.ti{background:#500724;color:#f9a8d4}}
-.ast{display:flex;align-items:center}.aav{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:9px;border:2px solid var(--card);margin-left:-6px;flex-shrink:0}.aav:first-child{margin-left:0}
+.ast{display:flex;align-items:center}.aav{position:relative;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:9px;border:2px solid var(--card);margin-left:-6px;flex-shrink:0}.aav:first-child{margin-left:0}
 .amor{background:var(--bg);border:2px solid var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;margin-left:-6px}
 .aexp{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;color:var(--blue);cursor:pointer}
 .achip{display:flex;align-items:center;gap:5px;padding:3px 8px 3px 4px;border-radius:20px;font-size:12px}
@@ -1813,10 +1813,21 @@ function _stkAv(s,isMe){
   // and would otherwise fall back to initials here. Other rows resolve
   // from their canonical STUDENTS record as before.
   const photo=(isMe&&S.me&&S.me.photoUrl)?S.me.photoUrl:s.photoUrl;
+  // Migration 99 — amber "has safety flags" dot, bottom-right. ONLY when the data
+  // says so; the data is RLS-gated, so a non-staff viewer never sees it (empty data
+  // IS the gate — do NOT add a role check here, or an RLS leak would be masked).
+  // Opaque by design: no icon, no text, no red — the aria-label carries the meaning
+  // for a screen reader so colour is never the only signal. ~30% of the avatar, min
+  // 9px, with a 2px ring in the card colour so it separates from any avatar.
+  const safetyDot=(s&&s._safety===true)
+    ?`<div aria-label="Has safety flags" style="position:absolute;bottom:0;right:0;width:30%;height:30%;min-width:9px;min-height:9px;border-radius:50%;background:var(--amber-border);box-shadow:0 0 0 2px var(--card);pointer-events:none"></div>`
+    :'';
   if(photo){
-    return `<div class="aav" style="background:${bg};overflow:hidden;padding:0"><img src="${photoSrc(photo)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallbackTxt(this,'${_avq(s.initials||'?')}','${_avq(fg)}')"/></div>`;
+    // overflow:hidden moved to an inner wrapper (kept flex-centred so a broken-photo
+    // _avFallbackTxt still centres the initials) so the corner dot isn't clipped.
+    return `<div class="aav" style="background:${bg};padding:0"><span style="position:absolute;inset:0;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;color:${fg}"><img src="${photoSrc(photo)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallbackTxt(this,'${_avq(s.initials||'?')}','${_avq(fg)}')"/></span>${safetyDot}</div>`;
   }
-  return `<div class="aav" style="background:${bg};color:${fg}">${s.initials||'?'}</div>`;
+  return `<div class="aav" style="background:${bg};color:${fg}">${s.initials||'?'}${safetyDot}</div>`;
 }
 // Batch — kids privacy hardening (E1). Public class roster for kids
 // classes collapses to a count-only label — no names, no avatars, no
@@ -1972,6 +1983,12 @@ function rAttsStaff(rows,cid){
     const border=isZero?'var(--border)':(v>1?'var(--blue-mid)':'var(--amber-border)');
     return '<span title="class_value = '+v.toFixed(2)+'" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:'+accent+';background:'+bg+';border:1px solid '+border+';padding:1px 6px;border-radius:4px;margin-left:6px">'+lbl+'</span>';
   };
+  // Migration 99 — SAFETY pill (word, not just the dot) once the list is expanded
+  // to manage the class. Same grammar as the status pills. VISITORS (cross-unit)
+  // carry no _safety, so the s&&s._safety guard keeps them clear.
+  const safetyPill=s=>(s&&s._safety===true)
+    ?'<span aria-label="Has safety flags" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">SAFETY</span>'
+    :'';
   return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${stackHtml}${actionRow}<div style="height:10px"></div>${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
@@ -1980,7 +1997,7 @@ function rAttsStaff(rows,cid){
     // reads "they were here but it doesn't count toward promotion".
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${statusPill(r)}${cvChip(r)}${safetyPill(s)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
 }
 // _fmtJnyDate — journey entries store the date in two formats:
@@ -2620,6 +2637,56 @@ function _ageFromDob(dob){
   if(mo<0||(mo===0&&now.getUTCDate()<d.getUTCDate()))age--;
   return (age>=0&&age<130)?age:null;
 }
+// Migration 99 — profile safety block. The 8 flags + notes are NOT in STUDENTS
+// (never held there); fetched lazily per student and stashed in S._safetyDetail,
+// keyed by _dbId, using the standard {loaded,loading,data} render-and-refetch
+// idiom (same as _fetchKidsSummary). Only the MOST RECENT waiver is read. This
+// surface is flags + notes ONLY — never the signature, questionnaire, names or
+// legal version (those are owner-only, elsewhere).
+const SAFETY_FLAGS=[
+  ['has_asthma','Asthma'],['has_heart_condition','Heart condition'],['has_diabetes','Diabetes'],
+  ['has_epilepsy','Epilepsy'],['is_pregnant','Pregnant'],['takes_medication','Takes medication'],
+  ['has_allergies','Allergies'],['has_recent_injury','Recent injury']
+];
+function _fetchSafetyDetail(dbId){
+  if(!dbId)return;
+  if(!S._safetyDetail)S._safetyDetail={};
+  let slot=S._safetyDetail[dbId];
+  if(!slot)slot=S._safetyDetail[dbId]={loaded:false,loading:false,data:null};
+  if(slot.loaded||slot.loading)return;
+  slot.loading=true;
+  const cli=initSupabase();
+  if(!cli){slot.loading=false;slot.loaded=true;slot.data=null;render();return;}
+  cli.from('health_waivers')
+    .select('has_asthma,has_heart_condition,has_diabetes,has_epilepsy,is_pregnant,takes_medication,has_allergies,has_recent_injury,safety_notes,signed_at')
+    .eq('student_id',dbId)
+    .order('signed_at',{ascending:false})
+    .limit(1)
+    .then(r=>{
+      slot.loading=false;slot.loaded=true;
+      if(r&&r.error){console.warn('[mybjj] safety detail:',r.error);slot.data=null;}
+      else{slot.data=(r&&r.data&&r.data[0])||null;}
+      render();
+    });
+}
+function rSafetyBlock(s){
+  if(!s||s._safety!==true)return '';
+  const hdr='<div class="slbl" style="margin-bottom:8px">Safety</div>';
+  const wrap=(inner)=>'<div style="margin:4px 0 16px">'+hdr+inner+'</div>';
+  const slot=(S._safetyDetail&&S._safetyDetail[s._dbId])||null;
+  if(!slot||!slot.loaded){
+    _fetchSafetyDetail(s._dbId);
+    return wrap('<div style="font-size:12.5px;color:var(--text3)">Loading safety info…</div>');
+  }
+  const d=slot.data;
+  const chips=d?SAFETY_FLAGS.filter(f=>d[f[0]]===true).map(f=>'<span style="font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:2px 9px;border-radius:4px">'+f[1]+'</span>').join(''):'';
+  const noteTxt=(d&&d.safety_notes&&String(d.safety_notes).trim())||'';
+  const notes=noteTxt?'<div style="font-size:11px;color:var(--text2);font-style:italic;margin-top:8px;line-height:1.5">'+escHtml(noteTxt)+'</div>':'';
+  // has_flags true but the waiver row is missing OR carries nothing renderable —
+  // the derived table and the waiver theoretically disagreed. Say so, don't blank.
+  if(!chips&&!notes)return wrap('<div style="font-size:12.5px;color:var(--text3)">Safety flag on file — detail unavailable</div>');
+  return wrap((chips?'<div style="display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div>':'')+notes);
+}
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
   const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
@@ -2755,6 +2822,11 @@ function rStuProf(){
   //   nothing        → the only real call to action: one primary "Send health
   //                    check" button that opens a sheet with Copy link / Email it
   //                    (Copy is the MAIN path — 215 members have no email at all).
+  // Safety block — operational health flags, staff-only. SAME gate as waiverBlock,
+  // rendered directly ABOVE it (flags come before the admin waiver-send control).
+  // Only when the derived _safety is true; the DETAIL is fetched lazily (never held
+  // in STUDENTS). rSafetyBlock returns '' for a non-flagged / non-gated student.
+  const safetyBlock=(isAdminViewer&&isRosterEntry&&!isPeer&&s.waiverToken&&s._safety===true)?rSafetyBlock(s):'';
   let waiverBlock='';
   if(isAdminViewer&&isRosterEntry&&!isPeer&&s.waiverToken){
     const _wd=(iso)=>{try{return new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});}catch(_){return '';}};
@@ -2813,6 +2885,9 @@ ${adminActionsBlock}
 
 <!-- Section 2: Stats — peer-gated -->
 ${statsCard}
+
+<!-- Safety flags — operational, above the administrative waiver control -->
+${safetyBlock}
 
 <!-- Health check (waiver) — administrative follow-up, below the training picture -->
 ${waiverBlock}
@@ -9300,9 +9375,22 @@ async function refetchUnitScopedData(){
     // Postgres numeric as String to avoid precision loss; wrap with
     // Number() so downstream math (sort, eligibility, formatStat)
     // compares numerically instead of lexicographically.
-    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,waiverToken:r.waiver_token||null,waiverSentAt:r.waiver_sent_at||null,waiverSignedAt:r.waiver_signed_at||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
+    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,waiverToken:r.waiver_token||null,waiverSentAt:r.waiver_sent_at||null,waiverSignedAt:r.waiver_signed_at||null,_safety:false,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
     got=true;
   }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
+  // Migration 99 — attach _safety (student has a signed waiver with ≥1 safety
+  // flag; `has_flags` is derived, carries NO detail). Unit-scoped like the rest of
+  // this refetch, so it refreshes on a unit switch too. Every student defaults to
+  // false above; this fills the true ones. RLS gives a non-staff session 0 rows —
+  // that is NOT an error — so an empty set or a caught failure just leaves everyone
+  // false (nada cenográfico). Never blocks hydrate.
+  try{
+    const safeRes=await c.from('student_safety').select('student_id,has_flags');
+    if(safeRes&&!safeRes.error&&Array.isArray(safeRes.data)){
+      const safeSet=new Set(safeRes.data.filter(x=>x&&x.has_flags).map(x=>x.student_id));
+      for(const s of STUDENTS)s._safety=safeSet.has(s._dbId);
+    }else if(safeRes&&safeRes.error){console.warn('[mybjj] student_safety:',safeRes.error);}
+  }catch(e){console.warn('[mybjj] student_safety exception:',e);}
   if(sf.data&&sf.data.length){
     STAFF=sf.data.map(r=>{
       // Strip any legacy "Prof." / "Professor " prefix at hydrate so
