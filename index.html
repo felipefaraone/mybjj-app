@@ -3159,11 +3159,20 @@ function _stuDangerZone(s,canAdmin,ownerView){
   const isActive=s._active!==false;
   const banner=isActive?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--amber-text)">This student is inactive. They’re hidden from the default Roster.</div>';
   const card=(title,desc,btnLabel,onclick)=>'<div style="border:1px solid var(--red-border);background:var(--card);border-radius:12px;padding:16px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:160px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px">'+title+'</div><div style="font-size:12px;color:var(--text3);line-height:1.5">'+desc+'</div></div><button onclick="'+onclick+'" style="background:none;border:1px solid var(--red-text);color:var(--red-text);border-radius:8px;padding:8px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">'+btnLabel+'</button></div>';
+  // Disabled variant — the action can never succeed, so it must not look live.
+  // The button is inert and the reason sits below it (never a dead red button).
+  const cardBlocked=(title,desc,btnLabel,reason)=>'<div style="border:1px solid var(--border);background:var(--card);border-radius:12px;padding:16px;opacity:.75"><div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:160px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text2);margin-bottom:4px">'+title+'</div><div style="font-size:12px;color:var(--text3);line-height:1.5">'+desc+'</div></div><button disabled style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:8px;padding:8px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:not-allowed;flex-shrink:0">'+btnLabel+'</button></div><div style="font-size:12px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-top:10px;line-height:1.5">'+reason+'</div></div>';
   const inactiveCard=isActive
     ?card('Mark student as inactive','Student will be hidden from the active roster but their attendance and journey history will be preserved.','Mark inactive','markStudentInactive(\''+s.id+'\')')
     :card('Reactivate student','Student returns to the active roster. Their history is unchanged.','Reactivate','reactivateStudent(\''+s.id+'\')');
+  // Converted-from-a-trial students are referenced by trial_bookings.converted_
+  // student_id (the funnel audit trail, FK kept on purpose). Delete would 23503 —
+  // so don't offer it as if it works; point to Mark inactive, the correct path.
+  const isConverted=!!s.convertedAt;
   const deleteCard=ownerView
-    ?'<div style="margin-top:10px">'+card('Delete student','Permanently removes this student profile. This cannot be undone — historical attendance, promotions, and feedback are all removed with it.','Delete','deleteStudent(\''+s.id+'\')')+'</div>'
+    ?'<div style="margin-top:10px">'+(isConverted
+      ?cardBlocked('Delete student','Permanently removes this student profile.','Delete',"Converted from a trial — delete is blocked so the funnel record survives. Mark inactive instead.")
+      :card('Delete student','Permanently removes this student profile. This cannot be undone — historical attendance, promotions, and feedback are all removed with it.','Delete','deleteStudent(\''+s.id+'\')'))+'</div>'
     :'';
   return '<div class="slbl" style="margin-top:20px;color:var(--red-text);border-bottom:1px solid var(--red-border);padding-bottom:6px;letter-spacing:2px">Danger Zone</div>'+banner+inactiveCard+deleteCard;
 }
@@ -6790,7 +6799,7 @@ async function convertTrialToMemberAction(trialDbId){
   const chk=await cli.from('trial_bookings').select('id,converted_at,converted_student_id').eq('id',trialDbId).single();
   if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');throw chk.error;}
   if(!chk||!chk.data||!chk.data.converted_at){showSaveToast2('Conversion not confirmed','error');throw new Error('convert not confirmed');}
-  STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null});
+  STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null,convertedAt:nowIso});
   TRIALS=TRIALS.filter(x=>x._dbId!==trialDbId);
   render();showSaveToast2('Converted to member');
 }
@@ -6926,7 +6935,7 @@ async function convertKidAction(){
       if(!linked)waiverWarn=true;
     }
     // Local state — mirror the adult path: push into STUDENTS, drop from TRIALS.
-    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok'});
+    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok',convertedAt:nowIso});
     TRIALS=TRIALS.filter(x=>x._dbId!==t._dbId);
     S.convertKid=null;render();
     if(waiverWarn)showSaveToast2('Member created, but the health waiver could not be linked — ask an owner to do it','error');
@@ -7945,11 +7954,33 @@ function canDeleteFeedback(f){if(isOwner())return true;if(!f)return false;const 
 function friendlyMutationError(err){
   if(!err)return 'Something went wrong. Please try again.';
   let m=''; if(typeof err==='string')m=err; else if(err.message)m=err.message; else m=String(err);
+  const code=(err&&typeof err==='object'&&err.code!=null)?String(err.code):'';
+  const details=(err&&typeof err==='object'&&err.details)?String(err.details):'';
   const s=m.toLowerCase();
+  const blob=(m+' '+details).toLowerCase();   // Postgres often names the table in `details`, not `message`
   if(s.includes('not in whitelist')||s.includes('email not in whitelist')) return "This email isn't authorized yet. Save the email first.";
   if(s.includes('rate limit')||s.includes('too many')||s.includes('429')) return 'Too many invites sent recently. Please wait a few minutes.';
   if(s.includes('not authoris')||s.includes('not authoriz')||s.includes('permission')||s.includes('forbidden')||s.includes('row-level')||s.includes('rls')||s.includes('policy')) return "You don't have permission to do that.";
-  if(s.includes('non-negative')||s.includes('must be')||s.includes('invalid input')||s.includes('validation')||s.includes('check constraint')) return 'Please check the values and try again.';
+  // Postgres constraint violations. These FAIL IDENTICALLY ON RETRY, so we must
+  // never send the user back to "Please try again": name the cause and the way out.
+  // 23503 foreign_key_violation — the row is still referenced by another table.
+  if(code==='23503'||blob.includes('foreign key constraint')){
+    // The blocking (referencing) table: Postgres names it in `details`
+    // ("...still referenced from table \"X\"") and at the tail of `message`
+    // ("...on table \"X\"").
+    let tbl='';
+    const dm=details.match(/referenced from table "([^"]+)"/i);
+    if(dm){tbl=dm[1];}
+    else{const all=m.match(/on table "([^"]+)"/ig);if(all&&all.length){const last=all[all.length-1].match(/on table "([^"]+)"/i);if(last)tbl=last[1];}}
+    if(tbl==='trial_bookings'||blob.includes('trial_bookings')){
+      return "This member came from a trial booking, so their record can't be deleted. Mark them inactive instead — their history stays intact.";
+    }
+    return tbl?("Can't delete: this record is still referenced by "+tbl+"."):"Can't delete: this record is still referenced elsewhere.";
+  }
+  // 23505 unique_violation / 23514 check_violation.
+  if(code==='23505'||blob.includes('unique constraint')||blob.includes('duplicate key')) return 'That already exists.';
+  if(code==='23514'||blob.includes('check constraint')) return "That value isn't allowed here.";
+  if(s.includes('non-negative')||s.includes('must be')||s.includes('invalid input')||s.includes('validation')) return 'Please check the values and try again.';
   if(s.includes('network')||s.includes('failed to fetch')||s.includes('fetch')||s.includes('timeout')||s.includes('offline')) return 'Connection issue. Please try again.';
   return 'Something went wrong. Please try again.';
 }
@@ -9146,7 +9177,7 @@ async function refetchUnitScopedData(){
   const c=initSupabase(); if(!c) return false;
   const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
   const res=await Promise.allSettled([
-    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,welcome_hidden,parent_user:users!parent_user_id(full_name)'),
+    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,welcome_hidden,converted_at,parent_user:users!parent_user_id(full_name)'),
     // RLS-2 — staff.feedback dropped from the select; Head Instructor
     // Notes now live in public.staff_notes and are fetched lazily per
     // STAFF row by _fetchStaffNotes when the owner opens the profile.
@@ -9192,7 +9223,7 @@ async function refetchUnitScopedData(){
     // Postgres numeric as String to avoid precision loss; wrap with
     // Number() so downstream math (sort, eligibility, formatStat)
     // compares numerically instead of lexicographically.
-    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
+    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
     got=true;
   }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
   if(sf.data&&sf.data.length){
