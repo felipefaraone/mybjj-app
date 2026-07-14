@@ -6560,10 +6560,11 @@ function rTrialsBlock(){
     const metaBits=[t.email,t.phone,t.preferredDay?('Prefers '+t.preferredDay):null].filter(Boolean);
     const meta=metaBits.length?'<div style="font-size:11px;color:var(--text3);margin-top:6px;display:flex;flex-wrap:wrap;gap:2px 8px;word-break:break-word">'+metaBits.map((b,i)=>'<span>'+(i>0?'· ':'')+b+'</span>').join('')+'</div>':'';
     // Module 1 action side — per-trial state actions. Mark attended only
-    // appears while still booked; Convert is disabled for kid trials in
-    // v1 (kid conversion needs manual setup). Lapse is destructive so it
-    // routes through the confirm modal. All four re-fetch the row to
-    // confirm the write before mutating in-memory state.
+    // appears while still booked. Convert: adults are one click (they can log in
+    // and fix their own profile); kids open a review form (Phase 4) because a kids
+    // row is the permanent record of a person who cannot consent for themselves.
+    // Lapse is destructive so it routes through the confirm modal. All re-fetch
+    // the row to confirm the write before mutating in-memory state.
     const iAttend='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
     const iConvert='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>';
     const iResched='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
@@ -6575,7 +6576,7 @@ function rTrialsBlock(){
     if(t.status==='booked')actBtns.push('<button class="admin-action-btn" onclick="trialPresent(\''+t._dbId+'\')">'+iAttend+'Attended</button>');
     if(!isNoShow){
       if(t.isKid){
-        actBtns.push('<button class="admin-action-btn" disabled title="Kid conversion coming soon" style="opacity:.45;cursor:not-allowed;color:var(--text3)">'+iConvert+'Convert</button>');
+        actBtns.push('<button class="admin-action-btn primary" onclick="openConvertKidModal(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
       }else{
         actBtns.push('<button class="admin-action-btn primary" onclick="convertTrialToMember(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
       }
@@ -6714,6 +6715,149 @@ async function convertTrialToMemberAction(trialDbId){
   STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null});
   TRIALS=TRIALS.filter(x=>x._dbId!==trialDbId);
   render();showSaveToast2('Converted to member');
+}
+// Phase 4 — kid conversion. Unlike the adult one-click path, a kid opens a
+// pre-filled REVIEW form: a kids students row is the only record of a person who
+// cannot consent for themselves, and this is the last moment a human looks at the
+// data before it is permanent. Everything we already know is pre-filled; every
+// field is editable. Nothing is guessed that we cannot derive safely.
+async function openConvertKidModal(trialDbId){
+  const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
+  // Split kid_name: first = everything before the last space, last = the last
+  // word. A single word → first only, last EMPTY (never invent a surname). The
+  // raw kid_name is surfaced as "Booked as:" so a bad split can be corrected —
+  // "Ana Clara Silva Santos" → first "Ana Clara Silva", last "Santos".
+  const raw=String(t.kidName||'').trim();
+  const parts=raw.split(/\s+/).filter(Boolean);
+  let firstName=parts[0]||'',lastName='';
+  if(parts.length>1){lastName=parts[parts.length-1];firstName=parts.slice(0,-1).join(' ');}
+  // DOB + gender come ONLY from the signed waiver (answers), and only if one
+  // exists (waiver_signed_at ⟺ a health_waivers row). No waiver → both empty.
+  let dob='',gender='';
+  if(t.waiverSignedAt){
+    const cli=initSupabase();
+    if(cli){
+      try{
+        const wq=await cli.from('health_waivers').select('answers').eq('trial_booking_id',trialDbId).limit(1);
+        const a=wq&&wq.data&&wq.data[0]&&wq.data[0].answers;
+        if(a&&typeof a==='object'){dob=a.dob?String(a.dob):'';gender=a.gender?String(a.gender):'';}
+      }catch(_){/* RLS may hide the waiver for a non-owner — degrade to empty */}
+    }
+  }
+  S.convertKid={trialDbId,bookedAs:raw,firstName,lastName,dob,gender,belt:'white',degree:0,parentName:(t.name||'').trim(),parentEmail:t.email||'',parentPhone:t.phone||'',busy:false};
+  render();
+}
+function closeConvertKid(){if(S.convertKid&&S.convertKid.busy)return;S.convertKid=null;render();}
+function rConvertKidModal(){
+  if(!S.convertKid)return '';
+  const st=S.convertKid;const busy=!!st.busy;
+  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  // Kids belt system, in the order the academy uses. Default white.
+  const beltKeys=['white','grey/white','grey','grey/black','yellow/white','yellow','orange','green'];
+  const beltOpts=beltKeys.map(k=>'<option value="'+k+'" '+(k===st.belt?'selected':'')+'>'+((BK[k]||{label:k}).label)+'</option>').join('');
+  const genders=['','Female','Male','Other','Prefer not to say'];
+  const genderOpts=genders.map(g=>'<option value="'+esc(g)+'" '+(g===(st.gender||'')?'selected':'')+'>'+(g||'—')+'</option>').join('');
+  const degOpts=[0,1,2,3,4].map(i=>'<option value="'+i+'" '+(i===(st.degree||0)?'selected':'')+'>'+i+'</option>').join('');
+  return `<div class="cov" onclick="closeConvertKid()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:400px;width:100%;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
+<button onclick="closeConvertKid()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">Convert to member</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.4">Check the child's details — this creates a permanent record.</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Booked as: <b style="color:var(--text)">${esc(st.bookedAs||'—')}</b></div>
+<div class="slbl" style="margin-bottom:8px">Child</div>
+<div class="ef">
+<div class="erow"><div class="elbl">First name</div><input class="einput" id="ck-first" maxlength="60" value="${esc(st.firstName)}" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Last name</div><input class="einput" id="ck-last" maxlength="60" value="${esc(st.lastName)}" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="ck-dob" type="date" value="${esc(st.dob)}"/></div>
+<div class="erow"><div class="elbl">Gender</div><select class="esel" id="ck-gender">${genderOpts}</select></div>
+<div class="erow"><div class="elbl">Belt</div><select class="esel" id="ck-belt">${beltOpts}</select></div>
+<div class="erow"><div class="elbl">Degree</div><select class="esel" id="ck-degree">${degOpts}</select></div>
+</div>
+<div class="slbl" style="margin-bottom:8px">Parent / guardian</div>
+<div class="ef">
+<div class="erow"><div class="elbl">Name</div><input class="einput" id="ck-pname" maxlength="120" value="${esc(st.parentName)}" autocapitalize="words"/></div>
+<div class="erow"><div class="elbl">Email</div><input class="einput" id="ck-pemail" type="email" inputmode="email" value="${esc(st.parentEmail)}"/></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="ck-pphone" type="tel" inputmode="tel" value="${esc(st.parentPhone)}" oninput="this.value=_phoneSanitize(this.value)"/></div>
+</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.4">Required: child's first name, belt, parent name and email.</div>
+<div style="display:flex;gap:10px">
+<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeConvertKid()" ${busy?'disabled':''}>Cancel</button>
+<button class="bblue" style="flex:1;padding:12px" onclick="convertKidAction()" ${busy?'disabled':''}>${busy?'Converting…':'Convert'}</button>
+</div>
+</div></div>`;
+}
+// Mirrors convertTrialToMemberAction's discipline (confirming re-fetch after each
+// write, because Supabase returns success-shaped-empty for an RLS-filtered no-op).
+async function convertKidAction(){
+  const st=S.convertKid;if(!st||st.busy)return;
+  const gv=id=>{const el=document.getElementById(id);return el?String(el.value||'').trim():'';};
+  const firstName=gv('ck-first'),lastName=gv('ck-last'),dob=gv('ck-dob'),gender=gv('ck-gender');
+  const belt=gv('ck-belt')||'white',degree=parseInt(gv('ck-degree'),10)||0;
+  const parentName=gv('ck-pname'),parentEmail=gv('ck-pemail'),parentPhone=gv('ck-pphone');
+  const missing=[];
+  if(!firstName)missing.push("child's first name");
+  if(!belt)missing.push('belt');
+  if(!parentName)missing.push('parent name');
+  if(!parentEmail)missing.push('parent email');
+  if(missing.length){showSaveToast2('Please fill in: '+missing.join(', '),'error');return;}
+  const t=TRIALS.find(x=>x._dbId===st.trialDbId);if(!t){showSaveToast2('Trial missing','error');return;}
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
+  st.busy=true;render();
+  try{
+    const fullName=(firstName+' '+lastName).trim();
+    const nowIso=new Date().toISOString();
+    // legacy_id + initials generated exactly as the adult path does.
+    const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
+    const legacy=slug+'_'+Date.now().toString(36).slice(-4);
+    const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KD';
+    // parent_user_id: link to an existing users row by email (case-insensitive) so
+    // the child appears in that parent's kid switcher immediately. If none is
+    // found — or RLS hides users from a non-owner instructor — leave NULL;
+    // claim_profile's relink_orphan_kids_on_user_insert trigger links the child on
+    // the parent's first login. We never create a user here.
+    let parentUserId=null;
+    try{
+      const uq=await cli.from('users').select('id').ilike('email',parentEmail).limit(1);
+      if(uq&&uq.data&&uq.data.length)parentUserId=uq.data[0].id;
+    }catch(_){/* users select is admin/self only — null falls back to the trigger */}
+    const ins=await cli.from('students').insert({
+      legacy_id:legacy,full_name:fullName,first_name:firstName,last_name:lastName||null,
+      prog:'kids',belt,degree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,
+      initials,journey:[],feedback:[],unit_id:t._unitId,date_of_birth:dob||null,gender:gender||null,
+      parent_name:parentName||null,parent_email:parentEmail||null,parent_phone:parentPhone||null,
+      parent_user_id:parentUserId,converted_at:nowIso,standing:'ok'
+    }).select('id,legacy_id').single();
+    if(ins&&ins.error){showSaveToast2(friendlyMutationError(ins.error),'error');st.busy=false;render();return;}
+    if(!ins||!ins.data){showSaveToast2('Could not create member','error');st.busy=false;render();return;}
+    // trial_bookings — converted_at + converted_student_id + trial_status (same as
+    // the adult path), then the confirming re-fetch.
+    const upd=await cli.from('trial_bookings').update({trial_status:'converted',converted_at:nowIso,converted_student_id:ins.data.id}).eq('id',t._dbId);
+    if(upd&&upd.error){showSaveToast2(friendlyMutationError(upd.error),'error');st.busy=false;render();return;}
+    const chk=await cli.from('trial_bookings').select('id,converted_at,converted_student_id').eq('id',t._dbId).single();
+    if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');st.busy=false;render();return;}
+    if(!chk||!chk.data||!chk.data.converted_at){showSaveToast2('Conversion not confirmed','error');st.busy=false;render();return;}
+    // The waiver FOLLOWS the child: the existing health_waivers row (student_id
+    // NULL, trial_booking_id set) simply GAINS student_id — nothing is copied, so
+    // the signed medical declaration survives with no drift. UPDATE is is_admin()
+    // only, so a non-owner instructor's write is a silent RLS no-op — CHECK that it
+    // landed and tell the user plainly rather than pretending it worked.
+    let waiverWarn=false;
+    if(t.waiverSignedAt){
+      await cli.from('health_waivers').update({student_id:ins.data.id}).eq('trial_booking_id',t._dbId).is('student_id',null);
+      const wchk=await cli.from('health_waivers').select('id,student_id').eq('trial_booking_id',t._dbId);
+      const linked=!!(wchk&&wchk.data&&wchk.data.some(w=>w.student_id===ins.data.id));
+      if(!linked)waiverWarn=true;
+    }
+    // Local state — mirror the adult path: push into STUDENTS, drop from TRIALS.
+    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok'});
+    TRIALS=TRIALS.filter(x=>x._dbId!==t._dbId);
+    S.convertKid=null;render();
+    if(waiverWarn)showSaveToast2('Member created, but the health waiver could not be linked — ask an owner to do it','error');
+    else showSaveToast2('Converted to member');
+  }catch(e){
+    console.warn('[mybjj] convert kid:',e);
+    if(S.convertKid)S.convertKid.busy=false;
+    showSaveToast2('Could not convert','error');render();
+  }
 }
 function rARoster(){
   const rfBelt=S.rfBelt||'all';
@@ -6903,7 +7047,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rConvertKidModal()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
