@@ -6381,13 +6381,20 @@ function rAdmin(){
   // inline on the Classes tab (rAttsStaff), so admin defaults to the
   // roster view for all roles.
   const owner=isOwner();
-  const validAtabs={roster:1,manage:1,staff:1,photos:1};
+  const validAtabs={roster:1,trials:1,manage:1,staff:1,photos:1};
   let effAtab=validAtabs[S.atab]?S.atab:'roster';
   if(effAtab==='staff'&&!owner)effAtab='roster';
   const showPhotos=canEditClassCounts();
   const pendingCount=(S.photoQueue||[]).length;
   const photosTab=showPhotos?'<button class="stab '+(effAtab==='photos'?'active':'')+'" onclick="setAtab(\'photos\')">Photos'+(pendingCount?' <span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;background:var(--red);color:#fff;border-radius:9px;font-size:10px;font-weight:700;margin-left:4px;vertical-align:1px">'+pendingCount+'</span>':'')+'</button>':'';
-  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${effAtab==='roster'?'active':''}" onclick="setAtab('roster')">Roster</button><button class="stab ${effAtab==='manage'?'active':''}" onclick="setAtab('manage')">Classes</button>${owner?'<button class="stab '+(effAtab==="staff"?"active":"")+'" onclick="setAtab(\'staff\')">Staff</button>':''}${photosTab}</div>${effAtab==='roster'?rARoster():effAtab==='staff'?rStaff():effAtab==='photos'?rPhotoQueue():rManage()}${S.cdel?rCDel():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div style="height:16px"></div>`;}
+  // Trials tab — sits between Roster and Classes. Count = open trials in the active
+  // unit (same list rTrialsBlock renders), shown with the SAME red pill Photos uses
+  // so the two badges read as one language. rAdmin is already staff-only, so the
+  // tab is staff-only for free. No count when zero.
+  const _curUT=UNITS.find(u=>u.name===S.unit);
+  const trialsCount=(TRIALS||[]).filter(t=>!t._unitId||(_curUT&&t._unitId===_curUT._dbId)).length;
+  const trialsTab='<button class="stab '+(effAtab==='trials'?'active':'')+'" onclick="setAtab(\'trials\')">Trials'+(trialsCount?' <span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;background:var(--red);color:#fff;border-radius:9px;font-size:10px;font-weight:700;margin-left:4px;vertical-align:1px">'+trialsCount+'</span>':'')+'</button>';
+  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${effAtab==='roster'?'active':''}" onclick="setAtab('roster')">Roster</button>${trialsTab}<button class="stab ${effAtab==='manage'?'active':''}" onclick="setAtab('manage')">Classes</button>${owner?'<button class="stab '+(effAtab==="staff"?"active":"")+'" onclick="setAtab(\'staff\')">Staff</button>':''}${photosTab}</div>${effAtab==='trials'?rTrialsBlock():effAtab==='roster'?rARoster():effAtab==='staff'?rStaff():effAtab==='photos'?rPhotoQueue():rManage()}${S.cdel?rCDel():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div style="height:16px"></div>`;}
 
 
 function rRecentPromos(){
@@ -6532,7 +6539,9 @@ function rARosterListInner(){
 function rTrialsBlock(){
   const curU=UNITS.find(u=>u.name===S.unit);
   const list=TRIALS.filter(t=>!t._unitId||(curU&&t._unitId===curU._dbId));
-  if(!list.length)return '';
+  // Trials is now its own tab, so an empty result shows an empty state rather than
+  // rendering nothing (which was right when it was embedded above the roster).
+  if(!list.length)return '<div style="margin-bottom:20px"><div class="slbl">Trials</div><div class="card" style="text-align:center;padding:32px 20px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No trials yet</div><div style="font-size:12px;color:var(--text3);line-height:1.5">Bookings from the trial page appear here.</div></div></div>';
   const chipBase='display:inline-flex;align-items:center;gap:4px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px';
   const rows=list.map(t=>{
     const isAttended=t.status==='attended';
@@ -6662,18 +6671,87 @@ async function lapseTrialAction(trialDbId){
   TRIALS=TRIALS.filter(x=>x._dbId!==trialDbId);
   render();showSaveToast2('Trial lapsed');
 }
-async function rescheduleTrial(trialDbId){
+// Reschedule = move the booking to a REAL slot (the same picker the public page
+// offers), NOT edit the retired preferred_day free-text. The old version wrote
+// preferred_day and never touched class_id/date/time, so it pretended to work: the
+// booking stayed put while the staff member believed they'd moved it.
+function rescheduleTrial(trialDbId){
   const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
-  const newValue=window.prompt('Preferred day for this trial:',t.preferredDay||'');
-  if(newValue===null)return;
+  S.rescheduleTrial=trialDbId;render();
+}
+function closeRescheduleTrial(){S.rescheduleTrial=null;render();}
+// Project the trial's unit's trial-bookable classes onto the next 7 days in
+// Australia/Sydney — rules IDENTICAL to trial.html's public picker (do not soften
+// them): only trial-bookable type_codes (adv / omat are not entry points), only
+// the trial's OWN audience (a kid is never offered an adult class, and vice-versa),
+// and nothing starting within 2h. Returns [{label,dateStr,slots:[{classId,time,timeLabel}]}].
+function _trialSlotGroups(t){
+  const TRIAL_TYPES={beg:1,alev:1,nogi:1,mma:1,jmma:1,jun:1,mini:1};
+  const LEAD_MIN=120;
+  const DOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const aud=t.isKid?'Kids':'Adults';               // audience MUST NOT change on reschedule
+  const hhmmToMin=v=>{const p=String(v||'').split(':');return (parseInt(p[0],10)||0)*60+(parseInt(p[1],10)||0);};
+  // "Now" in Australia/Sydney → {dateStr,minutes} (matches trial.html's sydneyNow).
+  const f=new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+  const o={};f.formatToParts(new Date()).forEach(p=>{if(p.type!=='literal')o[p.type]=p.value;});
+  const nowDate=o.year+'-'+o.month+'-'+o.day;
+  const nowMin=(parseInt(o.hour==='24'?'00':o.hour,10)||0)*60+(parseInt(o.minute,10)||0);
+  const matches=(CLASSES||[]).filter(cl=>cl&&cl.active===true&&cl.unit_id===t._unitId&&TRIAL_TYPES[cl.type]&&cl.audience===aud);
+  const groups=[];
+  for(let i=0;i<7;i++){
+    const d=new Date(nowDate+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+i);
+    const dateStr=d.toISOString().slice(0,10);const dow=d.getUTCDay();
+    // 2h lead time, applied to every day (day i*1440 + start minute ≥ now + 120).
+    let day=matches.filter(cl=>cl.day_of_week===dow&&(i*1440+hhmmToMin(cl.time))>=nowMin+LEAD_MIN);
+    if(!day.length)continue;
+    day.sort((a,b)=>hhmmToMin(a.time)-hhmmToMin(b.time));
+    groups.push({label:DOW[dow]+' '+d.getUTCDate()+' '+MON[d.getUTCMonth()],dateStr,slots:day.map(cl=>({classId:cl.id,time:String(cl.time||'').slice(0,5),timeLabel:fmtT12(cl.time)}))});
+  }
+  return groups;
+}
+function rRescheduleModal(){
+  if(!S.rescheduleTrial)return '';
+  const t=TRIALS.find(x=>x._dbId===S.rescheduleTrial);if(!t)return '';
+  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  const who=(t.isKid&&t.kidName)?t.kidName:(t.name||'this trial');
+  const groups=_trialSlotGroups(t);
+  let body;
+  if(!groups.length){
+    // No confirm button when there's nothing to pick — never an empty list.
+    body='<div style="font-size:13px;color:var(--text2);text-align:center;padding:22px 8px;line-height:1.5">No slots available in the next 7 days.</div>';
+  }else{
+    body=groups.map(g=>{
+      const slots=g.slots.map(s=>'<button class="bsm" style="padding:8px 13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px" onclick="_doRescheduleTrial(\''+t._dbId+'\',\''+esc(s.classId)+'\',\''+esc(g.dateStr)+'\',\''+esc(s.time)+'\')">'+s.timeLabel+'</button>').join('');
+      return '<div style="margin-bottom:14px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:7px">'+esc(g.label)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+slots+'</div></div>';
+    }).join('');
+  }
+  return `<div class="cov" onclick="closeRescheduleTrial()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:400px;width:100%;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
+<button onclick="closeRescheduleTrial()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">Reschedule trial</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.4">Pick a new slot for <b style="color:var(--text2)">${esc(who)}</b> — ${t.isKid?'kids':'adult'} classes, next 7 days.</div>
+${body}
+</div></div>`;
+}
+// Write the REAL slot (class_id/date/time) and NULL the retired preferred_day so
+// the stale free-text can't linger contradicting it. Confirming re-fetch — Supabase
+// returns success-shaped-empty for an RLS-filtered no-op, so never trust the write
+// alone. NO EMAIL is sent: a reschedule is almost always already a phone call from
+// the office, so an automatic email would be a second message saying the same
+// thing. This is a decision, not an omission. The trial then falls onto the new
+// class's card and leaves the old one automatically (trialsForClass matches on
+// classId + classDate).
+async function _doRescheduleTrial(trialDbId,classId,dateStr,timeHHMM){
   const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
-  const upd=await cli.from('trial_bookings').update({preferred_day:newValue}).eq('id',trialDbId);
+  const upd=await cli.from('trial_bookings').update({class_id:classId,class_date:dateStr,class_time:timeHHMM,preferred_day:null}).eq('id',trialDbId);
   if(upd&&upd.error){showSaveToast2(friendlyMutationError(upd.error),'error');return;}
-  const chk=await cli.from('trial_bookings').select('id,preferred_day').eq('id',trialDbId).single();
+  const chk=await cli.from('trial_bookings').select('id,class_id,class_date,class_time,preferred_day').eq('id',trialDbId).single();
   if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');return;}
-  if(!chk||!chk.data||chk.data.preferred_day!==newValue){showSaveToast2('Could not update','error');return;}
-  t.preferredDay=newValue||null;
-  render();showSaveToast2('Updated');
+  if(!chk||!chk.data||chk.data.class_id!==classId||chk.data.class_date!==dateStr){showSaveToast2('Could not reschedule','error');return;}
+  const t=TRIALS.find(x=>x._dbId===trialDbId);
+  if(t){t.classId=chk.data.class_id;t.classDate=chk.data.class_date;t.classTime=chk.data.class_time;t.preferredDay=null;}
+  S.rescheduleTrial=null;
+  render();showSaveToast2('Trial rescheduled');
 }
 function convertTrialToMember(trialDbId){
   const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
@@ -6908,7 +6986,8 @@ function rARoster(){
   const totalReg=allAdults.length+allKids.length;
   const regLine='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">'+totalReg+' registered students</div>';
   const seg='<div class="rsw">'+'<div class="rseg '+(S.rseg==="adult"?"active":"")+'" onclick="S.rseg=String.fromCharCode(97,100,117,108,116);render()">Adults ('+allAdults.length+')</div>'+'<div class="rseg '+(S.rseg==="kids"?"active":"")+'" onclick="S.rseg=String.fromCharCode(107,105,100,115);render()">Kids ('+allKids.length+')</div></div>';
-  return rTrialsBlock()+regLine+seg+filterHtml+'<div id="roster-results">'+rARosterListInner()+'</div>';
+  // Trials moved to their own tab (rAdmin) — the roster is just students now.
+  return regLine+seg+filterHtml+'<div id="roster-results">'+rARosterListInner()+'</div>';
 }
 function rStaff(){
   const ownerView=isOwner();
@@ -7047,7 +7126,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rConvertKidModal()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
