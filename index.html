@@ -11780,6 +11780,18 @@ function openEditStu(sid){
   render();
 }
 function closeEditStu(){S.editStuFor=null;S.editStuTab='basic';S.editStuDraft=null;S.sub=S.viewStu?'stuprof':null;render();}
+// Gender canonicalisation. The whole app now speaks the LONG form
+// ('Female'/'Male'/'Other'/'Prefer not to say') — what waiver.html (a public legal
+// doc) and the kid-convert modal already write. Existing rows may still hold the
+// legacy SHORT codes ('m'/'f'/'o'/'n'); map those to long so the Edit-profile
+// <select> resolves them to a real option. Anything we CANNOT parse is returned
+// UNCHANGED, never blanked: a select whose value matches no option renders empty,
+// and an empty select saves '' straight over the real value — so an unrecognised
+// value must be kept, not silently erased. null/'' pass through untouched.
+function _genderLong(v){
+  if(v==null||v==='')return v;
+  return ({m:'Male',f:'Female',o:'Other',n:'Prefer not to say'})[v]||v;
+}
 function _captureEditStuTab(){
   if(!S.editStuDraft)S.editStuDraft={};
   const D=S.editStuDraft;
@@ -11844,7 +11856,8 @@ function rEditStu(){
   const last=draftOr(D.lastName,s.lastName!=null?s.lastName:((s.name||'').split(' ').slice(1).join(' ')||''));
   const dob=draftOr(D.dob,s.dob||'');
   const phone=draftOr(D.phone,s.phone||'');
-  const gender=draftOr(D.gender,s.gender||'');
+  // Long-form, with legacy short codes mapped so the option resolves (see _genderLong).
+  const gender=_genderLong(draftOr(D.gender,s.gender||''));
   const weightKg=draftOr(D.weightKg,s.weightKg!=null?s.weightKg:'');
   const heightCm=draftOr(D.heightCm,s.heightCm!=null?s.heightCm:'');
   const hasMybjjGi=draftOr(D.hasMybjjGi,!!s.hasMybjjGi);
@@ -11872,7 +11885,14 @@ function rEditStu(){
   // (Contact tab no longer renders social inputs; SOCIAL card owns the
   // edit pipeline).
   const isKids=s.prog==='kids';
-  const genders=[{v:'',l:'—'},{v:'m',l:'Male'},{v:'f',l:'Female'},{v:'o',l:'Other'},{v:'n',l:'Prefer not to say'}];
+  // LONG form (matches the kid-convert modal + waiver.html). Was the short-form
+  // ['m'/'f'/'o'/'n'] list, which failed to match a waiver-written 'Female' — the
+  // select rendered empty and the next save wiped the row. Lesson: render and
+  // storage vocabularies must not drift, and an unmatched value is KEPT, not
+  // blanked — so if `gender` resolves to something outside this list (an
+  // unparseable legacy value), append it as its own selected option to preserve it.
+  const genders=[{v:'',l:'—'},{v:'Female',l:'Female'},{v:'Male',l:'Male'},{v:'Other',l:'Other'},{v:'Prefer not to say',l:'Prefer not to say'}];
+  if(gender&&!genders.some(g=>g.v===gender))genders.push({v:gender,l:gender});
   const viewerId=S.profile&&S.profile.id;
   const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
   // Photo affordance only for the row's own user — admin viewing
@@ -12027,7 +12047,10 @@ async function saveEditStu(){
   if(!_phoneValid(phone))return showErr('Enter a valid phone number');
   const isKids=s.prog==='kids';
   const dob=D.dob!==undefined?(D.dob||null):(s.dob||null);
-  const gender=D.gender!==undefined?(D.gender||null):(s.gender||null);
+  // Canonicalise to long form on write (legacy short → long; unknown kept as-is;
+  // null stays null) so a save never persists a stale short code — even when the
+  // basic tab wasn't rendered at capture time and this falls back to s.gender.
+  const gender=_genderLong(D.gender!==undefined?(D.gender||null):(s.gender||null));
   const weightStr=D.weightKg!==undefined?String(D.weightKg||''):(s.weightKg!=null?String(s.weightKg):'');
   const heightStr=D.heightCm!==undefined?String(D.heightCm||''):(s.heightCm!=null?String(s.heightCm):'');
   const weightKg=weightStr?parseInt(weightStr,10):null;
