@@ -1459,9 +1459,27 @@ function gattFor(date,time){
     return s?s.id:null;
   }).filter(Boolean);
 }
-function attendanceFor(date,time){
-  if(!date||!time)return [];
-  return ATTENDANCE.filter(a=>a.classDate===date&&a.classTime===time);
+// Attendance for one class OCCURRENCE — resolved by CLASS IDENTITY (class_id,
+// the key ATTENDANCE already carries), NOT by (date,time). Two classes at the
+// same weekday+time are distinct class_ids and must NEVER share a roster: a
+// different unit (NB 12:00 vs CD 12:00) OR even the same unit (CD has 06:15 alev
+// AND 06:15 mma). This drives the roster, the "N going" count, confirm/undo and
+// the mark-present sheet, so a weak match here silently acts on the wrong people.
+//
+// Legacy rows (class_id null — predate the column) are NOT dropped silently: they
+// fall back to the old (date,time) match, but ONLY within the class's own unit
+// (a.unitId === unitDbId). If such a row has no unit, or we weren't handed the
+// class's unit, it is dropped — a cross-unit leak is worse than a missing row.
+function attendanceFor(classId,date,time,unitDbId){
+  if(!date)return [];
+  return ATTENDANCE.filter(a=>{
+    if(a.classDate!==date)return false;
+    if(a.classId!=null)return a.classId===classId;      // primary: by class identity
+    // legacy row (classId null): (date,time) fallback, unit-guarded.
+    if(!time||a.classTime!==time)return false;
+    if(a.unitId==null||unitDbId==null)return false;     // no proof of same unit → drop
+    return a.unitId===unitDbId;
+  });
 }
 function myStudentRow(){
   if(!S.profile||!S.profile.id)return null;
@@ -3887,7 +3905,11 @@ function rClass(){
   :cls.length===0?`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`
   :cls.map(c=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];
-    const rows=attendanceFor(c.date,c.time);
+    // c.classId is the DB class_id (set by _projClsRow); c.id here is the synthetic
+    // "date_time_legacy" composite (getDC overrides it), so it must NOT be used to
+    // match a.classId. _clsUnit backs the legacy (date,time) fallback's unit guard.
+    const _clsUnit=(CLASSES.find(cl=>cl.id===c.classId)||{}).unit_id||null;
+    const rows=attendanceFor(c.classId,c.date,c.time,_clsUnit);
     const myStu=myStudentRow();
     const myRow=myStu?rows.find(r=>r.studentDbId===myStu._dbId):null;
     const isIn=!!myRow&&(myRow.status==='going'||myRow.status==='present');
@@ -8814,7 +8836,7 @@ async function refetchUnitScopedData(){
     c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,hidden,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
     c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
     c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
-    c.from('attendance').select('id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
+    c.from('attendance').select('id,unit_id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
     // Etapa 5 — feedback hydrated from public.feedback. RLS scopes
     // rows automatically: staff of unit see every student's feedback;
     // students see their own; parents see their kid's. Each row is
@@ -8938,7 +8960,7 @@ async function refetchUnitScopedData(){
     got=true;
   }else if(pw.error){console.warn('[mybjj] hydrate programme_weeks:',pw.error);SCHED=[];}
   if(at.data){
-    ATTENDANCE=at.data.map(r=>({_dbId:r.id,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,classValue:r.class_value!=null?Number(r.class_value):1}));
+    ATTENDANCE=at.data.map(r=>({_dbId:r.id,unitId:r.unit_id||null,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,classValue:r.class_value!=null?Number(r.class_value):1}));
     got=true;
   }else if(at.error)console.warn('[mybjj] hydrate attendance:',at.error);
   // Etapa 5 — group public.feedback rows by student_id and attach.
