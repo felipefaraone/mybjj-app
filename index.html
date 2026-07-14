@@ -2718,6 +2718,28 @@ function rStuProf(){
   // Admin actions row (Promote / + Class count / Feedback) — gated by
   // entry point on top of the existing canAdmin permission check.
   const adminActionsBlock=(isPeer||!canAdmin||!isRosterEntry)?'':rAdminActionRow(s);
+  // Health-check (waiver) status + send action — staff-only, from the roster. The
+  // door for existing members (migration 98): signed → green line; sent-not-signed
+  // → amber line + resend; none → "Send health check". "Send" offers BOTH ways —
+  // Copy link (Patricia sends on WhatsApp) and Email it — the person chooses.
+  let waiverBlock='';
+  if(isAdminViewer&&isRosterEntry&&!isPeer&&s.waiverToken){
+    const _wd=(iso)=>{try{return new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});}catch(_){return '';}};
+    const _sendBtns='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'
+      +'<button onclick="copyWaiverLink(\''+s.id+'\')" style="flex:1;min-width:120px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:9px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.4px;cursor:pointer">Copy link</button>'
+      +'<button onclick="emailWaiverLink(\''+s.id+'\')" style="flex:1;min-width:120px;background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.4px;cursor:pointer">Email it</button>'
+      +'</div>';
+    const _hdr='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Health check</div>';
+    let _inner;
+    if(s.waiverSignedAt){
+      _inner=_hdr+'<div style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--green-text)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span>Signed '+_wd(s.waiverSignedAt)+'</span></div>';
+    }else if(s.waiverSentAt){
+      _inner=_hdr+'<div style="font-size:13px;color:var(--amber-text)">Sent '+_wd(s.waiverSentAt)+' — not signed yet.</div>'+_sendBtns;
+    }else{
+      _inner=_hdr+'<div style="font-size:12.5px;color:var(--text2)">No waiver on file — send them a health check.</div>'+_sendBtns;
+    }
+    waiverBlock='<div class="card" style="margin-bottom:12px;padding:14px 16px">'+_inner+'</div>';
+  }
   // Edit Profile pencil — self can always edit own profile; admin only
   // gets the entry from the roster, not from community browsing; parent
   // owns the kid's personal info and gets it from any entry. The form
@@ -2752,6 +2774,7 @@ ${_progDobWarnHtml}
 
 <!-- Section 1: Admin actions (owner/professor) — peer-gated -->
 ${adminActionsBlock}
+${waiverBlock}
 
 <!-- Section 2: Stats — peer-gated -->
 ${statsCard}
@@ -9193,7 +9216,7 @@ async function refetchUnitScopedData(){
   const c=initSupabase(); if(!c) return false;
   const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
   const res=await Promise.allSettled([
-    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,welcome_hidden,converted_at,parent_user:users!parent_user_id(full_name)'),
+    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)'),
     // RLS-2 — staff.feedback dropped from the select; Head Instructor
     // Notes now live in public.staff_notes and are fetched lazily per
     // STAFF row by _fetchStaffNotes when the owner opens the profile.
@@ -9239,7 +9262,7 @@ async function refetchUnitScopedData(){
     // Postgres numeric as String to avoid precision loss; wrap with
     // Number() so downstream math (sort, eligibility, formatStat)
     // compares numerically instead of lexicographically.
-    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
+    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,waiverToken:r.waiver_token||null,waiverSentAt:r.waiver_sent_at||null,waiverSignedAt:r.waiver_signed_at||null,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
     got=true;
   }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
   if(sf.data&&sf.data.length){
@@ -12476,6 +12499,68 @@ async function reactivateStudent(sid){
     const cli=initSupabase();if(!cli)return;
     const r=await cli.from('students').update({active:true}).eq('id',s._dbId);
     if(r&&r.error){console.warn('[mybjj] reactivate:',r.error);s._active=prev;showSaveToast2(friendlyMutationError(r.error),'error');render();}
+  }
+}
+
+// ---- Member health-check (waiver) link -----------------------------------
+// The member-facing waiver URL. Kids get &k=1 so waiver.html runs its guardian
+// (minor) mode and the age check passes; &n= prefills the participant name.
+function _waiverLinkFor(s){
+  let l='https://mybjj-app.com/waiver.html?t='+encodeURIComponent(s.waiverToken||'');
+  if(s.prog==='kids')l+='&k=1';
+  if(s.name)l+='&n='+encodeURIComponent(s.name);
+  return l;
+}
+// Stamp students.waiver_sent_at (both Copy and Email count as "sent"). Staff can
+// UPDATE students under RLS, so this writes client-side; optimistic local first.
+async function _stampWaiverSent(s){
+  const nowIso=new Date().toISOString();
+  s.waiverSentAt=nowIso;render();
+  if(!s._dbId)return;
+  const cli=initSupabase();if(!cli)return;
+  const r=await cli.from('students').update({waiver_sent_at:nowIso}).eq('id',s._dbId);
+  if(r&&r.error)console.warn('[mybjj] stamp waiver_sent_at:',r.error);
+}
+async function copyWaiverLink(sid){
+  if(!isStaffOrOwner())return;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.waiverToken)return;
+  const link=_waiverLinkFor(s);
+  let copied=false;
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(link); copied=true; } }catch(_){}
+  if(copied)showSaveToast2('Link copied — send it on WhatsApp.');
+  else window.prompt('Copy this health-check link:',link);
+  _stampWaiverSent(s);
+}
+// Email the link via the send-waiver-link Edge Function (staff-gated server-side).
+// The EF stamps waiver_sent_at on a real send; a mail failure never 500s, it comes
+// back { ok:true, sent:false } so we can nudge the user to copy instead.
+async function emailWaiverLink(sid){
+  if(!isStaffOrOwner())return;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
+  let session=null;
+  try{ const r=await cli.auth.getSession(); session=r&&r.data&&r.data.session; }catch(_){}
+  if(!session||!session.access_token){showSaveToast2('Please sign in again','error');return;}
+  showSaveToast2('Sending…');
+  try{
+    const resp=await fetch(SUPABASE_URL+'/functions/v1/send-waiver-link',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({student_id:s._dbId})
+    });
+    let body=null; try{ body=await resp.json(); }catch(_){}
+    if(resp.status===422&&body&&body.error==='no_email'){
+      showSaveToast2('No email on file — copy the link and send it another way.','error');return;
+    }
+    if(!resp.ok||!body||!body.ok){
+      console.warn('[mybjj] send-waiver-link:',(body&&body.error)||('HTTP '+resp.status));
+      showSaveToast2('Could not send the email. Copy the link instead.','error');return;
+    }
+    if(body.sent){ s.waiverSentAt=new Date().toISOString();render();showSaveToast2('Health check emailed.'); }
+    else{ showSaveToast2("Couldn't email it. Copy the link and send it another way.",'error'); }
+  }catch(e){
+    console.warn('[mybjj] emailWaiverLink:',e);
+    showSaveToast2('Could not send. Copy the link instead.','error');
   }
 }
 

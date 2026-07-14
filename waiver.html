@@ -182,6 +182,7 @@ input.err,select.err{border-color:var(--red)}
       <label class="field"><span class="lab">Date of birth<span class="req"> *</span></span><input type="date" id="dob"/></label>
       <label class="field"><span class="lab">Gender</span>
         <select id="gender"><option value="">Select…</option><option>Female</option><option>Male</option><option>Other</option><option>Prefer not to say</option></select></label>
+      <label class="field"><span class="lab" id="ph-lab">Your phone<span class="req"> *</span></span><input type="tel" id="participant_phone" placeholder="0412 345 678"/></label>
       <label class="field full"><span class="lab">Address<span class="req"> *</span></span><input type="text" id="address" placeholder="Street, suburb, postcode"/></label>
       <label class="field full"><span class="lab">Occupation</span><input type="text" id="occupation" placeholder="e.g. Hospitality, student"/></label>
     </div>
@@ -372,7 +373,7 @@ function mark(id, bad){
 function validateStep(n){
   var missing = [];
   var badFormat = [];
-  ["dob","address","em_name","em_phone","em_rel"].forEach(function(id){ mark(id,false); });
+  ["dob","participant_phone","address","em_name","em_phone","em_rel"].forEach(function(id){ mark(id,false); });
 
   if(n === 1){
     if(!val("dob")){
@@ -386,6 +387,15 @@ function validateStep(n){
         err("You're under 18, so a parent or guardian needs to complete and sign this — not you. Ask them to open this link on their phone, or call us on 0406 456 766.");
         return false;
       }
+    }
+    // Participant's own phone: required for an adult (nobody ever asked, which is
+    // why 387 members have none); optional for a minor (a young child has no phone
+    // — the guardian's number is captured as the emergency contact). Validated
+    // whenever present.
+    if(!st.minor && !val("participant_phone")){
+      mark("participant_phone",true); missing.push("your phone");
+    } else if(val("participant_phone") && !validAUPhone(val("participant_phone"))){
+      mark("participant_phone",true); badFormat.push("a valid Australian phone number (e.g. 0412 345 678)");
     }
     if(!val("address")){  mark("address",true);  missing.push("address"); }
     if(!val("em_name")){  mark("em_name",true);  missing.push("emergency contact name"); }
@@ -577,6 +587,8 @@ if(!UUID_RE.test(TOKEN)){
     $("namelab").innerHTML = 'Type your name (parent or guardian)<span class="req"> *</span>';
     $("siglab").textContent = "Sign below (parent or guardian)";
     $("medlead").textContent = "About your child. Saying yes just means the coach keeps an eye out — it rarely stops anyone training.";
+    // A young child likely has no phone; the guardian's is the emergency contact.
+    $("ph-lab").innerHTML = "Child's phone (if they have one)";
   }
   $("dob").max = new Date().toISOString().split("T")[0];
   show("s1");
@@ -611,6 +623,7 @@ window.submitWaiver = function(){
     signed_by_relationship: st.minor ? "parent" : "self",
     signature: $("sigpad").toDataURL("image/png"),
 
+    participant_phone: val("participant_phone"),
     emergency_name: val("em_name"),
     emergency_phone: val("em_phone"),
     emergency_relationship: val("em_rel"),

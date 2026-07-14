@@ -1,16 +1,19 @@
 // supabase/functions/waiver-submit/index.ts
 //
-// Public health-waiver endpoint. Reached from mybjj-app.com/waiver?t=<token>,
-// where <token> is trial_bookings.waiver_token (a uuid mailed to the person in
-// their booking confirmation). No login — they aren't a member yet.
+// Public health-waiver endpoint. Reached from mybjj-app.com/waiver?t=<token>. The
+// token resolves to EITHER a lead (trial_bookings.waiver_token, mailed in the
+// booking confirmation) OR an existing member (students.waiver_token, migration
+// 98). No login either way — the token is the credential.
 //
 // What it does:
-//   1. resolves the token -> the trial booking (404 if unknown)
+//   1. resolves the token -> a trial booking, else a student (404 if neither)
 //   2. validates the Turnstile token server-side
 //   3. validates the payload
 //   4. uploads the drawn signature (PNG) to the PRIVATE `waivers` bucket
-//   5. inserts the health_waivers row (typed safety flags + jsonb answers)
-//   6. stamps trial_bookings.waiver_signed_at -> the WAIVER OK badge goes green
+//   5. inserts the health_waivers row (typed safety flags + jsonb answers) with
+//      trial_booking_id OR student_id set (the other NULL)
+//   6. stamps waiver_signed_at; for a MEMBER, also fills the null gaps on the
+//      students row (dob / gender / phone / emergency contact) — COALESCE only.
 //
 // Health data is sensitive information under the Privacy Act. Nothing here is
 // ever read back to the public page: this endpoint only WRITES.
@@ -131,25 +134,63 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // The same token space serves TWO kinds of person:
+  //   - a LEAD   (trial_bookings.waiver_token) — 60-day TTL: a cold lead's link
+  //     expires and they sign at reception; and
+  //   - a MEMBER (students.waiver_token, migration 98) — NO TTL: a member is a
+  //     member, their link stays valid until used.
+  // Try the trial first (unchanged), then fall back to the member.
+  let subject:
+    | { kind: "trial"; id: string; unitId: string | null; participantName: string; isMinor: boolean }
+    | { kind: "student"; id: string; unitId: string | null; participantName: string; isMinor: boolean; student: Record<string, unknown> }
+    | null = null;
+
   const { data: booking, error: bErr } = await supabase
     .from("trial_bookings")
     .select("id, unit_id, first_name, last_name, is_kid, kid_name, booked_at, waiver_signed_at")
     .eq("waiver_token", token)
     .maybeSingle();
+  if (bErr) return json({ error: "lookup_failed" }, 500, origin);
 
-  if (bErr || !booking) {
-    return json({ error: "token_not_found" }, 404, origin);
-  }
-
-  // Expired link -> they sign at reception.
-  const bookedAt = new Date(booking.booked_at as string).getTime();
-  if (Date.now() - bookedAt > TOKEN_TTL_DAYS * 86400_000) {
-    return json({ error: "token_expired" }, 410, origin);
-  }
-
-  // Already signed -> idempotent, don't create a second record.
-  if (booking.waiver_signed_at) {
-    return json({ ok: true, already: true }, 200, origin);
+  if (booking) {
+    // TRIAL path — the 60-day expiry applies here (a cold lead signs at reception).
+    const bookedAt = new Date(booking.booked_at as string).getTime();
+    if (Date.now() - bookedAt > TOKEN_TTL_DAYS * 86400_000) {
+      return json({ error: "token_expired" }, 410, origin);
+    }
+    if (booking.waiver_signed_at) {
+      return json({ ok: true, already: true }, 200, origin);   // idempotent
+    }
+    subject = {
+      kind: "trial",
+      id: booking.id as string,
+      unitId: (booking.unit_id as string) ?? null,
+      isMinor: booking.is_kid === true,
+      participantName: booking.is_kid === true
+        ? str(booking.kid_name as string, 160)
+        : `${booking.first_name} ${booking.last_name}`.trim(),
+    };
+  } else {
+    // MEMBER path — resolve the same token against students. NO TTL check: the
+    // 60-day rule is a lead-goes-cold rule; a member's link never expires.
+    const { data: student, error: sErr } = await supabase
+      .from("students")
+      .select("id, unit_id, full_name, prog, waiver_signed_at, date_of_birth, gender, phone, emergency_contact_name, emergency_contact_phone")
+      .eq("waiver_token", token)
+      .maybeSingle();
+    if (sErr) return json({ error: "lookup_failed" }, 500, origin);
+    if (!student) return json({ error: "token_not_found" }, 404, origin);
+    if (student.waiver_signed_at) {
+      return json({ ok: true, already: true }, 200, origin);   // idempotent, same as trial
+    }
+    subject = {
+      kind: "student",
+      id: student.id as string,
+      unitId: (student.unit_id as string) ?? null,
+      isMinor: student.prog === "kids",                        // from the row, never the client
+      participantName: str(student.full_name as string, 160),
+      student,
+    };
   }
 
   // ---- 3. Validate the payload --------------------------------------------
@@ -161,10 +202,8 @@ Deno.serve(async (req) => {
     return json({ error: "not_agreed" }, 422, origin);
   }
 
-  const isMinor = booking.is_kid === true;
-  const participantName = isMinor
-    ? str(booking.kid_name as string, 160)
-    : `${booking.first_name} ${booking.last_name}`.trim();
+  const isMinor = subject.isMinor;
+  const participantName = subject.participantName;
 
   const signedByName = str(payload.signed_by_name, 160);
   if (!signedByName) {
@@ -181,11 +220,15 @@ Deno.serve(async (req) => {
   if (!emergencyName || !emergencyPhone) {
     return json({ error: "validation", fields: ["emergency_contact"] }, 422, origin);
   }
+  // Participant's OWN phone (waiver.html step 1). Fills students.phone on the
+  // member path; the trial path ignores it (the booking already collected one).
+  const participantPhone = str(payload.participant_phone, 40);
 
   // ---- 4. Insert the waiver (we need the id for the signature path) ---------
   const waiverRow = {
-    trial_booking_id:       booking.id,
-    unit_id:                booking.unit_id,
+    trial_booking_id:       subject.kind === "trial" ? subject.id : null,
+    student_id:             subject.kind === "student" ? subject.id : null,
+    unit_id:                subject.unitId,
     participant_name:       participantName,
     is_minor:               isMinor,
     signed_by_name:         signedByName,
@@ -241,21 +284,44 @@ Deno.serve(async (req) => {
     .update({ signature_path: sigPath })
     .eq("id", waiver.id);
 
-  // ---- 6. Stamp the booking -> WAIVER OK goes green -------------------------
-  const { error: stampErr } = await supabase
-    .from("trial_bookings")
-    .update({
-      waiver_signed_at:      new Date().toISOString(),
-      waiver_signed_by_name: signedByName,
-      waiver_text_version:   CURRENT_WAIVER_VERSION,
-    })
-    .eq("id", booking.id);
-
-  if (stampErr) {
-    console.error("[waiver-submit] stamp booking:", stampErr.message);
-    // The waiver exists; the badge just won't be green. Surface it rather than
-    // pretending everything is fine.
-    return json({ error: "stamp_failed" }, 500, origin);
+  // ---- 6. Stamp the subject ------------------------------------------------
+  const nowIso = new Date().toISOString();
+  if (subject.kind === "trial") {
+    // Trial: stamp the booking -> WAIVER OK goes green.
+    const { error: stampErr } = await supabase
+      .from("trial_bookings")
+      .update({
+        waiver_signed_at:      nowIso,
+        waiver_signed_by_name: signedByName,
+        waiver_text_version:   CURRENT_WAIVER_VERSION,
+      })
+      .eq("id", subject.id);
+    if (stampErr) {
+      console.error("[waiver-submit] stamp booking:", stampErr.message);
+      // The waiver exists; the badge just won't be green. Surface it.
+      return json({ error: "stamp_failed" }, 500, origin);
+    }
+  } else {
+    // Member: FILL THE GAPS on the students row — the entire point of this door.
+    // Write ONLY where the column is currently NULL (COALESCE semantics): a person
+    // signing must never overwrite a correction the office already entered. The
+    // current values were read at token resolution.
+    const st0 = subject.student;
+    const ans = (payload.answers && typeof payload.answers === "object")
+      ? payload.answers as Record<string, unknown> : {};
+    const ansDob = str(ans.dob, 20);
+    const ansGender = str(ans.gender, 40);
+    const fill: Record<string, unknown> = { waiver_signed_at: nowIso };
+    if (!st0.date_of_birth && /^\d{4}-\d{2}-\d{2}$/.test(ansDob)) fill.date_of_birth = ansDob;
+    if (!st0.gender && ansGender) fill.gender = ansGender;
+    if (!st0.phone && participantPhone) fill.phone = participantPhone;
+    if (!st0.emergency_contact_name && emergencyName) fill.emergency_contact_name = emergencyName;
+    if (!st0.emergency_contact_phone && emergencyPhone) fill.emergency_contact_phone = emergencyPhone;
+    const { error: fillErr } = await supabase.from("students").update(fill).eq("id", subject.id);
+    if (fillErr) {
+      console.error("[waiver-submit] fill student:", fillErr.message);
+      return json({ error: "stamp_failed" }, 500, origin);
+    }
   }
 
   return json({ ok: true }, 200, origin);
