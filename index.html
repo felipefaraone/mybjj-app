@@ -2579,6 +2579,17 @@ function doPromote(id, isBeltPromotion){
     }).eq('id',s._dbId),'update student after promotion');
   }
 }
+// Whole-years age from a 'YYYY-MM-DD' dob, or null when absent/unparseable.
+function _ageFromDob(dob){
+  if(!dob)return null;
+  const d=new Date(String(dob).slice(0,10)+'T00:00:00Z');
+  if(isNaN(d.getTime()))return null;
+  const now=new Date();
+  let age=now.getUTCFullYear()-d.getUTCFullYear();
+  const mo=now.getUTCMonth()-d.getUTCMonth();
+  if(mo<0||(mo===0&&now.getUTCDate()<d.getUTCDate()))age--;
+  return (age>=0&&age<130)?age:null;
+}
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
   const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
@@ -2719,11 +2730,25 @@ function rStuProf(){
   const editHandler=(isSelf||(isAdminViewer&&isRosterEntry)||isParentOnOwnKid)
     ?"openEditStu('"+s.id+"')"
     :'';
+  // DOB vs programme mismatch — a cheap integrity nudge for staff (item 5). Amber,
+  // never a block: the DOB may itself be the wrong value, and the app must never
+  // stop a correction. Over 18 in kids, or under 16 in adults. Only when a DOB
+  // exists (most rows have none today; it starts working as waivers fill it in).
+  const _dobAge=_ageFromDob(s.dob);
+  let _progDobWarn='';
+  if(isAdminViewer&&_dobAge!=null){
+    if(isKids&&_dobAge>18)_progDobWarn='Date of birth says '+_dobAge+" — but they're in the kids programme.";
+    else if(!isKids&&_dobAge<16)_progDobWarn='Date of birth says '+_dobAge+" — but they're in the adults programme.";
+  }
+  const _progDobWarnHtml=_progDobWarn
+    ?'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:12.5px;color:var(--amber-text);line-height:1.5;display:flex;gap:8px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>'+_progDobWarn+'</span></div>'
+    :'';
   return `<div class="sub open">
 <div class="shdr"><button class="sback" onclick="profileBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> ${backLbl}</button><div class="stitle">${s.name}</div></div>
 <div class="sbody">
 
 ${_renderProfileHeader(s,{kind:'student',editHandler:editHandler})}
+${_progDobWarnHtml}
 
 <!-- Section 1: Admin actions (owner/professor) — peer-gated -->
 ${adminActionsBlock}
@@ -11914,6 +11939,7 @@ function _captureEditStuTab(){
   if(hn!==null&&hn!==undefined)D.holdNote=hn.value;
   const ecn=v('es-ecname');  if(ecn!==undefined)D.ecName=ecn;
   const ecp=v('es-ecphone'); if(ecp!==undefined)D.ecPhone=ecp;
+  const be=v('es-belt');     if(be!==undefined)D.belt=be;   // programme-change belt gate (Training tab)
   const pn=v('es-pname');    if(pn!==undefined)D.parentName=pn;
   const pp=v('es-pphone');   if(pp!==undefined)D.parentPhone=pp;
   const pe=v('es-pemail');   if(pe!==undefined)D.parentEmail=pe;
@@ -11928,6 +11954,43 @@ function _captureEditStuTab(){
   // wasn't touched in the same session).
 }
 function setEditStuTab(t){_captureEditStuTab();S.editStuTab=t;render();}
+// Programme switch (Training tab, admin-only). Capture the current tab first so
+// typed fields survive, then re-render: the belt options AND the tab set are a
+// function of the programme, so both must update immediately. Never writes on its
+// own — the decision (incl. any forced belt choice) lands on Save.
+function setEditStuProg(val){
+  if(!isStaffOrOwner())return;
+  _captureEditStuTab();
+  if(!S.editStuDraft)S.editStuDraft={};
+  S.editStuDraft.prog=(val==='kids')?'kids':'adult';
+  // A new belt choice only makes sense for the new programme — drop any stale one
+  // captured under the previous programme so its default re-resolves.
+  delete S.editStuDraft.belt;
+  render();
+}
+// Kids → adult releases the guardian link, but only on an explicit action (an
+// adult may keep those fields as an emergency contact — silently deleting a parent
+// link is not ours to do). Clears all four guardian columns with a confirming
+// re-fetch, and drops the in-memory parent link.
+async function clearStudentGuardian(sid){
+  if(!isStaffOrOwner())return;
+  sid=sid||S.editStuFor||S.viewStu;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
+  if(!confirm('Clear this student’s guardian details?\n\nName, email, phone and the parent login link are removed. This does not touch attendance or history.'))return;
+  const prev={parentName:s.parentName,parentEmail:s.parentEmail,parentPhone:s.parentPhone,parentUserId:s._parentUserId};
+  s.parentName=null;s.parentEmail=null;s.parentPhone=null;s._parentUserId=null;
+  render();
+  if(!s._dbId){showSaveToast2('Guardian details cleared.');return;}
+  const cli=initSupabase();if(!cli)return;
+  const upd=await cli.from('students').update({parent_name:null,parent_email:null,parent_phone:null,parent_user_id:null}).eq('id',s._dbId);
+  if(upd&&upd.error){s.parentName=prev.parentName;s.parentEmail=prev.parentEmail;s.parentPhone=prev.parentPhone;s._parentUserId=prev.parentUserId;showSaveToast2(friendlyMutationError(upd.error),'error');render();return;}
+  const chk=await cli.from('students').select('id,parent_name,parent_email,parent_user_id').eq('id',s._dbId).single();
+  if(chk&&chk.error||!chk||!chk.data||chk.data.parent_name||chk.data.parent_email||chk.data.parent_user_id){
+    s.parentName=prev.parentName;s.parentEmail=prev.parentEmail;s.parentPhone=prev.parentPhone;s._parentUserId=prev.parentUserId;
+    showSaveToast2('Could not clear guardian details.','error');render();return;
+  }
+  showSaveToast2('Guardian details cleared.');
+}
 // B-edit — "Same as guardian" toggle on the Guardian tab. When ON,
 // copies guardian name/phone into emergency inputs so the parent
 // doesn't have to retype. Off leaves whatever's there.
@@ -11985,7 +12048,12 @@ function rEditStu(){
   // Batch social-edit Change 6 — `socialDraft` / `social` locals dropped
   // (Contact tab no longer renders social inputs; SOCIAL card owns the
   // edit pipeline).
-  const isKids=s.prog==='kids';
+  // Programme drives the belt system AND the tab set, so the whole form follows
+  // the DRAFT programme, not just the stored one — flip to Kids and the Guardian
+  // tab + kids belts appear immediately (and vice-versa).
+  const storedProg=s.prog||'adult';
+  const draftProg=(D.prog==='kids'||D.prog==='adult')?D.prog:storedProg;
+  const isKids=draftProg==='kids';
   // LONG form (matches the kid-convert modal + waiver.html). Was the short-form
   // ['m'/'f'/'o'/'n'] list, which failed to match a waiver-written 'Female' — the
   // select rendered empty and the next save wiped the row. Lesson: render and
@@ -12047,7 +12115,51 @@ function rEditStu(){
   // subject doesn't matter.
   const isAdminViewer=isStaffOrOwner();
   const beltVisual=isAdminViewer
-    ?'<div class="ef" style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,s.prog)+'<span style="font-size:11px;color:var(--text3)">(belt is set via Promote)</span></div>'
+    ?'<div class="ef" style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">'+bb(s.belt,s.deg||0,storedProg)+'<span style="font-size:11px;color:var(--text3)">(belt is set via Promote)</span></div>'
+    :'';
+  // ---- Programme control (admin-only) — prog + belt move together ----
+  // prog decides the belt system AND is a child-safety control (kids are hidden
+  // from the adult going-list). A belt must be valid in the programme it lands in,
+  // so a change to a non-shared belt forces an explicit belt decision — never
+  // auto-converted (there is no honest grey/black → coloured-belt lookup).
+  const _progChanged=draftProg!==storedProg;
+  const _newOrder=isKids?BELT_ORDER_K:BELT_ORDER_A;
+  const _beltMap=isKids?BK:BA;
+  const _beltValidNew=_newOrder.indexOf(s.belt)>=0;
+  const _sysWord=isKids?'kids':'adult';
+  const _curBeltLbl=s.belt?((BK[s.belt]||BA[s.belt]||{label:s.belt}).label):null;
+  const _progBtn=(val,lbl)=>{const on=draftProg===val;return '<button type="button" onclick="setEditStuProg(\''+val+'\')" style="flex:1;padding:9px 10px;border-radius:8px;border:1px solid '+(on?'var(--blue)':'var(--border)')+';background:'+(on?'var(--blue)':'transparent')+';color:'+(on?'#fff':'var(--text2)')+';font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.4px;cursor:pointer">'+lbl+'</button>';};
+  let _beltGate='';
+  if(_progChanged){
+    if(_beltValidNew){
+      // Only 'white' is shared across both systems — keep it, say so quietly.
+      _beltGate='<div style="font-size:12px;color:var(--text3);padding:8px 14px 2px;line-height:1.5">Belt stays '+esc(_curBeltLbl||'white')+'.</div>';
+    }else{
+      const _chosen=draftOr(D.belt,'white');
+      const _opts=_newOrder.map(k=>'<option value="'+k+'" '+(k===_chosen?'selected':'')+'>'+((_beltMap[k]||{label:k}).label)+'</option>').join('');
+      const _msg=_curBeltLbl
+        ?esc(_curBeltLbl)+" belt doesn't exist in the "+_sysWord+' system. Pick their '+_sysWord+' belt.'
+        :'This student has no belt yet. Pick their '+_sysWord+' belt.';
+      _beltGate='<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:10px 12px;margin:8px 14px 4px;font-size:12px;color:var(--amber-text);line-height:1.5">'+_msg+'</div><div class="erow"><div class="elbl">New belt</div><select class="esel" id="es-belt">'+_opts+'</select></div>';
+    }
+  }
+  const progSection=isAdminViewer
+    ?'<div class="slbl" style="margin-top:8px">Programme</div><div class="ef"><div class="erow"><div class="elbl">Programme</div><div style="display:flex;gap:6px;flex:1;min-width:0">'+_progBtn('adult','Adults')+_progBtn('kids','Kids')+'</div></div>'+_beltGate+'</div>'
+    :'';
+  // Guardian on file — shown when the (draft) programme is adult but guardian data
+  // exists (an adult with leftover parent fields, or a kid being moved to adult).
+  // Do NOT auto-wipe it; offer one explicit "Clear guardian details" action.
+  const _hasGuardian=!!(s.parentName||s.parentEmail||s.parentPhone||s._parentUserId);
+  const guardianOnFile=(isAdminViewer&&draftProg==='adult'&&_hasGuardian)
+    ?'<div class="slbl" style="margin-top:14px">Guardian on file</div><div class="ef" style="padding:12px 14px">'
+      +'<div style="font-size:12.5px;color:var(--text2);line-height:1.7">'
+      +(s.parentName?('Name: '+esc(s.parentName)+'<br>'):'')
+      +(s.parentEmail?('Email: '+esc(s.parentEmail)+'<br>'):'')
+      +(s.parentPhone?('Phone: '+esc(s.parentPhone)):'')
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.4">An adult may keep this as an emergency contact. Clearing it also removes the parent login link.</div>'
+      +'<button type="button" onclick="clearStudentGuardian(\''+s.id+'\')" style="margin-top:10px;background:none;border:1px solid var(--red-text);color:var(--red-text);border-radius:8px;padding:7px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer">Clear guardian details</button>'
+      +'</div>'
     :'';
   // Batch social-edit Change 6 — Social inputs moved out of the
   // Contact tab. Social is now edited inline from the profile's
@@ -12068,13 +12180,13 @@ function rEditStu(){
 <div style="font-size:11px;color:var(--text3);padding:2px 14px 0">On hold blocks the student from checking themselves in. Any instructor can still add them to class.</div>
 </div>`
     :'';
-  const trainingTab=beltVisual+`
+  const trainingTab=progSection+beltVisual+`
 <div class="ef" style="margin-top:8px">
 ${trainStartRow}
 <div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(weightKg)}"/></div>
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
 <div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="toggle ${hasMybjjGi?'on':''}" id="es-hasmybjjgi" onclick="this.classList.toggle('on')"></button></div>
-</div>`+standingSection;
+</div>`+guardianOnFile+standingSection;
   // -------- Contact (adult only) --------
   // G16a.1 — email row stacks: value on its own line (ellipsis on
   // overflow), Change email link below at smaller size.
@@ -12094,10 +12206,17 @@ ${trainStartRow}
   // guardian email; kid's solo phone isn't useful in V1). Guardian
   // email is read-only because it's the login gate; admin still
   // changes it via the openChangeEmail flow.
+  // Guardian email is the kid's LOGIN gate once a parent account is linked, so it
+  // stays read-only then (change goes through the admin flow). But with no linked
+  // parent yet — including an adult just moved into kids — it's plain data and must
+  // be editable, or the required guardian email could never be entered.
+  const guardianEmailRow=(!s._parentUserId)
+    ?'<div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" inputmode="email" placeholder="Required" value="'+esc(parentEmail)+'" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true"/></div>'
+    :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(parentEmail||'—')+'</div><div style="color:var(--text3);font-size:11px">Login email — change via admin</div></div></div>';
   const guardianTab=`<div class="slbl" style="margin-top:8px">Guardian</div><div class="ef">
 <div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" inputmode="tel" placeholder="Required" oninput="this.value=_phoneSanitize(this.value)" value="${esc(parentPhone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
-<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(parentEmail||'—')}</div><div style="color:var(--text3);font-size:11px">Login email — change via admin</div></div></div>
+<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(parentPhone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
+${guardianEmailRow}
 </div>
 <div class="slbl" style="margin-top:14px">Emergency contact</div>
 <div class="ef">
@@ -12146,7 +12265,31 @@ async function saveEditStu(){
   // checked further down where they're resolved.
   const phone=_phoneSanitize(trim(D.phone,s.phone||''));
   if(!_phoneValid(phone))return showErr('Enter a valid phone number');
-  const isKids=s.prog==='kids';
+  const isAdminViewer=isStaffOrOwner();
+  const wasKids=(s.prog||'adult')==='kids';
+  // ---- Programme + belt (admin-only; the controls render only for isAdminViewer).
+  // prog and belt MOVE TOGETHER: a belt must be valid in the programme it lands in,
+  // or the record is corrupt (a grey-belt adult, a purple-belt kid). Never auto-
+  // convert a belt — a non-shared belt forces an explicit choice from the gate.
+  let progOut=s.prog||'adult';
+  if(isAdminViewer&&(D.prog==='kids'||D.prog==='adult'))progOut=D.prog;
+  const willKids=progOut==='kids';
+  const progChanged=progOut!==(s.prog||'adult');
+  let beltOut=s.belt;
+  if(isAdminViewer&&progChanged){
+    const newOrder=willKids?BELT_ORDER_K:BELT_ORDER_A;
+    if(newOrder.indexOf(s.belt)>=0){
+      beltOut=s.belt;                       // valid in the new system (only 'white' overlaps) — keep it
+    }else{
+      const chosen=(D.belt!==undefined?String(D.belt||'').trim():'');
+      if(!chosen||newOrder.indexOf(chosen)<0){
+        const _lbl=s.belt?((BK[s.belt]||BA[s.belt]||{label:s.belt}).label)+" belt doesn't exist in the "+(willKids?'kids':'adult')+' system. ':'';
+        return showErr(_lbl+'Pick their '+(willKids?'kids':'adult')+' belt.');
+      }
+      beltOut=chosen;
+    }
+  }
+  const isKids=willKids;   // guardian-field logic keys off the OUTGOING programme
   const dob=D.dob!==undefined?(D.dob||null):(s.dob||null);
   // Canonicalise to long form on write (legacy short → long; unknown kept as-is;
   // null stays null) so a save never persists a stale short code — even when the
@@ -12157,7 +12300,6 @@ async function saveEditStu(){
   const weightKg=weightStr?parseInt(weightStr,10):null;
   const heightCm=heightStr?parseInt(heightStr,10):null;
   const hasMybjjGi=D.hasMybjjGi!==undefined?!!D.hasMybjjGi:!!s.hasMybjjGi;
-  const isAdminViewer=isStaffOrOwner();
   const trainingStartedAtRaw=D.trainingStartedAt!==undefined?D.trainingStartedAt:s.trainingStartedAt;
   const trainingStartedAt=(isAdminViewer&&trainingStartedAtRaw)?String(trainingStartedAtRaw):null;
   // Module 1 — account standing. Admin-only: for student-self / parent
@@ -12198,8 +12340,15 @@ async function saveEditStu(){
   const parent2Phone=isKids?(trim(D.parent2Phone,s.parent2Phone||'')||null):s.parent2Phone;
   const parent2Email=isKids?((trim(D.parent2Email,s.parent2Email||'').toLowerCase())||null):s.parent2Email;
   if(isKids){
-    if(!parentName||!parentPhone||!parentEmail)return showErr('Parent 1 name, phone and email are required for kids.');
-    if(!/^\S+@\S+\.\S+$/.test(parentEmail))return showErr('Parent 1 email format looks off.');
+    if(!wasKids){
+      // Moving INTO kids: a child's record without a guardian is not usable — the
+      // task rule is name + email required (phone stays optional at conversion).
+      if(!parentName||!parentEmail)return showErr('Moving to kids needs a guardian name and email.');
+    }else{
+      // Already kids — keep the stricter rule they had (name + phone + email).
+      if(!parentName||!parentPhone||!parentEmail)return showErr('Parent 1 name, phone and email are required for kids.');
+    }
+    if(!/^\S+@\S+\.\S+$/.test(parentEmail))return showErr((wasKids?'Parent 1':'Guardian')+' email format looks off.');
     if(parent2Email&&!/^\S+@\S+\.\S+$/.test(parent2Email))return showErr('Parent 2 email format looks off.');
     if(parent2Email&&parent2Email===parentEmail)return showErr('Parent 1 and Parent 2 emails must differ.');
   }
@@ -12209,13 +12358,15 @@ async function saveEditStu(){
   const fullName=(first+' '+last).trim();
   const initials=((first[0]||'')+(last[0]||'')).toUpperCase()||s.initials;
 
-  // Local first (UI snappy), then DB.
+  // Local first (UI snappy), then DB. Capture the pre-change programme/belt so a
+  // rejected write can be rolled back (the sensitive prog change is re-confirmed).
+  const _prevProg=s.prog,_prevBelt=s.belt;
   s.name=fullName;s.firstName=first;s.lastName=last;s.initials=initials;
   s.dob=dob;s.phone=phone||null;s.gender=gender;
   s.weightKg=weightKg;s.heightCm=heightCm;
   s.hasMybjjGi=hasMybjjGi;
   s.standing=standingOut;s.holdNote=holdNoteOut;
-  if(isAdminViewer)s.trainingStartedAt=trainingStartedAt;
+  if(isAdminViewer){s.prog=progOut;s.belt=beltOut;s.trainingStartedAt=trainingStartedAt;}
   s.bjjStartDate=bjjStartDateOut;
   s.ecName=ecName;s.ecPhone=ecPhone;
   if(isKids){
@@ -12251,9 +12402,11 @@ async function saveEditStu(){
     if(r&&r.error){console.warn('[mybjj] edit_student_self:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');}
     return;
   }
-  // Admin path — direct UPDATE.
+  // Admin path — direct UPDATE. prog + belt travel in the SAME update as the rest
+  // (never a separate write), so the programme and its belt system can't drift.
   const payload={
     full_name:fullName,first_name:first,last_name:last,initials,
+    prog:progOut,belt:beltOut,
     date_of_birth:dob,phone:phone||null,gender,
     weight_kg:weightKg,height_cm:heightCm,
     emergency_contact_name:ecName,emergency_contact_phone:ecPhone,
@@ -12268,7 +12421,18 @@ async function saveEditStu(){
     payload.parent2_name=parent2Name;payload.parent2_phone=parent2Phone;payload.parent2_email=parent2Email;
   }
   const r=await cli.from('students').update(payload).eq('id',s._dbId);
-  if(r&&r.error){console.warn('[mybjj] update student:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');return;}
+  if(r&&r.error){console.warn('[mybjj] update student:',r.error);s.prog=_prevProg;s.belt=_prevBelt;showSaveToast2(friendlyMutationError(r.error),'error');render();return;}
+  // Confirming re-fetch for the sensitive programme change — an RLS-filtered write
+  // returns success-shaped-empty, so verify prog/belt actually landed and roll the
+  // optimistic local change back if they didn't (belt system must never lie).
+  if(progChanged){
+    const chk=await cli.from('students').select('id,prog,belt').eq('id',s._dbId).single();
+    if((chk&&chk.error)||!chk||!chk.data||chk.data.prog!==progOut||chk.data.belt!==beltOut){
+      s.prog=_prevProg;s.belt=_prevBelt;
+      showSaveToast2('Programme change didn’t save. Check permissions and try again.','error');render();return;
+    }
+    s.prog=chk.data.prog;s.belt=chk.data.belt;
+  }
   if(isKids&&parent2Email&&s.unit){
     const unit=UNITS.find(u=>u.id===s.unit);
     if(unit&&unit._dbId){
