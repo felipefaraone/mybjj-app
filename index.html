@@ -1253,8 +1253,9 @@ const IBJJF_MIN_AGE={white:4,blue:16,purple:16,brown:18,black:19};
 // helper; every caller migrated to staffTitle(target) which sources
 // ownership from units.owner_user_id.
 // Batch 2A — separate ownership from permission.
-// isUnitOwner: returns true when `target` is the owner_user_id of any
-// unit in UNITS. Accepts:
+// Migration 90 — ownership is N:N: a unit can have MANY owners (unit_owners),
+// hydrated into UNITS[]._ownerUserIds (unioned with the legacy owner_user_id).
+// isUnitOwner: returns true when `target` owns any unit in UNITS. Accepts:
 //   - S.me (uses target.id, the auth user_id)
 //   - STAFF row (uses target._userId)
 function isUnitOwner(target,units){
@@ -1262,7 +1263,9 @@ function isUnitOwner(target,units){
   const uid=target._userId||target.id||null;
   if(!uid)return false;
   const list=units||(typeof UNITS!=='undefined'?UNITS:[]);
-  return list.some(u=>u&&u._ownerUserId===uid);
+  // Membership in the unit's owner set. The `|| _ownerUserId===uid` keeps the
+  // single-owner semantics for any UNITS entry that predates _ownerUserIds.
+  return list.some(u=>u&&((Array.isArray(u._ownerUserIds)&&u._ownerUserIds.indexOf(uid)>=0)||u._ownerUserId===uid));
 }
 // staffTitle: the BJJ rank label shown next to a staff name. Replaces
 // instructorTitle(belt,deg,role) for callers that have the whole
@@ -9036,13 +9039,33 @@ async function hydrateData(){
     // hydration and the write-performing origin-belt backfill.
     const res=await Promise.allSettled([
       c.from('units').select('id,legacy_id,name,country,city,address,active,owner_user_id,phone,mobile_phone,email,cycle_anchor_date,cycle_length_weeks').order('name'),
+      // Migration 90 — ownership is now an N:N relation (public.unit_owners), a
+      // unit can have MANY owners. RLS on this table is is_admin()-only, so a
+      // non-owner gets an EMPTY set (not an error) — that's expected; the legacy
+      // owner_user_id column below still seeds _ownerUserIds, mirroring the DB
+      // functions' fallback. owner_user_id is still populated; it goes away later.
+      c.from('unit_owners').select('unit_id,user_id'),
     ]);
     const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
     const u=get(0);
+    const ownRes=get(1);
+    // unit _dbId -> [owner user_id] from unit_owners (empty on a non-owner boot).
+    const ownersByUnit={};
+    if(ownRes.data&&Array.isArray(ownRes.data)){
+      for(const row of ownRes.data){
+        if(row&&row.unit_id&&row.user_id)(ownersByUnit[row.unit_id]=ownersByUnit[row.unit_id]||[]).push(row.user_id);
+      }
+    }else if(ownRes.error){console.warn('[mybjj] hydrate unit_owners:',ownRes.error);}
     if(u.data){
       // MOCK-FIX — empty array clears UNITS so an empty DB doesn't
       // present stale mock units as real.
-      UNITS=u.data.map(r=>({id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active,_ownerUserId:r.owner_user_id||null,phone:r.phone||null,mobilePhone:r.mobile_phone||null,email:r.email||null,cycleAnchorDate:r.cycle_anchor_date||null,cycleLengthWeeks:r.cycle_length_weeks||18}));
+      UNITS=u.data.map(r=>{
+        // _ownerUserIds — every owner of this unit (unit_owners), unioned with the
+        // legacy owner_user_id (kept: still populated and still the DB's fallback).
+        const ids=(ownersByUnit[r.id]||[]).slice();
+        if(r.owner_user_id&&ids.indexOf(r.owner_user_id)<0)ids.push(r.owner_user_id);
+        return {id:r.legacy_id,_dbId:r.id,name:r.name,country:r.country,city:r.city,address:r.address,active:r.active,_ownerUserId:r.owner_user_id||null,_ownerUserIds:ids,phone:r.phone||null,mobilePhone:r.mobile_phone||null,email:r.email||null,cycleAnchorDate:r.cycle_anchor_date||null,cycleLengthWeeks:r.cycle_length_weeks||18};
+      });
       touched=true;
     }else if(u.error){console.warn('[mybjj] hydrate units:',u.error);UNITS=[];}
     // Every unit-scoped array + feedback attach — refetched here AFTER UNITS
