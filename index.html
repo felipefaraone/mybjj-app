@@ -1447,39 +1447,34 @@ function bdays(){
   return a;
 }
 function fd(d){return `${DS[d.getDay()]}, ${d.getDate()} ${MS[d.getMonth()]}`;}
-// gattFor: list of student legacy_ids checked in to a class (date + time).
-// Replaces the old hard-coded gatt(time) lookup table. Filters to
-// status in ('going','present') — 'absent' was removed in Batch 2B
-// peers in the social-signal view.
-function gattFor(date,time){
-  if(!date||!time)return [];
-  const rows=ATTENDANCE.filter(a=>a.classDate===date&&a.classTime===time);
-  return rows.map(a=>{
-    const s=STUDENTS.find(x=>x._dbId===a.studentDbId)||VISITORS[a.studentDbId];
-    return s?s.id:null;
-  }).filter(Boolean);
-}
-// Attendance for one class OCCURRENCE — resolved by CLASS IDENTITY (class_id,
-// the key ATTENDANCE already carries), NOT by (date,time). Two classes at the
-// same weekday+time are distinct class_ids and must NEVER share a roster: a
-// different unit (NB 12:00 vs CD 12:00) OR even the same unit (CD has 06:15 alev
-// AND 06:15 mma). This drives the roster, the "N going" count, confirm/undo and
-// the mark-present sheet, so a weak match here silently acts on the wrong people.
+// (gattFor removed — it matched attendance by (date,time) with no class scope and
+// had no callers. Its live sibling attendanceFor is now class-id–resolved below.)
+// Does attendance row `a` belong to this class OCCURRENCE? Resolves by CLASS
+// IDENTITY (class_id) — the key ATTENDANCE already carries — NOT by (date,time).
+// Two classes at the same weekday+time are distinct class_ids and must NEVER be
+// confused: a different unit (NB 12:00 vs CD 12:00) OR even the same unit (CD has
+// 06:15 alev AND 06:15 mma). classTime is DELIBERATELY absent from the primary
+// match — once classId is in play it adds nothing, and it is exactly what caused
+// the v278 bug. This predicate backs the roster (attendanceFor) AND every
+// per-student attendance action (confirm / undo / mark-present / add-student).
 //
 // Legacy rows (class_id null — predate the column) are NOT dropped silently: they
-// fall back to the old (date,time) match, but ONLY within the class's own unit
+// fall back to a (date,time) match, but ONLY within the class's own unit
 // (a.unitId === unitDbId). If such a row has no unit, or we weren't handed the
-// class's unit, it is dropped — a cross-unit leak is worse than a missing row.
+// class's unit, it is dropped — a cross-class/cross-unit leak is worse than a
+// missing legacy row.
+function _attMatchesClass(a,classId,date,time,unitDbId){
+  if(!a||a.classDate!==date)return false;
+  if(a.classId!=null)return a.classId===classId;        // primary: by class identity
+  if(!time||a.classTime!==time)return false;            // legacy: (date,time) …
+  if(a.unitId==null||unitDbId==null)return false;       // … unit-guarded, else drop
+  return a.unitId===unitDbId;
+}
+// Every attendance row for one class occurrence — the roster, the "N going" count,
+// confirm/undo and the mark-present sheet all read this.
 function attendanceFor(classId,date,time,unitDbId){
   if(!date)return [];
-  return ATTENDANCE.filter(a=>{
-    if(a.classDate!==date)return false;
-    if(a.classId!=null)return a.classId===classId;      // primary: by class identity
-    // legacy row (classId null): (date,time) fallback, unit-guarded.
-    if(!time||a.classTime!==time)return false;
-    if(a.unitId==null||unitDbId==null)return false;     // no proof of same unit → drop
-    return a.unitId===unitDbId;
-  });
+  return ATTENDANCE.filter(a=>_attMatchesClass(a,classId,date,time,unitDbId));
 }
 function myStudentRow(){
   if(!S.profile||!S.profile.id)return null;
@@ -10443,7 +10438,11 @@ async function undoCI(id){
     showSaveToast2('Class already ended. Ask instructor to remove.','error');
     return;
   }
-  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===stu._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  // Resolve the class (t.classId = DB class_id) so undo targets the exact class,
+  // not any same-time sibling. _unitId only backs the legacy null-classId guard.
+  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const _unitId=(t.classId?(CLASSES.find(cl=>cl.id===t.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
+  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===stu._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
   if(ix<0)return;
   const removed=ATTENDANCE.splice(ix,1)[0];
   render();
@@ -10631,7 +10630,6 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
   const s=_attStudent(sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
-  let row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
   const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
   // Multi-unit — attendance.unit_id is the CLASS's unit (where the class
   // happens), not the student's home unit, so the active-unit instructor
@@ -10639,6 +10637,10 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
   // t.classId; fall back to the active unit if it can't be found.
   const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
   const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
+  // Resolve the student's row for THIS class by identity (t.classId — the DB
+  // class_id from _projClsRow), never by (date,time): a student in two same-time
+  // classes (CD 06:15 alev + mma) must not have the wrong row upgraded.
+  let row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
   const confirmed=newStatus==='going'?null:(S.profile&&S.profile.id);
   const confirmedAt=newStatus==='going'?null:new Date().toISOString();
   // For status==='present' we always write a numeric class_value.
@@ -10754,18 +10756,22 @@ function markA(cid,sid){return _setAttStatus(cid,sid,'absent');}
 function removeAtt(cid,sid){
   const s=_attStudent(sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
-  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  // Class identity (t.classId) so we remove the right class's row when two run
+  // at the same time; _unitId backs the legacy null-classId fallback only.
+  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const _unitId=(t.classId?(CLASSES.find(cl=>cl.id===t.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
+  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
   if(!row){showSaveToast2('No attendance record to remove.','error');return;}
   const first=(s.name||'').split(' ')[0]||'this student';
   openConfirm({
     title:'Remove from class',
     message:'Remove '+first+' from this class? This deletes the attendance record.',
     dangerLabel:'Remove',
-    onConfirm:()=>_doRemoveAtt(s._dbId,c.date,c.time,first)
+    onConfirm:()=>_doRemoveAtt(s._dbId,t.classId||null,c.date,c.time,_unitId,first)
   });
 }
-async function _doRemoveAtt(studentDbId,date,time,first){
-  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===studentDbId&&a.classDate===date&&a.classTime===time);
+async function _doRemoveAtt(studentDbId,classId,date,time,unitDbId,first){
+  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===studentDbId&&_attMatchesClass(a,classId,date,time,unitDbId));
   if(ix<0)return;
   const removed=ATTENDANCE.splice(ix,1)[0];
   render();
@@ -10921,7 +10927,12 @@ function _classAddListHTML(){
   // sibling tag-along or demo session. For 'All' audiences the toggle
   // is a no-op (nothing to override).
   const classAud=tt.aud||'Adults';
-  const attDbIds=new Set(ATTENDANCE.filter(a=>a.classDate===c.date&&a.classTime===c.time).map(a=>a.studentDbId));
+  // "Already on this class" set, resolved by class identity (tt.classId), not
+  // (date,time) — else a same-time sibling class (e.g. CD 06:15 alev vs mma), or
+  // another unit's roster, would be wrongly treated as already-added. curU._dbId
+  // is the class's unit (the picker is scoped to the current side-panel unit).
+  const _clsUnitDbId=(tt.classId?(CLASSES.find(cl=>cl.id===tt.classId)||{}).unit_id:null)||(curU&&curU._dbId)||null;
+  const attDbIds=new Set(ATTENDANCE.filter(a=>_attMatchesClass(a,tt.classId||null,c.date,c.time,_clsUnitDbId)).map(a=>a.studentDbId));
   const needle=String(q||'').trim().toLowerCase();
   let list=STUDENTS.filter(s=>s._active!==false&&s.unit===unitLegacy);
   if(classAud==='Kids'&&!allProgs)list=list.filter(s=>s.prog==='kids');
@@ -11008,7 +11019,10 @@ async function addStudentToClass(cid,legacyId){
   const c=_parseCID(cid);if(!c)return;
   const s=STUDENTS.find(x=>x.id===legacyId)||(S.classAdd&&S.classAdd._extra&&S.classAdd._extra[legacyId])||null;if(!s||!s._dbId)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
-  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
+  // "Already on this class" by class identity (tt.classId), not (date,time).
+  const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const _unitId=(tt.classId?(CLASSES.find(cl=>cl.id===tt.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
+  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,tt.classId||null,c.date,c.time,_unitId));
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
   openMarkPSheet(cid,legacyId,true);
 }
@@ -11017,9 +11031,6 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   const c=_parseCID(cid);if(!c)return;
   const s=STUDENTS.find(x=>x.id===legacyId)||(S.classAdd&&S.classAdd._extra&&S.classAdd._extra[legacyId])||null;if(!s||!s._dbId)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
-  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&a.classDate===c.date&&a.classTime===c.time);
-  if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
-  S.classAdd.saving=true;
   const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
   // Multi-unit — attendance.unit_id is the CLASS's unit (where the class
   // happens), not the student's home unit, so an instructor adding a
@@ -11028,6 +11039,10 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   // tt.classId; fall back to the active unit when it can't be found.
   const _cls=tt.classId?CLASSES.find(cl=>cl.id===tt.classId):null;
   const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
+  // "Already on this class" by class identity (tt.classId), not (date,time).
+  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,tt.classId||null,c.date,c.time,_unitId));
+  if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
+  S.classAdd.saving=true;
   const nowISO=new Date().toISOString();
   const cv=typeof classValue==='number'?classValue:1;
   const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:tt.classId||null,classDate:c.date,classTime:c.time,classType:tt.type||null,status:'present',confirmedBy:S.profile&&S.profile.id,confirmedAt:nowISO,classValue:cv};
