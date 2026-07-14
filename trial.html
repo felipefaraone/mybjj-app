@@ -118,6 +118,10 @@
   .grouphdr:first-child{margin-top:0}
   .clsgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
   @media(max-width:620px){.clsgrid{grid-template-columns:1fr}}
+  .agefilter{display:flex;align-items:center;gap:11px;margin:0 0 14px;font-size:14px;color:var(--ink2)}
+  .agefilter label{font-weight:600}
+  .agefilter input{width:88px;padding:9px 11px;border:1.5px solid var(--line);border-radius:9px;background:#fff;font-family:'Barlow';font-size:15px;color:var(--ink)}
+  .agefilter input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,93,173,.12);outline:none}
   .clscard{background:var(--card);border:2px solid var(--line);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:.15s;text-align:left;padding:0;font-family:'Barlow';display:flex;flex-direction:column}
   .clscard:hover{border-color:var(--blue-mid);transform:translateY(-2px)}
   .clscard.on{border-color:var(--blue)}
@@ -353,6 +357,11 @@
   // 14-year-old in that. The `alev:Kids` entry relabels it. The real fix is to
   // give the Teens class its OWN type_code in `classes`; until then this pair
   // carries the label. Do not remove this comment — the debt is still here.
+  // Kids classes also carry min/max age. This is the ONE place the ranges live —
+  // both the card's age-range badge AND the step-2 age filter derive from these,
+  // so the numbers are never written twice. Ranges confirmed by the academy today:
+  // Mini 3-5, Kids BJJ 5-13, Kids MMA 5-13, Teens 13-17. jun & jmma share a range
+  // on purpose — discipline (grappling vs striking), not age, separates them.
   var COPY = {
     gi:   { grad:"g1", desc:"Classic Jiu-Jitsu in the gi. Grips, control and submissions with the uniform.", age:"" },
     nogi: { grad:"g3", desc:"Wrestling-style grappling. Shorts and a rash guard, no uniform needed.", age:"" },
@@ -361,17 +370,24 @@
     adv:  { grad:"g7", desc:"Higher pace and finer detail for experienced grapplers.", age:"" },
     fund: { grad:"g2", desc:"The core positions, escapes and principles everything else is built on.", age:"" },
     mma:  { grad:"g4", desc:"Striking, takedowns and ground game combined. High energy, serious cardio.", age:"" },
-    jmma: { grad:"g4", title:"Kids MMA", desc:"Striking and grappling for kids. Coordination, confidence, and a lot of energy burned.", age:"6+" },
-    jun:  { grad:"g5", desc:"Jiu-Jitsu for juniors. Confidence, discipline and real skills, the fun way.", age:"" },
-    mini: { grad:"g6", desc:"First steps on the mats. Games, movement and a lot of laughing.", age:"3-5" },
+    jmma: { grad:"g4", title:"Kids MMA", desc:"Striking and grappling for kids. Coordination, confidence, and a lot of energy burned.", min:5, max:13 },
+    jun:  { grad:"g5", desc:"Jiu-Jitsu for juniors. Confidence, discipline and real skills, the fun way.", min:5, max:13 },
+    mini: { grad:"g6", desc:"First steps on the mats. Games, movement and a lot of laughing.", min:3, max:5 },
     omat: { grad:"g5", desc:"Open training. Roll, drill and put your own game together.", age:"" },
     // (type_code, audience)-specific — see the DISPLAY-LAYER PATCH note above.
-    "alev:Kids": { grad:"g7", title:"Teens BJJ", desc:"Real training and real skills, with people their own age.", age:"13+" }
+    "alev:Kids": { grad:"g7", title:"Teens BJJ", desc:"Real training and real skills, with people their own age.", min:13, max:17 }
   };
   // Specific (type_code, audience) pair wins; plain type_code is the fallback.
   function copyFor(tc, aud){ return COPY[tc+":"+aud] || COPY[tc] || null; }
+  // Step-2 "How old is your child?" filter value — display-only, never sent/stored.
+  var kidsAgeFilter = "";
 
   // ---- TRIAL-BOOKABLE type_code allow-list ----------------------------------
+  // SOURCE OF TRUTH (confirmed with the academy today): the classes in the app ARE
+  // the truth for what a trial can book. The WordPress marketing site is out of
+  // date and is NOT to be reconciled against — e.g. Neutral Bay genuinely has no
+  // Beginners and no adult Striking, whatever the site still lists.
+  //
   // The academy advertises these seven as trial entry points, so these are the
   // ONLY class types a first-timer may book (jmma = Kids MMA, a real entry point:
   // "Striking — Adults & Kids 6+"). Cards are still derived from the live timetable
@@ -405,6 +421,13 @@
   function val(id){ var e=$(id); return (e&&e.value||"").trim(); }
   function setErr(id,on){ var e=$(id); if(e) e.classList.toggle("err",!!on); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  // Title-case a name — SAME rule as the Edge Function's titleCase (trim, collapse
+  // whitespace, uppercase the first letter of each word, hyphen/apostrophe as word
+  // boundaries). Deliberately duplicated across page + EF: separate runtimes, not
+  // worth sharing. Used so the &n= waiver prefill is identical on both the on-page
+  // CTA and the emailed link — a legal document must not show a different casing
+  // of the participant's name depending on which button was pressed.
+  function titleCase(s){ return String(s==null?"":s).trim().replace(/\s+/g," ").toLowerCase().replace(/(^|[\s'-])(\p{L})/gu,function(_m,sep,ch){return sep+ch.toUpperCase();}); }
 
   var DOW = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -562,6 +585,7 @@
   // STEP 2 — CLASS (distinct type_code at unit, grouped by audience)
   // ============================================================================
   function buildClasses(){
+    kidsAgeFilter = "";   // fresh each time the class step is (re)built for a unit
     // distinct (audience,type_code) present at the selected unit
     var seen={}, items=[];
     state.rows.forEach(function(r){
@@ -571,6 +595,14 @@
       if(seen[key]) return; seen[key]=1;
       items.push({ audience:r.audience, type_code:r.type_code, type_label:r.type_label, duration:r.duration_minutes });
     });
+    var byLabel=function(a,b){ return a.type_label.localeCompare(b.type_label); };
+    var adultsItems=items.filter(function(x){return x.audience==="Adults";}).sort(byLabel);
+    var kidsItems  =items.filter(function(x){return x.audience==="Kids";}).sort(byLabel);
+
+    // Age range for a kids item, from the COPY min/max (the single source). null
+    // when the entry has no range (a future kids type — then never age-filtered).
+    function kidsRange(it){ var c=copyFor(it.type_code,it.audience); return (c && c.min!=null && c.max!=null) ? {min:c.min, max:c.max} : null; }
+
     function cardHtml(it){
       var c = copyFor(it.type_code, it.audience);
       var grad = c ? c.grad : "gneutral";
@@ -578,7 +610,11 @@
       // jmma → "Kids MMA"); `label` flows through data-tl into the summary + booked
       // screen so the whole flow shows the name the parent recognises.
       var label = (c && c.title) ? c.title : it.type_label;
-      var badgeBits=[]; if(c && c.age) badgeBits.push(c.age); if(it.duration) badgeBits.push(it.duration+" MIN");
+      // Age range badge derived from COPY min/max (every kids card shows it); adults
+      // fall back to the (currently empty) `age` string, i.e. nothing.
+      var r = kidsRange(it);
+      var ageTxt = r ? (r.min+"-"+r.max) : (c && c.age ? c.age : "");
+      var badgeBits=[]; if(ageTxt) badgeBits.push(ageTxt); if(it.duration) badgeBits.push(it.duration+" MIN");
       var badge = badgeBits.length ? '<span class="badge">'+esc(badgeBits.join(" · "))+'</span>' : "";
       var hint = c ? '<span class="hint">'+esc(c.desc)+'</span>' : '<span class="hint"></span>';
       return '<button type="button" class="clscard" data-aud="'+esc(it.audience)+'" data-tc="'+esc(it.type_code)+'" data-tl="'+esc(label)+'" data-dur="'+esc(it.duration||"")+'">'+
@@ -586,20 +622,9 @@
         '<div class="bd">'+hint+'<div class="foot"><span class="meta">'+esc(label)+'</span><span class="pick">Choose</span></div></div>'+
       '</button>';
     }
-    function group(aud){
-      var g=items.filter(function(x){return x.audience===aud;});
-      g.sort(function(a,b){ return a.type_label.localeCompare(b.type_label); });
-      return g.map(cardHtml).join("");
-    }
-    var adults=group("Adults"), kids=group("Kids");
-    var html="";
-    if(adults) html+='<div class="grouphdr">Adults</div><div class="clsgrid">'+adults+"</div>";
-    if(kids)   html+='<div class="grouphdr">Kids &amp; Teens</div><div class="clsgrid">'+kids+"</div>";
-    if(!html)  html='<div class="emptynote">No classes listed for this academy yet. Please call us on 0406 456 766.</div>';
-    $("classWrap").className=""; $("classWrap").innerHTML=html;
 
-    Array.prototype.forEach.call($("classWrap").querySelectorAll(".clscard"), function(btn){
-      btn.addEventListener("click", function(){
+    function onCardClick(btn){
+      return function(){
         state.audience = btn.getAttribute("data-aud");
         state.typeCode = btn.getAttribute("data-tc");
         state.typeLabel = btn.getAttribute("data-tl");
@@ -609,8 +634,78 @@
         btn.classList.add("on");
         $("c2").disabled=false;
         paintSummary();
+      };
+    }
+    function bindCards(root){
+      if(!root) return;
+      Array.prototype.forEach.call(root.querySelectorAll(".clscard"), function(btn){ btn.addEventListener("click", onCardClick(btn)); });
+    }
+
+    // Render the (age-filtered) kids cards into #kidsCards. The age FILTERS, it does
+    // not gate: a number hides the ranges that can't apply (inclusive both ends, so
+    // 13 sits in both Kids and Teens — the academy didn't disambiguate it); empty
+    // shows them all; if it excludes everything, show one "talk to us" line, never
+    // a blank section. Adults are never touched by this.
+    function renderKidsCards(){
+      var host=$("kidsCards"); if(!host) return;
+      var ageNum = kidsAgeFilter==="" ? null : parseInt(kidsAgeFilter,10);
+      var visible = kidsItems;
+      if(ageNum!=null && !isNaN(ageNum)){
+        visible = kidsItems.filter(function(it){ var r=kidsRange(it); return r ? (ageNum>=r.min && ageNum<=r.max) : true; });
+      }
+      if(!visible.length){
+        host.className="";
+        host.innerHTML='<div class="emptynote">Nothing matches that age — talk to us and we\'ll sort it out. Call 0406 456 766.</div>';
+        return;
+      }
+      host.className="clsgrid";
+      host.innerHTML=visible.map(cardHtml).join("");
+      // keep the current pick highlighted if it survived the filter
+      if(state.audience==="Kids" && state.typeCode){
+        var sel=host.querySelector('.clscard[data-tc="'+state.typeCode+'"]');
+        if(sel) sel.classList.add("on");
+      }
+      bindCards(host);
+    }
+
+    // If the age filter hides the currently-selected kids class, clear the pick so
+    // the person can't continue (step 3) with an invisible selection.
+    function syncKidsSelection(){
+      if(state.audience!=="Kids" || !state.typeCode) return;
+      var ageNum = kidsAgeFilter==="" ? null : parseInt(kidsAgeFilter,10);
+      if(ageNum==null || isNaN(ageNum)) return;
+      var it=kidsItems.filter(function(x){return x.type_code===state.typeCode;})[0];
+      var r=it?kidsRange(it):null;
+      var visible = r ? (ageNum>=r.min && ageNum<=r.max) : true;
+      if(!visible){
+        state.typeCode=state.typeLabel=state.audience=null; state.slot=null; state.fallback=false;
+        $("c2").disabled=true; paintSummary();
+      }
+    }
+
+    var html="";
+    if(adultsItems.length) html+='<div class="grouphdr">Adults</div><div class="clsgrid">'+adultsItems.map(cardHtml).join("")+'</div>';
+    if(kidsItems.length){
+      html+='<div class="grouphdr">Kids &amp; Teens</div>'
+        +'<div class="agefilter"><label for="kidAge">How old is your child?</label>'
+        +'<input type="number" id="kidAge" min="3" max="17" inputmode="numeric" placeholder="Age"></div>'
+        +'<div id="kidsCards"></div>';
+    }
+    if(!html) html='<div class="emptynote">No classes listed for this academy yet. Please call us on 0406 456 766.</div>';
+    $("classWrap").className=""; $("classWrap").innerHTML=html;
+
+    bindCards($("classWrap"));   // binds the adults cards (kidsCards is still empty here)
+    renderKidsCards();           // fills + binds the kids cards
+
+    var ageEl=$("kidAge");
+    if(ageEl){
+      ageEl.addEventListener("input", function(){
+        kidsAgeFilter = ageEl.value.trim();
+        renderKidsCards();
+        syncKidsSelection();
       });
-    });
+    }
+
     // if the class step is re-entered, reflect any prior pick
     $("c2").disabled = !state.typeCode;
   }
@@ -779,11 +874,17 @@
     var u = state.unit || {};
     var addr = u.address ? (u.address + (u.city ? ", " + u.city : "")) : "";
     var addrEl = $("bk_addr");
-    if(addr){ addrEl.textContent = addr; addrEl.style.display=""; }
-    else{ addrEl.textContent=""; addrEl.style.display="none"; }   // Camperdown has no address
+    if(addr){
+      // Address opens Google Maps (same treatment as the confirmation email).
+      var mapsUrl = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addr);
+      addrEl.innerHTML = '<a href="'+esc(mapsUrl)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+esc(addr)+'</a>';
+      addrEl.style.display="";
+    } else { addrEl.textContent=""; addrEl.style.display="none"; }   // Camperdown has no address
 
-    // CTA → /waiver.html?t=<token> (+ k / n so waiver.html can prefill)
-    var participant = kidMode ? val("kid_name") : val("first_name");
+    // CTA → /waiver.html?t=<token> (+ k / n so waiver.html can prefill). Title-case
+    // the participant name so &n= matches the emailed link (EF normalises the same
+    // way) — same person, same casing in the waiver, whichever button they press.
+    var participant = titleCase(kidMode ? val("kid_name") : val("first_name"));
     var href = "/waiver.html?t=" + encodeURIComponent(token || "");
     if(kidMode) href += "&k=1";
     if(participant) href += "&n=" + encodeURIComponent(participant);

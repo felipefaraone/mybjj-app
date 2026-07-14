@@ -101,6 +101,16 @@ function str(v: unknown, max = 200): string {
   return (typeof v === "string" ? v : "").trim().slice(0, max);
 }
 
+// Title-case a person's name on the SERVER (the page is only an affordance):
+// trim, collapse internal whitespace, uppercase the first letter of each word and
+// lowercase the rest. Word boundaries include hyphen and apostrophe, so
+// "mary-jane o'brien" -> "Mary-Jane O'Brien". No cleverness about particles
+// (van / de / etc.) — that is explicitly out of scope.
+function titleCase(s: string): string {
+  return s.trim().replace(/\s+/g, " ").toLowerCase()
+    .replace(/(^|[\s'-])(\p{L})/gu, (_m, sep, ch) => sep + ch.toUpperCase());
+}
+
 // 'HH:MM:SS' | 'HH:MM' -> 'HH:MM' so a Postgres `time` ('18:00:00') compares
 // equal to what the page sends ('18:00').
 function hhmm(v: string): string {
@@ -217,6 +227,7 @@ interface EmailData {
   dayDate: string | null;   // "Wednesday 15 Jul", null on the flexible-time fallback
   time: string | null;      // "6:00 AM"
   address: string | null;   // full street line, null when the unit has none
+  mapsUrl: string | null;   // Google Maps link for the address, null when no address
   phone: string | null;
   waiverLink: string;
 }
@@ -228,22 +239,26 @@ function buildTrialEmail(d: EmailData): { subject: string; html: string; text: s
     ? `You're booked — ${d.classLabel} at ${unitFull}, ${d.dayDate}`
     : `You're booked at ${unitFull} — complete your health check`;
 
-  // Session block lines (address omitted entirely when null — never an empty line).
+  // Session block lines — the address is handled separately (it becomes a Maps
+  // link / gets its own URL line), so it is NOT in this shared list.
   const sessionLines: string[] = [];
   if (d.dayDate && d.time) sessionLines.push(`${d.dayDate}, ${d.time}`);
   sessionLines.push(`${d.classLabel} · ${unitFull}`);
-  if (d.address) sessionLines.push(d.address);
   if (!d.dayDate) sessionLines.push("We'll confirm your class time with you shortly.");
 
   const signoff = d.phone ? `${unitFull} · ${d.phone}` : unitFull;
+  const trialUrl = `${WAIVER_ORIGIN}/trial.html`;
 
   // ---- text ----
+  // Address (when present) prints as the line itself + the Maps URL on its own
+  // line below. No address → neither line, never a blank one.
   const text = [
     `Hi ${d.firstName},`,
     ``,
     `You're booked in. Here are the details:`,
     ``,
     ...sessionLines,
+    ...(d.address ? [d.address, d.mapsUrl!] : []),
     ``,
     `Complete your health check — it takes about three minutes, and it must be done before you train:`,
     d.waiverLink,
@@ -253,7 +268,8 @@ function buildTrialEmail(d: EmailData): { subject: string; html: string; text: s
     `- Wear a t-shirt and shorts. No jewellery.`,
     `- We'll lend you everything else — you don't need to buy anything.`,
     ``,
-    `Bring a friend. First class is free for them too.`,
+    `Bring a friend — their first class is free too.`,
+    `Send them here: ${trialUrl}`,
     ``,
     `See you on the mats,`,
     signoff,
@@ -264,12 +280,16 @@ function buildTrialEmail(d: EmailData): { subject: string; html: string; text: s
   const sessionHtml = sessionLines
     .map((l, i) => `<div style="font-size:${i === 0 && d.dayDate ? "18px;font-weight:700" : "15px"};color:#16202b;line-height:1.5">${escHtml(l)}</div>`)
     .join("");
+  // Address as a real Google Maps link (omitted entirely when there is no address).
+  const addrHtml = d.address
+    ? `<div style="font-size:15px;line-height:1.5;margin-top:2px"><a href="${escHtml(d.mapsUrl!)}" style="color:#1A5DAD;text-decoration:underline">${escHtml(d.address)}</a></div>`
+    : "";
 
   const html = `<div style="margin:0;padding:0;background:#f5f7fa">
   <div style="max-width:560px;margin:0 auto;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;color:#16202b">
     <p style="font-size:16px;margin:0 0 16px">Hi ${escHtml(d.firstName)}, you're booked in.</p>
     <div style="background:#ffffff;border:1px solid #e1e7ee;border-radius:10px;padding:16px 18px;margin:0 0 22px">
-      ${sessionHtml}
+      ${sessionHtml}${addrHtml}
     </div>
     <a href="${escHtml(d.waiverLink)}" style="display:block;background:#1A5DAD;color:#ffffff;text-decoration:none;text-align:center;font-size:17px;font-weight:700;padding:15px 20px;border-radius:10px">Complete your health check</a>
     <p style="font-size:13.5px;color:#5a6a78;margin:10px 0 24px;text-align:center">It takes about three minutes, and it must be done before you train.</p>
@@ -279,7 +299,7 @@ function buildTrialEmail(d: EmailData): { subject: string; html: string; text: s
       Wear a t-shirt and shorts. No jewellery.<br>
       We'll lend you everything else — you don't need to buy anything.
     </p>
-    <p style="font-size:14.5px;color:#16202b;margin:0 0 22px">Bring a friend. First class is free for them too.</p>
+    <p style="font-size:14.5px;color:#16202b;margin:0 0 22px">Bring a friend — their first class is free too.<br>Send them here: <a href="${escHtml(trialUrl)}" style="color:#1A5DAD;text-decoration:underline">${escHtml(trialUrl)}</a></p>
     <p style="font-size:14px;color:#5a6a78;line-height:1.6;margin:0;border-top:1px solid #e1e7ee;padding-top:16px">
       See you on the mats,<br>
       <strong style="color:#16202b">${escHtml(signoff)}</strong><br>
@@ -351,13 +371,15 @@ Deno.serve(async (req) => {
 
   // 2. Validate the lead fields (shared by both the slot path and the fallback).
   const unitId = str(payload.unit_id, 40);
-  const firstName = str(payload.first_name, 80);
-  const lastName = str(payload.last_name, 80);
+  // Names are title-cased here so the roster shows "Felipe Faraone", not whatever
+  // casing the person typed. Server-side on purpose — the page can't be trusted.
+  const firstName = titleCase(str(payload.first_name, 80));
+  const lastName = titleCase(str(payload.last_name, 80));
   const email = str(payload.email, 160).toLowerCase();
   const phone = str(payload.phone, 40);
   const howHeard = str(payload.how_heard, 200);
   const preferredDay = str(payload.preferred_day, 400);
-  const kidName = str(payload.kid_name, 120);
+  const kidName = titleCase(str(payload.kid_name, 120));
 
   if (!UUID_RE.test(unitId)) return bad("Please choose which academy.", origin);
   if (!firstName) return bad("Please enter your first name.", origin);
@@ -487,6 +509,10 @@ Deno.serve(async (req) => {
   const addressLine = unitRow.address
     ? unitRow.address + (unitRow.city ? ", " + unitRow.city : "")
     : null;
+  // Same Google Maps link the step-5 screen builds — query is the full address line.
+  const mapsUrl = addressLine
+    ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addressLine)
+    : null;
   const msg = buildTrialEmail({
     firstName,
     classLabel: emailClassLabel,
@@ -494,6 +520,7 @@ Deno.serve(async (req) => {
     dayDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
     time: insertClassTime ? fmt12(insertClassTime) : null,
     address: addressLine,
+    mapsUrl,
     phone: unitRow.phone || null,
     waiverLink,
   });
