@@ -7,7 +7,10 @@
 //   3. if a concrete class was picked, RE-VALIDATES it against the live timetable
 //      (the client is never trusted — see the class validation block below),
 //   4. inserts into public.trial_bookings with the service role (trial_status='booked'),
-//   5. returns the row's waiver_token so the page can hand off to /waiver.html?t=...
+//   5. returns the row's waiver_token so the page can hand off to /waiver.html?t=...,
+//   6. sends a confirmation email (via Resend) carrying the same waiver link, so a
+//      person who closes the tab without clicking the CTA is still recoverable. The
+//      email is redundancy, NEVER the critical path — a dead Resend still returns ok.
 //
 // The waiver is NO LONGER collected here — Phase 2 moved it to waiver.html, keyed
 // by waiver_token. This function does not stamp waiver_signed_* anymore.
@@ -20,6 +23,7 @@
 //
 // Secrets required (supabase secrets set ...):
 //   TURNSTILE_SECRET   - Cloudflare Turnstile secret key
+//   RESEND_API_KEY     - Resend API key (already set for Auth SMTP; reused here)
 // Auto-provided by the platform:
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //
@@ -55,6 +59,15 @@ const TRIAL_TYPE_CODES = new Set(["beg", "alev", "nogi", "mma", "jmma", "jun", "
 // No slot may be booked within this window of "now" (Australia/Sydney) — a class
 // starting in a few minutes helps nobody and the front desk cannot prepare.
 const LEAD_TIME_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+// ---- confirmation email (Resend) --------------------------------------------
+// Sender identity for the trial confirmation email. Kept as named constants so a
+// domain / address change is a one-line edit. `mybjj-app.com` is the verified
+// Resend domain; replies must land in the academy's real inbox, not a black hole.
+const FROM = "myBJJ <noreply@mybjj-app.com>";
+const REPLY_TO = "info@mybjj.com.au";
+// Public origin the waiver link points at — must match trial.html's CTA host.
+const WAIVER_ORIGIN = "https://mybjj-app.com";
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -159,6 +172,156 @@ async function verifyTurnstile(token: string, ip: string | null): Promise<boolea
   }
 }
 
+// ---- confirmation email helpers ---------------------------------------------
+
+const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Human class label from (type_code, audience). Mirrors public_timetable's
+// type_label CASE plus trial.html's two audience-specific overrides (jmma → Kids
+// MMA, alev+Kids → Teens BJJ) so the email names the class the person actually saw.
+function classLabel(type: string, audience: string): string {
+  if (type === "jmma") return "Kids MMA";
+  if (type === "alev" && audience === "Kids") return "Teens BJJ";
+  const base: Record<string, string> = {
+    nogi: "No-Gi", gi: "Gi", alev: "All Levels", beg: "Beginners", adv: "Advanced",
+    fund: "Fundamentals", mma: "MMA", jmma: "Junior MMA", jun: "Juniors",
+    mini: "Mini Kids", omat: "Open Mat",
+  };
+  return base[type] || (type ? type.charAt(0).toUpperCase() + type.slice(1) : "Class");
+}
+
+// 'YYYY-MM-DD' -> "Wednesday 15 Jul" (calendar date, timezone-independent).
+function fmtDayDate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  return DOW[d.getUTCDay()] + " " + d.getUTCDate() + " " + MON[d.getUTCMonth()];
+}
+
+// 'HH:MM' -> "6:00 AM"
+function fmt12(t: string): string {
+  const [h, m] = String(t).split(":").map(Number);
+  const ap = h < 12 ? "AM" : "PM";
+  let hr = h % 12; if (hr === 0) hr = 12;
+  return hr + ":" + String(m).padStart(2, "0") + " " + ap;
+}
+
+function escHtml(s: string): string {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
+interface EmailData {
+  firstName: string;
+  classLabel: string;
+  unitName: string;
+  dayDate: string | null;   // "Wednesday 15 Jul", null on the flexible-time fallback
+  time: string | null;      // "6:00 AM"
+  address: string | null;   // full street line, null when the unit has none
+  phone: string | null;
+  waiverLink: string;
+}
+
+// Build the plain confirmation email (subject + html + text). Pure — no I/O.
+function buildTrialEmail(d: EmailData): { subject: string; html: string; text: string } {
+  const unitFull = "myBJJ " + d.unitName;
+  const subject = d.dayDate
+    ? `You're booked — ${d.classLabel} at ${unitFull}, ${d.dayDate}`
+    : `You're booked at ${unitFull} — complete your health check`;
+
+  // Session block lines (address omitted entirely when null — never an empty line).
+  const sessionLines: string[] = [];
+  if (d.dayDate && d.time) sessionLines.push(`${d.dayDate}, ${d.time}`);
+  sessionLines.push(`${d.classLabel} · ${unitFull}`);
+  if (d.address) sessionLines.push(d.address);
+  if (!d.dayDate) sessionLines.push("We'll confirm your class time with you shortly.");
+
+  const signoff = d.phone ? `${unitFull} · ${d.phone}` : unitFull;
+
+  // ---- text ----
+  const text = [
+    `Hi ${d.firstName},`,
+    ``,
+    `You're booked in. Here are the details:`,
+    ``,
+    ...sessionLines,
+    ``,
+    `Complete your health check — it takes about three minutes, and it must be done before you train:`,
+    d.waiverLink,
+    ``,
+    `Before you arrive:`,
+    `- Arrive 10 minutes early so we can show you around.`,
+    `- Wear a t-shirt and shorts. No jewellery.`,
+    `- We'll lend you everything else — you don't need to buy anything.`,
+    ``,
+    `Bring a friend. First class is free for them too.`,
+    ``,
+    `See you on the mats,`,
+    signoff,
+    `You can just reply to this email if you need anything.`,
+  ].join("\n");
+
+  // ---- html (simple, inline-styled; no external CSS / fonts / images) ----
+  const sessionHtml = sessionLines
+    .map((l, i) => `<div style="font-size:${i === 0 && d.dayDate ? "18px;font-weight:700" : "15px"};color:#16202b;line-height:1.5">${escHtml(l)}</div>`)
+    .join("");
+
+  const html = `<div style="margin:0;padding:0;background:#f5f7fa">
+  <div style="max-width:560px;margin:0 auto;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;color:#16202b">
+    <p style="font-size:16px;margin:0 0 16px">Hi ${escHtml(d.firstName)}, you're booked in.</p>
+    <div style="background:#ffffff;border:1px solid #e1e7ee;border-radius:10px;padding:16px 18px;margin:0 0 22px">
+      ${sessionHtml}
+    </div>
+    <a href="${escHtml(d.waiverLink)}" style="display:block;background:#1A5DAD;color:#ffffff;text-decoration:none;text-align:center;font-size:17px;font-weight:700;padding:15px 20px;border-radius:10px">Complete your health check</a>
+    <p style="font-size:13.5px;color:#5a6a78;margin:10px 0 24px;text-align:center">It takes about three minutes, and it must be done before you train.</p>
+    <p style="font-size:15px;font-weight:700;color:#16202b;margin:0 0 6px">Before you arrive</p>
+    <p style="font-size:14.5px;color:#5a6a78;line-height:1.7;margin:0 0 22px">
+      Arrive 10 minutes early so we can show you around.<br>
+      Wear a t-shirt and shorts. No jewellery.<br>
+      We'll lend you everything else — you don't need to buy anything.
+    </p>
+    <p style="font-size:14.5px;color:#16202b;margin:0 0 22px">Bring a friend. First class is free for them too.</p>
+    <p style="font-size:14px;color:#5a6a78;line-height:1.6;margin:0;border-top:1px solid #e1e7ee;padding-top:16px">
+      See you on the mats,<br>
+      <strong style="color:#16202b">${escHtml(signoff)}</strong><br>
+      You can just reply to this email if you need anything.
+    </p>
+  </div>
+</div>`;
+
+  return { subject, html, text };
+}
+
+// Send the confirmation email via the Resend HTTP API. NEVER throws — the email
+// is redundancy, not the critical path, so every failure is logged (status + body)
+// and swallowed. A dead Resend must not cost the booking.
+async function sendTrialEmail(to: string, msg: { subject: string; html: string; text: string }): Promise<void> {
+  const key = Deno.env.get("RESEND_API_KEY");
+  if (!key) {
+    console.error("[trial-booking] RESEND_API_KEY not set — confirmation email skipped");
+    return;
+  }
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        from: FROM,
+        to: [to],
+        reply_to: REPLY_TO,
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+      }),
+    });
+    if (!r.ok) {
+      const body = await r.text().catch(() => "<no body>");
+      console.error(`[trial-booking] Resend send failed: HTTP ${r.status} — ${body}`);
+    }
+  } catch (e) {
+    console.error("[trial-booking] Resend send threw:", e instanceof Error ? e.message : String(e));
+  }
+}
+
 // ---- handler ----------------------------------------------------------------
 
 Deno.serve(async (req) => {
@@ -211,7 +374,7 @@ Deno.serve(async (req) => {
   // class check below confirm the picked class actually belongs to this unit.
   const { data: unitRow, error: unitErr } = await supabase
     .from("units")
-    .select("id")
+    .select("id, name, address, city, phone")
     .eq("id", unitId)
     .eq("active", true)
     .maybeSingle();
@@ -229,6 +392,7 @@ Deno.serve(async (req) => {
   let insertClassId: string | null = null;
   let insertClassDate: string | null = null;
   let insertClassTime: string | null = null;
+  let emailClassLabel = "Trial class"; // display label for the confirmation email
 
   if (classId) {
     // A concrete slot was picked — validate it against the live timetable.
@@ -275,6 +439,7 @@ Deno.serve(async (req) => {
     insertClassId = cls.id;
     insertClassDate = classDate;
     insertClassTime = hhmm(String(cls.time)); // canonical DB value, not the client's
+    emailClassLabel = classLabel(String(cls.type), String(cls.audience));
   } else {
     // Fallback path ("None of these times work") — we only have free-text
     // availability. is_kid stays false (no class → no derived audience).
@@ -308,6 +473,32 @@ Deno.serve(async (req) => {
     console.error("[trial-booking] insert error:", insErr?.message);
     return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
   }
+
+  // 4. Confirmation email — redundancy, NOT the critical path. The booking is
+  //    already saved and the on-screen CTA works; sendTrialEmail never throws, so
+  //    a dead Resend is logged and swallowed and we STILL return ok:true below.
+  //    Build the waiver link EXACTLY as trial.html does (same t / k / n params) so
+  //    the emailed link and the on-screen CTA are identical.
+  const participant = isKid ? kidName : firstName;
+  let waiverLink = `${WAIVER_ORIGIN}/waiver.html?t=${encodeURIComponent(String(inserted.waiver_token || ""))}`;
+  if (isKid) waiverLink += "&k=1";
+  if (participant) waiverLink += `&n=${encodeURIComponent(participant)}`;
+
+  const addressLine = unitRow.address
+    ? unitRow.address + (unitRow.city ? ", " + unitRow.city : "")
+    : null;
+  const msg = buildTrialEmail({
+    firstName,
+    classLabel: emailClassLabel,
+    unitName: unitRow.name,
+    dayDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
+    time: insertClassTime ? fmt12(insertClassTime) : null,
+    address: addressLine,
+    phone: unitRow.phone || null,
+    waiverLink,
+  });
+  // Awaited so the edge runtime doesn't tear down the isolate mid-send.
+  await sendTrialEmail(email, msg);
 
   return json({ ok: true, waiver_token: inserted.waiver_token }, 200, origin);
 });
