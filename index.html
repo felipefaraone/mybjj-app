@@ -1814,6 +1814,41 @@ function rAtts(all,cid){
 // (Batch 2B removed 'absent'). A 'going' row shows a Present button;
 // a 'present' row shows Undo (back to going). Past classes remain
 // fully editable; classes more than 7 days in the future are locked.
+// Trial bookings for one class occurrence, resolved by CLASS IDENTITY
+// (classId + classDate) — the same v279 rule as _attMatchesClass, NOT date+time —
+// so an 18:00 Beginners trial never bleeds onto the 18:00 Advanced card in the
+// same unit. Only 'booked' trials appear on the mat; attended / no_show /
+// converted / lapsed have been dealt with and must not clutter it. cid is the
+// synthetic composite; the DB class_id lives on the TT slot's .classId.
+function trialsForClass(cid){
+  const c=_parseCID(cid);if(!c)return [];
+  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const classId=t.classId||null;
+  if(!classId)return [];  // no class identity → never match (fallback trials carry classId null)
+  return TRIALS.filter(tr=>tr.status==='booked'&&tr.classId===classId&&tr.classDate===c.date);
+}
+// One trial row for the staff roster. Distinct from a member row: a TRIAL badge
+// (this person is not a member) + live waiver state. The amber WAIVER PENDING is
+// the whole point of Phase 3 — the instructor sees, before the class starts, who
+// cannot legally step on the mat. Present → attended, No show → no_show. Trials
+// do NOT count toward the "N going" / "N of N confirmed" tallies (member-only).
+function _trialRosterRow(tr){
+  const nm=(tr.isKid&&tr.kidName)?tr.kidName:(tr.name||'—');
+  const waiverOk=!!tr.waiverSignedAt;
+  const pillBase='font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:4px';
+  const trialBadge=`<span style="${pillBase};color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid)">TRIAL</span>`;
+  const waiverBadge=waiverOk
+    ?`<span style="${pillBase};color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border)">WAIVER OK</span>`
+    :`<span style="${pillBase};color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border)">WAIVER PENDING</span>`;
+  const actions=`<button class="bsm bpre" onclick="trialPresent('${tr._dbId}')">Present</button>`
+    +`<button class="bsm" onclick="markTrialNoShow('${tr._dbId}')" style="color:var(--red-text);border-color:var(--red-border);background:var(--red-bg)">No show</button>`;
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;gap:6px;color:var(--text)">${nm}${trialBadge}${waiverBadge}</div><div style="font-size:11px;color:var(--text3)">Trial · not a member</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${actions}</div></div>`;
+}
+function _trialsRosterHtml(cid){
+  const trials=trialsForClass(cid);
+  if(!trials.length)return '';
+  return trials.map(_trialRosterRow).join('');
+}
 function rAttsStaff(rows,cid){
   // G9.3 — include 'absent' rows in the staff confirm-attendance view.
   // Absent is now an explicit disambiguation signal (re-allowed in
@@ -1826,6 +1861,10 @@ function rAttsStaff(rows,cid){
   const cf=visible.filter(r=>r.status==='present').length;
   const going=visible.filter(r=>r.status!=='absent').length;
   const locked=isClassLocked(cid);
+  // Booked trials for THIS class, rendered above the members in every state
+  // (they must be visible at a glance, not just when expanded). They never touch
+  // the going/confirmed tallies above — a trial is a visitor, not a roster row.
+  const trialsHtml=_trialsRosterHtml(cid);
   // Action row: brand-fill primary (Confirm attendance / Show less) +
   // tinted-outline secondary (+ Add student). "X of N confirmed" sits
   // below as a muted caption — the only place the confirmed count
@@ -1851,9 +1890,9 @@ function rAttsStaff(rows,cid){
   if(!visible.length){
     // Empty state when no check-ins. Action row still available so the
     // instructor can add a student manually.
-    return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="text-align:center;padding:10px 0 14px;font-size:13px;color:var(--text3)">No check-ins yet</div>${actionRow}</div>`;
+    return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}<div style="text-align:center;padding:10px 0 14px;font-size:13px;color:var(--text3)">No check-ins yet</div>${actionRow}</div>`;
   }
-  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${stackHtml}${actionRow}</div>`;
+  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${stackHtml}${actionRow}</div>`;
   const btnFor=(r,s)=>{
     if(locked){
       const lbl=r.status==='present'?'Present':r.status==='absent'?'Absent':'Going';
@@ -1892,7 +1931,7 @@ function rAttsStaff(rows,cid){
     const border=isZero?'var(--border)':(v>1?'var(--blue-mid)':'var(--amber-border)');
     return '<span title="class_value = '+v.toFixed(2)+'" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:'+accent+';background:'+bg+';border:1px solid '+border+';padding:1px 6px;border-radius:4px;margin-left:6px">'+lbl+'</span>';
   };
-  return `<div class="divider" style="margin-top:12px;padding-top:12px">${stackHtml}${actionRow}<div style="height:10px"></div>${visible.map(r=>{
+  return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${stackHtml}${actionRow}<div style="height:10px"></div>${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
     // G9.2 — strikethrough the student name when class_value === 0
@@ -6486,10 +6525,23 @@ function rTrialsBlock(){
   const chipBase='display:inline-flex;align-items:center;gap:4px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px';
   const rows=list.map(t=>{
     const isAttended=t.status==='attended';
-    const statusChip='<span style="'+chipBase+';background:'+(isAttended?'var(--green-bg)':'var(--blue-tint)')+';color:'+(isAttended?'var(--green-text)':'var(--blue)')+'">'+(isAttended?'Attended':'Booked')+'</span>';
+    const isNoShow=t.status==='no_show';
+    const statusChip=isAttended
+      ?'<span style="'+chipBase+';background:var(--green-bg);color:var(--green-text)">Attended</span>'
+      :isNoShow
+        ?'<span style="'+chipBase+';background:var(--bg);color:var(--text3);border:1px solid var(--border)">NO SHOW</span>'
+        :'<span style="'+chipBase+';background:var(--blue-tint);color:var(--blue)">Booked</span>';
     const kidChip=t.isKid?'<span style="'+chipBase+';background:var(--amber-bg);color:var(--amber-text)">KIDS</span>':'';
     const waiverOk=!!t.waiverSignedAt;
-    const waiverChip='<span style="'+chipBase+';background:'+(waiverOk?'var(--green-bg)':'var(--amber-bg)')+';color:'+(waiverOk?'var(--green-text)':'var(--amber-text)')+';border:1px solid '+(waiverOk?'var(--green-border)':'var(--amber-border)')+'">'+(waiverOk?'WAIVER OK':'WAIVER PENDING')+'</span>';
+    // "Attended, no waiver" — DERIVED (status='attended' AND waiver_signed_at IS
+    // NULL), never stored: two facts we already have. This is the loud signal the
+    // office needs — the instructor recorded the person as present, but they can't
+    // legally train until the waiver lands. Shown IN PLACE OF the normal waiver
+    // chip so Patricia can't miss it.
+    const noWaiverAttended=isAttended&&!waiverOk;
+    const waiverChip=noWaiverAttended
+      ?'<span style="'+chipBase+';background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border)">ATTENDED, NO WAIVER</span>'
+      :'<span style="'+chipBase+';background:'+(waiverOk?'var(--green-bg)':'var(--amber-bg)')+';color:'+(waiverOk?'var(--green-text)':'var(--amber-text)')+';border:1px solid '+(waiverOk?'var(--green-border)':'var(--amber-border)')+'">'+(waiverOk?'WAIVER OK':'WAIVER PENDING')+'</span>';
     const displayName=(t.isKid&&t.kidName)?t.kidName:(t.name||'—');
     // Compact — email · phone · prefDay collapse onto one line. Each bit is
     // its own span so flex-wrap breaks between them (not mid-value) and a
@@ -6506,11 +6558,16 @@ function rTrialsBlock(){
     const iResched='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
     const iLapse='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
     const actBtns=[];
-    if(t.status==='booked')actBtns.push('<button class="admin-action-btn" onclick="markTrialAttended(\''+t._dbId+'\')">'+iAttend+'Attended</button>');
-    if(t.isKid){
-      actBtns.push('<button class="admin-action-btn" disabled title="Kid conversion coming soon" style="opacity:.45;cursor:not-allowed;color:var(--text3)">'+iConvert+'Convert</button>');
-    }else{
-      actBtns.push('<button class="admin-action-btn primary" onclick="convertTrialToMember(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
+    // booked → Attended via trialPresent (warns, does not block, on a missing
+    // waiver — same rule as the class card). A no_show never came, so neither
+    // Attended nor Convert applies to it; only Reschedule / Lapse remain.
+    if(t.status==='booked')actBtns.push('<button class="admin-action-btn" onclick="trialPresent(\''+t._dbId+'\')">'+iAttend+'Attended</button>');
+    if(!isNoShow){
+      if(t.isKid){
+        actBtns.push('<button class="admin-action-btn" disabled title="Kid conversion coming soon" style="opacity:.45;cursor:not-allowed;color:var(--text3)">'+iConvert+'Convert</button>');
+      }else{
+        actBtns.push('<button class="admin-action-btn primary" onclick="convertTrialToMember(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
+      }
     }
     actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Reschedule</button>');
     actBtns.push('<button class="admin-action-btn" onclick="lapseTrial(\''+t._dbId+'\')" style="color:var(--red-text)">'+iLapse+'Lapse</button>');
@@ -6541,6 +6598,39 @@ async function markTrialAttended(trialDbId){
   const t=TRIALS.find(x=>x._dbId===trialDbId);
   if(t){t.status='attended';t.attendedAt=chk.data.attended_at;}
   render();showSaveToast2('Marked attended');
+}
+// Present → attended. The single entry point for both the class-card roster and
+// the Trials block. If the waiver is signed, mark straight away. If it ISN'T, do
+// NOT block — an app that stops an instructor recording what actually happened is
+// an app he stops using; he's on the mat with a person who turned up. Blocking the
+// record does not produce a waiver, it produces a missing lead. The waiver is the
+// office's job — the "ATTENDED, NO WAIVER" chip in the Trials block surfaces it so
+// Patricia chases. We only warn, then still write.
+function trialPresent(trialDbId){
+  const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
+  if(t.waiverSignedAt){markTrialAttended(trialDbId);return;}
+  openConfirm({
+    title:'No signed waiver',
+    message:"They can't train until it's done — the office will chase it. Mark them as attended anyway?",
+    dangerLabel:'Yes, they were here',
+    confirmColor:'var(--blue)',
+    onConfirm:()=>markTrialAttended(trialDbId)
+  });
+}
+// No show → no_show. Mirrors markTrialAttended exactly (confirming re-fetch, since
+// an RLS-filtered no-op returns success-shaped-empty). Reuses lapsed_at as the
+// timestamp — no new column. The lead STAYS in the list (rTrialsBlock): a no-show
+// is precisely the person the office should be calling.
+async function markTrialNoShow(trialDbId){
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
+  const upd=await cli.from('trial_bookings').update({trial_status:'no_show',lapsed_at:new Date().toISOString()}).eq('id',trialDbId);
+  if(upd&&upd.error){showSaveToast2(friendlyMutationError(upd.error),'error');return;}
+  const chk=await cli.from('trial_bookings').select('id,trial_status,lapsed_at').eq('id',trialDbId).single();
+  if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');return;}
+  if(!chk||!chk.data||chk.data.trial_status!=='no_show'){showSaveToast2('Could not mark no-show','error');return;}
+  const t=TRIALS.find(x=>x._dbId===trialDbId);
+  if(t){t.status='no_show';t.lapsedAt=chk.data.lapsed_at;}
+  render();showSaveToast2('Marked no-show');
 }
 function lapseTrial(trialDbId){
   openConfirm({
@@ -6602,7 +6692,10 @@ async function convertTrialToMemberAction(trialDbId){
   )).select('id,legacy_id').single();
   if(ins&&ins.error){showSaveToast2(friendlyMutationError(ins.error),'error');throw ins.error;}
   if(!ins||!ins.data){showSaveToast2('Could not create member','error');throw new Error('no student row');}
-  const upd=await cli.from('trial_bookings').update({converted_at:nowIso,converted_student_id:ins.data.id}).eq('id',trialDbId);
+  // Set trial_status='converted' in the SAME update as the timestamps — otherwise
+  // a converted lead still reads 'attended'/'booked' and the funnel (group by
+  // trial_status) is a lie. One fact, one source. Migration 93 allows the value.
+  const upd=await cli.from('trial_bookings').update({trial_status:'converted',converted_at:nowIso,converted_student_id:ins.data.id}).eq('id',trialDbId);
   if(upd&&upd.error){showSaveToast2(friendlyMutationError(upd.error),'error');throw upd.error;}
   const chk=await cli.from('trial_bookings').select('id,converted_at,converted_student_id').eq('id',trialDbId).single();
   if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');throw chk.error;}
@@ -8842,7 +8935,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings. Scope to active trials only
     // (booked|attended); converted/lapsed rows are excluded in the
     // query so TRIALS only ever holds rows that still need action.
-    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended']).order('booked_at',{ascending:false}),
+    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended','no_show']).order('booked_at',{ascending:false}),
     // Cross-unit visitors — minimal display-only rows for students who
     // attended a class at the active unit but train elsewhere. Staff-only +
     // unit-bounded server-side; returns 0 rows for non-staff / no visitors.
@@ -8900,7 +8993,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings mapped to camelCase, same style as
     // STUDENTS. unit resolved via uMap (legacy id) so render can scope
     // to the current unit the same way the member roster does.
-    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
+    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,classId:r.class_id||null,classDate:r.class_date||null,classTime:r.class_time||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
     got=true;
   }else if(tr.error)console.warn('[mybjj] hydrate trials:',tr.error);
   if(pm.data){
