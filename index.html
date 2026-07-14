@@ -3845,22 +3845,26 @@ function dismissMonthPromos(){
 }
 function rClass(){
   const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const isT=sk===dk(TODAY);const hol=isHol(sd);const me=S.me;
-  // G12 — audience gate. Students see classes whose audience matches
-  // their own prog (or 'All'); parents see their kid-program classes
-  // (or 'All'). Staff (instructor + unit owner) see every class
-  // regardless — they need to manage the full schedule. Parents are
-  // hardcoded to 'kids' here because S.me.prog is the parent's own
-  // (always 'adult' default), not their kid's; V1's parent role is
-  // assumed to be parenting kid-prog students.
+  // G12 — audience gate. Non-staff see only classes whose audience matches
+  // their active programme (or 'All'). Staff (instructor + unit owner) are
+  // exempt — they manage the full schedule.
   let cls=getDC(sd);
   if(!isStaffOrOwner()){
-    // Audience filter follows the active profile. Kid-active → kid's
-    // prog. Self-active → user's own prog, with parent role defaulting
-    // to 'kids' (today's behaviour preserved for parent-with-no-kid).
+    // The RELATION knows; the enum is only a hint (same principle as migration
+    // 91 and the N2 fix). Resolve the active programme in this order:
+    //   1. kid profile active               → that kid's prog
+    //   2. self active WITH own students row → that row's prog (NEVER me.role)
+    //   3. self active, NO students row      → role fallback: parent→'kids', else 'adult'
+    // So a parent who also trains (own adult row) sees adult classes; a parent
+    // who only drops their kid off (no row) still sees the kids grid, as today.
     const _kidAct=!activeProfileIsSelf()?parentSelectedChild():null;
-    const meProg=_kidAct
-      ?(_kidAct.prog||'kids')
-      :((me&&me.role==='parent')?'kids':((me&&me.prog)||'adult'));
+    // myStudentRow() routes a parent-with-active-kid to the kid's row, so only
+    // reach for it on the self path — else steps 1 and 2 would double-apply.
+    const _selfRow=_kidAct?null:((typeof myStudentRow==='function')?myStudentRow():null);
+    let meProg;
+    if(_kidAct)       meProg=_kidAct.prog||'kids';
+    else if(_selfRow) meProg=_selfRow.prog||'adult';
+    else              meProg=(me&&me.role==='parent')?'kids':((me&&me.prog)||'adult');
     const myAud=meProg==='kids'?'Kids':'Adults';
     cls=cls.filter(c=>{
       const a=c.aud||'Adults';
