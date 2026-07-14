@@ -1827,27 +1827,38 @@ function trialsForClass(cid){
   if(!classId)return [];  // no class identity → never match (fallback trials carry classId null)
   return TRIALS.filter(tr=>tr.status==='booked'&&tr.classId===classId&&tr.classDate===c.date);
 }
-// One trial row for the staff roster. Distinct from a member row: a TRIAL badge
-// (this person is not a member) + live waiver state. The amber WAIVER PENDING is
-// the whole point of Phase 3 — the instructor sees, before the class starts, who
-// cannot legally step on the mat. Present → attended, No show → no_show. Trials
-// do NOT count toward the "N going" / "N of N confirmed" tallies (member-only).
-function _trialRosterRow(tr){
+// One trial row inside the trials block. The "TRIAL · N" section label (below)
+// already says these people are not members, so the row carries only the name and
+// the live waiver state — the amber WAIVER PENDING is the whole point of Phase 3
+// (the instructor sees, before the class starts, who cannot legally step on the
+// mat). The waiver chip reuses rTrialsBlock's exact chipBase so the mat and the
+// office read as one product. Present is the affirmative action (brand-fill, the
+// app's primary language); No show is the quiet secondary (.bsm, same as the
+// roster's Undo/trash). No new palette. `first` suppresses the inter-row divider.
+function _trialRosterRow(tr,first){
   const nm=(tr.isKid&&tr.kidName)?tr.kidName:(tr.name||'—');
   const waiverOk=!!tr.waiverSignedAt;
-  const pillBase='font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:4px';
-  const trialBadge=`<span style="${pillBase};color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid)">TRIAL</span>`;
-  const waiverBadge=waiverOk
-    ?`<span style="${pillBase};color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border)">WAIVER OK</span>`
-    :`<span style="${pillBase};color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border)">WAIVER PENDING</span>`;
-  const actions=`<button class="bsm bpre" onclick="trialPresent('${tr._dbId}')">Present</button>`
-    +`<button class="bsm" onclick="markTrialNoShow('${tr._dbId}')" style="color:var(--red-text);border-color:var(--red-border);background:var(--red-bg)">No show</button>`;
-  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;gap:6px;color:var(--text)">${nm}${trialBadge}${waiverBadge}</div><div style="font-size:11px;color:var(--text3)">Trial · not a member</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${actions}</div></div>`;
+  const chipBase='display:inline-flex;align-items:center;gap:4px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px';
+  const waiverChip='<span style="'+chipBase+';background:'+(waiverOk?'var(--green-bg)':'var(--amber-bg)')+';color:'+(waiverOk?'var(--green-text)':'var(--amber-text)')+';border:1px solid '+(waiverOk?'var(--green-border)':'var(--amber-border)')+'">'+(waiverOk?'WAIVER OK':'WAIVER PENDING')+'</span>';
+  const presentBtn='<button onclick="trialPresent(\''+tr._dbId+'\')" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">Present</button>';
+  const noShowBtn='<button class="bsm" onclick="markTrialNoShow(\''+tr._dbId+'\')">No show</button>';
+  const sep=first?'':'border-top:1px solid var(--blue-mid);margin-top:8px;padding-top:8px;';
+  // Mobile-first: the outer row wraps (name+badge group / actions group) so on a
+  // narrow iPhone the buttons drop below the name instead of colliding with it.
+  return '<div style="'+sep+'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'
+    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0"><span style="font-size:14px;font-weight:600;color:var(--text)">'+nm+'</span>'+waiverChip+'</div>'
+    +'<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">'+presentBtn+noShowBtn+'</div>'
+  +'</div>';
 }
+// The trials block: a bordered, brand-tinted container that sits ABOVE the member
+// roster and reads as its own section, never as a checked-in member. Empty → ''
+// so the card is byte-identical to today. Label uses .slbl (same as rTrialsBlock).
 function _trialsRosterHtml(cid){
   const trials=trialsForClass(cid);
   if(!trials.length)return '';
-  return trials.map(_trialRosterRow).join('');
+  const label='<div class="slbl" style="margin-bottom:10px">'+(trials.length>1?'Trials':'Trial')+' · '+trials.length+'</div>';
+  const rows=trials.map((tr,i)=>_trialRosterRow(tr,i===0)).join('');
+  return '<div style="background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;padding:12px 14px;margin-bottom:14px">'+label+rows+'</div>';
 }
 function rAttsStaff(rows,cid){
   // G9.3 — include 'absent' rows in the staff confirm-attendance view.
