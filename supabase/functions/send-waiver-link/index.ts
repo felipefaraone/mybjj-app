@@ -92,10 +92,11 @@ function buildEmail(name: string, waiverLink: string, isKid: boolean): { subject
   return { subject, html, text };
 }
 
-// Send via Resend. NEVER throws — logs status+body, returns whether it landed.
-async function sendViaResend(to: string, msg: { subject: string; html: string; text: string }): Promise<boolean> {
+// Send via Resend. NEVER throws — logs status+body, and returns WHY it did or
+// didn't land so the client can name the cause instead of "could not send".
+async function sendViaResend(to: string, msg: { subject: string; html: string; text: string }): Promise<{ sent: boolean; reason: string }> {
   const key = Deno.env.get("RESEND_API_KEY");
-  if (!key) { console.error("[send-waiver-link] RESEND_API_KEY not set — email skipped"); return false; }
+  if (!key) { console.error("[send-waiver-link] RESEND_API_KEY not set — email skipped"); return { sent: false, reason: "not_configured" }; }
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -104,13 +105,13 @@ async function sendViaResend(to: string, msg: { subject: string; html: string; t
     });
     if (!r.ok) {
       const body = await r.text().catch(() => "<no body>");
-      console.error(`[send-waiver-link] Resend failed: HTTP ${r.status} — ${body}`);
-      return false;
+      console.error(`[send-waiver-link] Resend rejected: HTTP ${r.status} — ${body}`);
+      return { sent: false, reason: "resend_rejected" };
     }
-    return true;
+    return { sent: true, reason: "ok" };
   } catch (e) {
     console.error("[send-waiver-link] Resend threw:", e instanceof Error ? e.message : String(e));
-    return false;
+    return { sent: false, reason: "network" };
   }
 }
 
@@ -171,15 +172,17 @@ Deno.serve(async (req) => {
   if (isKid) link += "&k=1";
   if (name) link += `&n=${encodeURIComponent(name)}`;
 
-  const sent = await sendViaResend(to, buildEmail(name, link, isKid));
+  const { sent, reason } = await sendViaResend(to, buildEmail(name, link, isKid));
   if (sent) {
-    // Stamp only on a real send — "sent" must not lie about an email that failed.
+    // Stamp ONLY on a real send — waiver_sent_at must never claim an email that
+    // failed. On failure we do not touch the row.
     const { error: stampErr } = await svc
       .from("students")
       .update({ waiver_sent_at: new Date().toISOString() })
       .eq("id", studentId);
     if (stampErr) console.error("[send-waiver-link] stamp sent_at:", stampErr.message);
   }
-  // Never 500 on a mail failure — report sent so the UI can nudge to copy instead.
-  return json({ ok: true, sent }, 200, origin);
+  // Never 500 on a mail failure — report sent + reason so the UI can name the cause
+  // and nudge to copy instead.
+  return json({ ok: true, sent, reason }, 200, origin);
 });

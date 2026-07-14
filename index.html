@@ -2718,27 +2718,25 @@ function rStuProf(){
   // Admin actions row (Promote / + Class count / Feedback) — gated by
   // entry point on top of the existing canAdmin permission check.
   const adminActionsBlock=(isPeer||!canAdmin||!isRosterEntry)?'':rAdminActionRow(s);
-  // Health-check (waiver) status + send action — staff-only, from the roster. The
-  // door for existing members (migration 98): signed → green line; sent-not-signed
-  // → amber line + resend; none → "Send health check". "Send" offers BOTH ways —
-  // Copy link (Patricia sends on WhatsApp) and Email it — the person chooses.
+  // Health-check (waiver) status — staff-only, from the roster. Administrative, so
+  // it sits BELOW the stats panel and reads as a follow-up, not a headline:
+  //   signed        → one quiet green line, a fact, no buttons;
+  //   sent, unsigned → amber line + a single quiet "Send again" link;
+  //   nothing        → the only real call to action: one primary "Send health
+  //                    check" button that opens a sheet with Copy link / Email it
+  //                    (Copy is the MAIN path — 215 members have no email at all).
   let waiverBlock='';
   if(isAdminViewer&&isRosterEntry&&!isPeer&&s.waiverToken){
     const _wd=(iso)=>{try{return new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});}catch(_){return '';}};
-    const _sendBtns='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'
-      +'<button onclick="copyWaiverLink(\''+s.id+'\')" style="flex:1;min-width:120px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:9px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.4px;cursor:pointer">Copy link</button>'
-      +'<button onclick="emailWaiverLink(\''+s.id+'\')" style="flex:1;min-width:120px;background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.4px;cursor:pointer">Email it</button>'
-      +'</div>';
-    const _hdr='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Health check</div>';
     let _inner;
     if(s.waiverSignedAt){
-      _inner=_hdr+'<div style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--green-text)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg><span>Signed '+_wd(s.waiverSignedAt)+'</span></div>';
+      _inner='<div style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--green-text)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg><span>Health check signed '+_wd(s.waiverSignedAt)+'</span></div>';
     }else if(s.waiverSentAt){
-      _inner=_hdr+'<div style="font-size:13px;color:var(--amber-text)">Sent '+_wd(s.waiverSentAt)+' — not signed yet.</div>'+_sendBtns;
+      _inner='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><span style="font-size:13px;color:var(--amber-text)">Health check sent '+_wd(s.waiverSentAt)+' — not signed yet</span><span onclick="openWaiverSheet(\''+s.id+'\')" style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;color:var(--blue);cursor:pointer;white-space:nowrap">Send again</span></div>';
     }else{
-      _inner=_hdr+'<div style="font-size:12.5px;color:var(--text2)">No waiver on file — send them a health check.</div>'+_sendBtns;
+      _inner='<div style="font-size:12.5px;color:var(--text2);margin-bottom:10px">No waiver on file.</div><button onclick="openWaiverSheet(\''+s.id+'\')" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Send health check</button>';
     }
-    waiverBlock='<div class="card" style="margin-bottom:12px;padding:14px 16px">'+_inner+'</div>';
+    waiverBlock='<div style="margin:4px 0 16px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Health check</div>'+_inner+'</div>';
   }
   // Edit Profile pencil — self can always edit own profile; admin only
   // gets the entry from the roster, not from community browsing; parent
@@ -2774,10 +2772,12 @@ ${_progDobWarnHtml}
 
 <!-- Section 1: Admin actions (owner/professor) — peer-gated -->
 ${adminActionsBlock}
-${waiverBlock}
 
 <!-- Section 2: Stats — peer-gated -->
 ${statsCard}
+
+<!-- Health check (waiver) — administrative follow-up, below the training picture -->
+${waiverBlock}
 
 <!-- (Promote panel removed — the Promote button in Admin Actions opens
      a modal that contains the same info + actions, so the inline panel
@@ -7177,7 +7177,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -12521,26 +12521,46 @@ async function _stampWaiverSent(s){
   const r=await cli.from('students').update({waiver_sent_at:nowIso}).eq('id',s._dbId);
   if(r&&r.error)console.warn('[mybjj] stamp waiver_sent_at:',r.error);
 }
+// The "Send health check" sheet — two choices, one line of what-it-is. Copy link
+// is the PRIMARY (filled): it's the main path for the ~215 members with no email,
+// so it is never buried under Email.
+function openWaiverSheet(sid){ if(!isStaffOrOwner())return; S.waiverSheet=sid; render(); }
+function closeWaiverSheet(){ if(S.waiverSheet){ S.waiverSheet=null; render(); } }
+function rWaiverSheet(){
+  if(!S.waiverSheet)return '';
+  const s=STUDENTS.find(x=>x.id===S.waiverSheet);if(!s){return '';}
+  const first=(s.name||'').split(' ')[0]||'this member';
+  return `<div class="cov" onclick="closeWaiverSheet()" style="align-items:flex-end;justify-content:center;z-index:300"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px 16px 0 0;max-width:440px;width:100%;margin:0;padding:22px 20px calc(env(safe-area-inset-bottom) + 20px)">
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px">Send ${escHtml(first)} a health check</div>
+<div style="font-size:12.5px;color:var(--text3);margin-bottom:16px;line-height:1.5">Collects their emergency contact, medical flags and date of birth. Three minutes.</div>
+<button onclick="copyWaiverLink('${s.id}')" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.5px;cursor:pointer;margin-bottom:10px">Copy link</button>
+<button onclick="emailWaiverLink('${s.id}')" style="width:100%;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.5px;cursor:pointer">Email it</button>
+<button onclick="closeWaiverSheet()" style="width:100%;background:none;border:none;color:var(--text3);padding:13px 0 0;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">Cancel</button>
+</div></div>`;
+}
 async function copyWaiverLink(sid){
   if(!isStaffOrOwner())return;
   const s=STUDENTS.find(x=>x.id===sid);if(!s||!s.waiverToken)return;
   const link=_waiverLinkFor(s);
   let copied=false;
   try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(link); copied=true; } }catch(_){}
+  closeWaiverSheet();
   if(copied)showSaveToast2('Link copied — send it on WhatsApp.');
   else window.prompt('Copy this health-check link:',link);
-  _stampWaiverSent(s);
+  _stampWaiverSent(s);   // copying genuinely puts the link out — a real "sent"
 }
 // Email the link via the send-waiver-link Edge Function (staff-gated server-side).
-// The EF stamps waiver_sent_at on a real send; a mail failure never 500s, it comes
-// back { ok:true, sent:false } so we can nudge the user to copy instead.
+// waiver_sent_at is stamped ONLY when Resend actually accepts the send — the EF
+// returns { ok:true, sent:false, reason } on any mail failure (never 500), and the
+// client stamps on `sent`, NOT on `ok`. Every failure names its cause and logs the
+// full status + body so a stamped "Sent" can never lie about an email that failed.
 async function emailWaiverLink(sid){
   if(!isStaffOrOwner())return;
   const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
   const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
   let session=null;
   try{ const r=await cli.auth.getSession(); session=r&&r.data&&r.data.session; }catch(_){}
-  if(!session||!session.access_token){showSaveToast2('Please sign in again','error');return;}
+  if(!session||!session.access_token){showSaveToast2('Session expired — sign in again.','error');return;}
   showSaveToast2('Sending…');
   try{
     const resp=await fetch(SUPABASE_URL+'/functions/v1/send-waiver-link',{
@@ -12549,18 +12569,25 @@ async function emailWaiverLink(sid){
       body:JSON.stringify({student_id:s._dbId})
     });
     let body=null; try{ body=await resp.json(); }catch(_){}
-    if(resp.status===422&&body&&body.error==='no_email'){
-      showSaveToast2('No email on file — copy the link and send it another way.','error');return;
+    console.warn('[mybjj] send-waiver-link:',resp.status,JSON.stringify(body));   // full status + body for debugging
+    // Success is the ONLY path that stamps waiver_sent_at.
+    if(resp.ok&&body&&body.ok&&body.sent===true){
+      s.waiverSentAt=new Date().toISOString();closeWaiverSheet();render();showSaveToast2('Health check emailed.');
+      return;
     }
-    if(!resp.ok||!body||!body.ok){
-      console.warn('[mybjj] send-waiver-link:',(body&&body.error)||('HTTP '+resp.status));
-      showSaveToast2('Could not send the email. Copy the link instead.','error');return;
-    }
-    if(body.sent){ s.waiverSentAt=new Date().toISOString();render();showSaveToast2('Health check emailed.'); }
-    else{ showSaveToast2("Couldn't email it. Copy the link and send it another way.",'error'); }
+    // Everything else: name the cause, do NOT stamp, keep the sheet open so Copy
+    // link is one tap away.
+    let msg;
+    if(resp.status===401)msg='Session expired — sign in again.';
+    else if(resp.status===403)msg="You don't have permission to send this.";
+    else if(resp.status===422&&body&&body.error==='no_email')msg='No email on file — copy the link and send it another way.';
+    else if(body&&body.sent===false&&(body.reason==='resend_rejected'||body.reason==='not_configured'))msg='The email service rejected the send. Copy the link instead.';
+    else if(body&&body.sent===false)msg="Couldn't reach the email service. Copy the link instead.";
+    else msg='Could not send ('+(resp.status||'network')+'). Copy the link instead.';
+    showSaveToast2(msg,'error');
   }catch(e){
-    console.warn('[mybjj] emailWaiverLink:',e);
-    showSaveToast2('Could not send. Copy the link instead.','error');
+    console.warn('[mybjj] emailWaiverLink exception:',e);
+    showSaveToast2("Couldn't reach the email service. Copy the link instead.",'error');
   }
 }
 
