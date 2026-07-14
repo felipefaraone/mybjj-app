@@ -76,7 +76,10 @@ function corsHeaders(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "content-type",
+    // Kept IDENTICAL across all Edge Functions (no third variant). This function is
+    // called from a plain page (trial.html) that only sends content-type, so the
+    // extra allowed headers are an inert superset — harmless, and consistent.
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
     "Vary": "Origin",
   };
 }

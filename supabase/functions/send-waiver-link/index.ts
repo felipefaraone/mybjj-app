@@ -35,7 +35,11 @@ function corsHeaders(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "content-type, authorization",
+    // Every header the client actually sends. Called through a raw fetch from the
+    // app WITH the supabase apikey + Authorization, so the preflight must allow
+    // them all — omitting `apikey` is exactly what blocked this function at CORS.
+    // Kept IDENTICAL to trial-booking / waiver-submit so there is no third variant.
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
     "Vary": "Origin",
   };
 }

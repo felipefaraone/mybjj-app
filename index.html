@@ -12586,8 +12586,13 @@ async function emailWaiverLink(sid){
     else msg='Could not send ('+(resp.status||'network')+'). Copy the link instead.';
     showSaveToast2(msg,'error');
   }catch(e){
-    console.warn('[mybjj] emailWaiverLink exception:',e);
-    showSaveToast2("Couldn't reach the email service. Copy the link instead.",'error');
+    // We're in the catch because `fetch` itself threw — there is NO response. That
+    // is the exact shape of a CORS preflight block (TypeError: Failed to fetch),
+    // not a server error, and it was misdiagnosed as "network" for too long. Log
+    // the error's name + message and say plainly the request never left the browser.
+    const nm=(e&&e.name)||'Error';const ms=(e&&e.message)||String(e);
+    console.warn('[mybjj] emailWaiverLink: fetch threw before any response (likely CORS/network) —',nm+': '+ms);
+    showSaveToast2("Couldn't reach the email service — the request was blocked before it ran. Copy the link instead.",'error');
   }
 }
 
