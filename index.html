@@ -3159,20 +3159,14 @@ function _stuDangerZone(s,canAdmin,ownerView){
   const isActive=s._active!==false;
   const banner=isActive?'':'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--amber-text)">This student is inactive. They’re hidden from the default Roster.</div>';
   const card=(title,desc,btnLabel,onclick)=>'<div style="border:1px solid var(--red-border);background:var(--card);border-radius:12px;padding:16px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:160px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px">'+title+'</div><div style="font-size:12px;color:var(--text3);line-height:1.5">'+desc+'</div></div><button onclick="'+onclick+'" style="background:none;border:1px solid var(--red-text);color:var(--red-text);border-radius:8px;padding:8px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">'+btnLabel+'</button></div>';
-  // Disabled variant — the action can never succeed, so it must not look live.
-  // The button is inert and the reason sits below it (never a dead red button).
-  const cardBlocked=(title,desc,btnLabel,reason)=>'<div style="border:1px solid var(--border);background:var(--card);border-radius:12px;padding:16px;opacity:.75"><div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:160px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text2);margin-bottom:4px">'+title+'</div><div style="font-size:12px;color:var(--text3);line-height:1.5">'+desc+'</div></div><button disabled style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:8px;padding:8px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:not-allowed;flex-shrink:0">'+btnLabel+'</button></div><div style="font-size:12px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:8px 12px;margin-top:10px;line-height:1.5">'+reason+'</div></div>';
   const inactiveCard=isActive
     ?card('Mark student as inactive','Student will be hidden from the active roster but their attendance and journey history will be preserved.','Mark inactive','markStudentInactive(\''+s.id+'\')')
     :card('Reactivate student','Student returns to the active roster. Their history is unchanged.','Reactivate','reactivateStudent(\''+s.id+'\')');
-  // Converted-from-a-trial students are referenced by trial_bookings.converted_
-  // student_id (the funnel audit trail, FK kept on purpose). Delete would 23503 —
-  // so don't offer it as if it works; point to Mark inactive, the correct path.
-  const isConverted=!!s.convertedAt;
+  // Delete is offered for every student. A trial origin no longer blocks it:
+  // trial_bookings.converted_student_id is ON DELETE SET NULL (migration 97), so
+  // the delete succeeds and the trial keeps converted_at / trial_status='converted'.
   const deleteCard=ownerView
-    ?'<div style="margin-top:10px">'+(isConverted
-      ?cardBlocked('Delete student','Permanently removes this student profile.','Delete',"Converted from a trial — delete is blocked so the funnel record survives. Mark inactive instead.")
-      :card('Delete student','Permanently removes this student profile. This cannot be undone — historical attendance, promotions, and feedback are all removed with it.','Delete','deleteStudent(\''+s.id+'\')'))+'</div>'
+    ?'<div style="margin-top:10px">'+card('Delete student','Permanently removes this student profile. This cannot be undone — historical attendance, promotions, and feedback are all removed with it.','Delete','deleteStudent(\''+s.id+'\')')+'</div>'
     :'';
   return '<div class="slbl" style="margin-top:20px;color:var(--red-text);border-bottom:1px solid var(--red-border);padding-bottom:6px;letter-spacing:2px">Danger Zone</div>'+banner+inactiveCard+deleteCard;
 }
@@ -7972,9 +7966,6 @@ function friendlyMutationError(err){
     const dm=details.match(/referenced from table "([^"]+)"/i);
     if(dm){tbl=dm[1];}
     else{const all=m.match(/on table "([^"]+)"/ig);if(all&&all.length){const last=all[all.length-1].match(/on table "([^"]+)"/i);if(last)tbl=last[1];}}
-    if(tbl==='trial_bookings'||blob.includes('trial_bookings')){
-      return "This member came from a trial booking, so their record can't be deleted. Mark them inactive instead — their history stays intact.";
-    }
     return tbl?("Can't delete: this record is still referenced by "+tbl+"."):"Can't delete: this record is still referenced elsewhere.";
   }
   // 23505 unique_violation / 23514 check_violation.
