@@ -1334,6 +1334,15 @@ function staffTitle(target){
   if(target.belt==='black') return 'Professor';
   return 'Coach';
 }
+// Public-facing display of a staff title. Academy decision: non-staff viewers
+// (students / parents) see "Head Professor" collapsed to "Professor" — the DB
+// value and staff/owner-facing display are unchanged. Only affects the two
+// public render sites (People instructor chip + Details Role row).
+function publicStaffTitle(s){
+  const t=(s&&s.roleTitle)||staffTitle(s);
+  if(t==='Head Professor'&&!isStaffOrOwner())return 'Professor';
+  return t;
+}
 
 // ---------------------------------------------------------------------------
 // BJJ title system (Batch 1)
@@ -1589,7 +1598,7 @@ function studentEligibility(s){
 // Photo overrides happen in the per-role wrappers (avMe / avStaff /
 // avStu) — av() itself only renders initials.
 const _AV_BELT={
-  white:['#E5E7EB','#1F2937'],
+  white:['#E5E7EB','#1F2937','#B8BEC7'],
   blue:['#1A5DAD','#FFFFFF'],
   purple:['#8B5CF6','#FFFFFF'],
   brown:['#92400E','#FFFFFF'],
@@ -2433,7 +2442,7 @@ function rStaffProf(){
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
     +rDetailRow('Unit',unitName,'')
-    +rDetailRow('Role',s.roleTitle||staffTitle(s),'')
+    +rDetailRow('Role',publicStaffTitle(s),'')
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:'+(isActive?'var(--green-text)':'var(--amber-text)')+';font-weight:600">'+(isActive?'Active':'Inactive')+'</div></div>'
     +'</div>';
 
@@ -4299,7 +4308,7 @@ function rParentKidSwitcher(){
   // same _avBeltPair ring helper as avMe so the visual matches the
   // header avatar.
   const meFirst=(me.name||'').trim().split(/\s+/)[0]||'Me';
-  const meRing=(typeof _avBeltPair==='function')?_avBeltPair(me.belt)[0]:'transparent';
+  const _meP=(typeof _avBeltPair==='function')?_avBeltPair(me.belt):null;const meRing=_meP?(_meP[2]||_meP[0]):'transparent';
   const _meIni=me.initials||(meFirst[0]||'?').toUpperCase();
   const meAvatar=me.photoUrl
     ?'<div style="width:24px;height:24px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+meRing+';flex-shrink:0"><img src="'+photoSrc(me.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+_avq(_meIni)+'\',\''+_avq(me.belt)+'\',24)"/></div>'
@@ -4386,7 +4395,7 @@ function _renderProfileHeader(s,opts){
   // Both render via the same chip vocabulary (blue tint, brand text) so
   // a future OWNER badge can be appended in the same row consistently.
   const defaultBadge=isStaff
-    ?'<span style="background:var(--blue-tint);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px">'+(s.roleTitle||staffTitle(s)).toUpperCase()+'</span>'
+    ?'<span style="background:var(--blue-tint);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px">'+publicStaffTitle(s).toUpperCase()+'</span>'
     :(isKids
       ?'<span style="background:var(--amber-bg);color:var(--amber-text);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px">KIDS</span>'
       :'');
@@ -7361,7 +7370,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<select onchange="pickUnit(this.value)" style="background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${_avBeltPair(me.belt)[0]}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${S.editJny?rJnyEditor():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${isStaffOrOwner()?rPromoAlert():''}${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -8066,7 +8075,7 @@ function avMe(size,mode){
   // box-shadow ring (the no-photo path already paints the full
   // background in belt color, so this only matters when a photo
   // replaces the initials).
-  const _ringBg=_avBeltPair(m.belt)[0];
+  const _ringP=_avBeltPair(m.belt);const _ringBg=_ringP[2]||_ringP[0];
   const inner=photoUrl
     ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+_ringBg+'"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+_avq(m.initials)+'\',\''+_avq(m.belt)+'\','+size+')"/></div>'
     : av(m.initials,m.belt,size);
@@ -8077,7 +8086,7 @@ function avMe(size,mode){
 function avStaff(s,size){
   size=size||38;
   if(s&&s.photoUrl){
-    const ring=_avBeltPair(s.belt)[0];
+    const _rp=_avBeltPair(s.belt);const ring=_rp[2]||_rp[0];
     const iniEsc=_avq(s&&s.initials||'??');const beltEsc=_avq(s&&s.belt||'');
     return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+iniEsc+'\',\''+beltEsc+'\','+size+')"/></div>';
   }
@@ -8542,7 +8551,7 @@ function avStu(s,size){
   // identification surface. Adult students unaffected.
   if(s&&s.prog==='kids')return av(s&&s.initials||'?',s&&s.belt||'',size);
   if(s&&s.photoUrl){
-    const ring=_avBeltPair(s&&s.belt||'')[0];
+    const _rp=_avBeltPair(s&&s.belt||'');const ring=_rp[2]||_rp[0];
     const iniEsc=_avq(s&&s.initials||'?');const beltEsc=_avq(s&&s.belt||'');
     return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+iniEsc+'\',\''+beltEsc+'\','+size+')"/></div>';
   }
@@ -12345,9 +12354,9 @@ function rEditStu(){
 <div class="ef" style="margin-top:8px">
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
-<div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
-<div class="erow"><div class="elbl">Started BJJ</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="width:100%;box-sizing:border-box;min-width:0"/><div style="font-size:11px;color:var(--text3);line-height:1.4">Optional. When this student first started practicing BJJ (anywhere).</div></div></div>
-<div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
+<div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0;text-align:right"/></div>
+<div class="erow"><div class="elbl">Started BJJ</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="width:100%;box-sizing:border-box;min-width:0;text-align:right"/><div style="font-size:11px;color:var(--text3);line-height:1.4">Optional. When this student first started practicing BJJ (anywhere).</div></div></div>
+<div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender" style="text-align:right">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
 </div>`;
   // -------- Training --------
   // Batch 8-FE Item 1 — read-only belt block + "(belt is set via
@@ -12455,7 +12464,7 @@ ${trainStartRow}
   // parent yet — including an adult just moved into kids — it's plain data and must
   // be editable, or the required guardian email could never be entered.
   const guardianEmailRow=(!s._parentUserId)
-    ?'<div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" inputmode="email" placeholder="Required" value="'+esc(parentEmail)+'" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true"/></div>'
+    ?'<div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" inputmode="email" placeholder="Required" value="'+esc(parentEmail)+'" style="text-align:right" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true"/></div>'
     :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(parentEmail||'—')+'</div><div style="color:var(--text3);font-size:11px">Login email — change via admin</div></div></div>';
   const guardianTab=`<div class="slbl" style="margin-top:8px">Guardian</div><div class="ef">
 <div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
