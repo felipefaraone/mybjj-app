@@ -910,7 +910,11 @@ function getNextMarker(student){
   else if(belt==='white')path=(student.prog==='kids')?PROMO_CRITERIA.kids:PROMO_CRITERIA.adults;
   else path=null;                                                                   // unknown belt
   if(!path)return null;
-  const degree=student.deg||0;
+  // Hydrated STUDENTS carry `degree`, not `deg` — reading student.deg gave
+  // undefined→0, so eligibility measured against the 1st-stripe criterion no
+  // matter the student's real grade. Match the s.degree/s.deg pattern used
+  // elsewhere (see the belt-badge resolver).
+  const degree=(student.degree!=null?student.degree:(student.deg!=null?student.deg:0))||0;
   if(degree<4){
     const markerKey=['1st_stripe','2nd_stripe','3rd_stripe','4th_stripe'][degree];
     return path.find(p=>p.belt===belt&&p.marker===markerKey)||null;
@@ -928,6 +932,14 @@ function monthsBetween(from,to){
 // brand-new student doesn't appear "instantly time-eligible".
 function getLastMarkerDate(student){
   if(student&&student._lastMarkerDate)return new Date(student._lastMarkerDate);
+  // Imported students have no promotions row (so no _lastMarkerDate); the
+  // awarded-belt date lives in the journey jsonb. Use the most recent journey
+  // date before falling back to created_at (the import date), which would
+  // otherwise reset the months-since-promotion clock to zero on import.
+  const jd=Array.isArray(student&&student.journey)
+    ? student.journey.map(e=>e&&e.date).filter(Boolean).sort().pop()
+    : null;
+  if(jd)return new Date(jd);
   if(student&&student._createdAt)return new Date(student._createdAt);
   return new Date();
 }
