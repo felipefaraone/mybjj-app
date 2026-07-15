@@ -2822,23 +2822,22 @@ function rStuProf(){
   //   nothing        → the only real call to action: one primary "Send health
   //                    check" button that opens a sheet with Copy link / Email it
   //                    (Copy is the MAIN path — 215 members have no email at all).
-  // Safety block — operational health flags, staff-only. SAME gate as waiverBlock,
-  // rendered directly ABOVE it (flags come before the admin waiver-send control).
-  // Only when the derived _safety is true; the DETAIL is fetched lazily (never held
-  // in STUDENTS). rSafetyBlock returns '' for a non-flagged / non-gated student.
-  const safetyBlock=(isAdminViewer&&isRosterEntry&&!isPeer&&s.waiverToken&&s._safety===true)?rSafetyBlock(s):'';
-  let waiverBlock='';
+  // Consolidated health line — the detail now lives in the Edit Student "Health"
+  // tab, so the profile shows ONE compact line, not two separate surfaces. Same
+  // staff + roster + !peer gate the two old blocks shared.
+  let healthLine='';
   if(isAdminViewer&&isRosterEntry&&!isPeer&&s.waiverToken){
     const _wd=(iso)=>{try{return new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});}catch(_){return '';}};
-    let _inner;
-    if(s.waiverSignedAt){
-      _inner='<div style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--green-text)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg><span>Health check signed '+_wd(s.waiverSignedAt)+'</span></div>';
+    if(s._safety===true){
+      // Amber line, tap → Edit Student on the Health tab (the detail's single home).
+      healthLine='<div onclick="openEditStuHealth(\''+s.id+'\')" style="margin:4px 0 16px;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--amber-text);cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="text-decoration:underline">Health flags on file</span></div>';
+    }else if(s.waiverSignedAt){
+      healthLine='<div style="margin:4px 0 16px;display:flex;align-items:center;gap:7px;font-size:13px;color:var(--green-text)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg><span>Health check signed '+_wd(s.waiverSignedAt)+'</span></div>';
     }else if(s.waiverSentAt){
-      _inner='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><span style="font-size:13px;color:var(--amber-text)">Health check sent '+_wd(s.waiverSentAt)+' — not signed yet</span><span onclick="openWaiverSheet(\''+s.id+'\')" style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;color:var(--blue);cursor:pointer;white-space:nowrap">Send again</span></div>';
+      healthLine='<div style="margin:4px 0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><span style="font-size:13px;color:var(--amber-text)">Health check sent '+_wd(s.waiverSentAt)+' — not signed yet</span><span onclick="openWaiverSheet(\''+s.id+'\')" style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;color:var(--blue);cursor:pointer;white-space:nowrap">Send again</span></div>';
     }else{
-      _inner='<div style="font-size:12.5px;color:var(--text2);margin-bottom:10px">No waiver on file.</div><button onclick="openWaiverSheet(\''+s.id+'\')" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Send health check</button>';
+      healthLine='<div style="margin:4px 0 16px"><button onclick="openWaiverSheet(\''+s.id+'\')" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Send health check</button></div>';
     }
-    waiverBlock='<div style="margin:4px 0 16px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Health check</div>'+_inner+'</div>';
   }
   // Edit Profile pencil — self can always edit own profile; admin only
   // gets the entry from the roster, not from community browsing; parent
@@ -2886,11 +2885,8 @@ ${adminActionsBlock}
 <!-- Section 2: Stats — peer-gated -->
 ${statsCard}
 
-<!-- Safety flags — operational, above the administrative waiver control -->
-${safetyBlock}
-
-<!-- Health check (waiver) — administrative follow-up, below the training picture -->
-${waiverBlock}
+<!-- Health — one compact line; the detail lives in the Edit Student "Health" tab -->
+${healthLine}
 
 <!-- (Promote panel removed — the Promote button in Admin Actions opens
      a modal that contains the same info + actions, so the inline panel
@@ -12055,6 +12051,13 @@ function openEditStu(sid){
   render();
 }
 function closeEditStu(){S.editStuFor=null;S.editStuTab='basic';S.editStuDraft=null;S.sub=S.viewStu?'stuprof':null;render();}
+// Open Edit Student and land on the Health tab (openEditStu defaults to 'basic').
+// Only re-targets the tab if the modal actually opened (openEditStu returns early
+// for an unauthorised viewer, leaving S.editStuFor unchanged).
+function openEditStuHealth(sid){
+  openEditStu(sid);
+  if(S.editStuFor===sid){S.editStuTab='health';render();}
+}
 // Gender canonicalisation. The whole app now speaks the LONG form
 // ('Female'/'Male'/'Other'/'Prefer not to say') — what waiver.html (a public legal
 // doc) and the kid-convert modal already write. Existing rows may still hold the
@@ -12232,8 +12235,12 @@ function rEditStu(){
   //           emergency fields; no Social, no kid email/phone).
   //   adult → Basic / Training / Contact (Contact carries email +
   //           phone + emergency + Social; unchanged from G17.1.2).
-  const tabKeysKids=['basic','training','guardian'];
-  const tabKeysAdult=['basic','training','contact'];
+  // Health tab: staff/owner ONLY (never student-self / parent-on-kid). The tabKeys
+  // array IS the gate — the guard below falls an ungated 'health' back to 'basic',
+  // so a non-staff viewer can never land on it even by a stale S.editStuTab.
+  const _staff=isStaffOrOwner();
+  const tabKeysKids = _staff?['basic','training','guardian','health']:['basic','training','guardian'];
+  const tabKeysAdult= _staff?['basic','training','contact','health']:['basic','training','contact'];
   const tabKeys=isKids?tabKeysKids:tabKeysAdult;
   // Backward-compat: legacy 'contact' / 'parent' values map to the
   // current default ('guardian' for kids, 'contact' for adults).
@@ -12244,6 +12251,7 @@ function rEditStu(){
     +tabBtn('basic','Basic')
     +tabBtn('training','Training')
     +(isKids?tabBtn('guardian','Guardian'):tabBtn('contact','Contact'))
+    +(_staff?tabBtn('health','Health'):'')
     +'</div>';
   // -------- Basic -------- (was "Personal" pre-G17.1.2)
   // Phone moved out of Basic into Contact (phone is a contact channel,
@@ -12375,11 +12383,48 @@ ${guardianEmailRow}
 <div class="erow"><div class="elbl">Name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-ecphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(ecPhone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
 </div>`;
+  // -------- Health (staff-only, READ-ONLY) --------
+  // Surfaces the signed waiver's safety flags. CRITICAL: ZERO es-* ids and ZERO
+  // form components (.einput/.esel/.erow) — _captureEditStuTab reads es-* on every
+  // tab switch, and an input here could overwrite a signed legal document. This tab
+  // DISPLAYS; it never edits. Reuses _fetchSafetyDetail + the profile's three-way
+  // signed/sent/none logic; no second fetch.
+  let healthTab='';
+  if(tab==='health'){
+    const _hwd=(iso)=>{try{return new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});}catch(_){return '';}};
+    const _slot=(S._safetyDetail&&S._safetyDetail[s._dbId])||null;
+    if(s.waiverSignedAt&&(!_slot||!_slot.loaded)){
+      _fetchSafetyDetail(s._dbId);
+      healthTab='<div style="margin-top:8px;font-size:12.5px;color:var(--text3)">Loading health info…</div>';
+    }else{
+      const _d=(_slot&&_slot.data)||null;
+      const _trueFlags=_d?SAFETY_FLAGS.filter(f=>_d[f[0]]===true):[];
+      const _allTrue=_d?SAFETY_FLAGS.every(f=>_d[f[0]]===true):false;
+      const _note=(_d&&_d.safety_notes&&String(_d.safety_notes).trim())||'';
+      const _green='<div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--green-text);margin:2px 0 14px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg><span>From the signed health check — not typed in by staff.</span></div>';
+      const _chip=(lbl)=>'<span style="font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:2px 9px;border-radius:4px">'+lbl+'</span>';
+      if(s.waiverSignedAt&&_d&&_trueFlags.length){
+        // State A — signed, has flags. Each true flag on its own row (label only —
+        // there is no per-flag note in the schema; do not invent one).
+        const _rows=_trueFlags.map(f=>'<div>'+_chip(f[1])+'</div>').join('');
+        const _notesHtml=_note?'<div class="slbl" style="margin-top:16px;margin-bottom:4px">Notes</div><div style="font-size:11px;color:var(--text2);font-style:italic;line-height:1.5">'+escHtml(_note)+'</div>':'';
+        const _closing=(!_allTrue)?'<div style="font-size:12px;color:var(--text3);margin-top:16px">All other questions answered no.</div>':'';
+        healthTab='<div style="margin-top:8px">'+_green+'<div class="slbl" style="margin-bottom:8px">Flags the coach needs</div><div style="display:flex;flex-direction:column;gap:8px">'+_rows+'</div>'+_notesHtml+_closing+'</div>';
+      }else if(s.waiverSignedAt&&_d){
+        // State B — signed, no flags.
+        healthTab='<div style="margin-top:8px">'+_green+'<div style="font-size:13px;color:var(--text2)">No safety flags. Health check signed '+_hwd(s.waiverSignedAt)+'.</div></div>';
+      }else{
+        // State C — no health check (never signed, or signed-but-no-data). Neutral.
+        const _sent=s.waiverSentAt?'<div style="font-size:12px;color:var(--text3);margin-top:6px">Sent '+_hwd(s.waiverSentAt)+' — not signed yet.</div>':'';
+        healthTab='<div style="margin-top:8px"><div style="font-size:13px;color:var(--text2)">No health check on file yet.</div>'+_sent+'<button onclick="openWaiverSheet(\''+s.id+'\')" style="width:100%;margin-top:12px;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Send health check</button></div>';
+      }
+    }
+  }
   let body;
   if(isKids){
-    body=tab==='training'?trainingTab:tab==='guardian'?guardianTab:basicTab;
+    body=tab==='training'?trainingTab:tab==='guardian'?guardianTab:tab==='health'?healthTab:basicTab;
   }else{
-    body=tab==='training'?trainingTab:tab==='contact'?contactTab:basicTab;
+    body=tab==='training'?trainingTab:tab==='contact'?contactTab:tab==='health'?healthTab:basicTab;
   }
   // G17.1.2 — single save action. Header drops the duplicate top-right
   // Save (was redundant with the footer button). Footer "Save changes"
