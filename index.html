@@ -5247,11 +5247,11 @@ function rCommunityPeople(){
   else if(typeFilter==='instructors')list=instructors;
   else list=[...instructors,...students]; // instructors surface first when "All"
   if(beltFilter!=='all')list=list.filter(s=>String(s.belt||'').startsWith(beltFilter));
-  // G17.2a.1 — search input. Case-insensitive substring match against
-  // the clean name (no prefix involved in matching). Empty query → no
-  // filter applied.
-  const q=String(S.memberQuery||'').trim().toLowerCase();
-  if(q)list=list.filter(m=>(parseStaffName(m.name||'')).toLowerCase().includes(q));
+  // G-perf — free-text search NO LONGER pre-filters the list here. Every
+  // belt/type/segment-filtered member is rendered once; the free-text query
+  // shows/hides cards in the DOM (filterMembersDom) so typing never triggers
+  // a full render (which reflowed the whole page and made it jump). Belt /
+  // type / segment filters still route through render() as before.
   // Stable sort: keep instructor section together at top in "All" mode,
   // alphabetical within each section.
   list=list.slice().sort((a,b)=>{
@@ -5287,12 +5287,16 @@ function rCommunityPeople(){
   // keystroke; setMemberQuery re-renders so the list filters live. The
   // clear (×) affordance appears only when there's text to clear.
   const qVal=String(S.memberQuery||'').replace(/"/g,'&quot;');
-  const clearBtn=qVal?'<button onclick="setMemberQuery(\'\')" aria-label="Clear search" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;padding:4px 8px">×</button>':'';
+  // Clear (×) is ALWAYS in the DOM now (display toggled by filterMembersDom)
+  // because keystrokes no longer re-render — a conditionally-rendered × would
+  // never appear while typing from empty. clearMemberSearch() also empties the
+  // input element (the one place we deliberately touch it, on an explicit clear).
+  const clearBtn='<button id="members-clear" onclick="clearMemberSearch()" aria-label="Clear search" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;display:'+(qVal?'':'none')+'">×</button>';
   // Left-anchored magnifying glass — standard search affordance.
   // Pointer-events disabled so taps go through to the input.
   const searchIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   const searchHtml='<div style="position:relative;margin-bottom:14px">'+searchIcon+'<input type="search" id="members-search" placeholder="Search members…" value="'+qVal+'" oninput="setMemberQuery(this.value)" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/>'+clearBtn+'</div>';
-  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · '+list.length+'</div>';
+  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · <span id="members-count">'+list.length+'</span></div>';
   // Recessed containment block groups the level-2 switch with the
   // level-3 filter chips, subordinating them to the People/Wall pill.
   const filterBlock='<div class="mblock">'+segHtml+typeChips+beltChips+'</div>';
@@ -5320,7 +5324,11 @@ function rCommunityPeople(){
     const socialRow=socialChips
       ?'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div>'
       :'';
-    return '<div class="card" onclick="'+tapHandler+'" style="padding:10px 14px;margin-bottom:8px;overflow:hidden;cursor:pointer">'
+    // data-search — the lowercased clean name filterMembersDom() matches the
+    // free-text query against (same string the old q-filter used). Quotes
+    // escaped so a name can't break out of the attribute.
+    const searchKey=parseStaffName(m.name||'').toLowerCase().replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    return '<div class="card" data-search="'+searchKey+'" onclick="'+tapHandler+'" style="padding:10px 14px;margin-bottom:8px;overflow:hidden;cursor:pointer">'
       +'<div style="display:flex;align-items:center;gap:12px;min-height:60px">'
         +av
         +'<div style="flex:1;min-width:0">'
@@ -5331,7 +5339,13 @@ function rCommunityPeople(){
       +socialRow
       +'</div>';
   }).join('');
-  return headline+filterBlock+searchHtml+rows;
+  // #members-list wraps every card so filterMembersDom() can scope its
+  // show/hide + count without a full render. #members-empty (hidden until
+  // the query matches nothing) lives inside it; render() calls
+  // filterMembersDom() once after this DOM lands to apply any pre-existing
+  // query (e.g. after a belt/tab change that DID re-render).
+  const emptyState='<div id="members-empty" class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px;display:none"></div>';
+  return headline+filterBlock+searchHtml+'<div id="members-list">'+rows+emptyState+'</div>';
 }
 // Batch community-wall — global promotions feed for the Community
 // hub. Adult students (prog='adult') only — kids' promotions are
@@ -5664,12 +5678,46 @@ function rOssListModal(){
 function setMembersBelt(b){S.membersBelt=b;render();}
 function setMembersSegment(seg){S.membersSegment=seg;S.membersBelt='all';render();}
 function setMembersType(t){S.membersType=t;render();}
-// G17.2a.1 — Members search. Preserves focus + caret across re-renders
-// by re-focusing the input after render and restoring the cursor at end.
+// G-perf — Members search. No render() per keystroke: the input stays put
+// (focus + caret native, page never jumps) and we just show/hide the already-
+// rendered cards. filterMembersDom() is the single source of truth for what's
+// visible; render() also calls it after a real re-render to re-apply the query.
 function setMemberQuery(v){
   S.memberQuery=String(v||'');
-  render();
-  setTimeout(()=>{const el=document.getElementById('members-search');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);
+  filterMembersDom();
+}
+// Explicit clear (×) — the one place we touch the input, since the user isn't
+// typing here. Empty it, drop the query, re-filter, keep focus for fast retype.
+function clearMemberSearch(){
+  const el=document.getElementById('members-search');
+  if(el)el.value='';
+  S.memberQuery='';
+  filterMembersDom();
+  if(el)el.focus();
+}
+// Show/hide member cards against S.memberQuery; update the visible count, the
+// empty-state, and the × affordance. No-ops when the People list isn't mounted
+// (guards on #members-list) so render() can call it unconditionally.
+function filterMembersDom(){
+  const listEl=document.getElementById('members-list');
+  if(!listEl)return;
+  const q=String(S.memberQuery||'').trim().toLowerCase();
+  const cards=listEl.querySelectorAll('[data-search]');
+  let visible=0;
+  for(let i=0;i<cards.length;i++){
+    const show=!q||(cards[i].getAttribute('data-search')||'').indexOf(q)>=0;
+    cards[i].style.display=show?'':'none';
+    if(show)visible++;
+  }
+  const countEl=document.getElementById('members-count');
+  if(countEl)countEl.textContent=String(visible);
+  const emptyEl=document.getElementById('members-empty');
+  if(emptyEl){
+    if(q&&visible===0){emptyEl.textContent='No members match "'+q+'".';emptyEl.style.display='';}
+    else emptyEl.style.display='none';
+  }
+  const clearEl=document.getElementById('members-clear');
+  if(clearEl)clearEl.style.display=q?'':'none';
 }
 function viewStaff(id,origin){S.viewStaff=id;S.sub='staffprof';S.panelOpen=true;S.profileOrigin=origin||null;S.profilePrev=null;render();}
 
@@ -7644,6 +7692,11 @@ function render(){
     // in 200-800ms after the rest of the chrome. Splash stays on top
     // of the empty rApp until hydrateData clears S.hydrating.
     if(!S.hydrating)hideSplash();
+    // G-perf — re-apply the Members free-text query to the freshly built DOM
+    // so a pre-existing S.memberQuery still filters after a real render (belt
+    // change, tab switch). No-ops off the People list. Runs synchronously
+    // before paint, so there's no unfiltered flash.
+    filterMembersDom();
     initPullToRefresh();
     // Glass-nav dynamics — slide the active pill to the current tab after
     // layout, and bind the scroll-shrink listener once. Both no-op / are
