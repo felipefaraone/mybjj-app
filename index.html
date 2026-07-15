@@ -9109,9 +9109,12 @@ async function uploadCroppedPhoto(){
     // approval row so approvePhoto can route to public.students.photo_url
     // instead of falling through to the user-subject branch.
     const linkedStudent=linkedStaff?null:STUDENTS.find(x=>x._userId===S.profile.id);
+    // owns_avatar_path() checks the 2nd path segment against the row UUID (._dbId),
+    // NOT the legacy .id. The 'self/' branch compares against auth.uid(), which is
+    // S.profile.id, so that one stays as-is.
     const pathPrefix=linkedStaff
-      ?('staff/'+linkedStaff.id)
-      :linkedStudent?('student/'+linkedStudent.id):('self/'+S.profile.id);
+      ?('staff/'+linkedStaff._dbId)
+      :linkedStudent?('student/'+linkedStudent._dbId):('self/'+S.profile.id);
     const path=pathPrefix+'/'+Date.now()+'.jpg';
     // Clean up any prior pending row for the same subject (one pending
     // per subject at a time).
@@ -9181,7 +9184,9 @@ async function uploadCroppedPhoto(){
       }
     }
   }catch(e){console.warn('[mybjj] photo cleanup',e);}
-  const path=s.id+'/'+Date.now()+'.jpg';
+  // owns_avatar_path() needs foldername[1]='student' and foldername[2]=students.id
+  // (the UUID, ._dbId). Was s.id (legacy, no prefix) — only worked via is_admin().
+  const path='student/'+s._dbId+'/'+Date.now()+'.jpg';
   const up=await cli.storage.from('avatars').upload(path,blob,{contentType:'image/jpeg'});
   if(up.error){console.warn('[mybjj] upload photo fail:',up.error);showSaveToast2(friendlyMutationError(up.error),'error');return;}
   console.log('[mybjj] upload photo OK');
