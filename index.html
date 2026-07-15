@@ -6673,7 +6673,10 @@ function rARosterListInner(){
   const base=STUDENTS.filter(s=>showInactive||s._active!==false);
   const allAdults=base.filter(s=>s.prog==='adult');
   const allKids=base.filter(s=>s.prog==='kids');
-  let list=S.rseg==='adult'?allAdults:allKids;
+  // "Eligible only" is a question that transcends the Adults/Kids toggle — the
+  // promo banner counts across both progs, so the eligible view must too.
+  // Bypass the segment filter when rfEligible; otherwise honour the toggle.
+  let list=rfEligible?base:(S.rseg==='adult'?allAdults:allKids);
   if(rfUnit!=='all')list=list.filter(s=>s.unit===rfUnit);
   if(rfBelt!=='all')list=list.filter(s=>s.belt===rfBelt);
   // G9 Phase 1 consolidation — filters now read PROMO_CRITERIA via
@@ -7213,7 +7216,11 @@ function rARoster(){
 
   const totalReg=allAdults.length+allKids.length;
   const regLine='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">'+totalReg+' registered students</div>';
-  const seg='<div class="rsw">'+'<div class="rseg '+(S.rseg==="adult"?"active":"")+'" onclick="S.rseg=String.fromCharCode(97,100,117,108,116);render()">Adults ('+allAdults.length+')</div>'+'<div class="rseg '+(S.rseg==="kids"?"active":"")+'" onclick="S.rseg=String.fromCharCode(107,105,100,115);render()">Kids ('+allKids.length+')</div></div>';
+  // While "Eligible only" is on the list spans both progs, so the Adults/Kids
+  // toggle would be misleading (it can't narrow the list). Swap it for a note.
+  const seg=rfEligible
+    ?'<div class="rsw"><div style="flex:1;font-size:12px;color:var(--text3);font-family:Barlow,sans-serif;padding:0 4px;display:flex;align-items:center;line-height:1.3">Showing everyone eligible — Adults &amp; Kids</div></div>'
+    :'<div class="rsw">'+'<div class="rseg '+(S.rseg==="adult"?"active":"")+'" onclick="S.rseg=String.fromCharCode(97,100,117,108,116);render()">Adults ('+allAdults.length+')</div>'+'<div class="rseg '+(S.rseg==="kids"?"active":"")+'" onclick="S.rseg=String.fromCharCode(107,105,100,115);render()">Kids ('+allKids.length+')</div></div>';
   // Trials moved to their own tab (rAdmin) — the roster is just students now.
   return regLine+seg+filterHtml+'<div id="roster-results">'+rARosterListInner()+'</div>';
 }
