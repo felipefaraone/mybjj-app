@@ -1230,6 +1230,14 @@ let TRIALS=[];
 // hydrate fills it. Same empty-on-failure contract as STUDENTS.
 let STAFF=[];
 
+// Dev/test accounts that must NEVER appear in any user-facing surface. Keyed on
+// the STABLE legacy_id (role_title can't tell 'dev_admin' apart from real head
+// professors — both are 'Head Professor'). On in-memory STAFF rows the legacy_id
+// is carried on `.id` (the map does id:r.legacy_id); .legacy_id/._legacyId are
+// checked too so this guard is safe against any object shape.
+const DEV_ACCOUNT_LEGACY_IDS=['dev_admin'];
+function isDevStaff(s){ return !!s && DEV_ACCOUNT_LEGACY_IDS.indexOf(s.id||s.legacy_id||s._legacyId||'')>=0; }
+
 // IBJJF Promotion Authority Rules
 // Returns the maximum belt a given instructor belt+degree can promote TO
 function maxPromotableBelt(belt, deg){
@@ -5233,7 +5241,7 @@ function rCommunityPeople(){
   // staff teaching the kids program are the same humans, no point
   // double-listing them under Kids).
   const students=STUDENTS.filter(s=>s._active!==false&&s.unit===curUnit&&s.prog===(segment==='kids'?'kids':'adult')).map(s=>({...s,_kind:'student'}));
-  const instructors=segment==='adult'?STAFF.filter(st=>st._active!==false&&st.unit===curUnit).map(st=>({...st,_kind:'instructor'})):[];
+  const instructors=segment==='adult'?STAFF.filter(st=>st._active!==false&&st.unit===curUnit&&!isDevStaff(st)&&st.roleTitle!=='Admin').map(st=>({...st,_kind:'instructor'})):[];
   let list=[];
   if(typeFilter==='students')list=students;
   else if(typeFilter==='instructors')list=instructors;
@@ -5781,7 +5789,7 @@ function rParentMembers(){
   const active=parentSelectedChild()||myKids[0]||null;
   const activeUnit=active&&active.unit;
   const myUnits=new Set(activeUnit?[activeUnit]:[]);
-  const instructors=STAFF.filter(st=>st._active!==false&&myUnits.has(st.unit))
+  const instructors=STAFF.filter(st=>st._active!==false&&myUnits.has(st.unit)&&!isDevStaff(st)&&st.roleTitle!=='Admin')
     .slice()
     .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const unitsLabel=Array.from(myUnits).map(u=>(UNITS.find(x=>x.id===u)||{}).name).filter(Boolean).join(', ')||S.unit;
