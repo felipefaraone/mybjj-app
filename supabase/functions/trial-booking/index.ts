@@ -66,6 +66,8 @@ const LEAD_TIME_MS = 2 * 60 * 60 * 1000; // 2 hours
 // Resend domain; replies must land in the academy's real inbox, not a black hole.
 const FROM = "myBJJ <noreply@mybjj-app.com>";
 const REPLY_TO = "info@mybjj.com.au";
+// Ops inbox that gets the "someone booked" heads-up (a SECOND, operational email).
+const STAFF_NOTIFY_TO = "info@mybjj.com.au";
 // Public origin the waiver link points at — must match trial.html's CTA host.
 const WAIVER_ORIGIN = "https://mybjj-app.com";
 
@@ -314,13 +316,67 @@ function buildTrialEmail(d: EmailData): { subject: string; html: string; text: s
   return { subject, html, text };
 }
 
-// Send the confirmation email via the Resend HTTP API. NEVER throws — the email
-// is redundancy, not the critical path, so every failure is logged (status + body)
-// and swallowed. A dead Resend must not cost the booking.
-async function sendTrialEmail(to: string, msg: { subject: string; html: string; text: string }): Promise<void> {
+interface StaffNotifyData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  howHeard: string;       // "" when the lead didn't say
+  preferredDay: string;   // fallback path only (no concrete slot)
+  isKid: boolean;
+  kidName: string;
+  unitName: string;
+  dayDate: string | null; // formatted "Wednesday 15 Jul"; null on the fallback path
+  time: string | null;    // "6:00 AM"
+  classLabel: string;
+}
+
+// The SECOND email — an operational heads-up to the ops inbox: who, when, which
+// class, how they heard, kid-or-not. Scannable, no marketing, and NO waiver line
+// (it's never signed at booking time; Patricia sees that status in the app). Same
+// simple inline-styled grammar as buildTrialEmail. Pure — no I/O.
+function buildStaffNotifyEmail(d: StaffNotifyData): { subject: string; html: string; text: string } {
+  const subject = `New trial booking — ${d.firstName} ${d.lastName}` + (d.dayDate ? `, ${d.dayDate}` : "");
+
+  const nameLine = d.isKid
+    ? `${d.kidName} (child) — booked by ${d.firstName} ${d.lastName}`
+    : `${d.firstName} ${d.lastName}`;
+  const whenLine = d.dayDate
+    ? `${d.dayDate}, ${d.time} — ${d.classLabel}`
+    : `No fixed time — wants: ${d.preferredDay || "—"}. Call to schedule.`;
+
+  const rows: Array<[string, string]> = [
+    ["Name", nameLine],
+    ["When", whenLine],
+    ["Unit", d.unitName],
+    ["Contact", `${d.email} · ${d.phone}`],
+  ];
+  if (d.howHeard) rows.push(["How they heard", d.howHeard]);
+
+  const text = ["New trial booking", "", ...rows.map(([k, v]) => `${k}: ${v}`)].join("\n");
+
+  const htmlRows = rows.map(([k, v]) =>
+    `<tr><td style="padding:5px 14px 5px 0;color:#5a6a78;font-size:13px;white-space:nowrap;vertical-align:top">${escHtml(k)}</td><td style="padding:5px 0;color:#16202b;font-size:14px">${escHtml(v)}</td></tr>`
+  ).join("");
+  const html = `<div style="margin:0;padding:0;background:#f5f7fa">
+  <div style="max-width:560px;margin:0 auto;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;color:#16202b">
+    <p style="font-size:16px;font-weight:700;margin:0 0 14px">New trial booking</p>
+    <table style="border-collapse:collapse;width:100%">${htmlRows}</table>
+  </div>
+</div>`;
+
+  return { subject, html, text };
+}
+
+// Send an email via the Resend HTTP API. NEVER throws — email is redundancy, not
+// the critical path, so every failure is logged (status + body) and swallowed. A
+// dead Resend must not cost the booking. `replyTo` defaults to REPLY_TO so the lead
+// email call is unchanged; the staff notify passes the LEAD's address so a reply
+// reaches the person, not the shared inbox.
+async function sendTrialEmail(to: string, msg: { subject: string; html: string; text: string }, replyTo: string = REPLY_TO): Promise<void> {
   const key = Deno.env.get("RESEND_API_KEY");
   if (!key) {
-    console.error("[trial-booking] RESEND_API_KEY not set — confirmation email skipped");
+    console.error("[trial-booking] RESEND_API_KEY not set — email skipped");
     return;
   }
   try {
@@ -330,7 +386,7 @@ async function sendTrialEmail(to: string, msg: { subject: string; html: string; 
       body: JSON.stringify({
         from: FROM,
         to: [to],
-        reply_to: REPLY_TO,
+        reply_to: replyTo,
         subject: msg.subject,
         html: msg.html,
         text: msg.text,
@@ -529,6 +585,25 @@ Deno.serve(async (req) => {
   });
   // Awaited so the edge runtime doesn't tear down the isolate mid-send.
   await sendTrialEmail(email, msg);
+
+  // SECOND email — operational heads-up to the ops inbox, from the SAME booking
+  // data. reply_to is the LEAD's email so Patricia can reply straight to them.
+  // Also redundancy: sendTrialEmail never throws, so a failure still returns ok:true.
+  const staffMsg = buildStaffNotifyEmail({
+    firstName,
+    lastName,
+    email,
+    phone,
+    howHeard,
+    preferredDay,
+    isKid,
+    kidName,
+    unitName: unitRow.name,
+    dayDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
+    time: insertClassTime ? fmt12(insertClassTime) : null,
+    classLabel: emailClassLabel,
+  });
+  await sendTrialEmail(STAFF_NOTIFY_TO, staffMsg, email);
 
   return json({ ok: true, waiver_token: inserted.waiver_token }, 200, origin);
 });
