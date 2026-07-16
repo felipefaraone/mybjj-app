@@ -12489,43 +12489,59 @@ ${trainStartRow}
   // guardian email; kid's solo phone isn't useful in V1). Guardian
   // email is read-only because it's the login gate; admin still
   // changes it via the openChangeEmail flow.
-  // Guardian email is the kid's LOGIN gate once a parent account is linked, so it
-  // stays read-only then (change goes through the admin flow). But with no linked
-  // parent yet — including an adult just moved into kids — it's plain data and must
-  // be editable, or the required guardian email could never be entered.
-  const guardianEmailRow=(!s._parentUserId)
-    ?'<div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" inputmode="email" placeholder="Required" value="'+esc(parentEmail)+'" style="text-align:right" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true"/></div>'
-    :'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(parentEmail||'—')+'</div><div style="color:var(--text3);font-size:11px">Login email — change via admin</div></div></div>';
-  // Step 2a — LINKED PARENT (staff-only). Sets students.parent_student_id: a
-  // structural pointer at an existing adult member's row. Gated on _staff
-  // (isStaffOrOwner, resolved above) so a parent editing their own kid never sees
-  // it — they must not browse/select other members. Does NOT touch the Guardian
-  // name/email/phone fields below (that auto-fill is Step 2b). Link/unlink writes
-  // immediately (openParentPicker / unlinkParentStudent), independent of Save.
+  // Step 2b — ONE Guardian section, two states, gated by _isLinked. Linked state
+  // DISPLAYS the linked adult's details LIVE from their STUDENTS row (.phone /
+  // .email); the kid's parent_* columns are left dormant (Option 1a — linking
+  // never copies or clears them, unlinking restores whatever they still hold).
+  // Staff-only controls: the "Link an existing member" button + the card's ×.
+  const _isLinked=!!s._parentStudentId;
+  const _linkedAdult=_isLinked?(STUDENTS.find(x=>x._dbId===s._parentStudentId)||null):null;
   const _kidFirst=(s.name||'').split(' ')[0]||'this child';
-  let linkedParentSection='';
-  if(_staff){
-    let _lpInner;
-    if(s._parentStudentId){
-      const _la=STUDENTS.find(x=>x._dbId===s._parentStudentId)||null;
-      const _laName=_la?esc(_la.name||'Member'):'Linked member';
-      const _laBelt=_la?((BA[_la.belt]||{}).label||''):'';
-      const _laAv=_la?avStu(_la,36):'<div style="width:36px;height:36px;border-radius:50%;background:var(--input-bg);flex-shrink:0"></div>';
-      _lpInner=`<div class="erow" style="align-items:center">`
-        +`<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">${_laAv}<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_laName}</div>${_laBelt?`<div style="font-size:11px;color:var(--text3);margin-top:1px">${_laBelt}</div>`:''}</div></div>`
-        +`<button onclick="unlinkParentStudent('${escHtml(s.id)}')" aria-label="Unlink parent" style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`
-        +`</div><div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">This parent can see ${esc(_kidFirst)}’s progress once they log in — no login needed to link.</div>`;
-    }else{
-      _lpInner=`<button onclick="openParentPicker('${escHtml(s.id)}')" style="width:100%;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.3px;color:var(--blue);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Link an existing member</button>`
-        +`<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px">Link ${esc(_kidFirst)} to an existing adult member so they can follow this child’s progress when they log in.</div>`;
-    }
-    linkedParentSection=`<div class="slbl" style="margin-top:8px">Linked parent</div><div class="ef">${_lpInner}</div>`;
+  // Three-way guardian EMAIL priority (highest first):
+  //   1. parent_user_id set   → parent has logged in; email is the login gate →
+  //      read-only "change via admin" (linking must never break this case).
+  //   2. parent_student_id set → linked, not yet logged in → email DERIVES
+  //      read-only from the linked adult's row ("From linked member").
+  //   3. neither → plain editable input (the guardian email must be enterable).
+  const _roEmailRow=(label,val)=>'<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(val||'—')+'</div><div style="color:var(--text3);font-size:11px">'+label+'</div></div></div>';
+  const guardianEmailRow=s._parentUserId
+    ?_roEmailRow('Login email — change via admin',parentEmail)
+    :_isLinked
+      ?_roEmailRow('From linked member',_linkedAdult?_linkedAdult.email:'')
+      :'<div class="erow"><div class="elbl">Email</div><input class="einput" id="es-pemail" type="email" inputmode="email" placeholder="Required" value="'+esc(parentEmail)+'" style="text-align:right" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true"/></div>';
+  let guardianBody;
+  if(_isLinked){
+    // LINKED — member card + derived read-only Phone/Email; manual inputs are
+    // removed (so _captureEditStuTab reads undefined for es-p* and never wipes
+    // the dormant columns). Unlink × is staff-only; a non-staff parent who lands
+    // here still sees the read-only details, just no control to change them.
+    const _laName=_linkedAdult?esc(_linkedAdult.name||'Member'):'Linked member';
+    const _laBelt=_linkedAdult?((BA[_linkedAdult.belt]||{}).label||''):'';
+    const _laAv=_linkedAdult?avStu(_linkedAdult,40):'<div style="width:40px;height:40px;border-radius:50%;background:var(--input-bg);flex-shrink:0"></div>';
+    const _laPhone=_linkedAdult?(_linkedAdult.phone||''):'';
+    const _unlinkBtn=_staff?'<button onclick="unlinkParentStudent(\''+escHtml(s.id)+'\')" aria-label="Unlink parent" style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>':'';
+    guardianBody='<div class="ef">'
+      +'<div class="erow" style="align-items:center"><div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">'+_laAv+'<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_laName+'</div><div style="font-size:11px;color:var(--text3);margin-top:1px">Linked member'+(_laBelt?' · '+_laBelt:'')+'</div></div></div>'+_unlinkBtn+'</div>'
+      +'<div class="erow"><div class="elbl">Phone</div><div style="flex:1;min-width:0;font-size:13px;color:var(--text2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(_laPhone||'—')+'</div></div>'
+      +guardianEmailRow
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-4px 2px 12px">Details come from the linked member. Unlink to edit them here.</div>';
+  }else{
+    // NOT LINKED — staff-only accent link button on top, "or enter manually"
+    // divider, then the editable manual fields (unchanged). A non-staff parent
+    // sees only the manual fields.
+    const _linkBlock=_staff
+      ?'<button onclick="openParentPicker(\''+escHtml(s.id)+'\')" style="width:100%;background:var(--blue-tint);border:1px solid var(--blue);border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.3px;color:var(--blue);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Link an existing member</button>'
+        +'<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px;text-align:center">Their details fill in automatically.</div>'
+        +'<div style="display:flex;align-items:center;gap:10px;margin:14px 0 10px"><div style="flex:1;height:1px;background:var(--border)"></div><div style="font-size:11px;color:var(--text3);white-space:nowrap">or enter details manually</div><div style="flex:1;height:1px;background:var(--border)"></div></div>'
+      :'';
+    guardianBody=_linkBlock+'<div class="ef">'
+      +'<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="'+esc(parentName)+'" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>'
+      +'<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="'+esc(parentPhone)+'" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>'
+      +guardianEmailRow
+      +'</div>';
   }
-  const guardianTab=`${linkedParentSection}<div class="slbl" style="margin-top:${_staff?'14':'8'}px">Guardian</div><div class="ef">
-<div class="erow"><div class="elbl">Name</div><input class="einput" id="es-pname" placeholder="Required" value="${esc(parentName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
-<div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-pphone" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value)" value="${esc(parentPhone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
-${guardianEmailRow}
-</div>
+  const guardianTab=`<div class="slbl" style="margin-top:8px">Guardian</div>${guardianBody}
 <div class="slbl" style="margin-top:14px">Emergency contact</div>
 <div class="ef">
 <div class="erow"><div class="elbl">Same as guardian</div><button class="toggle" id="es-emsame" onclick="_sameAsGuardian(this)"></button></div>
