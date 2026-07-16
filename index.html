@@ -12000,10 +12000,34 @@ function saveEditCounts(sid){
   const total=gi+nogi;
   if(grade>total){showErr('Classes since last promotion can’t exceed Gi + No-Gi.');return;}
   const giGrade=Math.min(grade,gi);
-  s.total=total;s.giTotal=gi;s.grade=grade;s.giGrade=giGrade;
+  // Migration 102 — update_class_counts now stores a BASELINE (target − real live
+  // attendance); the display columns are DERIVED by recompute_student_stats as
+  // baseline + live attendance. So the persisted display value can legitimately
+  // differ from the typed value (most visibly `grade`/"Since last promotion"). If
+  // we optimistically wrote the typed values, the number would then "change" on
+  // the next hydrate — indistinguishable from the clobber bug 102 just fixed. So
+  // the SERVER is the source of truth: dismiss the sheet responsively, run the
+  // RPC, then RE-FETCH the recomputed row (refreshStudentStats = the exact same
+  // select + Number mapping the check-in path uses) for BOTH success and error,
+  // so the screen only ever shows persisted truth — never stale typed values.
   S.editCounts=null;render();
-  showSaveToast2('Class counts updated for '+s.name);
-  withSb(async(cli)=>{const r=await cli.rpc('update_class_counts',{p_legacy_id:s.id,p_total:total,p_gi:gi,p_nogi:nogi,p_grade:grade,p_gi_grade:giGrade});if(r&&r.error)showSaveToast2(friendlyMutationError(r.error),'error');return r;},'edit class counts');
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue','error');return;}
+  withSb(async(c)=>{
+    const r=await c.rpc('update_class_counts',{p_legacy_id:s.id,p_total:total,p_gi:gi,p_nogi:nogi,p_grade:grade,p_gi_grade:giGrade});
+    if(r&&r.error){
+      showSaveToast2(friendlyMutationError(r.error),'error');
+      // Don't leave stale numbers on screen — restore the true server row.
+      if(s._dbId)await refreshStudentStats(s._dbId);
+      render();
+      return r;
+    }
+    // Success: the server has recomputed baseline+attendance — adopt its values.
+    if(s._dbId)await refreshStudentStats(s._dbId);
+    render();
+    showSaveToast2('Class counts updated for '+s.name);
+    return r;
+  },'edit class counts');
 }
 function rEditCounts(){
   if(!S.editCounts)return '';
