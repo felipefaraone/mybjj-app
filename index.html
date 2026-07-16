@@ -7030,7 +7030,7 @@ async function convertTrialToMemberAction(trialDbId){
   const chk=await cli.from('trial_bookings').select('id,converted_at,converted_student_id').eq('id',trialDbId).single();
   if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');throw chk.error;}
   if(!chk||!chk.data||!chk.data.converted_at){showSaveToast2('Conversion not confirmed','error');throw new Error('convert not confirmed');}
-  STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null,convertedAt:nowIso});
+  STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null,convertedAt:nowIso,_parentStudentId:null,_parent2StudentId:null});
   TRIALS=TRIALS.filter(x=>x._dbId!==trialDbId);
   render();showSaveToast2('Converted to member');
 }
@@ -7166,7 +7166,7 @@ async function convertKidAction(){
       if(!linked)waiverWarn=true;
     }
     // Local state — mirror the adult path: push into STUDENTS, drop from TRIALS.
-    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok',convertedAt:nowIso});
+    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok',convertedAt:nowIso,_parentStudentId:null,_parent2StudentId:null});
     TRIALS=TRIALS.filter(x=>x._dbId!==t._dbId);
     S.convertKid=null;render();
     if(waiverWarn)showSaveToast2('Member created, but the health waiver could not be linked — ask an owner to do it','error');
@@ -7512,7 +7512,7 @@ async function sendInvite(dispatch,chain){
       }catch(e){console.warn('[mybjj] parent_user_id link exception:',e);}
     }
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob,bjjStartDate:formBjjStartDate});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob,bjjStartDate:formBjjStartDate,_parentStudentId:null,_parent2StudentId:null});
       saved=true;
     }
     // Skip the parent whitelist invite when the user already exists —
@@ -7583,7 +7583,7 @@ async function sendInvite(dispatch,chain){
       if(ins&&ins.error){console.warn('[mybjj] add adult invite:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
       console.log('[mybjj] add adult invite OK');
       if(ins&&ins.data){
-        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob,bjjStartDate:formBjjStartDate});
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob,bjjStartDate:formBjjStartDate,_parentStudentId:null,_parent2StudentId:null});
         saved=true;
       }
     }
@@ -8101,6 +8101,24 @@ function parentChildren(userId){
   const uid=userId||((S.profile&&S.profile.id)||null);
   if(!uid) return [];
   const local=STUDENTS.filter(s=>s._parentUserId===uid&&s._active!==false);
+  // Admin context (explicit userId, staff viewing X): also include kids linked
+  // STRUCTURALLY by parent_student_id / parent2_student_id → X's own students
+  // row, even before the parent has logged in (parent_user_id is still null on
+  // the kid until claim_profile runs). Resolve X's student row by _userId, match
+  // its _dbId (= students.id, the uuid the FK points at) against the kids' FKs,
+  // and union into the parent_user_id matches above, deduped by id.
+  if(userId){
+    const owner=STUDENTS.find(s=>s._userId===userId);
+    const oid=owner&&owner._dbId;
+    if(oid){
+      const seen=new Set(local.map(k=>k.id));
+      for(const k of STUDENTS){
+        if(k._active!==false&&!seen.has(k.id)&&(k._parentStudentId===oid||k._parent2StudentId===oid)){
+          seen.add(k.id);local.push(k);
+        }
+      }
+    }
+  }
   // Prefer the STUDENTS rows when present (freshest, same-unit copy). Only the
   // SELF path (no explicit userId) may fall back to the unit-independent
   // MY_KIDS cache — when the active unit differs from the kid's home unit the
@@ -9419,7 +9437,7 @@ async function refetchUnitScopedData(){
   const c=initSupabase(); if(!c) return false;
   const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
   const res=await Promise.allSettled([
-    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)'),
+    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_student_id,parent2_student_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)'),
     // RLS-2 — staff.feedback dropped from the select; Head Instructor
     // Notes now live in public.staff_notes and are fetched lazily per
     // STAFF row by _fetchStaffNotes when the owner opens the profile.
@@ -9465,7 +9483,7 @@ async function refetchUnitScopedData(){
     // Postgres numeric as String to avoid precision loss; wrap with
     // Number() so downstream math (sort, eligibility, formatStat)
     // compares numerically instead of lexicographically.
-    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,waiverToken:r.waiver_token||null,waiverSentAt:r.waiver_sent_at||null,waiverSignedAt:r.waiver_signed_at||null,_safety:false,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
+    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_parentStudentId:r.parent_student_id||null,_parent2StudentId:r.parent2_student_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,waiverToken:r.waiver_token||null,waiverSentAt:r.waiver_sent_at||null,waiverSignedAt:r.waiver_signed_at||null,_safety:false,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
     got=true;
   }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
   // Migration 99 — attach _safety (student has a signed waiver with ≥1 safety
