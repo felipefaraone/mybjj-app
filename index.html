@@ -5045,8 +5045,15 @@ function _renderChildrenSection(target,opts){
   const me=S.me||{};
   const isStaffViewer=(typeof isStaffOrOwner==='function')&&isStaffOrOwner();
   if(!isStaffViewer&&!(isMe&&me.role==='parent'))return '';
-  const uid=isMe?((S.profile&&S.profile.id)||null):(target._userId||null);
-  const kids=uid?parentChildren(uid):[];
+  // Resolve the adult's kids. The structural link keys off their STUDENT row id
+  // (_dbId), which exists even for an adult who has NEVER logged in — so we pass
+  // _dbId directly rather than gating on a user id (target._userId is null for a
+  // non-logged-in adult, which hid their kids). Self view still resolves by
+  // parent_user_id off the signed-in profile; admin view passes the target's
+  // (user id | null, student id) pair.
+  const kids=isMe
+    ? parentChildren((S.profile&&S.profile.id)||null,target._dbId||null)
+    : parentChildren(target._userId||null,target._dbId||null);
   const sorted=kids.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const rows=sorted.map(k=>{
     const display=(k.name||'').trim()||'Child';
@@ -8093,39 +8100,43 @@ function avStaff(s,size){
   return av(s&&s.initials||'??',s&&s.belt||'',size);
 }
 function isParent(){return !!(S.me&&S.me.role==='parent');}
-function parentChildren(userId){
-  // John-case decoupling: kids resolve by `parent_user_id` match. The
-  // optional userId arg is used by the Children section on another
-  // user's profile (admin/staff viewing X → list X's kids). Default is
-  // the signed-in user, preserving every existing caller.
-  const uid=userId||((S.profile&&S.profile.id)||null);
-  if(!uid) return [];
-  const local=STUDENTS.filter(s=>s._parentUserId===uid&&s._active!==false);
-  // Admin context (explicit userId, staff viewing X): also include kids linked
-  // STRUCTURALLY by parent_student_id / parent2_student_id → X's own students
-  // row, even before the parent has logged in (parent_user_id is still null on
-  // the kid until claim_profile runs). Resolve X's student row by _userId, match
-  // its _dbId (= students.id, the uuid the FK points at) against the kids' FKs,
-  // and union into the parent_user_id matches above, deduped by id.
-  if(userId){
-    const owner=STUDENTS.find(s=>s._userId===userId);
-    const oid=owner&&owner._dbId;
-    if(oid){
-      const seen=new Set(local.map(k=>k.id));
-      for(const k of STUDENTS){
-        if(k._active!==false&&!seen.has(k.id)&&(k._parentStudentId===oid||k._parent2StudentId===oid)){
-          seen.add(k.id);local.push(k);
-        }
+function parentChildren(userId, studentDbId){
+  // John-case decoupling: kids resolve by `parent_user_id` match. The optional
+  // args drive the Children section on another user's profile (admin/staff
+  // viewing X → list X's kids).
+  //
+  // SELF path = called with NO explicit args (both undefined): resolve the
+  // signed-in user's own kids by parent_user_id off S.profile.id, preserving
+  // every existing caller. The ADMIN/staff path passes X's (userId, studentDbId)
+  // explicitly and must NOT fall back to the signed-in user — that would list the
+  // VIEWER's kids under someone else's profile.
+  const self=userId===undefined&&studentDbId===undefined;
+  const uid=self?((S.profile&&S.profile.id)||null):(userId||null);
+  // The STRUCTURAL link keys off the adult's STUDENT row id (students.id =
+  // _dbId), which exists whether or not the adult has ever logged in — so the
+  // Children section resolves BEFORE the parent claims their account. It's passed
+  // in directly; never derive it from _userId (that lookup is empty for a
+  // non-logged-in adult, which was the bug this replaces).
+  const sid=studentDbId||null;
+  if(!uid && !sid) return [];
+  const local=uid?STUDENTS.filter(s=>s._parentUserId===uid&&s._active!==false):[];
+  // Structural match: kids whose parent_student_id / parent2_student_id points at
+  // the adult's students row. Union into the parent_user_id matches above, deduped
+  // by id.
+  if(sid){
+    const seen=new Set(local.map(k=>k.id));
+    for(const k of STUDENTS){
+      if(k._active!==false&&!seen.has(k.id)&&(k._parentStudentId===sid||k._parent2StudentId===sid)){
+        seen.add(k.id);local.push(k);
       }
     }
   }
   // Prefer the STUDENTS rows when present (freshest, same-unit copy). Only the
-  // SELF path (no explicit userId) may fall back to the unit-independent
-  // MY_KIDS cache — when the active unit differs from the kid's home unit the
-  // kid isn't in STUDENTS, and without this its switcher chip would vanish.
-  // The explicit-userId path (admin viewing X's kids) stays scoped to what
-  // that viewer can actually see.
-  if(!userId && !local.length && MY_KIDS.length){
+  // SELF path (no explicit args) may fall back to the unit-independent MY_KIDS
+  // cache — when the active unit differs from the kid's home unit the kid isn't
+  // in STUDENTS, and without this its switcher chip would vanish. The explicit
+  // path (admin viewing X's kids) stays scoped to what that viewer can see.
+  if(self && !local.length && MY_KIDS.length){
     return MY_KIDS.filter(k=>k._active!==false);
   }
   return local;
