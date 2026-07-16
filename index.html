@@ -11983,19 +11983,20 @@ function ecRecalc(){
   const giEl=document.getElementById('ec-gi'),nogiEl=document.getElementById('ec-nogi'),totEl=document.getElementById('ec-total');
   // G13 — has_gi gone, so the "no-gi only zeroes the gi input"
   // short-circuit is gone too. Both inputs read straight from the DOM.
-  const gi=giEl?Math.max(0,Math.floor(Number(giEl.value)||0)):0;
-  const nogi=nogiEl?Math.max(0,Math.floor(Number(nogiEl.value)||0)):0;
-  if(totEl)totEl.textContent=(gi+nogi)+' class'+(gi+nogi===1?'':'es');
+  const gi=giEl?Math.max(0,Number(giEl.value)||0):0;
+  const nogi=nogiEl?Math.max(0,Number(nogiEl.value)||0):0;
+  const tot=gi+nogi;
+  if(totEl)totEl.textContent=formatStat(tot)+' class'+(tot===1?'':'es');
 }
 function saveEditCounts(sid){
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
-  const num=(id)=>{const el=document.getElementById(id);const v=el?Number(el.value):NaN;return Number.isFinite(v)?Math.floor(v):NaN;};
+  const num=(id)=>{const el=document.getElementById(id);const v=el?Number(el.value):NaN;return Number.isFinite(v)?v:NaN;};
   const gi=num('ec-gi');
   const nogi=num('ec-nogi');
   const grade=num('ec-grade');
   const err=document.getElementById('ec-err');const errTxt=document.getElementById('ec-err-txt');
   const showErr=(msg)=>{if(err&&errTxt){errTxt.textContent=msg;err.style.display='flex';}};
-  if([gi,nogi,grade].some(n=>!Number.isInteger(n)||n<0)){showErr('All counters must be whole numbers ≥ 0.');return;}
+  if([gi,nogi,grade].some(n=>!Number.isFinite(n)||n<0)){showErr('All counters must be numbers ≥ 0.');return;}
   const total=gi+nogi;
   if(grade>total){showErr('Classes since last promotion can’t exceed Gi + No-Gi.');return;}
   const giGrade=Math.min(grade,gi);
@@ -12013,7 +12014,7 @@ function rEditCounts(){
   const initGi=safe(s.giTotal);
   const initNogi=Math.max(safe(s.total)-safe(s.giTotal),0);
   const initTotal=initGi+initNogi;
-  const giField=`<div class="erow"><div class="elbl">Gi classes</div><input class="einput" id="ec-gi" type="number" min="0" step="1" value="${initGi}" oninput="ecRecalc()"/></div>`;
+  const giField=`<div class="erow"><div class="elbl">Gi classes</div><input class="einput" id="ec-gi" type="number" min="0" step="0.25" value="${initGi}" oninput="ecRecalc()"/></div>`;
   const noGiNotice='';
   return `<div class="cov" onclick="closeEditCounts()" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:360px;margin:0 auto;padding:22px">
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">Edit class counts</div>
@@ -12021,9 +12022,9 @@ function rEditCounts(){
 ${noGiNotice}
 <div class="ef" style="margin-bottom:0">
 ${giField}
-<div class="erow"><div class="elbl">No-Gi classes</div><input class="einput" id="ec-nogi" type="number" min="0" step="1" value="${initNogi}" oninput="ecRecalc()"/></div>
-<div class="erow"><div class="elbl">Since last promotion</div><input class="einput" id="ec-grade" type="number" min="0" step="1" value="${safe(s.grade)}"/></div>
-<div class="erow"><div class="elbl">Total</div><div class="einput" style="display:flex;align-items:center;color:var(--text2);background:var(--input-bg)" id="ec-total">${initTotal} class${initTotal===1?'':'es'}</div></div>
+<div class="erow"><div class="elbl">No-Gi classes</div><input class="einput" id="ec-nogi" type="number" min="0" step="0.25" value="${initNogi}" oninput="ecRecalc()"/></div>
+<div class="erow"><div class="elbl">Since last promotion</div><input class="einput" id="ec-grade" type="number" min="0" step="0.25" value="${safe(s.grade)}"/></div>
+<div class="erow"><div class="elbl">Total</div><div class="einput" style="display:flex;align-items:center;color:var(--text2);background:var(--input-bg)" id="ec-total">${formatStat(initTotal)} class${initTotal===1?'':'es'}</div></div>
 </div>
 <div id="ec-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="ec-err-txt"></span></div>
 <div style="display:flex;gap:10px;margin-top:18px">
