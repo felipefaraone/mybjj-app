@@ -12273,12 +12273,30 @@ async function clearStudentGuardian(sid){
 function _sameAsGuardian(btn){
   btn.classList.toggle('on');
   if(btn.classList.contains('on')){
-    const pname=document.getElementById('es-pname');
-    const pphone=document.getElementById('es-pphone');
     const ecn=document.getElementById('es-ecname');
     const ecp=document.getElementById('es-ecphone');
-    if(ecn&&pname)ecn.value=pname.value;
-    if(ecp&&pphone)ecp.value=pphone.value;
+    // Step 2b — when the kid is LINKED to an adult member the manual es-pname /
+    // es-pphone inputs are replaced by a read-only card, so the guardian's
+    // details live on the linked adult's row, not in the DOM. Resolve the source
+    // from there when linked; otherwise read the manual inputs as before. The
+    // emergency contact is a persisted snapshot (saved to emergency_contact_*),
+    // so copying the linked adult's values into the editable fields is correct.
+    const s=STUDENTS.find(x=>x.id===(S.editStuFor||S.viewStu));
+    const linked=(s&&s._parentStudentId)?STUDENTS.find(x=>x._dbId===s._parentStudentId):null;
+    let srcName,srcPhone;
+    if(s&&s._parentStudentId){
+      // Linked: pull from the adult. If the adult isn't in memory, fail safe —
+      // copy nothing (leave undefined), toggle still flips.
+      srcName=linked?(linked.name||''):undefined;
+      srcPhone=linked?(linked.phone||''):undefined;
+    }else{
+      const pname=document.getElementById('es-pname');
+      const pphone=document.getElementById('es-pphone');
+      srcName=pname?pname.value:undefined;
+      srcPhone=pphone?pphone.value:undefined;
+    }
+    if(ecn&&srcName!==undefined)ecn.value=srcName;
+    if(ecp&&srcPhone!==undefined)ecp.value=srcPhone;
   }
 }
 
