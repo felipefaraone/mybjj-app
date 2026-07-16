@@ -297,6 +297,10 @@
           <div class="what" id="bk_what">—</div>
           <div class="addr" id="bk_addr" style="display:none"></div>
         </div>
+        <!-- Fallback (out-of-hours) ONLY: this trial is NOT confirmed. The booking
+             code shows this solely when state.fallback is true; the normal
+             confirmed-slot path never renders it. -->
+        <div id="bk_fallback_notice" style="display:none;background:var(--amber-bg);border:1px solid var(--amber-border);color:var(--amber);border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:14px;font-weight:600;line-height:1.5;text-align:left">Because you have chosen a time outside our normal class hours, this trial is not confirmed. Our team members will contact you to confirm the time and date</div>
         <!-- the CTA — the only action on the page -->
         <a class="btn primary block bk-cta" id="waiverCta" href="#">Complete your health check</a>
         <p class="bk-sub">Three minutes, mostly yes or no. Do it now and walk straight onto the mats.</p>
@@ -372,7 +376,7 @@
     mma:  { grad:"g4", desc:"Striking, takedowns and ground game combined. High energy, serious cardio.", age:"" },
     jmma: { grad:"g4", title:"Kids MMA", desc:"Striking and grappling for kids. Coordination, confidence, and a lot of energy burned.", min:5, max:13 },
     jun:  { grad:"g5", desc:"Jiu-Jitsu for juniors. Confidence, discipline and real skills, the fun way.", min:5, max:13 },
-    mini: { grad:"g6", desc:"First steps on the mats. Games, movement and a lot of laughing.", min:3, max:5 },
+    mini: { title:"Mini Champs", grad:"g6", desc:"First steps on the mats. Games, movement and a lot of laughing.", min:3, max:5 },
     omat: { grad:"g5", desc:"Open training. Roll, drill and put your own game together.", age:"" },
     // (type_code, audience)-specific — see the DISPLAY-LAYER PATCH note above.
     "alev:Kids": { grad:"g7", title:"Teens BJJ", desc:"Real training and real skills, with people their own age.", min:13, max:17 }
@@ -460,7 +464,9 @@
       return r.unit_id===state.unit.id && r.type_code===state.typeCode && r.audience===state.audience;
     });
     var groups = [];
-    for(var i=0;i<7;i++){
+    // Booking window: next 3 weeks (21 days). People book up to ~3 weeks ahead;
+    // the day-list groups by day, so a longer span just yields more day groups.
+    for(var i=0;i<21;i++){
       var d = addDays(syd.dateStr,i);
       var dateStr = d.toISOString().slice(0,10);
       var dow = d.getUTCDay();
@@ -726,7 +732,7 @@
       html+='</div></div>';
     });
     if(!groups.length){
-      html='<div class="emptynote">No '+esc(state.typeLabel)+' sessions in the next 7 days. Use the link below and we\'ll find you a time.</div>';
+      html='<div class="emptynote">No '+esc(state.typeLabel)+' sessions in the next 3 weeks. Use the link below and we\'ll find you a time.</div>';
     }
     $("slotWrap").innerHTML=html;
     $("c3").disabled = !(state.slot && !state.fallback);
@@ -868,8 +874,12 @@
     //   No-Gi · Neutral Bay
     //   120 Military Rd, Neutral Bay NSW   (address from public_units; omit if null)
     $("bk_when").textContent = state.fallback
-      ? "Flexible time — we'll confirm your slot"
+      ? "Flexible time"
       : (state.slot.dayLabel + " · " + state.slot.timeLabel);
+    // Fallback = out-of-hours request, NOT a confirmed slot. Surface the explicit
+    // not-confirmed notice; hide it on the normal confirmed-slot path.
+    var fbNotice = $("bk_fallback_notice");
+    if(fbNotice) fbNotice.style.display = state.fallback ? "" : "none";
     $("bk_what").textContent = state.typeLabel + " · " + state.unit.name;
     var u = state.unit || {};
     var addr = u.address ? (u.address + (u.city ? ", " + u.city : "")) : "";
