@@ -1895,7 +1895,7 @@ function trialsForClass(cid){
   const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
   const classId=t.classId||null;
   if(!classId)return [];  // no class identity → never match (fallback trials carry classId null)
-  return TRIALS.filter(tr=>tr.status==='booked'&&tr.classId===classId&&tr.classDate===c.date);
+  return TRIALS.filter(tr=>(tr.status==='booked'||tr.status==='attended')&&tr.classId===classId&&tr.classDate===c.date);
 }
 // One trial row inside the trials block. The "TRIAL · N" section label (below)
 // already says these people are not members, so the row carries only the name and
@@ -1912,12 +1912,18 @@ function _trialRosterRow(tr,first){
   const waiverChip='<span style="'+chipBase+';background:'+(waiverOk?'var(--green-bg)':'var(--amber-bg)')+';color:'+(waiverOk?'var(--green-text)':'var(--amber-text)')+';border:1px solid '+(waiverOk?'var(--green-border)':'var(--amber-border)')+'">'+(waiverOk?'WAIVER OK':'WAIVER PENDING')+'</span>';
   const presentBtn='<button onclick="trialPresent(\''+tr._dbId+'\')" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">Present</button>';
   const noShowBtn='<button class="bsm" onclick="markTrialNoShow(\''+tr._dbId+'\')">No show</button>';
+  // Once confirmed present the trial STAYS in the block (trialsForClass now keeps
+  // 'attended'); swap the action buttons for a green PRESENT pill — same chipBase
+  // grammar as the waiver chip / the member row's PRESENT pill. Booked (or any
+  // other state) keeps the Present + No-show buttons.
+  const presentPill='<span style="'+chipBase+';background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border)">PRESENT</span>';
+  const actions=tr.status==='attended'?presentPill:(presentBtn+noShowBtn);
   const sep=first?'':'border-top:1px solid var(--blue-mid);margin-top:8px;padding-top:8px;';
   // Mobile-first: the outer row wraps (name+badge group / actions group) so on a
   // narrow iPhone the buttons drop below the name instead of colliding with it.
   return '<div style="'+sep+'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'
     +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0"><span style="font-size:14px;font-weight:600;color:var(--text)">'+nm+'</span>'+waiverChip+'</div>'
-    +'<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">'+presentBtn+noShowBtn+'</div>'
+    +'<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">'+actions+'</div>'
   +'</div>';
 }
 // The trials block: a bordered, brand-tinted container that sits ABOVE the member
