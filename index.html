@@ -203,7 +203,7 @@ html,body{overscroll-behavior-y:none}
 .content .sub{max-width:430px;margin-left:auto;margin-right:auto;z-index:250}
 .content .sub .shdr{padding-top:calc(14px + env(safe-area-inset-top))}
 /* rCEdit now renders at the #app level (outside .content) so its position:fixed anchors to the viewport on iOS — where -webkit-overflow-scrolling:touch on .content otherwise makes a fixed descendant clip its header. These mirror the .content .sub rules above (desktop centering + notch/safe-area) scoped to the moved sheet's class. */
-.sub.cedit-sub{max-width:430px;margin-left:auto;margin-right:auto}
+.sub.cedit-sub{max-width:430px;margin-left:auto;margin-right:auto;z-index:300}
 .sub.cedit-sub .shdr{padding-top:calc(14px + env(safe-area-inset-top))}
 .sub.cedit-sub .sbody{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
 .content .sub .sbody{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
@@ -226,12 +226,12 @@ html,body{overscroll-behavior-y:none}
  *   - right-align both the field and the value pseudo-element
  *   - tighten the calendar icon so it sits flush at the right edge
  */
-.einput[type="date"]{
+.einput[type="date"],.einput[type="time"]{
   -webkit-appearance:none;appearance:none;
   min-height:0;min-width:0;padding:0;margin:0;line-height:1.2;
   text-align:right;direction:ltr;
 }
-.einput[type="date"]::-webkit-date-and-time-value{
+.einput[type="date"]::-webkit-date-and-time-value,.einput[type="time"]::-webkit-date-and-time-value{
   text-align:right;padding:0;margin:0;
 }
 .einput[type="date"]::-webkit-calendar-picker-indicator{
@@ -7345,7 +7345,7 @@ function rCEdit(){
   const insHtml=isNew
     ?'<option value="" disabled selected>Pick instructor</option>'+instructorOptionsHtml('')
     :instructorOptionsHtml(c.ins);
-  return `<div class="sub open cedit-sub" style="z-index:210"><div class="shdr"><button class="sback" onclick="closeCEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">${isNew?'Add class':'Edit class'}</div><button class="ssave" onclick="saveCls()" ${busy?'disabled':''}>${busy?'…':'Save'}</button></div><div class="sbody"><div class="ef"><div class="erow"><div class="elbl">Day</div><select class="esel" id="ce-dow">${[1,2,3,4,5,6,0].map(d=>`<option value="${d}" ${d===dow?'selected':''}>${DL[d]}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Time</div><input class="einput" id="ce-time" type="time" value="${c.time||''}"/></div><div class="erow"><div class="elbl">Duration</div><select class="esel" id="ce-dur">${[30,45,50,60,90].map(d=>`<option value="${d}" ${d===c.dur?'selected':''}>${d} min</option>`).join('')}</select></div></div><div class="slbl" style="margin-top:8px">Class type</div><div class="ef"><div class="erow" style="flex-wrap:wrap;gap:8px;padding:12px 16px">${CT.map(t=>`<div onclick="setCet('${t.id}')" data-ce-cet="${t.id}" style="cursor:pointer;opacity:${cetSel===t.id?'1':'.4'}"><span class="ctag ${t.tc}" style="cursor:pointer">${t.lbl}</span></div>`).join('')}</div></div><div class="slbl" style="margin-top:8px">Audience & instructor</div><div class="ef"><div class="erow"><div class="elbl">Audience</div><div class="seg">${AUD.map(a=>`<button class="segb ${ceaSel===a?'on':''}" data-ce-cea="${a}" onclick="setCea('${a}')">${a}</button>`).join('')}</div></div><div class="erow"><div class="elbl">Instructor</div><select class="esel" id="ce-ins">${insHtml}</select></div></div>${bottomAction}<div style="height:24px"></div></div></div>`;
+  return `<div class="sub open cedit-sub"><div class="shdr"><button class="sback" onclick="closeCEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">${isNew?'Add class':'Edit class'}</div><button class="ssave" onclick="saveCls()" ${busy?'disabled':''}>${busy?'…':'Save'}</button></div><div class="sbody"><div class="ef"><div class="erow"><div class="elbl">Day</div><select class="esel" id="ce-dow" style="text-align:right">${[1,2,3,4,5,6,0].map(d=>`<option value="${d}" ${d===dow?'selected':''}>${DL[d]}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Time</div><input class="einput" id="ce-time" type="time" value="${c.time||''}" style="text-align:right"/></div><div class="erow"><div class="elbl">Duration</div><select class="esel" id="ce-dur" style="text-align:right">${[30,45,50,60,90].map(d=>`<option value="${d}" ${d===c.dur?'selected':''}>${d} min</option>`).join('')}</select></div></div><div class="slbl" style="margin-top:8px">Class type</div><div class="ef"><div class="erow" style="flex-wrap:wrap;gap:8px;padding:12px 16px">${CT.map(t=>`<div onclick="setCet('${t.id}')" data-ce-cet="${t.id}" style="cursor:pointer;opacity:${cetSel===t.id?'1':'.4'}"><span class="ctag ${t.tc}" style="cursor:pointer">${t.lbl}</span></div>`).join('')}</div></div><div class="slbl" style="margin-top:8px">Audience & instructor</div><div class="ef"><div class="erow"><div class="elbl">Audience</div><div class="seg">${AUD.map(a=>`<button class="segb ${ceaSel===a?'on':''}" data-ce-cea="${a}" onclick="setCea('${a}')">${a}</button>`).join('')}</div></div><div class="erow"><div class="elbl">Instructor</div><select class="esel" id="ce-ins" style="text-align:right">${insHtml}</select></div></div>${bottomAction}<div style="height:24px"></div></div></div>`;
 }
 
 // ---------------------------------------------------------------------------
