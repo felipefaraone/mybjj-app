@@ -1441,7 +1441,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -11302,6 +11302,70 @@ function isClassLocked(cid){
 // Refresh cached counts on the local STUDENTS row after an attendance
 // mutation. The DB trigger has already recomputed; we just pull the
 // fresh values so the in-memory view matches without a full hydrate.
+// ── Class history by belt (data layer; UI is a later prompt) ──────────────
+// get_class_history(p_student_id uuid) returns a JSONB array of periods, one per
+// promotion marker: {belt,deg,type,from_date,to_date,is_current,classes,gi,nogi,
+// has_full_split}. Fetch stashes {studentId,rows} on S.classHistory (empty rows on
+// error, so callers can tell "loaded but empty" from "not loaded" = null).
+async function loadClassHistory(studentDbId){
+  if(!studentDbId)return;
+  const cli=initSupabase();if(!cli)return;
+  const r=await cli.rpc('get_class_history',{p_student_id:studentDbId});
+  if(r&&r.error){
+    console.warn('[mybjj] class history:',r.error);
+    S.classHistory={studentId:studentDbId,rows:[]};
+  }else{
+    S.classHistory={studentId:studentDbId,rows:Array.isArray(r.data)?r.data:[]};
+  }
+  render();
+}
+// Pure (no mutation of input): the CURRENT belt keeps every period (stripe)
+// separate; every PAST belt collapses to a single entry per belt — classes/gi/nogi
+// summed, deg = the belt's highest (final) stripe, from_date earliest, to_date
+// latest, has_full_split = AND of the merged periods. Chronological order is
+// preserved (single pass over the RPC's chronological rows): past belts in order of
+// first occurrence, then the current belt's stripes in order, current period last.
+function _consolidateClassHistory(rows){
+  if(!Array.isArray(rows)||!rows.length)return [];
+  // Current belt = the is_current row's belt; if none (shouldn't happen), fall back
+  // to the last row's belt for grouping safety — never fabricate is_current.
+  const curRow=rows.find(r=>r&&r.is_current===true);
+  const currentBelt=curRow?curRow.belt:(rows[rows.length-1]&&rows[rows.length-1].belt);
+  const out=[];
+  const idxByBelt={}; // past belt -> its index in out
+  for(const r of rows){
+    if(!r)continue;
+    if(r.belt===currentBelt){
+      // Current belt: keep the period as-is (copy — never mutate the input row).
+      out.push(Object.assign({},r));
+    }else if(idxByBelt[r.belt]===undefined){
+      // First period of a past belt — seed the merged entry.
+      idxByBelt[r.belt]=out.length;
+      out.push({belt:r.belt,deg:Number(r.deg||0),type:r.type,from_date:r.from_date||null,to_date:r.to_date||null,is_current:false,classes:Number(r.classes||0),gi:Number(r.gi||0),nogi:Number(r.nogi||0),has_full_split:r.has_full_split===true});
+    }else{
+      // Subsequent period of a past belt — merge into the existing entry.
+      const e=out[idxByBelt[r.belt]];
+      e.deg=Math.max(Number(e.deg||0),Number(r.deg||0));
+      e.classes+=Number(r.classes||0);
+      e.gi+=Number(r.gi||0);
+      e.nogi+=Number(r.nogi||0);
+      if(r.from_date&&(!e.from_date||r.from_date<e.from_date))e.from_date=r.from_date;
+      if(r.to_date&&(!e.to_date||r.to_date>e.to_date))e.to_date=r.to_date;
+      e.has_full_split=e.has_full_split&&(r.has_full_split===true);
+    }
+  }
+  return out;
+}
+// TEMP inspection hook — call from the console to eyeball raw vs consolidated
+// before the timeline UI exists. Remove when the UI ships.
+window._debugClassHistory=async function(studentDbId){
+  await loadClassHistory(studentDbId);
+  const raw=S.classHistory&&S.classHistory.rows||[];
+  const consolidated=_consolidateClassHistory(raw);
+  console.log('RAW:',JSON.stringify(raw,null,2));
+  console.log('CONSOLIDATED:',JSON.stringify(consolidated,null,2));
+  return consolidated;
+};
 async function refreshStudentStats(dbId){
   if(!dbId)return;
   const cli=initSupabase();if(!cli)return;
