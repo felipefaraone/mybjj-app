@@ -11991,15 +11991,16 @@ function ecRecalc(){
 function saveEditCounts(sid){
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
   const num=(id)=>{const el=document.getElementById(id);const v=el?Number(el.value):NaN;return Number.isFinite(v)?v:NaN;};
-  const gi=num('ec-gi');
-  const nogi=num('ec-nogi');
+  const total=num('ec-total-input');
   const grade=num('ec-grade');
   const err=document.getElementById('ec-err');const errTxt=document.getElementById('ec-err-txt');
   const showErr=(msg)=>{if(err&&errTxt){errTxt.textContent=msg;err.style.display='flex';}};
-  if([gi,nogi,grade].some(n=>!Number.isFinite(n)||n<0)){showErr('All counters must be numbers ≥ 0.');return;}
-  const total=gi+nogi;
-  if(grade>total){showErr('Classes since last promotion can’t exceed Gi + No-Gi.');return;}
-  const giGrade=Math.min(grade,gi);
+  if([total,grade].some(n=>!Number.isFinite(n)||n<0)){showErr('Counts must be numbers ≥ 0.');return;}
+  if(grade>total){showErr('Classes since last promotion can’t exceed the total.');return;}
+  // Migration 103 — historical counts are a SINGLE number now; the gi/no-gi split
+  // is derived server-side from real tracked attendance only. update_class_counts
+  // keeps its 5-param signature but reads only p_total + p_grade — p_gi/p_nogi/
+  // p_gi_grade are ignored, so we pass 0.
   // Migration 102 — update_class_counts now stores a BASELINE (target − real live
   // attendance); the display columns are DERIVED by recompute_student_stats as
   // baseline + live attendance. So the persisted display value can legitimately
@@ -12014,7 +12015,7 @@ function saveEditCounts(sid){
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue','error');return;}
   withSb(async(c)=>{
-    const r=await c.rpc('update_class_counts',{p_legacy_id:s.id,p_total:total,p_gi:gi,p_nogi:nogi,p_grade:grade,p_gi_grade:giGrade});
+    const r=await c.rpc('update_class_counts',{p_legacy_id:s.id,p_total:total,p_gi:0,p_nogi:0,p_grade:grade,p_gi_grade:0});
     if(r&&r.error){
       showSaveToast2(friendlyMutationError(r.error),'error');
       // Don't leave stale numbers on screen — restore the true server row.
@@ -12033,22 +12034,17 @@ function rEditCounts(){
   if(!S.editCounts)return '';
   const s=STUDENTS.find(x=>x.id===S.editCounts);if(!s)return '';
   const safe=n=>(typeof n==='number'?n:0);
-  // G13 — has_gi gone; Gi field is now a plain numeric input for
-  // every student, and the "No-Gi only" notice is removed.
-  const initGi=safe(s.giTotal);
-  const initNogi=Math.max(safe(s.total)-safe(s.giTotal),0);
-  const initTotal=initGi+initNogi;
-  const giField=`<div class="erow"><div class="elbl">Gi classes</div><input class="einput" id="ec-gi" type="number" min="0" step="0.25" value="${initGi}" oninput="ecRecalc()"/></div>`;
-  const noGiNotice='';
+  // Migration 103 — historical counts are a single number (no gi/no-gi split);
+  // the gi/no-gi split is derived server-side from real tracked attendance only.
+  // Two inputs: the pre-app historical total, and classes since last promotion.
+  // (ecRecalc's gi+nogi Total preview is gone — nothing to sum.)
   return `<div class="cov" onclick="closeEditCounts()" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:360px;margin:0 auto;padding:22px">
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">Edit class counts</div>
-<div style="font-size:12px;color:var(--text2);margin-bottom:16px">${s.name}</div>
-${noGiNotice}
+<div style="font-size:12px;color:var(--text2);margin-bottom:4px">${s.name}</div>
+<div style="color:var(--text3);font-size:11px;margin-bottom:16px;line-height:1.5">Historical count only. Gi and No-Gi are tracked automatically from real attendance.</div>
 <div class="ef" style="margin-bottom:0">
-${giField}
-<div class="erow"><div class="elbl">No-Gi classes</div><input class="einput" id="ec-nogi" type="number" min="0" step="0.25" value="${initNogi}" oninput="ecRecalc()"/></div>
+<div class="erow"><div class="elbl">Total classes before app</div><input class="einput" id="ec-total-input" type="number" min="0" step="0.25" value="${safe(s.total)}"/></div>
 <div class="erow"><div class="elbl">Since last promotion</div><input class="einput" id="ec-grade" type="number" min="0" step="0.25" value="${safe(s.grade)}"/></div>
-<div class="erow"><div class="elbl">Total</div><div class="einput" style="display:flex;align-items:center;color:var(--text2);background:var(--input-bg)" id="ec-total">${formatStat(initTotal)} class${initTotal===1?'':'es'}</div></div>
 </div>
 <div id="ec-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="ec-err-txt"></span></div>
 <div style="display:flex;gap:10px;margin-top:18px">
