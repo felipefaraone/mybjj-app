@@ -994,9 +994,11 @@ function _giCeremonyHint(student,egd){
 }
 function _egDisplay(student){
   const eg=getEligibilityStatus(student);
-  if(!eg)return {hide:true,pct:null,barPct:0,isReady:false,isPending:false,label:null,reason:''};
-  if(eg.status==='pending')return {hide:false,pct:null,barPct:0,isReady:false,isPending:true,label:null,reason:eg.message};
-  if(eg.status==='eligible')return {hide:false,pct:100,barPct:100,isReady:true,isPending:false,label:eg.label,reason:'Ready: '+eg.label};
+  if(!eg)return {hide:true,pct:null,barPct:0,isReady:false,isPending:false,label:null,classesDone:null,classesTarget:null,reason:''};
+  if(eg.status==='pending')return {hide:false,pct:null,barPct:0,isReady:false,isPending:true,label:null,classesDone:null,classesTarget:null,reason:eg.message};
+  // Eligible = BOTH class + month minimums met. Copy is deliberately non-entitling
+  // (no "Ready", no "100%") — the professor always decides when to promote.
+  if(eg.status==='eligible')return {hide:false,pct:100,barPct:100,isReady:true,isPending:false,label:eg.label,classesDone:eg.classes_done,classesTarget:eg.classes_target,reason:formatStat(eg.classes_done)+' classes since your last stripe. Your professor decides when you\'re ready.'};
   const target=eg.classes_target||1;
   const pct=Math.max(0,Math.min(100,Math.round((eg.classes_done/target)*100)));
   // G9.3 — student.grade may now be fractional (numeric(5,2)). Round
@@ -1004,8 +1006,17 @@ function _egDisplay(student){
   // attend a fractional class to close the gap.
   const remaining=Math.max(0,Math.ceil(eg.classes_target-eg.classes_done));
   // G16b — copy is more honest about coach judgment: spells out that the
-  // class count is a minimum threshold, not an auto-promotion trigger.
-  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,reason:'Working toward '+eg.label+' — '+remaining+' more class'+(remaining===1?'':'es')+' minimum. Professor decides timing.'};
+  // class count is a minimum threshold, not an auto-promotion trigger. When the
+  // CLASS minimum is already met but months isn't (otherwise status would be
+  // 'eligible'), the gate is TIME — say that instead of "0 more classes".
+  let reason;
+  if(remaining<=0){
+    const mLeft=Math.max(0,Math.ceil((eg.months_target||0)-(eg.months_done||0)));
+    reason='Minimum classes met — '+mLeft+' more month'+(mLeft===1?'':'s')+' minimum. Professor decides timing.';
+  }else{
+    reason='Working toward '+eg.label+' — '+remaining+' more class'+(remaining===1?'':'es')+' minimum. Professor decides timing.';
+  }
+  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,classesDone:eg.classes_done,classesTarget:eg.classes_target,reason};
 }
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -6075,7 +6086,21 @@ function rProgress(){
   // unchanged.
   var egd=_egDisplay(s);
   var heading=egd.label?('Next: '+egd.label):(egd.isPending?'Promotion':'Black belt');
-  var pctHtml=egd.hide||egd.isPending?'<span style="color:var(--text3)">\u2014</span>':(egd.pct+'%');
+  // Top-right of the card: a concrete class count while working, a green
+  // read-only "Minimum met" badge once BOTH minimums are reached (never a % \u2014 it
+  // implied entitlement), or a muted dash when eligibility doesn't apply / is
+  // pending. When classes are met but months aren't (months-gated in_progress),
+  // classesDone can exceed target \u2014 cap the displayed done at target so it reads
+  // "20 / 20" rather than a confusing "36 / 20"; the reason line explains the time.
+  var topRight;
+  if(egd.hide||egd.isPending){
+    topRight='<span style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;color:var(--text3)">\u2014</span>';
+  }else if(egd.isReady){
+    topRight='<span style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:6px;padding:3px 9px;font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green-text)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Minimum met</span>';
+  }else{
+    var _cd=Math.min(Number(egd.classesDone||0),Number(egd.classesTarget||0));
+    topRight='<span style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;white-space:nowrap"><span style="font-size:24px;color:var(--blue)">'+formatStat(_cd)+'</span><span style="font-size:15px;color:var(--text3)"> / '+formatStat(egd.classesTarget)+'</span></span>';
+  }
   var barHtml=egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog);
   var reasonHtml=egd.reason?`<div style="font-size:12px;color:${egd.isReady?'var(--green-text)':'var(--text2)'};margin-top:8px">${egd.reason}</div>`:'';
 
@@ -6097,7 +6122,7 @@ function rProgress(){
   // _createdAt for the "member since" stat \u2014 the merged `s` overlay
   // above doesn't copy that field.
   var rankTab=_renderRankBox(stu,{kind:'student'})
-    +`<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--blue)">${pctHtml}</div></div>${barHtml}${reasonHtml}${giHint}<div class="gibd"><div class="giseg"><div class="giv" style="color:#1e40af">${formatStat(s.giTotal)}</div><div class="gil">Gi classes</div></div><div class="giseg"><div class="giv" style="color:var(--text2)">${formatStat(Number(s.nogiTotal||0))}</div><div class="gil">No-Gi classes</div></div></div><div class="gnote">All classes count \u2014 Gi and No-Gi. Belt promotion ceremonies happen in Gi.</div></div>${attendanceCard}`;
+    +`<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div>${topRight}</div></div>${barHtml}${reasonHtml}${giHint}<div class="gnote">All classes count toward promotion. Ceremonies are held in Gi.</div></div>${attendanceCard}`;
 
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div>`;
 
