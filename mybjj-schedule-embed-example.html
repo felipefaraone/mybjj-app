@@ -1,52 +1,149 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MyBJJ — Schedule embed example</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Schedule — myBJJ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
 <style>
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:820px;margin:24px auto;padding:0 16px;color:#1a1a2e}
-  h1{font-size:20px}
-  h2{font-size:16px;margin-top:32px;border-bottom:2px solid #1A5DAD;padding-bottom:6px;color:#1A5DAD}
-  .muted{color:#777;font-size:13px}
-  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
-  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #eee}
-  th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#888}
-  .day-group{font-weight:700;background:#f5f7fa}
-  .week{border:1px solid #e5e8ee;border-radius:10px;padding:14px 16px;margin-top:12px}
-  .week.current{border-color:#1A5DAD;box-shadow:0 0 0 2px rgba(26,93,173,.12)}
-  .week h3{margin:0 0 4px;font-size:15px}
-  .now-tag{display:inline-block;background:#1A5DAD;color:#fff;font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:5px;margin-left:8px;text-transform:uppercase;vertical-align:middle}
-  .prog-list{margin:6px 0 0;padding-left:18px}
-  .prog-list li{margin:2px 0;font-size:14px}
-  .band-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#1A5DAD;font-weight:700;margin-top:10px}
-  .err{color:#b00;font-size:13px}
+  :root{
+    --blue:#1A5DAD; --blue-dark:#124680; --blue-tint:#eef4fb; --blue-mid:#7ba4d3;
+    --ink:#16202b; --ink2:#5a6a78; --ink3:#93a0ac;
+    --line:#e1e7ee; --bg:#f5f7fa; --card:#fff;
+    --amber:#8a5a00; --amber-bg:#fff6e6; --amber-border:#f0dcb4;
+    --teal:#0a6c8a; --teal-bg:#e9f6fb; --teal-border:#bfe4f0;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--ink);font-family:'Barlow',system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto;padding:0 18px}
+
+  /* header — trial.html style */
+  .hdr{background:var(--blue-dark);border-bottom:3px solid var(--blue)}
+  .hdr .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;gap:16px}
+  .brand{display:flex;align-items:center;gap:11px;text-decoration:none}
+  .brand img{width:40px;height:40px;border-radius:50%;background:#fff;object-fit:contain;flex-shrink:0}
+  .callus{display:flex;align-items:center;gap:8px;text-decoration:none;color:#cfe0f2;font-weight:600;font-size:14px;padding:8px 14px;border:1px solid rgba(255,255,255,.22);border-radius:22px}
+  .callus svg{width:14px;height:14px}
+  @media(max-width:520px){.callus span{display:none}}
+
+  /* banner */
+  .banner{background:linear-gradient(120deg,#2b6cb0,#0e3a63);padding:30px 0;text-align:center}
+  .banner h1{font-family:'Barlow Condensed';font-weight:700;font-size:32px;letter-spacing:.6px;text-transform:uppercase;color:#fff;line-height:1.08}
+  .banner p{color:#d5e4f4;font-size:15px;margin-top:6px}
+  @media(max-width:520px){.banner{padding:22px 0}.banner h1{font-size:25px}}
+
+  main{padding:22px 0 48px}
+
+  /* unit toggle */
+  .unit-switch{display:flex;gap:10px;margin:0 0 8px}
+  .unit-switch button{
+    flex:1;font-family:'Barlow Condensed';font-weight:700;font-size:16px;letter-spacing:.4px;text-transform:uppercase;
+    cursor:pointer;border:2px solid var(--line);background:var(--card);color:var(--ink3);
+    padding:13px 10px;border-radius:var(--radius);transition:.14s;line-height:1.1;
+  }
+  .unit-switch button .sub{display:block;font-family:'Barlow';font-weight:500;font-size:11px;letter-spacing:0;text-transform:none;color:var(--ink3);margin-top:3px}
+  .unit-switch button.active{border-color:var(--blue);background:var(--blue-tint);color:var(--blue-dark)}
+  .unit-switch button.active .sub{color:var(--blue)}
+
+  /* section headings */
+  h2{font-family:'Barlow Condensed';font-weight:700;font-size:22px;letter-spacing:.5px;text-transform:uppercase;color:var(--blue);margin:30px 0 0;padding-bottom:7px;border-bottom:2px solid var(--blue)}
+  h2 .muted{font-family:'Barlow';font-weight:400;font-size:13px;text-transform:none;letter-spacing:0}
+  .muted{color:var(--ink3);font-size:13px}
+  .err{color:#c0392b;font-size:13px}
+
+  /* week card */
+  .week{border:2px solid var(--line);border-radius:var(--radius);padding:15px 17px;margin-top:12px;background:var(--card)}
+  .week.current{border-color:var(--blue);background:var(--blue-tint)}
+  .week h3{font-family:'Barlow Condensed';margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+  .now-tag{display:inline-block;background:var(--blue);color:#fff;font-family:'Barlow Condensed';font-size:11px;font-weight:700;letter-spacing:.6px;padding:3px 9px;border-radius:5px;margin-left:9px;text-transform:uppercase;vertical-align:middle}
+  .band-label{font-family:'Barlow Condensed';font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--blue);font-weight:700;margin-top:11px}
+  .prog-list{margin:5px 0 0;padding-left:18px}
+  .prog-list li{margin:3px 0;font-size:15px}
+
+  /* timetable */
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:15px}
+  th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line)}
+  th{font-family:'Barlow Condensed';font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink3);font-weight:700}
+  .day-group td{font-family:'Barlow Condensed';font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:.6px;background:var(--blue-tint);color:var(--blue-dark)}
+  .badge{display:inline-block;font-family:'Barlow Condensed';font-size:13px;font-weight:700;letter-spacing:.3px;padding:3px 11px;border-radius:20px;background:#eef2f7;border:1px solid var(--line);color:var(--ink2)}
+  .badge.nogi{background:var(--blue-tint);border-color:#cfe0f2;color:var(--blue-dark)}
+  .badge.mma{background:var(--teal-bg);border-color:var(--teal-border);color:var(--teal)}
+  .badge.kids{background:var(--amber-bg);border-color:var(--amber-border);color:var(--amber)}
+  td.for-kids{color:var(--amber);font-weight:600}
+
+  /* collapsible full cycle */
+  details{margin-top:12px}
+  details>summary{
+    cursor:pointer;list-style:none;font-family:'Barlow Condensed';font-size:16px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.5px;color:var(--blue);padding:13px 16px;background:var(--card);
+    border:2px solid var(--line);border-radius:var(--radius);display:flex;align-items:center;justify-content:space-between;transition:.14s;
+  }
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::after{content:'▾';font-size:14px;transition:transform .15s}
+  details[open]>summary::after{transform:rotate(180deg)}
+  details>summary:hover{border-color:var(--blue)}
 </style>
 </head>
 <body>
 
-<h1>MyBJJ — Schedule embed example</h1>
-<p class="muted">
-  This standalone page shows how the academy website pulls the timetable and weekly curriculum
-  <strong>directly from the MyBJJ app</strong>. When the schedule changes in the app, this updates
-  automatically on next load. The app is the single source of truth; this page only reads.
-  <br>Give this file to whoever maintains the WordPress site as the reference for the embed.
-</p>
+<header class="hdr">
+  <div class="wrap">
+    <a class="brand" href="https://mybjj.com.au">
+      <img src="/icon-192.png" alt="myBJJ" />
+    </a>
+    <a class="callus" href="tel:0406456766">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      <span>0406 456 766</span>
+    </a>
+  </div>
+</header>
 
-<h2>This week's curriculum <span class="muted">(auto-detected from the cycle)</span></h2>
-<div id="thisweek"><p class="muted">Loading…</p></div>
+<section class="banner">
+  <h1>Class Schedule</h1>
+  <p>Weekly curriculum and timetable, live from the app</p>
+</section>
 
-<h2>Full cycle <span class="muted">(all weeks, current one highlighted)</span></h2>
-<div id="curriculum"><p class="muted">Loading…</p></div>
+<main class="wrap">
 
-<h2>Class timetable</h2>
-<div id="timetable"><p class="muted">Loading…</p></div>
+  <div class="unit-switch" id="unitSwitch" role="tablist" aria-label="Choose location">
+    <button data-unit="cd" role="tab">Camperdown<span class="sub">119 Parramatta Rd</span></button>
+    <button data-unit="nb" role="tab">Neutral Bay<span class="sub">2/120 Military Rd</span></button>
+  </div>
+
+  <h2>This week <span class="muted">— auto-detected</span></h2>
+  <div id="thisweek"><p class="muted">Loading…</p></div>
+
+  <h2>Timetable</h2>
+  <div id="timetable"><p class="muted">Loading…</p></div>
+
+  <h2>Full cycle</h2>
+  <details id="cycleWrap">
+    <summary>See all weeks in the cycle</summary>
+    <div id="curriculum"><p class="muted">Loading…</p></div>
+  </details>
+
+</main>
 
 <script>
 const SUPA = 'https://dcilltzgegqsrgatskhz.supabase.co';
 const ANON = 'sb_publishable_EdatFnl6MfCgyd7tv7wHRw_Z5msKQTC';
-const UNIT = 'c851cef5-d5b7-4d5b-b400-11f6ca760970';
 const headers = { apikey: ANON, Authorization: 'Bearer ' + ANON };
+
+const UNITS = {
+  cd: { id: '3654625a-a157-4392-966a-7be69d4b0c6e', name: 'Camperdown' },
+  nb: { id: 'c851cef5-d5b7-4d5b-b400-11f6ca760970', name: 'Neutral Bay' }
+};
+
+function initialUnit(){
+  const q = new URLSearchParams(location.search).get('unit');
+  if(q && UNITS[q]) return q;
+  try{ const s = localStorage.getItem('mybjj_schedule_unit'); if(s && UNITS[s]) return s; }catch(e){}
+  return 'cd';
+}
+let CURRENT = initialUnit();
 
 const BANDS = [
   ['fundamentals','Fundamentals'],['mixed','Mixed'],['advanced','Advanced'],
@@ -62,11 +159,20 @@ function bandsHtml(w){
   }).join('');
 }
 
+function badgeClass(label){
+  var s = String(label||'').toLowerCase();
+  if(s.indexOf('mma')>-1) return 'mma';
+  if(s.indexOf('no-gi')>-1 || s.indexOf('no gi')>-1) return 'nogi';
+  if(s.indexOf('mini')>-1 || s.indexOf('junior')>-1 || s.indexOf('kids')>-1 || s.indexOf('teen')>-1) return 'kids';
+  return '';
+}
+
 async function loadThisWeek(){
-  const url = SUPA + '/rest/v1/public_curriculum?unit_id=eq.' + UNIT
+  const url = SUPA + '/rest/v1/public_curriculum?unit_id=eq.' + UNITS[CURRENT].id
     + '&is_current_week=eq.true'
     + '&select=week_index,theme,cycle_week,fundamentals,mixed,advanced,kids,stand_up,ground';
   const host = document.getElementById('thisweek');
+  host.innerHTML = '<p class="muted">Loading…</p>';
   try{
     const rows = await (await fetch(url, { headers })).json();
     if(!rows.length){ host.innerHTML = '<p class="muted">No cycle configured, or this week has no curriculum yet.</p>'; return; }
@@ -78,9 +184,10 @@ async function loadThisWeek(){
 }
 
 async function loadCurriculum(){
-  const url = SUPA + '/rest/v1/public_curriculum?unit_id=eq.' + UNIT
+  const url = SUPA + '/rest/v1/public_curriculum?unit_id=eq.' + UNITS[CURRENT].id
     + '&select=week_index,theme,is_current_week,fundamentals,mixed,advanced,kids,stand_up,ground&order=week_index';
   const host = document.getElementById('curriculum');
+  host.innerHTML = '<p class="muted">Loading…</p>';
   try{
     const rows = await (await fetch(url, { headers })).json();
     if(!rows.length){ host.innerHTML = '<p class="muted">No curriculum published yet.</p>'; return; }
@@ -95,9 +202,10 @@ async function loadCurriculum(){
 }
 
 async function loadTimetable(){
-  const url = SUPA + '/rest/v1/public_timetable?unit_id=eq.' + UNIT
+  const url = SUPA + '/rest/v1/public_timetable?unit_id=eq.' + UNITS[CURRENT].id
     + '&select=day_name,start_time,type_label,audience,duration_minutes';
   const host = document.getElementById('timetable');
+  host.innerHTML = '<p class="muted">Loading…</p>';
   try{
     const rows = await (await fetch(url, { headers })).json();
     if(!rows.length){ host.innerHTML = '<p class="muted">No classes listed.</p>'; return; }
@@ -108,8 +216,11 @@ async function loadTimetable(){
         currentDay = r.day_name;
         html += '<tr class="day-group"><td colspan="4">'+escapeHtml(r.day_name)+'</td></tr>';
       }
-      html += '<tr><td>'+escapeHtml(r.start_time)+'</td><td>'+escapeHtml(r.type_label)
-        + '</td><td>'+escapeHtml(r.audience)+'</td><td>'+r.duration_minutes+' min</td></tr>';
+      var isKids = String(r.audience||'').toLowerCase().indexOf('kid')>-1;
+      html += '<tr><td>'+escapeHtml(r.start_time)+'</td>'
+        + '<td><span class="badge '+badgeClass(r.type_label)+'">'+escapeHtml(r.type_label)+'</span></td>'
+        + '<td'+(isKids?' class="for-kids"':'')+'>'+escapeHtml(r.audience)+'</td>'
+        + '<td>'+r.duration_minutes+' min</td></tr>';
     });
     html += '</tbody></table>';
     host.innerHTML = html;
@@ -119,9 +230,25 @@ async function loadTimetable(){
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => (
   {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-loadThisWeek();
-loadCurriculum();
-loadTimetable();
+function renderUnit(){
+  document.querySelectorAll('#unitSwitch button').forEach(function(b){
+    b.classList.toggle('active', b.dataset.unit === CURRENT);
+    b.setAttribute('aria-selected', b.dataset.unit === CURRENT ? 'true' : 'false');
+  });
+  loadThisWeek();
+  loadTimetable();
+  loadCurriculum();
+}
+
+document.getElementById('unitSwitch').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(!b) return;
+  var u = b.dataset.unit; if(!UNITS[u] || u === CURRENT) return;
+  CURRENT = u;
+  try{ localStorage.setItem('mybjj_schedule_unit', u); }catch(e){}
+  renderUnit();
+});
+
+renderUnit();
 </script>
 
 </body>
