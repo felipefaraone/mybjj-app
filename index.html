@@ -37,23 +37,17 @@
      frame, before fonts / Supabase CDN / the app bundle finish loading.
      Neutral by design — adopts the user's OS theme so the hand-off to
      the app feels like the content arriving, not a brand reveal. */
-  #mybjj-splash{position:fixed;inset:0;z-index:9999;background:#fafafa;color:#1a1a1a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;transition:opacity .3s ease}
+  #mybjj-splash{position:fixed;inset:0;z-index:9999;background:#fafafa;color:#1a1a1a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;transition:opacity .45s ease,transform .45s cubic-bezier(.4,0,.2,1)}
   @media(prefers-color-scheme:dark){#mybjj-splash{background:#0a0a0a;color:#e5e5e5}}
+  /* Reduced-motion: exit is a plain fade — force the scale off so nothing moves. */
+  @media(prefers-reduced-motion:reduce){#mybjj-splash{transition:opacity .3s ease;transform:none!important}}
   #mybjj-splash img{width:64px;height:64px;border-radius:50%}
-  /* Spinner — hidden for the first 800ms so quick loads never reveal
-     it. After that it fades to opacity .5 in 200ms and keeps rotating
-     at 1.2s/turn until the splash is dismissed. */
-  #mybjj-splash .mybjj-splash-spinner{color:#999;opacity:0;animation:mybjj-splash-spin 1.2s linear infinite,mybjj-splash-fadein .2s ease .8s forwards}
-  @media(prefers-color-scheme:dark){#mybjj-splash .mybjj-splash-spinner{color:#555}}
   #mybjj-splash .mybjj-splash-fallback{display:none;max-width:280px;text-align:center;font-size:14px;line-height:1.5;opacity:.85}
   #mybjj-splash.mybjj-splash-fail .mybjj-splash-fallback{display:block}
-  #mybjj-splash.mybjj-splash-fail .mybjj-splash-spinner{animation:none;opacity:0}
   #mybjj-splash.mybjj-splash-fail img{opacity:.5}
   #mybjj-splash .mybjj-splash-refresh{margin-top:14px;background:transparent;color:inherit;border:1px solid currentColor;border-radius:10px;padding:8px 20px;font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.5px;cursor:pointer;opacity:.7}
-  @keyframes mybjj-splash-spin{to{transform:rotate(360deg)}}
-  @keyframes mybjj-splash-fadein{to{opacity:.5}}
   @keyframes mybjj-app-fadein{from{opacity:0}to{opacity:1}}
-  body.mybjj-splash-gone #app{animation:mybjj-app-fadein .2s ease-out}
+  body.mybjj-splash-gone #app{animation:mybjj-app-fadein .3s ease-out}
 </style>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
@@ -378,9 +372,6 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 <body>
 <div id="mybjj-splash">
   <img src="/icon-192.png" alt="MyBJJ"/>
-  <svg class="mybjj-splash-spinner" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-    <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="12 32"/>
-  </svg>
   <div class="mybjj-splash-fallback">
     Couldn’t load. Please refresh.
     <div><button class="mybjj-splash-refresh" onclick="location.reload()">Refresh</button></div>
@@ -7710,8 +7701,12 @@ function hideSplash(){
   if(window.__mybjjSplashFallback){clearTimeout(window.__mybjjSplashFallback);window.__mybjjSplashFallback=null;}
   const s=document.getElementById('mybjj-splash');
   if(!s)return;
+  // iOS-style reveal: the logo scales up slightly while fading out (transform +
+  // opacity transition on #mybjj-splash). prefers-reduced-motion forces
+  // transform:none, so those users get a plain fade. Remove after the .45s exit.
   s.style.opacity='0';
-  setTimeout(()=>{s.remove();document.body.classList.add('mybjj-splash-gone');},300);
+  s.style.transform='scale(1.08)';
+  setTimeout(()=>{s.remove();document.body.classList.add('mybjj-splash-gone');},450);
 }
 
 function render(){
