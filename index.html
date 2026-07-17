@@ -1009,14 +1009,19 @@ function _egDisplay(student){
   // class count is a minimum threshold, not an auto-promotion trigger. When the
   // CLASS minimum is already met but months isn't (otherwise status would be
   // 'eligible'), the gate is TIME — say that instead of "0 more classes".
-  let reason;
+  let reason,mLeft=0,barPct=pct;
   if(remaining<=0){
-    const mLeft=Math.max(0,Math.ceil((eg.months_target||0)-(eg.months_done||0)));
+    // Class minimum met but NOT eligible → months still pending. The gate is TIME,
+    // so barPct must reflect MONTH progress (class progress here is a misleading
+    // 100%). pct stays class-based for any other consumer; barPct is the
+    // actually-gating criterion. The card renders an amber "Classes met" badge.
+    mLeft=Math.max(0,Math.ceil((eg.months_target||0)-(eg.months_done||0)));
+    barPct=Math.max(0,Math.min(100,Math.round(((eg.months_done||0)/(eg.months_target||1))*100)));
     reason='Minimum classes met — '+mLeft+' more month'+(mLeft===1?'':'s')+' minimum. Professor decides timing.';
   }else{
     reason='Working toward '+eg.label+' — '+remaining+' more class'+(remaining===1?'':'es')+' minimum. Professor decides timing.';
   }
-  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,label:eg.label,classesDone:eg.classes_done,classesTarget:eg.classes_target,reason};
+  return {hide:false,pct,barPct,isReady:false,isPending:false,classesMetTimeGated:(remaining<=0),monthsLeft:mLeft,label:eg.label,classesDone:eg.classes_done,classesTarget:eg.classes_target,reason};
 }
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -6097,6 +6102,11 @@ function rProgress(){
     topRight='<span style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;color:var(--text3)">\u2014</span>';
   }else if(egd.isReady){
     topRight='<span style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:6px;padding:3px 9px;font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green-text)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Minimum met</span>';
+  }else if(egd.classesMetTimeGated){
+    // Class minimum met but months still pending — AMBER "waiting on time" badge,
+    // never the green "met" badge and never a full-looking "X / Y". The bar
+    // (barPct) shows month progress for this state.
+    topRight='<span style="display:inline-flex;align-items:center;gap:5px;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);border-radius:6px;padding:3px 9px;font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--amber-text)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>Classes met</span>';
   }else{
     var _cd=Math.min(Number(egd.classesDone||0),Number(egd.classesTarget||0));
     topRight='<span style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;white-space:nowrap"><span style="font-size:24px;color:var(--blue)">'+formatStat(_cd)+'</span><span style="font-size:15px;color:var(--text3)"> / '+formatStat(egd.classesTarget)+'</span></span>';
