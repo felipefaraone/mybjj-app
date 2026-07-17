@@ -2018,6 +2018,16 @@ function rAttsStaff(rows,cid){
   const safetyPill=s=>(s&&s._safety===true)
     ?'<span aria-label="Has safety flags" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">SAFETY</span>'
     :'';
+  // On-hold indicator for the check-in surface — the instructor needs the REASON
+  // here to decide whether to let them train. Same amber-pill grammar as
+  // safetyPill; staff-only (isStaffOrOwner) so students/parents never see it, and
+  // s&& guards VISITORS that carry no standing. Appends the hold_note inline when
+  // present (escHtml — it's user text rendered as content); no truncation.
+  const holdPill=s=>{
+    if(!(s&&s.standing==='on_hold'&&isStaffOrOwner()))return '';
+    const note=(s.holdNote&&String(s.holdNote).trim())||'';
+    return '<span aria-label="On hold" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">ON HOLD'+(note?' · '+escHtml(note):'')+'</span>';
+  };
   return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${stackHtml}${actionRow}<div style="height:10px"></div>${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
@@ -2026,7 +2036,7 @@ function rAttsStaff(rows,cid){
     // reads "they were here but it doesn't count toward promotion".
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${holdPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
 }
 // _fmtJnyDate — journey entries store the date in two formats:
@@ -6733,7 +6743,8 @@ function rARosterListInner(){
     const isElig=egd.isReady;
     // ON HOLD badge — staff/admin only (never exposed to student/parent
     // viewers). Same amber tokens as the PHOTO PENDING pill.
-    const onHoldBadge=(s.standing==='on_hold'&&isStaffOrOwner())?'<span style="display:inline-flex;align-items:center;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;text-transform:uppercase">On hold</span>':'';
+    const onHoldNote=(s.holdNote&&String(s.holdNote).trim())||'';
+    const onHoldBadge=(s.standing==='on_hold'&&isStaffOrOwner())?'<span style="display:inline-flex;align-items:center;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;text-transform:uppercase">On hold'+(onHoldNote?' · '+escHtml(onHoldNote):'')+'</span>':'';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     const giSince=Math.max(s.giGrade||0,0);
     const noGiSince=Math.max(Number(s.nogiGrade||0),0);
