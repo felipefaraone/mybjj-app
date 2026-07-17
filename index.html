@@ -3873,7 +3873,13 @@ async function savePromote(skipDuplicateBeltConfirm){
         }
       }catch(e){console.warn('[mybjj] promote insert:',e);}
       try{await cli.from('students').update({
-        belt:s.belt,degree:s.deg,grade:0,gi_grade:0,journey:s.journey||[]
+        // baseline_grade:0 — promoting CONSUMES the pre-app historical classes that
+        // counted toward this grade, so progress toward the NEXT belt resets to 0.
+        // Must run BEFORE recompute_student_stats (below), which sets
+        // grade = baseline_grade + real_since_marker; without this it'd recompute
+        // back to the old historical count. Only baseline_grade — baseline_total /
+        // _gi / _nogi (lifetime) are untouched. Mode 1 forward promotion ONLY.
+        belt:s.belt,degree:s.deg,grade:0,gi_grade:0,baseline_grade:0,journey:s.journey||[]
       }).eq('id',s._dbId);}catch(e){console.warn('[mybjj] promote update student:',e);}
       // recompute last_marker_date + grade/gi_grade from public.promotions.
       try{await cli.rpc('recompute_student_stats',{p_student_id:s._dbId});}catch(_){}
