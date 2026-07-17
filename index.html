@@ -2995,6 +2995,60 @@ function toggleShowAllJourney(){S.showAllJourney=!S.showAllJourney;render();}
 //   - for staff:    'staff:<legacy_id>', e.g. 'staff:mario'
 // Owner-only edit affordance for staff; owner/professor for students
 // (matches the existing canEditClassCounts gate).
+// Class-history timeline — classes per belt, with a Gi/No-Gi composition bar
+// where the split is complete. Student subjects only (rJnySection also renders for
+// staff, who have no students row). Lazily loads S.classHistory once per student.
+function _rClassHistorySection(s){
+  if(!s||!s._dbId)return '';
+  // Lazy-load once per student. The studentId guard stops re-fetch loops:
+  // loadClassHistory calls render() on completion, and by then the guard matches.
+  if(!S.classHistory||S.classHistory.studentId!==s._dbId){
+    loadClassHistory(s._dbId);
+    return '<div class="slbl" style="margin-top:16px">Class history</div>'
+      +'<div style="font-size:12px;color:var(--text3);padding:2px 2px 6px">Loading…</div>';
+  }
+  const rows=_consolidateClassHistory(S.classHistory.rows||[]);
+  if(!rows.length){
+    return '<div class="slbl" style="margin-top:16px">Class history</div>'
+      +'<div class="card" style="padding:14px 16px;font-size:12px;color:var(--text3)">No class history yet.</div>';
+  }
+  const beltLbl=(k)=>(BA[k]||BK[k]||{label:k}).label;
+  const totalAll=rows.reduce((a,r)=>a+Number(r.classes||0),0);
+  let earliest=null;
+  for(const r of rows){if(r&&r.from_date&&(!earliest||r.from_date<earliest))earliest=r.from_date;}
+  const sinceTxt=earliest?_fmtJnyDate(earliest):null;
+  const header='<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text)">'+formatStat(totalAll)+' classes</div>'
+    +(sinceTxt?'<div style="font-size:11px;color:var(--text3)">since '+sinceTxt+'</div>':'')
+  +'</div>';
+  const rowsHtml=rows.map(r=>{
+    const isCur=r.is_current===true;
+    const col=BELT_COLORS[r.belt]||'#9ca3af';
+    // Current belt: "Belt · Nth stripe/degree". Past belt: just the belt name.
+    const stripeTxt=(isCur&&Number(r.deg)>0)?(' · '+r.deg+_ordSuffix(r.deg)+(r.belt==='black'?' degree':' stripe')):'';
+    const label=beltLbl(r.belt)+stripeTxt;
+    const dateTxt=r.from_date?_fmtJnyDate(r.from_date):null;
+    const swatch='<div style="width:26px;height:26px;border-radius:6px;flex-shrink:0;background:'+col+';border:1px solid var(--border)"></div>';
+    const countHtml='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:'+(isCur?'var(--blue)':'var(--text3)')+';flex-shrink:0">'+formatStat(Number(r.classes||0))+'</div>';
+    const topRow='<div style="display:flex;align-items:center;gap:10px">'
+      +swatch
+      +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+label+'</div>'+(dateTxt?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+dateTxt+'</div>':'')+'</div>'
+      +countHtml
+    +'</div>';
+    // Gi/No-Gi 100% COMPOSITION bar — only when every class in the period is split.
+    // has_full_split=false → show only the count (no bar, no legend, no jargon).
+    let splitHtml='';
+    if(r.has_full_split===true&&Number(r.classes||0)>0){
+      const giPct=Math.max(0,Math.min(100,(Number(r.gi||0)/Number(r.classes))*100));
+      const nogiPct=Math.max(0,Math.min(100,(Number(r.nogi||0)/Number(r.classes))*100));
+      splitHtml='<div style="display:flex;height:9px;border-radius:99px;overflow:hidden;margin-top:8px;background:var(--border)"><div style="width:'+giPct+'%;background:var(--blue)"></div><div style="width:'+nogiPct+'%;background:var(--blue-mid)"></div></div>'
+        +'<div style="display:flex;gap:12px;margin-top:5px;font-size:11px;color:var(--text3)"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:var(--blue)"></span>Gi '+formatStat(Number(r.gi||0))+'</span><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:var(--blue-mid)"></span>No-Gi '+formatStat(Number(r.nogi||0))+'</span></div>';
+    }
+    return '<div style="padding:10px 0;border-top:1px solid var(--border)">'+topRow+splitHtml+'</div>';
+  }).join('');
+  return '<div class="slbl" style="margin-top:16px">Class history</div>'
+    +'<div class="card" style="padding:14px 16px">'+header+rowsHtml+'</div>';
+}
 function rJnySection(s,sidKey){
   sidKey=sidKey||s.id;
   // G17.2c — Edit pill gate tightened. Self-edit of own journey is
@@ -3040,7 +3094,10 @@ function rJnySection(s,sidKey){
         +editBtn
         +rTL(renderJourney,s)
         +showLink
-      +'</div>';
+      +'</div>'
+      // Class-history timeline — complementary section BELOW the markers. Student
+      // subjects only (staff targets carry a 'staff:' sidKey and no students row).
+      +(isStaffTarget?'':_rClassHistorySection(s));
   }
   // Editing mode — replace timeline with a row list per milestone.
   const j=s.journey||[];
@@ -11356,16 +11413,6 @@ function _consolidateClassHistory(rows){
   }
   return out;
 }
-// TEMP inspection hook — call from the console to eyeball raw vs consolidated
-// before the timeline UI exists. Remove when the UI ships.
-window._debugClassHistory=async function(studentDbId){
-  await loadClassHistory(studentDbId);
-  const raw=S.classHistory&&S.classHistory.rows||[];
-  const consolidated=_consolidateClassHistory(raw);
-  console.log('RAW:',JSON.stringify(raw,null,2));
-  console.log('CONSOLIDATED:',JSON.stringify(consolidated,null,2));
-  return consolidated;
-};
 async function refreshStudentStats(dbId){
   if(!dbId)return;
   const cli=initSupabase();if(!cli)return;
