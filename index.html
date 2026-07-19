@@ -2748,7 +2748,6 @@ function rStuProf(){
   // PROMO_CRITERIA via _egDisplay. Legacy studentEligibility's
   // hardcoded 25/30 thresholds no longer surface here.
   const egd=_egDisplay(s);
-  const pct=egd.hide||egd.isPending?null:egd.pct;
   const isReady=egd.isReady;
   const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
   const isKids=s.prog==='kids';
@@ -2854,7 +2853,7 @@ function rStuProf(){
     <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
     ${_showSplit?`<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(_lifeGi)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
     <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(_lifeNogi)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>`:''}
-    <div style="flex:1;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div></div>
+    <div style="flex:1;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(egd.classesTarget==null?'var(--text3)':'var(--text)')};white-space:nowrap">${egd.classesTarget==null?'—':formatStat(Math.min(Number(egd.classesDone||0),Number(egd.classesTarget||0)))+'<span style="font-size:13px;color:var(--text3)"> / '+formatStat(egd.classesTarget)+'</span>'}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Classes'}</div></div>
   </div>
   ${egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog)}
   ${egd.reason?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:${isReady?'var(--green-bg)':'var(--input-bg)'};border:1px solid ${isReady?'var(--green-border)':'var(--border)'};display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isReady?'var(--green-text)':'var(--text3)'}" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/>${isReady?'<polyline points="9 12 11 14 15 10"/>':'<line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'}</svg><span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.5px;color:${isReady?'var(--green-text)':'var(--text2)'}">${egd.reason}</span></div>`:''}
