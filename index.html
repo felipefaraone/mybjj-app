@@ -3749,7 +3749,10 @@ function setPromoteBelt(v){
 }
 function setPromoteDeg(v){if(S.promoteForm)S.promoteForm.deg=parseInt(v,10)||0;}
 function setPromoteDate(v){if(S.promoteForm)S.promoteForm.date=String(v||'');}
-function setPromoteCurrent(v){if(S.promoteForm)S.promoteForm.setCurrent=!!v;}
+function setPromoteClasses(v){if(S.promoteForm)S.promoteForm.classes=String(v||'');}
+// render() so the backfill-only "Classes" row appears/disappears live when this
+// toggles (the row is conditional on !F.setCurrent, evaluated at render time).
+function setPromoteCurrent(v){if(S.promoteForm)S.promoteForm.setCurrent=!!v;render();}
 
 function rPromoteModal(){
   if(!S.promoteFor)return '';
@@ -3788,7 +3791,9 @@ ${eligLine}
 <div class="erow"><div class="elbl">Belt</div><select class="esel" id="pm-belt" onchange="setPromoteBelt(this.value)">${beltOpts}</select></div>
 <div class="erow"><div class="elbl">${targetBelt==='black'?'Degree':'Stripes'}</div><select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${degOpts}</select></div>
 <div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date" value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+${!F.setCurrent?`<div class="erow"><div class="elbl">Classes (optional)</div><input class="einput" id="pm-classes" type="number" min="0" step="0.25" value="${escAttr(F.classes||'')}" oninput="setPromoteClasses(this.value)" placeholder="" style="width:100%;box-sizing:border-box;min-width:0"/></div>`:''}
 </div>
+${!F.setCurrent?`<div style="font-size:11px;color:var(--text3);margin:-6px 2px 10px;line-height:1.4">Classes done before this promotion, if you have the record.</div>`:''}
 <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:6px">
   <input type="checkbox" id="pm-current" ${F.setCurrent?'checked':''} onchange="setPromoteCurrent(this.checked)" style="margin-top:2px;flex-shrink:0"/>
   <div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600">Set as current belt</div><div style="font-size:11px;color:var(--text3);margin-top:2px;line-height:1.4">On = this becomes their current belt. Off = just log a past belt on the timeline (history only).</div></div>
@@ -3870,13 +3875,42 @@ async function savePromote(skipDuplicateBeltConfirm){
   const ordSuffix=(typeof _ordSuffix==='function')?_ordSuffix:(n=>{const v=n%100;if(v>=11&&v<=13)return'th';switch(n%10){case 1:return'st';case 2:return'nd';case 3:return'rd';default:return'th';}});
 
   // ── Mode 3: history-only backfill ──────────────────────────────────
+  // Logs a PAST promotion: pushes a journey marker AND inserts a hidden
+  // public.promotions row so recompute_student_stats can set last_marker_date
+  // (the whole point — 77/118 students had no marker date). hidden:true keeps it
+  // off the Community Wall (the Wall filter already drops !p.hidden). Does NOT
+  // touch belt/grade/baseline — a backfill records history, it doesn't re-rank.
   if(!setCurrent){
     if(!s.journey)s.journey=[];
     s.journey.push({belt:targetBelt,label:beltLabel(targetBelt)+' belt',date,classes:null,done:true,current:false,auto:true});
+    // Optional "classes done before this promotion" — form state canonical, DOM
+    // #pm-classes as fallback. Empty → null (never 0).
+    const _domClasses=(root.querySelector('#pm-classes')||{}).value;
+    const _clsRaw=(F.classes!=null&&F.classes!=='')?F.classes:_domClasses;
+    const classesVal=(_clsRaw!=null&&String(_clsRaw).trim()!==''&&Number.isFinite(Number(_clsRaw)))?Number(_clsRaw):null;
+    // "From" is display metadata for a past promotion, not a calc input: same belt
+    // one stripe lower, or the preceding belt when this registers a belt change.
+    const _bfFromDeg=targetDeg>0?targetDeg-1:0;
+    const _bfFromBelt=targetDeg>0?targetBelt:(newIdx>0?ORDER[newIdx-1]:targetBelt);
+    const legacyId='pl'+Date.now();
     closePromoteModal();
     if(s._dbId&&cli){
       try{await cli.from('students').update({journey:s.journey||[]}).eq('id',s._dbId);}
       catch(e){console.warn('[mybjj] promote backfill update:',e);}
+      // Mirror the Mode 1 insert shape, but hidden:true (never on the Wall) + the
+      // optional classes. NOT pushed to PROMOTION_LOG (would surface it in-session).
+      try{await cli.from('promotions').insert({
+        legacy_id:legacyId, student_id:s._dbId,
+        from_belt:_bfFromBelt, to_belt:targetBelt,
+        from_deg:_bfFromDeg, to_deg:targetDeg,
+        type:isBeltChange?'belt':'stripe', is_new_belt:isBeltChange,
+        date, student_name:s.name,
+        promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
+        unit_id:unit&&unit._dbId,
+        hidden:true, classes:classesVal
+      });}catch(e){console.warn('[mybjj] promote backfill insert:',e);}
+      // Anchor last_marker_date from public.promotions (the reason for this fix).
+      try{await cli.rpc('recompute_student_stats',{p_student_id:s._dbId});}catch(_){}
     }
     return;
   }
