@@ -3919,6 +3919,18 @@ async function savePromote(skipDuplicateBeltConfirm){
 
   // ── Mode 1: forward promotion ──────────────────────────────────────
   if(direction>0){
+    // The period this promotion closes: grade = classes since the last marker
+    // (includes any pre-app historical classes still held in baseline_grade).
+    // Persisted onto the promotion row so the Class History timeline doesn't
+    // lose them when baseline_grade is zeroed below. MUST be read before s.grade=0.
+    const _periodClasses=Number(s.grade||0);
+    const _periodGi=Number(s.giGrade||0);
+    const _periodNogi=Number(s.nogiGrade||0);
+    // gi/nogi are only meaningful when EVERY class in the period was tracked
+    // with a modality. If the split doesn't account for the whole period, the
+    // remainder is unsplit historical — record null so the timeline shows the
+    // count without a (misleading) Gi/No-Gi bar.
+    const _periodFullSplit=(_periodClasses>0&&(_periodGi+_periodNogi)===_periodClasses);
     s.belt=targetBelt;s.deg=targetDeg;s.grade=0;s.giGrade=0;
     if(!s.journey)s.journey=[];
     s.journey.forEach(j=>{if(j.current)j.current=false;});
@@ -3954,7 +3966,10 @@ async function savePromote(skipDuplicateBeltConfirm){
           type:isBeltChange?'belt':'stripe', is_new_belt:isBeltChange,
           date, student_name:s.name,
           promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
-          unit_id:unit&&unit._dbId
+          unit_id:unit&&unit._dbId,
+          classes:_periodClasses>0?_periodClasses:null,
+          gi:_periodFullSplit?_periodGi:null,
+          nogi:_periodFullSplit?_periodNogi:null
         }).select('id').single();
         const newDbId=ins&&ins.data&&ins.data.id;
         if(newDbId){
