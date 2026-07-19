@@ -2782,8 +2782,6 @@ function rStuProf(){
   // +Add Feedback) stay gated by canAdmin and remain hidden for a
   // parent who isn't staff.
   const isParentOnOwnKid=isParentOfKid&&isKids;
-  const giSince=Math.max(s.giGrade||0,0);
-  const noGiSince=Math.max(Number(s.nogiGrade||0),0);
   // Batch 2 — KIDS/ADULT and belt band are built by _renderProfileHeader.
   // V2 — JOINED / AWAITING chip removed from the profile header per
   // the redesign. Email JOINED tag in the Details card stays.
@@ -2841,11 +2839,21 @@ function rStuProf(){
   // header card + journey card. Stats / eligibility hint / details /
   // attendance log / instructor feedback / action buttons are gated
   // out below.
+  // Gi/No-Gi are only meaningful when every counted class carries a modality.
+  // Students with pre-app historical classes have a TOTAL that exceeds the tracked
+  // split (the historical portion has no gi/no-gi), so showing the split next to
+  // the lifetime total would misrepresent it ("36 total · 0 Gi · 0 No-Gi"). Same
+  // rule the Class History timeline uses via has_full_split. NOTE: hydrate maps
+  // gi_classes/nogi_classes → giTotal/nogiTotal (NOT giClasses/nogiClasses).
+  const _lifeGi=Math.max(Number(s.giTotal||0),0);
+  const _lifeNogi=Math.max(Number(s.nogiTotal||0),0);
+  const _lifeTotal=Math.max(Number(s.total||0),0);
+  const _showSplit=(_lifeTotal>0&&(_lifeGi+_lifeNogi)===_lifeTotal);
   const statsCard=(isPeer||(!isRosterEntry&&!isParentOnOwnKid))?'':`<div class="card" style="padding:16px;margin-top:12px">
   <div style="display:flex;gap:0;margin-bottom:10px">
     <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(s.total)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Total</div></div>
-    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(giSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
-    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(noGiSince)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>
+    ${_showSplit?`<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(_lifeGi)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Gi</div></div>
+    <div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--text)">${formatStat(_lifeNogi)}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">No-Gi</div></div>`:''}
     <div style="flex:1;text-align:center"><div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:${isReady?'var(--green-text)':(pct==null?'var(--text3)':'var(--text)')}">${pct==null?'—':pct+'%'}</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${isReady?'Ready':'Progress'}</div></div>
   </div>
   ${egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog)}
@@ -6907,8 +6915,16 @@ function rARosterListInner(){
     const onHoldNote=(s.holdNote&&String(s.holdNote).trim())||'';
     const onHoldBadge=(s.standing==='on_hold'&&isStaffOrOwner())?'<span style="display:inline-flex;align-items:center;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;text-transform:uppercase">On hold'+(onHoldNote?' · '+escHtml(onHoldNote):'')+'</span>':'';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
-    const giSince=Math.max(s.giGrade||0,0);
-    const noGiSince=Math.max(Number(s.nogiGrade||0),0);
+    // Same lifetime-scope rule as the profile stats card: only show the Gi/No-Gi
+    // split when every counted class carries a modality (gi+nogi === total).
+    // Students with pre-app historical classes have a total that exceeds the
+    // tracked split, so the breakdown is omitted rather than misrepresenting it
+    // ("36 total · Gi 1 · No-Gi 4"). Lifetime values live on giTotal/nogiTotal
+    // (hydrate maps gi_classes/nogi_classes → those, NOT giGrade/nogiGrade).
+    const _lifeGi=Math.max(Number(s.giTotal||0),0);
+    const _lifeNogi=Math.max(Number(s.nogiTotal||0),0);
+    const _lifeTotal=Math.max(Number(s.total||0),0);
+    const _showSplit=(_lifeTotal>0&&(_lifeGi+_lifeNogi)===_lifeTotal);
     // G9 Phase 1 follow-up — the legacy "X/Y · next degree/promotion ·
     // Z total" line used hardcoded thresholds (25 adults / 30 kids)
     // that didn't match PROMO_CRITERIA, so it conflicted with the new
@@ -6919,7 +6935,7 @@ function rARosterListInner(){
     //     what the X/Y figures are measuring against.
     // G13 — "No-Gi only" suffix removed; has_gi flag is gone.
     const totalLine='<div style="font-size:11px;color:var(--text3);margin-top:6px">'+formatStat(s.total||0)+' total</div>';
-    const breakdownLine='<div style="font-size:11px;color:var(--text3);margin-top:4px">Gi: '+formatStat(giSince)+' · No-Gi: '+formatStat(noGiSince)+'</div>';
+    const breakdownLine=_showSplit?'<div style="font-size:11px;color:var(--text3);margin-top:4px">Gi: '+formatStat(_lifeGi)+' · No-Gi: '+formatStat(_lifeNogi)+'</div>':'';
     // G9 Phase 1 — eligibility hint driven by PROMO_CRITERIA. Adults
     // only; kids show a "criteria pending" placeholder until Phase 2.
     // Black belts and any null result render nothing.
