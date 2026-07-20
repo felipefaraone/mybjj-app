@@ -277,6 +277,15 @@
             <option>Other</option>
           </select>
         </label>
+        <label class="field full" id="friendToggleRow" style="display:none"><span style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--ink2)"><input type="checkbox" id="friendToggle" style="width:17px;height:17px;flex-shrink:0;accent-color:var(--blue)" />Bringing a friend? Their first class is free too.</span></label>
+        <div class="field full" id="friendFields" style="display:none;grid-column:1/-1">
+          <div class="formgrid">
+            <label class="field full"><span class="lab">Friend's full name<span class="req"> *</span></span><input type="text" id="friend_name" autocomplete="off" /></label>
+            <label class="field"><span class="lab">Their email</span><input type="email" id="friend_email" inputmode="email" /></label>
+            <label class="field"><span class="lab">Their phone</span><input type="tel" id="friend_phone" inputmode="tel" placeholder="0412 345 678" /></label>
+            <div style="grid-column:1/-1;font-size:12.5px;color:var(--ink3);line-height:1.5;margin-top:-4px">We only need one. Without an email we can't send them the health check form, so you'll need to let them know.</div>
+          </div>
+        </div>
       </div>
 
       <div class="cf" id="cf"></div>
@@ -312,6 +321,11 @@
           <div class="l">We'll lend you everything else.</div>
         </div>
         <p class="bk-fine">We've emailed you the link too — but it needs to be done before you train.</p>
+        <!-- Friend outcome — onBooked fills + shows this ONLY when the response
+             carried friend_ok (i.e. a friend was requested). Absent key → stays
+             hidden. Booked → neutral card note; failed → amber caution (never red;
+             the primary booking is fine). -->
+        <div id="bk_friend_notice" style="display:none;border-radius:12px;padding:13px 16px;margin:14px 0 0;font-size:13.5px;line-height:1.5;text-align:left"></div>
       </div>
     </section>
 
@@ -772,12 +786,24 @@
     $("kidField").style.display = kidMode ? "block" : "none";
     $("kidnote").style.display  = kidMode ? "flex" : "none";
     $("availField").style.display = state.fallback ? "block" : "none";
+    // Bring-a-friend — only when there's a real session (never on the fallback
+    // path: a friend has nothing to attend, and the function ignores it there).
+    // Reset the toggle on fallback so a previously-opened block can't linger.
+    if(state.fallback){ $("friendToggle").checked=false; }
+    $("friendToggleRow").style.display = state.fallback ? "none" : "block";
+    $("friendFields").style.display = (!state.fallback && $("friendToggle").checked) ? "block" : "none";
     $("s4h").textContent = kidMode ? "Parent / guardian details" : "Your details";
     $("fnLab").innerHTML = (kidMode ? "Parent / guardian first name" : "First name") + '<span class="req"> *</span>';
     $("lnLab").innerHTML = (kidMode ? "Parent / guardian last name" : "Last name") + '<span class="req"> *</span>';
     $("emLab").innerHTML = (kidMode ? "Parent / guardian email" : "Email") + '<span class="req"> *</span>';
     $("phLab").innerHTML = (kidMode ? "Parent / guardian phone" : "Phone") + '<span class="req"> *</span>';
   }
+
+  // Reveal the friend fields when the "Bringing a friend?" box is ticked (same
+  // display:none mechanism #kidField / #availField use).
+  $("friendToggle").addEventListener("change", function(){
+    $("friendFields").style.display = this.checked ? "block" : "none";
+  });
 
   // ---- Turnstile (explicit render; only once, when step 4 is first shown) ----
   function ensureTurnstile(){
@@ -804,9 +830,12 @@
   $("bookBtn").addEventListener("click", function(){
     if(state.booked) return;
     $("formerr").style.display="none";
-    ["first_name","last_name","email","phone","kid_name","avail"].forEach(function(id){ setErr(id,false); });
+    ["first_name","last_name","email","phone","kid_name","avail","friend_name","friend_email","friend_phone"].forEach(function(id){ setErr(id,false); });
 
     var kidMode = (!state.fallback && state.audience==="Kids");
+    // Friend block is "open" only with a real session AND the box ticked. Closed →
+    // no friend validation, no friend fields sent.
+    var friendOpen = !state.fallback && $("friendToggle").checked;
     var missing=[], badFormat=[];
 
     if(kidMode && !val("kid_name")){ setErr("kid_name",true); missing.push("child's name"); }
@@ -817,6 +846,16 @@
     else if(!EMAIL_RE.test(val("email"))){ setErr("email",true); badFormat.push("a valid email address"); }
     if(!val("phone")){ setErr("phone",true); missing.push("phone"); }
     else if(!validAUPhone(val("phone"))){ setErr("phone",true); badFormat.push("a valid Australian phone number (e.g. 0412 345 678)"); }
+
+    if(friendOpen){
+      if(!val("friend_name")){ setErr("friend_name",true); missing.push("your friend's name"); }
+      var _fe=val("friend_email"), _fp=val("friend_phone");
+      if(!_fe && !_fp){ setErr("friend_email",true); setErr("friend_phone",true); missing.push("your friend's email or phone"); }
+      else{
+        if(_fe && !EMAIL_RE.test(_fe)){ setErr("friend_email",true); badFormat.push("a valid email for your friend"); }
+        if(_fp && !validAUPhone(_fp)){ setErr("friend_phone",true); badFormat.push("a valid Australian phone number for your friend"); }
+      }
+    }
 
     if(missing.length || badFormat.length){
       var parts=[];
@@ -838,7 +877,10 @@
       class_date: state.fallback ? "" : (state.slot ? state.slot.date : ""),
       class_time: state.fallback ? "" : (state.slot ? state.slot.time : ""),
       preferred_day: state.fallback ? val("avail") : "",
-      kid_name: kidMode ? val("kid_name") : ""
+      kid_name: kidMode ? val("kid_name") : "",
+      friend_name: friendOpen ? val("friend_name") : "",
+      friend_email: friendOpen ? val("friend_email") : "",
+      friend_phone: friendOpen ? val("friend_phone") : ""
     };
 
     var btn=$("bookBtn"); btn.disabled=true; btn.textContent="Booking…";
@@ -846,7 +888,7 @@
     fetch(ENDPOINT, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(payload) })
       .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, d:d }; }); })
       .then(function(res){
-        if(res.ok && res.d && res.d.ok){ onBooked(res.d.waiver_token, kidMode); return; }
+        if(res.ok && res.d && res.d.ok){ onBooked(res.d.waiver_token, kidMode, res.d.friend_ok, friendOpen && !!val("friend_email")); return; }
         btn.disabled=false; btn.textContent="Confirm my booking";
         // 403 = Turnstile (machine code body); 400/500 carry a human message in
         // .error; anything else is a generic fallback.
@@ -867,7 +909,7 @@
   // ============================================================================
   // STEP 5 — BOOKED + health-check hand-off
   // ============================================================================
-  function onBooked(token, kidMode){
+  function onBooked(token, kidMode, friendOk, friendHadEmail){
     state.booked=true;
     // The slot, ONCE, as three hero lines:
     //   Wednesday 15 Jul · 6:00 AM   (or "Flexible time" for the fallback path)
@@ -880,6 +922,26 @@
     // not-confirmed notice; hide it on the normal confirmed-slot path.
     var fbNotice = $("bk_fallback_notice");
     if(fbNotice) fbNotice.style.display = state.fallback ? "" : "none";
+    // Friend outcome. friendOk is true (booked) | false (failed) | undefined
+    // (no friend requested → render nothing). Booked = neutral card note; the
+    // wording depends on whether an email was given (only then was the form sent).
+    // Failed = amber caution, never red — the person's own spot IS confirmed.
+    var friendNote = $("bk_friend_notice");
+    if(friendNote){
+      if(friendOk === true){
+        friendNote.style.background="var(--card)"; friendNote.style.border="1px solid var(--line)"; friendNote.style.color="var(--ink)"; friendNote.style.fontWeight="400";
+        friendNote.textContent = friendHadEmail
+          ? "Your friend is booked in too — we've emailed them their own health check form to complete before class."
+          : "Your friend is booked in too. We don't have their email, so please let them know to complete the health check form before class.";
+        friendNote.style.display="";
+      } else if(friendOk === false){
+        friendNote.style.background="var(--amber-bg)"; friendNote.style.border="1px solid var(--amber-border)"; friendNote.style.color="var(--amber)"; friendNote.style.fontWeight="600";
+        friendNote.textContent = "Your spot is confirmed. We couldn't save your friend's booking this time — please mention it at the front desk and we'll sort it out.";
+        friendNote.style.display="";
+      } else {
+        friendNote.style.display="none";
+      }
+    }
     $("bk_what").textContent = state.typeLabel + " · " + state.unit.name;
     var u = state.unit || {};
     var addr = u.address ? (u.address + (u.city ? ", " + u.city : "")) : "";
