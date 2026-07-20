@@ -7677,11 +7677,15 @@ async function sendInvite(dispatch,chain){
   // Batch 2a — every new student gets an origin entry at the form's
   // initial belt as the first journey item. Locks down a starting
   // anchor so the timeline can render even before any promotion lands.
-  // No training_started_at field is collected on Add Student today,
-  // so date defaults to today.
+  // Origin date is only meaningful when the student starts from the programme's
+  // FIRST belt with ZERO stripes — a genuine beginner joining now. Anyone
+  // registered at a higher belt/stripe brought that grade from elsewhere, on a
+  // date we don't know, so it stays null (the timeline renders "Started BJJ —
+  // Date not set" with an Add-date link for staff, same as the hydrate backfill).
   const initialJourney=[];
   const _originBeltLabel=((isKids?BK:BA)[formBelt]||{label:formBelt}).label;
-  initialJourney.push({belt:formBelt,label:_originBeltLabel+' belt',date:new Date().toISOString().slice(0,10),done:true,auto:true,origin:true});
+  const _isStartingBelt=(formBelt===((isKids?BELT_ORDER_K:BELT_ORDER_A)[0]))&&(Number(formDegree||0)===0);
+  initialJourney.push({belt:formBelt,label:_originBeltLabel+' belt',date:_isStartingBelt?new Date().toISOString().slice(0,10):null,done:true,auto:true,origin:true});
   if(status==='transfer'){
     const fromAcad=String(F.xferFrom||'').trim();
     const sinceVal=String(F.xferSince||'').trim()||null;
