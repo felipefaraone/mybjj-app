@@ -1441,7 +1441,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -12587,6 +12587,45 @@ function _sameAsGuardian(btn){
   }
 }
 
+// ── Move student to another unit — a staff ACTION, deliberately OUTSIDE the
+// save cycle. Moving a student changes who can see them (RLS re-scopes), so it
+// never rides along with a phone-number save. The picked destination lives on
+// S.transferPick (keyed by sid so a stale pick can't leak to another student);
+// it is NEVER an es-* id, so _captureEditStuTab / saveEditStu never touch it.
+function setTransferPick(sid,unitDbId){
+  _captureEditStuTab(); // preserve in-flight edits in the other fields across the render
+  S.transferPick=unitDbId?{sid:sid,unitDbId:unitDbId}:null;
+  render();
+}
+function askTransferStudent(sid){
+  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
+  const pick=(S.transferPick&&S.transferPick.sid===sid)?S.transferPick.unitDbId:null;
+  const dest=UNITS.find(u=>u._dbId===pick);
+  if(!dest)return;
+  const curName=(UNITS.find(u=>u.id===s.unit)||{}).name||'their current unit';
+  let msg='Move '+s.name+' to '+dest.name+'? They’ll appear in that unit’s roster. Their attendance history stays where each class happened.';
+  if(!isOwner())msg+=' You won’t be able to edit them from '+curName+' after this.';
+  openConfirm({
+    title:'Move student',
+    message:msg,
+    dangerLabel:'Move to '+dest.name,
+    confirmColor:'var(--blue)',
+    onConfirm:async()=>{
+      const cli=initSupabase();if(!cli)return;
+      const r=await cli.rpc('transfer_student_unit',{p_legacy_id:s.id,p_unit_id:dest._dbId});
+      if(r&&r.error){showSaveToast2(r.error.message||'Could not move student','error');return;}
+      // Success — remap the in-memory unit to the destination's legacy key (the
+      // same mapping hydrate applies via uMap). The student may now be outside
+      // this viewer's scope, so drop the profile target and close the modal →
+      // lands back on the roster (no stale ghost profile).
+      s.unit=dest.id;
+      S.transferPick=null;
+      S.viewStu=null;
+      closeEditStu();
+      showSaveToast2(s.name+' moved to '+dest.name);
+    }
+  });
+}
 function rEditStu(){
   const sid=S.editStuFor||S.viewStu;
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return '';
@@ -12767,13 +12806,36 @@ function rEditStu(){
 <div style="font-size:11px;color:var(--text3);padding:6px 14px 12px">On hold blocks the student from checking themselves in. Any instructor can still add them to class.</div>
 </div>`
     :'';
+  // Move-to-unit — staff ACTION (not a save field). Gated like the other admin
+  // controls (isAdminViewer) PLUS: never on self-edit, and only when there's
+  // more than one active unit to move between. Follows standingSection's
+  // slbl + .ef + muted-note shape. The picker/button drive setTransferPick /
+  // askTransferStudent (confirm → RPC); nothing here is captured by the save.
+  const _activeUnits=UNITS.filter(u=>u.active);
+  const _showTransfer=isAdminViewer&&!isSelf&&!!s._dbId&&_activeUnits.length>1;
+  const _transferPick=(_showTransfer&&S.transferPick&&S.transferPick.sid===s.id)?S.transferPick.unitDbId:null;
+  let transferSection='';
+  if(_showTransfer){
+    const _curUnitName=(UNITS.find(u=>u.id===s.unit)||{}).name||'—';
+    const _dests=_activeUnits.filter(u=>u.id!==s.unit);
+    const _opts='<option value="">Choose a unit…</option>'+_dests.map(u=>'<option value="'+escAttr(u._dbId)+'" '+(_transferPick===u._dbId?'selected':'')+'>'+escHtml(u.name)+', '+escHtml(u.country)+'</option>').join('');
+    const _pickedUnit=UNITS.find(u=>u._dbId===_transferPick);
+    const _moveBtn=_pickedUnit?'<div style="padding:10px 14px 4px"><button onclick="askTransferStudent(\''+escAttr(s.id)+'\')" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Move to '+escHtml(_pickedUnit.name)+'</button></div>':'';
+    transferSection='<div class="slbl" style="margin-top:14px">Unit</div>'
+      +'<div class="ef">'
+      +'<div class="erow"><div class="elbl">Current</div><div style="flex:1;min-width:0;font-size:13px;color:var(--text2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(_curUnitName)+'</div></div>'
+      +'<div class="erow"><div class="elbl">Move to</div><select class="esel" onchange="setTransferPick(\''+escAttr(s.id)+'\',this.value)">'+_opts+'</select></div>'
+      +_moveBtn
+      +'<div style="font-size:11px;color:var(--text3);padding:6px 14px 12px">Moving a student changes which unit’s roster they appear in. Attendance history stays with the classes where it happened.</div>'
+      +'</div>';
+  }
   const trainingTab=progSection+beltVisual+`
 <div class="ef" style="margin-top:8px">
 ${trainStartRow}
 <div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(weightKg)}"/></div>
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
 ${_staff?`<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="toggle ${hasMybjjGi?'on':''}" id="es-hasmybjjgi" onclick="this.classList.toggle('on')"></button></div>`:''}
-</div>`+guardianOnFile+standingSection;
+</div>`+guardianOnFile+standingSection+transferSection;
   // -------- Contact (adult only) --------
   // G16a.1 — email row stacks: value on its own line (ellipsis on
   // overflow), Change email link below at smaller size.
