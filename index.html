@@ -2725,7 +2725,7 @@ function _fetchSafetyDetail(dbId){
 }
 function rSafetyBlock(s){
   if(!s||s._safety!==true)return '';
-  const hdr='<div class="slbl" style="margin-bottom:8px">Safety</div>';
+  const hdr='<div class="slbl" style="margin-bottom:8px">Health</div>';
   const wrap=(inner)=>'<div style="margin:4px 0 16px">'+hdr+inner+'</div>';
   const slot=(S._safetyDetail&&S._safetyDetail[s._dbId])||null;
   if(!slot||!slot.loaded){
@@ -2890,10 +2890,12 @@ function rStuProf(){
   if(isAdminViewer&&isRosterEntry&&!isPeer&&s.waiverToken){
     const _wd=(iso)=>{try{return new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});}catch(_){return '';}};
     if(s._safety===true){
-      // Amber line, tap → Edit Student on the Health tab (the detail's single home).
-      healthLine='<div onclick="openEditStuHealth(\''+s.id+'\')" style="margin:4px 0 16px;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--amber-text);cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="text-decoration:underline">Health flags on file</span></div>';
-    }else if(s.waiverSignedAt){
-      healthLine='<div style="margin:4px 0 16px;display:flex;align-items:center;gap:7px;font-size:13px;color:var(--green-text)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg><span>Health check signed '+_wd(s.waiverSignedAt)+'</span></div>';
+      // Flagged → render the Health section inline (amber chips + notes, lazily
+      // fetched) so the coach sees the conditions without a click. rSafetyBlock
+      // guards on s._safety and wraps itself in margin:4px 0 16px (same slot the
+      // old link used). The signed-no-flags line was dropped: low value in a prime
+      // slot; the signed date still shows in Edit Profile → Health.
+      healthLine=rSafetyBlock(s);
     }else if(s.waiverSentAt){
       healthLine='<div style="margin:4px 0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><span style="font-size:13px;color:var(--amber-text)">Health check sent '+_wd(s.waiverSentAt)+' — not signed yet</span><span onclick="openWaiverSheet(\''+s.id+'\')" style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;color:var(--blue);cursor:pointer;white-space:nowrap">Send again</span></div>';
     }else{
