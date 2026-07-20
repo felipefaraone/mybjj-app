@@ -2726,7 +2726,11 @@ function _fetchSafetyDetail(dbId){
 function rSafetyBlock(s){
   if(!s||s._safety!==true)return '';
   const hdr='<div class="slbl" style="margin-bottom:8px">Health</div>';
-  const wrap=(inner)=>'<div style="margin:4px 0 16px">'+hdr+inner+'</div>';
+  // slbl "Health" stays OUTSIDE the card (like JOURNEY etc.); content sits in a
+  // contained amber card (radius 14px to match .card). Tokens only — no hex.
+  const wrap=(inner)=>'<div style="margin:4px 0 16px">'+hdr
+    +'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:14px;padding:13px 15px">'+inner+'</div>'
+    +'</div>';
   const slot=(S._safetyDetail&&S._safetyDetail[s._dbId])||null;
   if(!slot||!slot.loaded){
     _fetchSafetyDetail(s._dbId);
@@ -2735,11 +2739,14 @@ function rSafetyBlock(s){
   const d=slot.data;
   const chips=d?SAFETY_FLAGS.filter(f=>d[f[0]]===true).map(f=>'<span style="font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:2px 9px;border-radius:4px">'+f[1]+'</span>').join(''):'';
   const noteTxt=(d&&d.safety_notes&&String(d.safety_notes).trim())||'';
-  const notes=noteTxt?'<div style="font-size:11px;color:var(--text2);font-style:italic;margin-top:8px;line-height:1.5">'+escHtml(noteTxt)+'</div>':'';
+  const notes=noteTxt?'<div style="font-size:11px;color:var(--amber-text);font-style:italic;margin-top:8px;line-height:1.5">'+escHtml(noteTxt)+'</div>':'';
   // has_flags true but the waiver row is missing OR carries nothing renderable —
   // the derived table and the waiver theoretically disagreed. Say so, don't blank.
   if(!chips&&!notes)return wrap('<div style="font-size:12.5px;color:var(--text3)">Safety flag on file — detail unavailable</div>');
-  return wrap((chips?'<div style="display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div>':'')+notes);
+  // Header row belongs ONLY to the has-flags render (not loading / not the
+  // unavailable fallback). Alert icon + label, amber-text tokens.
+  const flagsHdr='<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--amber-text)" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--amber-text)">Flags the coach needs</span></div>';
+  return wrap(flagsHdr+(chips?'<div style="display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div>':'')+notes);
 }
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
