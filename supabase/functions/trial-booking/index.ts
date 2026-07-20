@@ -329,6 +329,7 @@ interface StaffNotifyData {
   dayDate: string | null; // formatted "Wednesday 15 Jul"; null on the fallback path
   time: string | null;    // "6:00 AM"
   classLabel: string;
+  friend?: string | null; // "<friend name> — invited by <booker>" when a friend also booked
 }
 
 // The SECOND email — an operational heads-up to the ops inbox: who, when, which
@@ -352,6 +353,8 @@ function buildStaffNotifyEmail(d: StaffNotifyData): { subject: string; html: str
     ["Contact", `${d.email} · ${d.phone}`],
   ];
   if (d.howHeard) rows.push(["How they heard", d.howHeard]);
+  // One extra row when the booker also brought a friend (a second real booking).
+  if (d.friend) rows.push(["Bringing a friend", d.friend]);
 
   const text = ["New trial booking", "", ...rows.map(([k, v]) => `${k}: ${v}`)].join("\n");
 
@@ -440,6 +443,14 @@ Deno.serve(async (req) => {
   const preferredDay = str(payload.preferred_day, 400);
   const kidName = titleCase(str(payload.kid_name, 120));
 
+  // Bring-a-friend (optional). A non-empty friend_name is the "requested" signal;
+  // a stray friend_email/phone with no name is ignored (never blocks a booking).
+  // friend_name holds a FULL name in one field, so it uses kid_name's 120 bound
+  // (the single first/last fields are 80 each). Email/phone match the lead bounds.
+  const friendName = titleCase(str(payload.friend_name, 120));
+  const friendEmail = str(payload.friend_email, 160).toLowerCase();
+  const friendPhone = str(payload.friend_phone, 40);
+
   if (!UUID_RE.test(unitId)) return bad("Please choose which academy.", origin);
   if (!firstName) return bad("Please enter your first name.", origin);
   if (!lastName) return bad("Please enter your last name.", origin);
@@ -527,6 +538,19 @@ Deno.serve(async (req) => {
     if (!preferredDay) return bad("Please tell us when you're usually free.", origin);
   }
 
+  // 2b. Friend block applies ONLY to a concrete slot (insertClassId) — a friend
+  // needs a real session to attend, so it is ignored entirely on the fallback
+  // ("None of these times work") path. Validate up-front so an invalid friend
+  // block rejects the request BEFORE anything is inserted (nothing half-written).
+  const friendActive = insertClassId !== null && friendName.length > 0;
+  if (friendActive) {
+    if (!friendEmail && !friendPhone) return bad("Add your friend's email or phone, or remove their name.", origin);
+    if (friendEmail && !EMAIL_RE.test(friendEmail)) return bad("Please enter a valid email for your friend.", origin);
+    // No Australian phone validator exists in this function (it lives only in
+    // trial.html); friend_phone is accepted as sent — the SAME shallow rule the
+    // primary phone gets here (presence only). Noted in the report.
+  }
+
   // 3. Insert with the service role.
   const nowISO = new Date().toISOString();
   const { data: inserted, error: insErr } = await supabase
@@ -586,6 +610,68 @@ Deno.serve(async (req) => {
   // Awaited so the edge runtime doesn't tear down the isolate mid-send.
   await sendTrialEmail(email, msg);
 
+  // ---- Bring a friend: a SECOND real booking (own row, own waiver_token). ----
+  // FAILURE-ISOLATED: unreachable unless the primary already returned `inserted`
+  // (a 500 above short-circuits otherwise), and any friend error is logged and
+  // swallowed — the primary booking stays saved and the response stays ok:true.
+  // Never rolls back, never fails the request.
+  let friendOk = false;
+  let friendStaffLine: string | null = null;
+  if (friendActive) {
+    // Split friend_name on the FIRST space: before → first, after → last. No space
+    // → whole name is the first, last EMPTY (never invent a surname — same rule the
+    // trial→student convert flow uses).
+    const _sp = friendName.indexOf(" ");
+    const friendFirst = _sp >= 0 ? friendName.slice(0, _sp) : friendName;
+    const friendLast = _sp >= 0 ? friendName.slice(_sp + 1).trim() : "";
+    const { data: friendRow, error: friendErr } = await supabase
+      .from("trial_bookings")
+      .insert({
+        unit_id: unitRow.id,
+        first_name: friendFirst,
+        last_name: friendLast,
+        email: friendEmail || null,
+        phone: friendPhone || null,
+        how_heard: "Friend or family",
+        preferred_day: null,
+        is_kid: false,
+        kid_name: null,
+        class_id: insertClassId,
+        class_date: insertClassDate,
+        class_time: insertClassTime,
+        trial_status: "booked",
+        booked_at: nowISO,
+        invited_by_booking_id: inserted.id,
+      })
+      .select("id, waiver_token")
+      .single();
+    if (friendErr || !friendRow) {
+      console.error("[trial-booking] friend insert error:", friendErr?.message);
+    } else {
+      friendOk = true;
+      friendStaffLine = `${friendFirst}${friendLast ? " " + friendLast : ""} — invited by ${firstName} ${lastName}`;
+      // Friend confirmation email — only when they gave an email. Reuse
+      // buildTrialEmail with the friend's OWN waiver token; no k=1 (a friend is
+      // booked as an adult, is_kid:false).
+      if (friendEmail) {
+        let friendWaiverLink = `${WAIVER_ORIGIN}/waiver.html?t=${encodeURIComponent(String(friendRow.waiver_token || ""))}`;
+        if (friendFirst) friendWaiverLink += `&n=${encodeURIComponent(friendFirst)}`;
+        const friendMsg = buildTrialEmail({
+          firstName: friendFirst,
+          classLabel: emailClassLabel,
+          unitName: unitRow.name,
+          dayDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
+          time: insertClassTime ? fmt12(insertClassTime) : null,
+          address: addressLine,
+          mapsUrl,
+          phone: unitRow.phone || null,
+          waiverLink: friendWaiverLink,
+        });
+        await sendTrialEmail(friendEmail, friendMsg);
+      }
+    }
+  }
+
   // SECOND email — operational heads-up to the ops inbox, from the SAME booking
   // data. reply_to is the LEAD's email so Patricia can reply straight to them.
   // Also redundancy: sendTrialEmail never throws, so a failure still returns ok:true.
@@ -602,8 +688,14 @@ Deno.serve(async (req) => {
     dayDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
     time: insertClassTime ? fmt12(insertClassTime) : null,
     classLabel: emailClassLabel,
+    friend: friendStaffLine, // one extra row when a friend also booked; null otherwise
   });
   await sendTrialEmail(STAFF_NOTIFY_TO, staffMsg, email);
 
-  return json({ ok: true, waiver_token: inserted.waiver_token }, 200, origin);
+  // friend_ok is present ONLY when a friend was actually requested — so the page
+  // can tell "no friend" (key absent → say nothing) apart from "friend failed"
+  // (friend_ok:false → warn them). Omitted entirely on the no-friend path.
+  const resBody: Record<string, unknown> = { ok: true, waiver_token: inserted.waiver_token };
+  if (friendActive) resBody.friend_ok = friendOk;
+  return json(resBody, 200, origin);
 });
