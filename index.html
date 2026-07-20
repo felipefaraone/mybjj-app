@@ -2074,7 +2074,17 @@ function _fmtJnyDate(d){
 // is internal progression, not a social broadcast. shareSid parameter
 // dropped; isStaffJourney usage in callers simplified accordingly.
 function rTL(journey,subject){
-  const arr=Array.isArray(journey)?journey:[];
+  const _rawJny=Array.isArray(journey)?journey:[];
+  // Render-time chronological sort (oldest first). Work on a COPY: rTL receives
+  // s.journey directly, and journeys are stored in insertion order (Mode 3
+  // backfill records past promotions in whatever order the cards are picked up),
+  // so mutating it would reorder the in-memory record as a side effect of a
+  // render. Rules: undated OR unparseable-date entries (the origin node carries
+  // date:null) sort to the START, keeping their relative order; dated entries go
+  // ascending; equal dates keep their original order (stable sort + a comparator
+  // that returns 0 for equals — never NaN, which would give undefined ordering).
+  const jnyTime=(m)=>{const d=m&&m.date;if(d==null||d==='')return null;const t=new Date(d).getTime();return Number.isNaN(t)?null:t;};
+  const arr=_rawJny.slice().sort((a,b)=>{const ka=jnyTime(a),kb=jnyTime(b);if(ka===null&&kb===null)return 0;if(ka===null)return -1;if(kb===null)return 1;return ka-kb;});
   const s=subject||null;
   // V2 — current-item meta line shows the class count only for staff
   // viewers (owner/instructor). Staff status is an independent fact: it does
