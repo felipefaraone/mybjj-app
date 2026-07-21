@@ -1290,11 +1290,17 @@ function canPromote(instructorBelt, instructorDeg, targetBelt, targetDeg, isNewB
   if(!S||!S.me) return {ok:false, reason:'Not authorized to promote students.'};
   if(typeof isOwner==='function' && isOwner()) return {ok:true, reason:null};
   if(S.me.role!=='instructor') return {ok:false, reason:'Not authorized to promote students.'};
-  // Resolve the caller's staff unit. STAFF rows are keyed by auth
-  // user_id (set by hydrate); fall back to a name match for the
-  // legacy demo path that doesn't always populate _userId.
+  // Resolve the caller's unit from the ACTIVE unit (the dropdown /
+  // users.active_unit_id that current_unit() follows in RLS), NOT the staff row.
+  // The staff table has RLS `true`, so the staff row keeps the caller's HOME unit
+  // regardless of where they're working — a home≠active mismatch wrongly refused
+  // every cross-unit promotion even though students_write would authorise it.
+  // Same active-unit pattern as lines 5423-5424 / 5568-5569. Fall back to the
+  // staff-row unit only when the active unit can't be resolved (never allow blind).
+  const curU=UNITS.find(u=>u.name===S.unit);
+  const curUnit=curU?curU.id:null;
   const meStaff=STAFF.find(x=>S.profile&&x._userId===S.profile.id)||STAFF.find(x=>x.name===S.me.name);
-  const myUnit=meStaff&&meStaff.unit;
+  const myUnit=curUnit||(meStaff&&meStaff.unit);
   // No student in scope — preview-only call (e.g. eligibility hint).
   // Don't block; the action-level callsites pass the student.
   if(!student) return {ok:true, reason:null};
@@ -3811,7 +3817,7 @@ function rPromoteModal(){
 
   return `<div class="cov" id="promote-modal" onclick="closePromoteModal()" style="align-items:center;justify-content:center;z-index:280;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:88vh;overflow-y:auto">
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px">Promote ${escHtml(s.name.split(' ')[0])}</div>
-<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Currently ${beltLabel(s.belt)}${s.deg?', '+s.deg+'-stripe':''}</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Currently ${s.belt?beltLabel(s.belt):'No belt set'}${s.deg?', '+s.deg+'-stripe':''}</div>
 ${eligLine}
 <div class="ef" style="margin-bottom:12px">
 <div class="erow"><div class="elbl">Belt</div><select class="esel" id="pm-belt" onchange="setPromoteBelt(this.value)">${beltOpts}</select></div>
@@ -3885,7 +3891,7 @@ async function savePromote(skipDuplicateBeltConfirm){
   // Confirm before inserting. Bypassed on the recursive call from
   // openConfirm's onConfirm (skipDuplicateBeltConfirm=true).
   if(!skipDuplicateBeltConfirm && setCurrent && direction>0 && targetBelt===s.belt){
-    const _curLbl=(BA[s.belt]||BK[s.belt]||{label:s.belt}).label;
+    const _curLbl=s.belt?((BA[s.belt]||BK[s.belt]||{label:s.belt}).label):'No belt set';
     openConfirm({
       title:'Belt unchanged',
       message:'This student is already at '+_curLbl+' belt. Promote again anyway?',
