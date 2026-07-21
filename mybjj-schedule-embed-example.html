@@ -1,8 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- PRODUCTION FILE - consumed by https://mybjj.com.au/my-schedule/ via iframe. Do not rename, move or delete without updating the WordPress embed URL first. -->
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<script>
+// Embed detection — MUST be synchronous + in <head> so html.embedded lands
+// before first paint. (At end-of-body the chrome would paint and then vanish —
+// a visible flash.) chrome=1 forces chrome on, chrome=0 forces embedded, no
+// param → embedded when framed. No dependency on any element (documentElement
+// already exists during head parsing).
+(function(){
+  try{
+    var p = new URLSearchParams(location.search).get('chrome');
+    var embedded = (p === '1') ? false : (p === '0') ? true : (window.self !== window.top);
+    if(embedded) document.documentElement.classList.add('embedded');
+  }catch(e){}
+})();
+</script>
 <title>Schedule — myBJJ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -103,6 +118,16 @@
   .ftr-cta{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#fff !important;border:1px solid rgba(255,255,255,.35);border-radius:22px;padding:9px 20px;transition:.14s;text-decoration:none !important}
   .ftr-cta:hover{background:rgba(255,255,255,.1)}
   @media(max-width:520px){.ftr-bottom{flex-direction:column;gap:10px}.ftr-dot{display:none}}
+
+  /* Embedded mode (iframe on mybjj.com.au) — the WordPress page already renders
+     the logo, phone, addresses and an H1 hero, so hide our duplicate chrome.
+     Markup stays (standalone still needs it); hidden via CSS only. With the
+     header + banner gone, the unit switch's 48px top margin becomes a leading
+     gap, so trim it to the 18px inset .wrap already uses horizontally. */
+  html.embedded .hdr,
+  html.embedded .banner,
+  html.embedded .ftr{display:none}
+  html.embedded .unit-switch{margin-top:18px}
 </style>
 </head>
 <body>
@@ -292,6 +317,35 @@ document.getElementById('unitSwitch').addEventListener('click', function(e){
 });
 
 renderUnit();
+
+// Height reporter for the parent iframe (embedded mode only). Inert if nobody
+// listens — this file adds NO message listener. Reuses the html.embedded class
+// set synchronously in <head>.
+(function(){
+  if(!document.documentElement.classList.contains('embedded')) return;
+  // Post only when the height actually changes — the parent resizes the iframe in
+  // response, which reflows body and re-fires the observer; without this guard
+  // that emits a burst of identical messages per unit switch / window resize.
+  // Init to -1 (no real scrollHeight can equal it) so the very first fire posts.
+  var lastH = -1;
+  function postHeight(){
+    var h = document.body.scrollHeight;
+    if(h === lastH) return;
+    lastH = h;
+    try{
+      parent.postMessage({ type: 'mybjj-schedule-height', height: h }, '*');
+    }catch(e){}
+  }
+  // ResizeObserver fires on every body-height change — including each async load
+  // swapping "Loading…" for real data (so it fires after the initial data render
+  // completes) and the Full-cycle <details> expanding. Guarded so an old browser
+  // doesn't throw and kill the rest of this script.
+  if(window.ResizeObserver){
+    new ResizeObserver(postHeight).observe(document.body);
+  }
+  // One immediate fire so a listener gets a height even before data lands.
+  if(window.requestAnimationFrame) requestAnimationFrame(postHeight); else postHeight();
+})();
 </script>
 
 </body>
