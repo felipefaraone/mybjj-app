@@ -9968,6 +9968,19 @@ async function hydrateData(){
     // maps (so its uMap is fresh) and BEFORE the origin-belt backfill, which
     // reads STUDENTS + PROMOTION_LOG. pickUnit re-runs the exact same fetch on
     // a unit switch, leaving the app identical to a fresh boot in that unit.
+    // Multi-unit — sync the DISPLAYED unit (S.unit, a NAME string, compared as
+    // u.name at e.g. lines 1220 / 5429) to the ACTIVE unit the server already
+    // scopes to. S.profile.active_unit_id comes from claim_profile at onAuthed
+    // (line 8147), before this runs. Without it a fresh session shows the
+    // hardcoded default while RLS serves another unit's rows → empty roster.
+    // Only adjust when active_unit_id resolves to a KNOWN, ACTIVE unit; a null
+    // active_unit_id (never switched) or an inactive/unknown unit leaves the
+    // existing default untouched (never blank). No RPC, no pickUnit, no render —
+    // this only aligns the client-side unit filters; the server is unchanged.
+    if(S.profile && S.profile.active_unit_id){
+      const _au=UNITS.find(u=>u._dbId===S.profile.active_unit_id);
+      if(_au && _au.active && _au.name) S.unit=_au.name;
+    }
     if(await refetchUnitScopedData())touched=true;
     // Unit-independent self cache for cross-unit check-in. Runs once per
     // hydrate (auth path only — NOT on unit switch, which calls
