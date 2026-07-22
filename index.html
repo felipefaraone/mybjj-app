@@ -6311,20 +6311,23 @@ function _rRecentCard(stu,fromParent){
     if(mod==='nogi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text2);background:var(--input-bg);border:1px solid var(--border);padding:1px 7px;border-radius:4px">NO-GI</span>';
     return '';
   };
+  // First row carries NO border-top so it doesn't sit flush under a divider; the
+  // card's symmetric 9px top padding + the row's 9px top padding = 18px, matching
+  // the 9+9 inter-row gap. Rows after the first keep the border as a separator.
   const rowsHtml=recent.length
-    ?recent.map(function(r){
+    ?recent.map(function(r,i){
       const d=String(r.class_date||'');
       const t=d?Date.parse(d+'T00:00:00'):NaN;
       const dt=isNaN(t)?null:new Date(t);
       const dl=dt?(DS[dt.getDay()]+' '+dt.getDate()+' '+MS[dt.getMonth()]):d;
       const tm=r.class_time?fmtT12(r.class_time).replace(/\s+/g,'').toLowerCase():'';
       const mod=r.modality||_modalityFromType(r.class_type);
-      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--border)"><div style="font-size:13px;color:var(--text);min-width:0">'+dl+(tm?' <span style="color:var(--text3)">'+tm+'</span>':'')+'</div>'+chip(mod)+'</div>';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;'+(i===0?'':'border-top:1px solid var(--border)')+'"><div style="font-size:13px;color:var(--text);min-width:0">'+dl+(tm?' <span style="color:var(--text3)">'+tm+'</span>':'')+'</div>'+chip(mod)+'</div>';
     }).join('')
-    :'<div style="font-size:13px;color:var(--text3);padding:9px 0;border-top:1px solid var(--border)">No classes logged yet</div>';
+    :'<div style="font-size:13px;color:var(--text3);padding:9px 0">No classes logged yet</div>';
   const openArg=fromParent?",{fromParent:true}":",{fromSelf:true}";
   const viewAll='<div style="margin-top:6px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+stu.id+'\''+openArg+')" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:6px 0 0">View all attendance →</button></div>';
-  return '<div class="slbl" style="margin-top:16px">Recent</div><div class="card" style="padding:4px 16px 12px">'+rowsHtml+viewAll+'</div>';
+  return '<div class="slbl" style="margin-top:16px">Recent</div><div class="card" style="padding:9px 16px">'+rowsHtml+viewAll+'</div>';
 }
 function rProgress(){
   // B3b-2 — parent kid Progress now conforms to the student tabbed
@@ -6468,20 +6471,22 @@ function rProgress(){
   // staff/coach branches above.
   var egd=_egDisplay(s);
   // A. Belt-box meta columns (student-only via opts.metaCols; the "N total
-  // classes" line is suppressed there — it now lives in the ALL TIME stat below).
-  // MEMBER SINCE = bjj_start month/year (fall back to earliest dated journey
-  // entry); AWARDED = the current belt's award month/year. Each column is omitted
-  // when its date isn't cleanly available — never an empty-value column.
-  var _msDate=stu.bjjStartDate||null;
-  if(!_msDate){var _jd=(Array.isArray(stu.journey)?stu.journey:[]).filter(function(e){return e&&e.date;}).map(function(e){return String(e.date);}).sort();_msDate=_jd[0]||null;}
-  var _msVal=_fmtJnyDate(_msDate);
+  // classes" line is suppressed there — it now lives in the CLASSES LOGGED stat
+  // below). TRAINING SINCE = training_started_at (when they joined myBJJ),
+  // rendered ONLY when present — never created_at (that's the import date, not a
+  // join date), never a blank column. AWARDED = the current belt's award
+  // month/year. bjj_start_date is a personal milestone shown in the Journey
+  // timeline only, not here. Each column omitted when its date is absent.
+  var _tsVal=_fmtJnyDate(stu.trainingStartedAt||null);
   var _awDate=_progAwardDate(stu);
   var _awVal=_fmtJnyDate(_awDate);
   var _metaCols=[];
-  if(_msVal)_metaCols.push({label:'Member since',value:_msVal});
+  if(_tsVal)_metaCols.push({label:'Training since',value:_tsVal});
   if(_awVal)_metaCols.push({label:'Awarded',value:_awVal});
-  // B. Two-stat row. LEFT = ALL TIME lifetime total ("since <start year>"). RIGHT
-  // = classes since the last grading (egd.classesDone), label chosen by rank:
+  // B. Two-stat row. LEFT = CLASSES LOGGED lifetime total, subtitle "at myBJJ" —
+  // NO "since <year>": the imported count is partial (current belt/stripe only),
+  // so any date claim would be false. RIGHT = classes since the last grading
+  // (egd.classesDone), label chosen by rank:
   //   deg>=1 → "Since this stripe"; deg==0 with prior grading → "Since this belt";
   //   deg==0 & never graded → RIGHT dropped, LEFT full-width (classesDone would
   // just equal the lifetime total). In-memory degree prop is `deg` (mapper maps
@@ -6490,14 +6495,13 @@ function rProgress(){
   var _hasGrading=_progHasPriorGrading(stu);
   var _allTime=Number(s.total||0);
   var _sinceCount=Number(egd.classesDone!=null?egd.classesDone:(s.grade||0));
-  var _startYr=_progYearOf(_msDate);
   var _statBox=function(label,valNum,sub){
     return '<div class="card" style="padding:13px 15px"><div style="font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+label+'</div>'
       +'<div style="margin-top:4px"><span style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--blue);line-height:1">'+formatStat(valNum)+'</span> <span style="font-size:12px;color:var(--text2)">class'+(valNum===1?'':'es')+'</span></div>'
       +(sub?'<div style="font-size:11px;color:var(--text3);margin-top:3px">'+sub+'</div>':'')
     +'</div>';
   };
-  var _leftBox=_statBox('All time',_allTime,_startYr?('since '+_startYr):'');
+  var _leftBox=_statBox('Classes logged',_allTime,'at myBJJ');
   var _rightLabel=_deg>=1?'Since this stripe':(_hasGrading?'Since this belt':null);
   var statRow=_rightLabel
     ?'<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:16px">'+_leftBox+_statBox(_rightLabel,_sinceCount,_awVal?('since '+_awVal):'')+'</div>'
