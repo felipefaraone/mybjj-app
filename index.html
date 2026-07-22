@@ -1447,7 +1447,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -6124,6 +6124,103 @@ function rKidPeer(){
   +'</div></div>';
 }
 
+// ── Student-Progress monthly training chart (Option A) ──────────────────────
+// A lazy ONE-SHOT per-student attendance fetch, modelled on _fetchStuAtt but
+// stored on its OWN S.progressAtt slot (never S.stuAttList — that's the "View
+// all" subview). Cross-unit by design: attendance_select scopes rows by
+// s.user_id = auth.uid(), so a student reads their own rows across units with no
+// unit filter here. Render-once guard is by student id — switching tabs never
+// refetches. Only the student/parent Progress branch calls _rTrainingChart, so
+// this never runs for staff/coach.
+function _ensureProgressAtt(stu){
+  if(!stu||!stu._dbId)return;
+  if(!S.progressAtt||S.progressAtt.sid!==stu.id){
+    S.progressAtt={sid:stu.id,dbId:stu._dbId,rows:null,loading:true,error:false};
+    _fetchProgressAtt();
+  }
+}
+async function _fetchProgressAtt(){
+  const slot=S.progressAtt;
+  if(!slot||!slot.dbId)return;
+  const cli=initSupabase();
+  if(!cli){slot.rows=[];slot.loading=false;slot.error=true;render();return;}
+  try{
+    const r=await cli.from('attendance')
+      .select('class_date,status')
+      .eq('student_id',slot.dbId)
+      .eq('status','present')
+      .order('class_date',{ascending:true})
+      .limit(500);
+    if(!S.progressAtt||S.progressAtt!==slot)return; // student changed mid-flight
+    if(r&&r.error){slot.rows=[];slot.error=true;}
+    else{slot.rows=(r&&r.data)||[];slot.error=false;}
+  }catch(e){
+    if(!S.progressAtt||S.progressAtt!==slot)return;
+    slot.rows=[];slot.error=true;
+  }
+  slot.loading=false;
+  render();
+}
+// One bar per calendar month from the first month WITH data up to the current
+// month (no empty leading months), capped at the most recent 6. Current month is
+// dashed (partial); bars are --blue-tint, the single top COMPLETE month --blue.
+// Footer (avg + best month) only with >=3 complete months; the first-month case
+// shows a muted build-up line. Loading → placeholder; fetch error → nothing.
+function _rTrainingChart(stu){
+  if(!stu||!stu._dbId)return '';
+  _ensureProgressAtt(stu);
+  const slot=S.progressAtt;
+  const LABEL='<div class="slbl" style="margin-top:16px">Your training</div>';
+  if(!slot||slot.sid!==stu.id||slot.loading){
+    return LABEL+'<div class="card" style="padding:14px"><div style="font-size:12.5px;color:var(--text3)">Loading your training…</div></div>';
+  }
+  if(slot.error)return ''; // fetch failed — chart absent, rest of the tab still renders
+  const rows=slot.rows||[];
+  const byMonth={};
+  rows.forEach(function(r){const d=String(r&&r.class_date||'');if(d.length>=7){const k=d.slice(0,7);byMonth[k]=(byMonth[k]||0)+1;}});
+  const dataKeys=Object.keys(byMonth).sort();
+  if(!dataKeys.length)return ''; // no attendance → no chart (the attendance card covers the empty state)
+  const now=new Date();
+  const nowKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  let firstKey=dataKeys[0];
+  if(firstKey>nowKey)firstKey=nowKey;
+  const seq=[];
+  let yy=Number(firstKey.split('-')[0]),mm=Number(firstKey.split('-')[1]);
+  const ny=Number(nowKey.split('-')[0]),nm=Number(nowKey.split('-')[1]);
+  while((yy<ny||(yy===ny&&mm<=nm))&&seq.length<=240){seq.push(yy+'-'+String(mm).padStart(2,'0'));mm++;if(mm>12){mm=1;yy++;}}
+  const shown=seq.slice(-6);
+  const counts=shown.map(function(k){return byMonth[k]||0;});
+  const maxCount=Math.max(1,Math.max.apply(null,counts));
+  let bestIdx=-1,bestCount=-1;
+  shown.forEach(function(k,i){if(k!==nowKey&&counts[i]>bestCount){bestCount=counts[i];bestIdx=i;}});
+  const completeCounts=[];shown.forEach(function(k,i){if(k!==nowKey)completeCounts.push(counts[i]);});
+  const bars=shown.map(function(k,i){
+    const c=counts[i],mo=Number(k.split('-')[1]),isCur=(k===nowKey);
+    const h=Math.max(4,Math.round(c/maxCount*66));
+    let fill;
+    if(isCur)fill='background:transparent;border:1.5px dashed var(--blue-mid)';
+    else if(i===bestIdx&&bestCount>0)fill='background:var(--blue)';
+    else fill='background:var(--blue-tint)';
+    return '<div style="flex:1;min-width:0;text-align:center">'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2);margin-bottom:3px">'+c+'</div>'
+      +'<div style="height:70px;display:flex;align-items:flex-end;justify-content:center"><div style="width:70%;max-width:26px;height:'+h+'px;border-radius:5px 5px 0 0;'+fill+'"></div></div>'
+      +'<div style="font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;letter-spacing:.4px;margin-top:5px">'+MS[mo-1]+'</div>'
+    +'</div>';
+  }).join('');
+  let footer='';
+  if(completeCounts.length>=3){
+    const sum=completeCounts.reduce(function(a,b){return a+b;},0);
+    const avg=(sum/completeCounts.length).toFixed(1);
+    const bestM=Number(shown[bestIdx].split('-')[1]);
+    footer='<div style="display:flex;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">'
+      +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:var(--text)">'+avg+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Monthly avg</div></div>'
+      +'<div style="flex:1;text-align:center"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:var(--text)">'+bestCount+' <span style="font-size:11px;color:var(--text3);font-weight:400">'+MS[bestM-1]+'</span></div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Best month</div></div>'
+    +'</div>';
+  }else if(shown.length===1){
+    footer='<div style="font-size:12px;color:var(--text3);margin-top:10px;text-align:center">Your months will build up here.</div>';
+  }
+  return LABEL+'<div class="card" style="padding:14px 12px"><div style="display:flex;align-items:flex-end;gap:6px">'+bars+'</div>'+footer+'</div>';
+}
 function rProgress(){
   // B3b-2 — parent kid Progress now conforms to the student tabbed
   // surface (Rank/Journey/Wall/Feedback). The parent path resolves
@@ -6258,68 +6355,44 @@ function rProgress(){
   }
   var bmap=s.prog==='kids'?BK:BA;
   var b=bmap[s.belt]||BA.white;
-  // G9 Phase 1 follow-up 2 \u2014 student progress card now reads
-  // PROMO_CRITERIA via _egDisplay. Legacy nxlbl / GGA-GGK / hardcoded
-  // 40 fallback removed. The Gi breakdown + footnote below are
-  // unchanged.
+  // Mario's decision (22 Jul 2026): students & parents must NOT see promotion
+  // targets/progress. The entire eligibility surface (heading, topRight, bar,
+  // underBar, reason, giHint, .gnote and its eligibility card) is removed here.
+  // egd is kept ONLY for egd.classesDone (classes since the last promotion),
+  // shown as a plain count. Staff keep the full picture via the untouched
+  // staff/coach branches above.
   var egd=_egDisplay(s);
-  var heading=egd.label?('Next: '+egd.label):(egd.isPending?'Promotion':'Black belt');
-  // Top-right of the card: a concrete class count while working, a green
-  // read-only "Minimum met" badge once BOTH minimums are reached (never a % \u2014 it
-  // implied entitlement), or a muted dash when eligibility doesn't apply / is
-  // pending. When classes are met but months aren't (months-gated in_progress),
-  // classesDone can exceed target \u2014 cap the displayed done at target so it reads
-  // "20 / 20" rather than a confusing "36 / 20"; the reason line explains the time.
-  var topRight;
-  if(egd.hide||egd.isPending){
-    topRight='<span style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;color:var(--text3)">\u2014</span>';
-  }else if(egd.isReady){
-    topRight='<span style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:6px;padding:3px 9px;font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green-text)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Minimum met</span>';
-  }else if(egd.classesMetTimeGated){
-    // Class minimum met but months still pending — GREEN "Classes met" badge
-    // (doing the classes is an achievement, not a warning). Same green tokens +
-    // check icon as "Minimum met"; only the label differs. The bar is full (class
-    // progress) and the under-bar line shows the real "X / Y classes".
-    topRight='<span style="display:inline-flex;align-items:center;gap:5px;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:6px;padding:3px 9px;font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green-text)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Classes met</span>';
-  }else{
-    var _cd=Math.min(Number(egd.classesDone||0),Number(egd.classesTarget||0));
-    topRight='<span style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;white-space:nowrap"><span style="font-size:24px;color:var(--blue)">'+formatStat(_cd)+'</span><span style="font-size:15px;color:var(--text3)"> / '+formatStat(egd.classesTarget)+'</span></span>';
-  }
-  var barHtml=egd.hide||egd.isPending?'':pbBelt(egd.barPct,100,s.belt,s.prog);
-  // Under-bar achievement line — shown ONLY once the class minimum is met
-  // (classesMetTimeGated or eligible), so the student sees the real "36 / 20
-  // classes" they've earned. Not shown in the plain working state (the top-right
-  // "12 / 20" already carries the count there).
-  var underBar=(egd.classesMetTimeGated||egd.isReady)?'<div style="display:flex;justify-content:flex-end;margin-top:8px"><span style="font-family:\'Barlow\',sans-serif;font-weight:400;font-size:12px;color:var(--text3)">'+formatStat(egd.classesDone)+' of '+formatStat(egd.classesTarget)+' classes</span></div>':'';
-  var reasonHtml=egd.reason?`<div style="font-size:12px;color:${egd.isReady?'var(--green-text)':'var(--text2)'};margin-top:8px">${egd.reason}</div>`:'';
-
-  // G13 \u2014 plain-student rankTab. GI ACTIVE/REQUIRED two-state pill
-  // replaced by _giCeremonyHint (only fires when student is approaching
-  // eligibility AND has zero gi credit). Gi/No-Gi breakdown card stays
-  // as a numeric reference. gnote text de-conditioned \u2014 it now reads
-  // the same regardless of student state.
-  var giHint=_giCeremonyHint(s,egd);
-  // B3a / B3b-2 \u2014 attendance summary + View all subview, read-only.
-  // Same shared _stuAttSummaryCard the admin rStuProf uses. The flag
-  // (fromSelf for student self, fromParent for parent viewing kid)
-  // drives the close path: both drop the panel back to the underlying
-  // Progress tab. rStuAttList itself is read-only by construction \u2014
-  // no mark / add / delete affordances ever exposed.
+  // "Since your <belt>" — a plain count of classes since the last promotion
+  // (egd.classesDone; falls back to s.grade for hide/pending states where it's
+  // null). NO target, NO bar, NO badge, NO "/ Y". The Gi/No-Gi split renders ONLY
+  // when the LIFETIME split fully reconciles (giTotal + nogiTotal === total),
+  // otherwise the count alone -- never a split that doesn't add up. giTotal /
+  // nogiTotal / total are the hydrate keys for gi_classes / nogi_classes / total.
+  var sinceCount=Number(egd.classesDone!=null?egd.classesDone:(s.grade||0));
+  var _lifeGi=Math.max(Number(s.giTotal||0),0),_lifeNogi=Math.max(Number(s.nogiTotal||0),0),_lifeTotal=Math.max(Number(s.total||0),0);
+  var _showSplit=_lifeTotal>0&&(_lifeGi+_lifeNogi)===_lifeTotal;
+  var sinceCard='<div class="slbl" style="margin-top:16px">Since your '+((b&&b.label)||'current')+' belt</div>'
+    +'<div class="card" style="padding:14px 16px"><div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Bebas Neue,sans-serif;font-size:30px;color:var(--blue);line-height:1">'+formatStat(sinceCount)+'</span><span style="font-size:13px;color:var(--text2)">class'+(sinceCount===1?'':'es')+'</span></div>'
+    +(_showSplit?'<div style="font-size:12px;color:var(--text3);margin-top:6px">Gi '+formatStat(_lifeGi)+' · No-Gi '+formatStat(_lifeNogi)+'</div>':'')
+    +'</div>';
+  // Latest instructor feedback note (fold-in of the old Feedback tab). Nothing at
+  // all when there is none -- no empty "No feedback yet" card.
+  var _fbArr=(stu.feedback||[]).slice().sort(function(a,b2){return String(b2.date||'').localeCompare(String(a.date||''));});
+  var _latestFb=_fbArr[0]||null;
+  var feedbackCard=_latestFb?('<div class="slbl" style="margin-top:16px">From your instructors</div><div class="card"><div class="fbitem"><div class="fbhdr"><div class="fbins">'+_latestFb.ins+'</div><div class="fbdate">'+_latestFb.date+'</div></div><div class="fbtxt">'+_latestFb.text+'</div></div></div>'):'';
+  // Attendance summary + "View all" subview, read-only (unchanged, cross-unit safe).
   var attendanceCard=_stuAttSummaryCard(stu,_kidActive?{fromParent:true}:{fromSelf:true});
-  // Batch 7b \u2014 Current Rank routed through the shared _renderRankBox.
-  // We pass `stu` (the underlying STUDENTS row) so the helper sees
-  // _createdAt for the "member since" stat \u2014 the merged `s` overlay
-  // above doesn't copy that field.
-  var rankTab=_renderRankBox(stu,{kind:'student'})
-    +`<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px">${heading}</div><div>${topRight}</div></div>${barHtml}${underBar}${reasonHtml}${giHint}<div class="gnote">All classes count toward promotion. Ceremonies are held in Gi.</div></div>${attendanceCard}`;
-
+  // MY BELT tab: belt box -> "Since your <belt>" count -> monthly training chart ->
+  // latest feedback (if any) -> attendance card. No promotion target anywhere.
+  var rankTab=_renderRankBox(stu,{kind:'student'})+sinceCard+_rTrainingChart(stu)+feedbackCard+attendanceCard;
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div>${(stu&&stu._dbId)?_rClassHistorySection(stu):''}`;
-
-  var feedbackTab=`<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>${(stu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':''}${(stu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')}</div>`;
-
-  var content=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:feedbackTab;
-
-  return `<div style="height:16px"></div><div class="stabs"><button class="stab ${S.ptab==='rank'?'active':''}" onclick="setPtab('rank')">Rank</button><button class="stab ${S.ptab==='journey'?'active':''}" onclick="setPtab('journey')">Journey</button><button class="stab ${S.ptab==='feedback'?'active':''}" onclick="setPtab('feedback')">Feedback</button></div>${content}<div style="height:16px"></div>`;
+  // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
+  // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
+  // 'feedback' is still a LIVE tab in the coach branch above, which must stay
+  // byte-for-byte unchanged. 'rank' is the internal value for My belt.
+  var _ptab=S.ptab==='journey'?'journey':'rank';
+  var content=_ptab==='journey'?journeyTab:rankTab;
+  return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(_ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">My belt</button><button class="stab '+(_ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button></div>'+content+'<div style="height:16px"></div>';
 }
 
 // Etapa 4 — prefer the joined staff row (BJJ title + clean name).
