@@ -1755,7 +1755,11 @@ function _renderRankBox(s,opts){
   // bold; label muted. Helper builds defaults per kind; opts.stats can
   // override entirely.
   const stats=Array.isArray(opts.stats)?opts.stats.slice():[];
-  if(!opts.stats){
+  // opts.metaCols (student Progress only) replaces the default stat pills with a
+  // labelled two-column meta block below the belt line — so the default stats
+  // (incl. "N total classes") are suppressed. Staff/coach never pass metaCols, so
+  // their output is byte-for-byte identical to before.
+  if(!opts.stats && !opts.metaCols){
     if(!isStaff){
       // Student / kid: lifetime total + member-since (when known).
       stats.push({value:formatStat(s.total||0),label:'total classes'});
@@ -1763,6 +1767,12 @@ function _renderRankBox(s,opts){
     const since=_memberSince(s);
     if(since)stats.push({value:since,label:'member since',prefix:true});
   }
+  const _metaCols=Array.isArray(opts.metaCols)?opts.metaCols.filter(function(c){return c&&c.value;}):[];
+  const metaHtml=_metaCols.length
+    ?'<div style="margin-top:14px;display:flex;gap:28px;flex-wrap:wrap">'+_metaCols.map(function(c){
+        return '<div style="min-width:0"><div style="font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+c.label+'</div><div style="font-size:13px;color:var(--text2);margin-top:2px">'+c.value+'</div></div>';
+      }).join('')+'</div>'
+    :'';
   const sep='<div aria-hidden="true" style="width:1px;align-self:stretch;background:var(--border)"></div>';
   const statHtml=stats.map(st=>{
     const num='<span style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:18px;color:var(--text);line-height:1">'+st.value+'</span>';
@@ -1777,6 +1787,7 @@ function _renderRankBox(s,opts){
     +'<div>'+beltSVG(s.belt,deg,prog,110)+'</div>'
     +'<div style="margin-top:6px;font-size:13px;color:var(--text2);font-weight:600">'+beltLine+'</div>'
     +statsRow
+    +metaHtml
     +(opts.footerHtml||'')
   +'</div>';
 }
@@ -6146,7 +6157,7 @@ async function _fetchProgressAtt(){
   if(!cli){slot.rows=[];slot.loading=false;slot.error=true;render();return;}
   try{
     const r=await cli.from('attendance')
-      .select('class_date,status')
+      .select('class_date,class_time,class_type,modality,status')
       .eq('student_id',slot.dbId)
       .eq('status','present')
       .order('class_date',{ascending:true})
@@ -6220,6 +6231,100 @@ function _rTrainingChart(stu){
     footer='<div style="font-size:12px;color:var(--text3);margin-top:10px;text-align:center">Your months will build up here.</div>';
   }
   return LABEL+'<div class="card" style="padding:14px 12px"><div style="display:flex;align-items:flex-end;gap:6px">'+bars+'</div>'+footer+'</div>';
+}
+// ── Belt-box meta + two-stat helpers (student Progress only) ─────────────────
+// Award date of the CURRENT belt: the earliest dated journey entry AT this belt
+// (i.e. when the belt itself was awarded); falls back to the latest dated entry
+// (most recent grading). null when nothing usable — caller omits AWARDED then.
+function _progAwardDate(stu){
+  const j=Array.isArray(stu&&stu.journey)?stu.journey:[];
+  const atBelt=j.filter(function(e){return e&&e.belt===stu.belt&&e.date;}).map(function(e){return String(e.date);}).sort();
+  if(atBelt.length)return atBelt[0];
+  const dated=j.filter(function(e){return e&&e.date;}).map(function(e){return String(e.date);}).sort();
+  return dated.length?dated[dated.length-1]:null;
+}
+// True when the student has any real prior grading (a done journey entry that
+// isn't the origin marker). A brand-new, never-promoted white belt → false.
+function _progHasPriorGrading(stu){
+  const j=Array.isArray(stu&&stu.journey)?stu.journey:[];
+  return j.some(function(e){return e&&e.done&&!e.origin;});
+}
+// 4-digit year from an ISO date or a 'Mon YYYY' free-text label; '' if none.
+function _progYearOf(d){const m=String(d==null?'':d).match(/(\d{4})/);return m?m[1]:'';}
+// ── YOUR TRAINING card — graduates by data volume ───────────────────────────
+// <2 distinct months of attendance → a compact SUMMARY (this month / this week
+// + a Gi-vs-No-gi bar THIS MONTH). >=2 → the v347 monthly bar chart, reused
+// as-is. Loading → placeholder; error → nothing. Reads S.progressAtt only.
+function _rTrainingCard(stu){
+  if(!stu||!stu._dbId)return '';
+  _ensureProgressAtt(stu);
+  const slot=S.progressAtt;
+  const LABEL='<div class="slbl" style="margin-top:16px">Your training</div>';
+  if(!slot||slot.sid!==stu.id||slot.loading){
+    return LABEL+'<div class="card" style="padding:14px"><div style="font-size:12.5px;color:var(--text3)">Loading your training…</div></div>';
+  }
+  if(slot.error)return '';
+  const rows=slot.rows||[];
+  const mset={};
+  rows.forEach(function(r){const d=String(r&&r.class_date||'');if(d.length>=7)mset[d.slice(0,7)]=1;});
+  if(Object.keys(mset).length>=2)return _rTrainingChart(stu); // reuse the v347 chart (own label+card)
+  // SUMMARY (0 or 1 distinct month)
+  const now=new Date();
+  const curKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const weekAgo=now.getTime()-7*864e5;
+  let thisMonth=0,thisWeek=0,giM=0,nogiM=0;
+  rows.forEach(function(r){
+    const d=String(r&&r.class_date||'');
+    if(d.length>=7&&d.slice(0,7)===curKey){
+      thisMonth++;
+      const mod=r.modality||_modalityFromType(r.class_type);
+      if(mod==='gi')giM++;else if(mod==='nogi')nogiM++;
+    }
+    const t=d?Date.parse(d+'T00:00:00'):NaN;
+    if(!isNaN(t)&&t>=weekAgo)thisWeek++;
+  });
+  const totalM=giM+nogiM;
+  const barGiNo=totalM>0
+    ?'<div style="display:flex;height:10px;border-radius:99px;overflow:hidden;background:var(--border)">'+(giM>0?'<div style="width:'+(giM/totalM*100)+'%;background:var(--blue)"></div>':'')+(nogiM>0?'<div style="width:'+(nogiM/totalM*100)+'%;background:var(--blue-tint)"></div>':'')+'</div>'
+      +'<div style="display:flex;gap:16px;margin-top:7px;font-size:11px;color:var(--text3)"><span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--blue);vertical-align:middle;margin-right:5px"></span>Gi '+giM+'</span><span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--blue-tint);vertical-align:middle;margin-right:5px"></span>No-gi '+nogiM+'</span></div>'
+    :'<div style="height:10px;border-radius:99px;background:var(--border)"></div><div style="font-size:12px;color:var(--text3);margin-top:7px">No classes logged this month yet</div>';
+  return LABEL+'<div class="card" style="padding:14px 16px">'
+    +'<div style="display:flex;gap:22px;margin-bottom:14px">'
+      +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--blue);line-height:1">'+thisMonth+'</div><div style="font-size:11px;color:var(--text3);margin-top:3px">this month</div></div>'
+      +'<div><div style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--text);line-height:1">'+thisWeek+'</div><div style="font-size:11px;color:var(--text3);margin-top:3px">this week</div></div>'
+    +'</div>'
+    +'<div style="font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase;margin-bottom:7px">Gi vs No-gi this month</div>'
+    +barGiNo
+  +'</div>';
+}
+// ── RECENT card — most recent 3 present sessions + View-all link ─────────────
+// Reads S.progressAtt only (no fetch). "View all attendance" opens the existing
+// full subview (openStuAttList). Loading/error → nothing (rest of tab renders).
+function _rRecentCard(stu,fromParent){
+  if(!stu||!stu._dbId)return '';
+  const slot=S.progressAtt;
+  if(!slot||slot.sid!==stu.id||slot.loading||slot.error)return '';
+  const rows=(slot.rows||[]).slice().sort(function(a,b){return String((b.class_date||'')+' '+(b.class_time||'')).localeCompare(String((a.class_date||'')+' '+(a.class_time||'')));});
+  const recent=rows.slice(0,3);
+  const chip=function(mod){
+    if(mod==='gi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 7px;border-radius:4px">GI</span>';
+    if(mod==='nogi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text2);background:var(--input-bg);border:1px solid var(--border);padding:1px 7px;border-radius:4px">NO-GI</span>';
+    return '';
+  };
+  const rowsHtml=recent.length
+    ?recent.map(function(r){
+      const d=String(r.class_date||'');
+      const t=d?Date.parse(d+'T00:00:00'):NaN;
+      const dt=isNaN(t)?null:new Date(t);
+      const dl=dt?(DS[dt.getDay()]+' '+dt.getDate()+' '+MS[dt.getMonth()]):d;
+      const tm=r.class_time?fmtT12(r.class_time).replace(/\s+/g,'').toLowerCase():'';
+      const mod=r.modality||_modalityFromType(r.class_type);
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--border)"><div style="font-size:13px;color:var(--text);min-width:0">'+dl+(tm?' <span style="color:var(--text3)">'+tm+'</span>':'')+'</div>'+chip(mod)+'</div>';
+    }).join('')
+    :'<div style="font-size:13px;color:var(--text3);padding:9px 0;border-top:1px solid var(--border)">No classes logged yet</div>';
+  const openArg=fromParent?",{fromParent:true}":",{fromSelf:true}";
+  const viewAll='<div style="margin-top:6px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+stu.id+'\''+openArg+')" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:6px 0 0">View all attendance →</button></div>';
+  return '<div class="slbl" style="margin-top:16px">Recent</div><div class="card" style="padding:4px 16px 12px">'+rowsHtml+viewAll+'</div>';
 }
 function rProgress(){
   // B3b-2 — parent kid Progress now conforms to the student tabbed
@@ -6362,29 +6467,49 @@ function rProgress(){
   // shown as a plain count. Staff keep the full picture via the untouched
   // staff/coach branches above.
   var egd=_egDisplay(s);
-  // "Since your <belt>" — a plain count of classes since the last promotion
-  // (egd.classesDone; falls back to s.grade for hide/pending states where it's
-  // null). NO target, NO bar, NO badge, NO "/ Y". The Gi/No-Gi split renders ONLY
-  // when the LIFETIME split fully reconciles (giTotal + nogiTotal === total),
-  // otherwise the count alone -- never a split that doesn't add up. giTotal /
-  // nogiTotal / total are the hydrate keys for gi_classes / nogi_classes / total.
-  var sinceCount=Number(egd.classesDone!=null?egd.classesDone:(s.grade||0));
-  var _lifeGi=Math.max(Number(s.giTotal||0),0),_lifeNogi=Math.max(Number(s.nogiTotal||0),0),_lifeTotal=Math.max(Number(s.total||0),0);
-  var _showSplit=_lifeTotal>0&&(_lifeGi+_lifeNogi)===_lifeTotal;
-  var sinceCard='<div class="slbl" style="margin-top:16px">Since your '+((b&&b.label)||'current')+' belt</div>'
-    +'<div class="card" style="padding:14px 16px"><div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Bebas Neue,sans-serif;font-size:30px;color:var(--blue);line-height:1">'+formatStat(sinceCount)+'</span><span style="font-size:13px;color:var(--text2)">class'+(sinceCount===1?'':'es')+'</span></div>'
-    +(_showSplit?'<div style="font-size:12px;color:var(--text3);margin-top:6px">Gi '+formatStat(_lifeGi)+' · No-Gi '+formatStat(_lifeNogi)+'</div>':'')
+  // A. Belt-box meta columns (student-only via opts.metaCols; the "N total
+  // classes" line is suppressed there — it now lives in the ALL TIME stat below).
+  // MEMBER SINCE = bjj_start month/year (fall back to earliest dated journey
+  // entry); AWARDED = the current belt's award month/year. Each column is omitted
+  // when its date isn't cleanly available — never an empty-value column.
+  var _msDate=stu.bjjStartDate||null;
+  if(!_msDate){var _jd=(Array.isArray(stu.journey)?stu.journey:[]).filter(function(e){return e&&e.date;}).map(function(e){return String(e.date);}).sort();_msDate=_jd[0]||null;}
+  var _msVal=_fmtJnyDate(_msDate);
+  var _awDate=_progAwardDate(stu);
+  var _awVal=_fmtJnyDate(_awDate);
+  var _metaCols=[];
+  if(_msVal)_metaCols.push({label:'Member since',value:_msVal});
+  if(_awVal)_metaCols.push({label:'Awarded',value:_awVal});
+  // B. Two-stat row. LEFT = ALL TIME lifetime total ("since <start year>"). RIGHT
+  // = classes since the last grading (egd.classesDone), label chosen by rank:
+  //   deg>=1 → "Since this stripe"; deg==0 with prior grading → "Since this belt";
+  //   deg==0 & never graded → RIGHT dropped, LEFT full-width (classesDone would
+  // just equal the lifetime total). In-memory degree prop is `deg` (mapper maps
+  // DB `degree` -> `deg`). No Gi/No-gi split in these boxes.
+  var _deg=Number(stu.deg||0);
+  var _hasGrading=_progHasPriorGrading(stu);
+  var _allTime=Number(s.total||0);
+  var _sinceCount=Number(egd.classesDone!=null?egd.classesDone:(s.grade||0));
+  var _startYr=_progYearOf(_msDate);
+  var _statBox=function(label,valNum,sub){
+    return '<div class="card" style="padding:13px 15px"><div style="font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+label+'</div>'
+      +'<div style="margin-top:4px"><span style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--blue);line-height:1">'+formatStat(valNum)+'</span> <span style="font-size:12px;color:var(--text2)">class'+(valNum===1?'':'es')+'</span></div>'
+      +(sub?'<div style="font-size:11px;color:var(--text3);margin-top:3px">'+sub+'</div>':'')
     +'</div>';
-  // Latest instructor feedback note (fold-in of the old Feedback tab). Nothing at
-  // all when there is none -- no empty "No feedback yet" card.
+  };
+  var _leftBox=_statBox('All time',_allTime,_startYr?('since '+_startYr):'');
+  var _rightLabel=_deg>=1?'Since this stripe':(_hasGrading?'Since this belt':null);
+  var statRow=_rightLabel
+    ?'<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:16px">'+_leftBox+_statBox(_rightLabel,_sinceCount,_awVal?('since '+_awVal):'')+'</div>'
+    :'<div style="margin-top:16px">'+_leftBox+'</div>';
+  // E. Latest instructor feedback note (fold-in of the old Feedback tab). Nothing
+  // at all when there is none -- no empty "No feedback yet" card.
   var _fbArr=(stu.feedback||[]).slice().sort(function(a,b2){return String(b2.date||'').localeCompare(String(a.date||''));});
   var _latestFb=_fbArr[0]||null;
   var feedbackCard=_latestFb?('<div class="slbl" style="margin-top:16px">From your instructors</div><div class="card"><div class="fbitem"><div class="fbhdr"><div class="fbins">'+_latestFb.ins+'</div><div class="fbdate">'+_latestFb.date+'</div></div><div class="fbtxt">'+_latestFb.text+'</div></div></div>'):'';
-  // Attendance summary + "View all" subview, read-only (unchanged, cross-unit safe).
-  var attendanceCard=_stuAttSummaryCard(stu,_kidActive?{fromParent:true}:{fromSelf:true});
-  // MY BELT tab: belt box -> "Since your <belt>" count -> monthly training chart ->
-  // latest feedback (if any) -> attendance card. No promotion target anywhere.
-  var rankTab=_renderRankBox(stu,{kind:'student'})+sinceCard+_rTrainingChart(stu)+feedbackCard+attendanceCard;
+  // MY BELT tab: belt box (meta cols, no total line) -> two-stat row -> YOUR
+  // TRAINING (summary or chart) -> RECENT (3 sessions + View all) -> feedback.
+  var rankTab=_renderRankBox(stu,{kind:'student',metaCols:_metaCols})+statRow+_rTrainingCard(stu)+_rRecentCard(stu,!!_kidActive)+feedbackCard;
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div>${(stu&&stu._dbId)?_rClassHistorySection(stu):''}`;
   // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
   // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
