@@ -8818,7 +8818,9 @@ function openChangeEmail(kind,sid){
   // owns that identity. Only blocks SELF changes; admin-of-other (RPC) is
   // unaffected (the admin's own identity is irrelevant to the target).
   if(isSelf&&S.hasGoogleIdentity){showSaveToast2("Your sign-in email is managed by your Google account and can't be changed here.");return;}
-  S.changeEmail={kind,sid,dbId:target._dbId,current:target.email||'',name:target.name||'',isSelf};
+  // noAccount = admin editing a member with no linked auth user (never signed
+  // in). Their email is ADDED directly (no Edge Function) and drives the modal copy.
+  S.changeEmail={kind,sid,dbId:target._dbId,current:target.email||'',name:target.name||'',isSelf,noAccount:!isSelf&&!target._userId};
   render();
   setTimeout(()=>{const el=document.getElementById('ce-input');if(el){el.focus();el.select&&el.select();}},20);
 }
@@ -8843,17 +8845,17 @@ function rChangeEmailModal(){
   const{current,name}=S.changeEmail;
   const cur=current?current.replace(/"/g,'&quot;'):'';
   return `<div class="cov" onclick="closeChangeEmail()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px">
-<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">Change email</div>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">${S.changeEmail.noAccount?'Add email':'Change email'}</div>
 <div style="font-size:12px;color:var(--text3);margin-bottom:14px">for ${(name||'').replace(/</g,'&lt;')}</div>
 <div class="ef" style="margin-bottom:12px">
   <div class="erow"><div class="elbl">Current</div><input class="einput" value="${cur||'—'}" disabled style="color:var(--text2);background:var(--bg);cursor:not-allowed"/></div>
   <div class="erow"><div class="elbl">New email</div><input id="ce-input" class="einput" type="email" autocomplete="off" placeholder="email@example.com" value=""/></div>
 </div>
 <div id="ce-err" class="inv" style="display:none;margin-top:0;margin-bottom:12px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="ce-err-txt"></span></div>
-<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:14px">${S.changeEmail.isSelf?'We\'ll send a confirmation link to the new email. Your current email stays active until you confirm.':'They\'ll need to use the new email to sign in next time. The existing session stays valid until they sign out.'}</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:14px">${S.changeEmail.noAccount?'They haven\'t signed in yet. Adding an email lets them sign in with it via a magic link.':(S.changeEmail.isSelf?'We\'ll send a confirmation link to the new email. Your current email stays active until you confirm.':'They\'ll need to use the new email to sign in next time. The existing session stays valid until they sign out.')}</div>
 <div style="display:flex;gap:10px">
   <button class="bsm" style="flex:1;padding:11px;border-radius:10px;font-size:14px" onclick="closeChangeEmail()">Cancel</button>
-  <button class="bblue" style="flex:1;padding:11px" onclick="executeChangeEmail()">Update email</button>
+  <button class="bblue" style="flex:1;padding:11px" onclick="executeChangeEmail()">${S.changeEmail.noAccount?'Add email':'Update email'}</button>
 </div>
 </div></div>`;
 }
@@ -8891,11 +8893,35 @@ async function executeChangeEmail(){
     showSaveToast2('Confirmation link sent to '+email+'. Click it to finish the change.');
     return;
   }
-  // ADMIN-of-other path — routed through the admin-change-email Edge
-  // Function so auth.users.email is synced too. The RPC alone updates the
-  // public tables (and enforces authorization) but can't reach the auth
-  // schema, which left magic links going to the OLD address. The function
-  // runs the RPC as the caller, then calls auth.admin.updateUserById.
+  // ADMIN-of-other path. Resolve the target first: a member with NO linked auth
+  // user (never signed in) must NOT hit admin-change-email — its
+  // auth.admin.updateUserById call errors when there's no auth user (John's
+  // "non-2xx" on Phil Cross). Those get a direct email write instead (mirroring
+  // saveEmailEditor's no-account path); claim_profile links them by lower(email)
+  // on first sign-in.
+  const target=kind==='staff'?STAFF.find(x=>x.id===sid):STUDENTS.find(x=>x.id===sid);
+  if(target&&!target._userId){
+    if(kind==='staff'){
+      const sr=await cli.rpc('set_staff_email',{p_legacy_id:target.id,p_email:email});
+      if(sr&&sr.error){console.warn('[mybjj] set_staff_email:',sr.error);return showErr(friendlyMutationError(sr.error)||sr.error.message||'Could not add email.');}
+    }else{
+      const unit=UNITS.find(u=>u.id===target.unit);
+      const unitDbId=unit&&unit._dbId;
+      const ur=await cli.from('students').update({email}).eq('legacy_id',target.id);
+      if(ur&&ur.error){console.warn('[mybjj] add student email:',ur.error);return showErr(friendlyMutationError(ur.error)||ur.error.message||'Could not add email.');}
+      const w=await cli.from('whitelist').upsert({email,role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
+      if(w&&w.error){console.warn('[mybjj] student whitelist:',w.error);return showErr(friendlyMutationError(w.error)||w.error.message||'Could not add email.');}
+    }
+    target.email=email;
+    closeChangeEmail();
+    showSaveToast2('Email added — they can sign in with it.');
+    return;
+  }
+  // Has a linked auth user — route through the admin-change-email Edge Function
+  // so auth.users.email is synced too. The RPC alone updates the public tables
+  // (and enforces authorization) but can't reach the auth schema, which left
+  // magic links going to the OLD address. The function runs the RPC as the
+  // caller, then calls auth.admin.updateUserById.
   const r=await cli.functions.invoke('admin-change-email',{body:{target_kind:kind,target_db_id:dbId,new_email:email}});
   const efErr=(r&&r.error)?r.error:((r&&r.data&&r.data.error)?r.data.error:null);
   if(efErr){
@@ -8905,7 +8931,6 @@ async function executeChangeEmail(){
   }
   // Mirror the change locally so the UI reflects it without a full
   // hydrate. The function already updated users/students/staff/whitelist.
-  const target=kind==='staff'?STAFF.find(x=>x.id===sid):STUDENTS.find(x=>x.id===sid);
   if(target)target.email=email;
   // If the caller changed their own linked profile's email, sync S.profile too.
   if(S.profile&&target&&target._userId===S.profile.id){S.profile.email=email;if(S.me)S.me.email=email;}
