@@ -5504,7 +5504,15 @@ function rCommunityPeople(){
   // students on grey, grey/white, and grey/black.
   const beltsAdult=Object.keys(BA);
   const beltsKids=Object.keys(BK).filter(k=>!k.includes('/'));
-  const validBelts=segment==='kids'?beltsKids:beltsAdult;
+  // v355+ — kids can hold an ADULT belt since the 16-bridge (v345/6). Append any
+  // adult belt at least one IN-SCOPE kid actually holds (same scope the student
+  // list below uses: active + curUnit + prog kids), in BELT_ORDER_A order, so it
+  // can be filtered to. No dead chips: an adult belt no kid holds never appears.
+  // White is skipped (already a kids base-colour chip). Adult belts have no
+  // compound variants, so the prefix match below catches exactly that belt.
+  const _kidsInScope=STUDENTS.filter(s=>s._active!==false&&s.unit===curUnit&&s.prog==='kids');
+  const _kidsAdultBelts=BELT_ORDER_A.filter(b=>beltsKids.indexOf(b)<0&&_kidsInScope.some(s=>s.belt===b));
+  const validBelts=segment==='kids'?beltsKids.concat(_kidsAdultBelts):beltsAdult;
   let beltFilter=S.membersBelt||'all';
   if(beltFilter!=='all'&&!validBelts.includes(beltFilter)){beltFilter='all';S.membersBelt='all';}
   const typeFilter=S.membersType||'all'; // all | students | instructors
@@ -7646,9 +7654,16 @@ function rARoster(){
   const allKids=STUDENTS.filter(s=>s.prog==='kids'&&(!_rUnit||s.unit===_rUnit));
   const beltMap=S.rseg==='adult'?BA:BK;
   const beltOpts=Object.keys(beltMap);
+  // v355+ — kids can hold an ADULT belt since the 16-bridge (v345/6). On the kids
+  // segment, append any adult belt an in-scope kid actually holds (allKids is
+  // already unit-scoped), in BELT_ORDER_A order — exact match already works and
+  // no dead chip appears for an unheld belt. Labels resolve via beltDef below.
+  const beltOptsFull=S.rseg==='kids'
+    ?beltOpts.concat(BELT_ORDER_A.filter(b=>beltOpts.indexOf(b)<0&&allKids.some(s=>s.belt===b)))
+    :beltOpts;
   // Reset stale belt filter when switching segment so we never apply
   // an adult belt to a kids list (or vice-versa).
-  if(rfBelt!=='all'&&!beltOpts.includes(rfBelt)){S.rfBelt='all';}
+  if(rfBelt!=='all'&&!beltOptsFull.includes(rfBelt)){S.rfBelt='all';}
 
   // Clear button stays in DOM permanently; setRQ toggles display so the
   // input never gets re-created mid-keystroke.
@@ -7663,7 +7678,7 @@ function rARoster(){
     const sel=cur===v;
     return '<button onclick="setRfBeltChip(\''+v+'\')" style="'+chipBase+';background:'+(sel?'#1A5DAD15':'transparent')+';border-color:'+(sel?'var(--blue)':'var(--border)')+';color:'+(sel?'var(--blue)':'var(--text3)')+'">'+lbl+'</button>';
   };
-  const beltChipsHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+beltChip('all','All belts')+beltOpts.map(k=>beltChip(k,beltMap[k].label)).join('')+'</div>';
+  const beltChipsHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+beltChip('all','All belts')+beltOptsFull.map(k=>beltChip(k,beltDef(k,S.rseg).label)).join('')+'</div>';
   const filterHtml=
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
     +'<div style="display:flex;align-items:center;flex:1;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 12px">'
