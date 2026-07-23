@@ -6287,7 +6287,16 @@ function _rTrainingCard(stu){
   // SUMMARY (0 or 1 distinct month)
   const now=new Date();
   const curKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  const weekAgo=now.getTime()-7*864e5;
+  // "This week" = the CALENDAR week, Monday-based (AU/Sydney convention), NOT a
+  // rolling 7 days. Derive the most-recent-Monday and today as YYYY-MM-DD strings
+  // from the same browser-local `now` that curKey uses, then compare class_date
+  // (plain YYYY-MM-DD) lexically — mirrors the "this month" string handling, no
+  // Date.parse of class_date, so no timezone shift. Date arithmetic on `now`
+  // handles month/year rollover for the Monday boundary.
+  const _dow=(now.getDay()+6)%7; // 0=Mon … 6=Sun
+  const _mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-_dow);
+  const weekStartKey=_mon.getFullYear()+'-'+String(_mon.getMonth()+1).padStart(2,'0')+'-'+String(_mon.getDate()).padStart(2,'0');
+  const todayKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   let thisMonth=0,thisWeek=0,giM=0,nogiM=0;
   rows.forEach(function(r){
     const d=String(r&&r.class_date||'');
@@ -6296,8 +6305,7 @@ function _rTrainingCard(stu){
       const mod=r.modality||_modalityFromType(r.class_type);
       if(mod==='gi')giM++;else if(mod==='nogi')nogiM++;
     }
-    const t=d?Date.parse(d+'T00:00:00'):NaN;
-    if(!isNaN(t)&&t>=weekAgo)thisWeek++;
+    if(d.length>=10&&d>=weekStartKey&&d<=todayKey)thisWeek++;
   });
   const totalM=giM+nogiM;
   const barGiNo=totalM>0
