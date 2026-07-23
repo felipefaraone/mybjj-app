@@ -41,7 +41,7 @@ const ALLOWED_ORIGINS = [
 ];
 
 // The visitor can be no more than this many days ahead. The page projects the
-// live weekly grid onto the next 7 days; we allow 8 (one day of slack) so a
+// live weekly grid onto the next 21 days (3 weeks); we allow 22 (one day of slack) so a
 // timezone edge never rejects a legitimate booking. Computed in Australia/Sydney.
 const BOOKING_HORIZON_DAYS = 22;
 const SYDNEY_TZ = "Australia/Sydney";
