@@ -6817,9 +6817,9 @@ function _evFaceBubble(s,sz){
   if(!s){
     return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:var(--input-bg);color:var(--text3);display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;border:2px solid var(--card);box-sizing:border-box">?</div>';
   }
-  const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
+  const b=beltDef(s.belt,s.prog);
   if(s.photoUrl){
-    return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+b.bg+';border:2px solid var(--card);box-sizing:border-box;overflow:hidden;display:inline-block"><img src="'+photoSrc(s.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block"/></div>';
+    return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+b.bg+';border:2px solid var(--card);box-sizing:border-box;overflow:hidden;display:inline-block"><img src="'+photoSrc(s.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+_avq(s.initials)+'\',\''+_avq(s.belt)+'\','+sz+')"/></div>';
   }
   return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;border:2px solid var(--card);box-sizing:border-box">'+(s.initials||'?')+'</div>';
 }
@@ -6909,6 +6909,7 @@ function rEvents(isA){
   const _evShown=S.eventsShown||5;
   const rows=filtered.slice(0,_evShown).map(e=>{
     const isComp=e.type==='competition';
+    const isSocial=e.type==='social';
     const typeCol=isComp?'#1A5DAD':'#15803d';
     const typeLbl=isComp?'Competition':'Social';
     const competing=e.competing||[];
@@ -6941,8 +6942,29 @@ function rEvents(isA){
       const body=ids.length?evFacePile(ids):'<div style="font-size:11px;color:var(--text3)">No one yet</div>';
       return '<div '+tap+'>'+head+body+'</div>';
     };
-    const compRow=showComp?groupRow('competing','COMPETING','var(--blue)',competing):'';
-    const suppRow=showSupp?groupRow('supporting','SUPPORTING','var(--text3)',supporting):'';
+    // Participation UI is TYPE-AWARE. Competition → Competing/Supporting
+    // (unchanged). Social → a single ATTENDING concept: one facepile, one
+    // "Attending" toggle. A social "attending" is stored in
+    // supporting_legacy_ids (the SAME array + set_event_participation call
+    // the Supporting button uses), so if an event is later switched
+    // competition↔social, attendees degrade to "supporting" (harmless and
+    // accurate) rather than to "competing" (which would wrongly imply
+    // they're entered to fight). Any legacy competing_legacy_ids on a
+    // social event are folded into the ATTENDING count/facepile, never
+    // shown as "Competing". The word "Competing" never renders for social.
+    let partBlock='',partButtons='';
+    if(isSocial){
+      const attending=[...new Set([...supporting,...competing])];
+      const iAtt=attending.includes(me);
+      const attRow=groupRow('supporting','ATTENDING','var(--green-text)',attending);
+      partBlock='<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:1fr;gap:12px">'+attRow+'</div>';
+      partButtons='<button onclick="toggleEv(\''+e.id+'\',\'supporting\')" style="'+btnBase+';background:'+(iAtt?'var(--green-bg)':'transparent')+';color:'+(iAtt?'var(--green-text)':'var(--text3)')+';border-color:'+(iAtt?'var(--green-border)':'var(--border)')+'">'+(iAtt?'✓ Attending':'Attending')+'</button>';
+    }else{
+      const compRow=showComp?groupRow('competing','COMPETING','var(--blue)',competing):'';
+      const suppRow=showSupp?groupRow('supporting','SUPPORTING','var(--text3)',supporting):'';
+      partBlock=(showComp||showSupp)?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:'+(showComp&&showSupp?'1fr 1fr':'1fr')+';gap:12px">'+compRow+suppRow+'</div>':'';
+      partButtons=compBtn+suppBtn;
+    }
     return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">'
       +'<div style="flex:1"><div style="margin-bottom:5px;display:flex;align-items:center;gap:8px"><span style="background:'+typeCol+'20;color:'+typeCol+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+typeLbl+'</span></div>'
@@ -6950,8 +6972,8 @@ function rEvents(isA){
       +'<div style="font-size:12px;color:var(--text3);margin-top:3px">'+e.date+'</div></div>'
       +topActions+'</div>'
       +(e.desc?'<div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.5">'+e.desc+'</div>':'')
-      +((showComp||showSupp)?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;grid-template-columns:'+(showComp&&showSupp?'1fr 1fr':'1fr')+';gap:12px">'+compRow+suppRow+'</div>':'')
-      +'<div style="display:flex;gap:8px">'+compBtn+suppBtn+'</div>'
+      +partBlock
+      +'<div style="display:flex;gap:8px">'+partButtons+'</div>'
       +'</div>';
   });
   const addBtn=isA?'<button class="badd" style="margin-top:4px;margin-bottom:12px" onclick="openAddEv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add event</button>':'';
@@ -6999,13 +7021,24 @@ function rEventRoster(){
   if(!e)return '';
   const compIds=e.competing||[];
   const suppIds=e.supporting||[];
-  const grp=r.group;
-  const showIds=grp==='supporting'?suppIds:compIds;
-  const segBtn=(key,lbl,count)=>{
-    const on=grp===key;
-    return '<button onclick="setEvRosterGroup(\''+key+'\')" style="flex:1;align-self:stretch;background:'+(on?'#1A5DAD':'transparent')+';color:'+(on?'#fff':'var(--text3)')+';border:none;border-radius:8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer;line-height:1">'+lbl+' ('+count+')</button>';
-  };
-  const segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px;margin-bottom:14px;height:var(--ctrl-h);box-sizing:border-box;align-items:stretch">'+segBtn('competing','Competing',compIds.length)+segBtn('supporting','Supporting',suppIds.length)+'</div>';
+  // Type-aware, mirroring the event card. Social → one ATTENDING list
+  // (supporting store, with any legacy competing_legacy_ids folded in);
+  // no Competing/Supporting toggle, no "Competing" label. Competition →
+  // the Competing/Supporting segmented switch, unchanged.
+  const isSocial=e.type==='social';
+  let segHtml,showIds;
+  if(isSocial){
+    showIds=[...new Set([...suppIds,...compIds])];
+    segHtml='<div style="display:flex;align-items:center;justify-content:center;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;height:var(--ctrl-h);box-sizing:border-box;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--green-text)">ATTENDING · '+showIds.length+'</div>';
+  }else{
+    const grp=r.group;
+    showIds=grp==='supporting'?suppIds:compIds;
+    const segBtn=(key,lbl,count)=>{
+      const on=grp===key;
+      return '<button onclick="setEvRosterGroup(\''+key+'\')" style="flex:1;align-self:stretch;background:'+(on?'#1A5DAD':'transparent')+';color:'+(on?'#fff':'var(--text3)')+';border:none;border-radius:8px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer;line-height:1">'+lbl+' ('+count+')</button>';
+    };
+    segHtml='<div style="display:flex;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px;margin-bottom:14px;height:var(--ctrl-h);box-sizing:border-box;align-items:stretch">'+segBtn('competing','Competing',compIds.length)+segBtn('supporting','Supporting',suppIds.length)+'</div>';
+  }
   const isA=isStaffOrOwner();
   const body=showIds.length
     ? '<div class="card" style="padding:6px 14px">'+evNamedList(showIds,{adminTap:isA})+'</div>'
@@ -9171,9 +9204,16 @@ function shareEventText(e){
   lines.push(dateStr?(dateStr+'  ·  '+typeLbl):typeLbl);
   const desc=(e.desc||'').trim();
   if(desc){lines.push('');lines.push(desc);}
-  const c=(e.competing||[]).length;
-  const s=(e.supporting||[]).length;
-  if(c>0||s>0){lines.push('');lines.push('Competing: '+c+'  ·  Supporting: '+s);}
+  if(e.type==='social'){
+    // Social → single ATTENDING count (supporting store + folded legacy
+    // competing). "Competing" must never appear for a social event.
+    const att=new Set([...(e.supporting||[]),...(e.competing||[])]).size;
+    if(att>0){lines.push('');lines.push('Attending: '+att);}
+  }else{
+    const c=(e.competing||[]).length;
+    const s=(e.supporting||[]).length;
+    if(c>0||s>0){lines.push('');lines.push('Competing: '+c+'  ·  Supporting: '+s);}
+  }
   if(e.link){lines.push('');lines.push(e.link);}
   lines.push('');
   lines.push(appShareUrl());
