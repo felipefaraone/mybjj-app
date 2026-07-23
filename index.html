@@ -1020,6 +1020,10 @@ function _egDisplay(student){
   // class count is a minimum threshold, not an auto-promotion trigger. When the
   // CLASS minimum is already met but months isn't (otherwise status would be
   // 'eligible'), the gate is TIME — say that instead of "0 more classes".
+  // last_marker_date (in-memory _lastMarkerDate) is the real months anchor; NULL
+  // for ~60% of imported students, where months_done is an import-date fallback.
+  // DISPLAY-ONLY flag: the eligibility gate in getEligibilityStatus is unchanged.
+  const noAnchor=!student._lastMarkerDate;
   let reason,mLeft=0;
   if(remaining<=0){
     // Class minimum met but NOT eligible → months still pending. The bar reflects
@@ -1028,11 +1032,15 @@ function _egDisplay(student){
     // state is carried by the green "Classes met" badge + the reason text, not the
     // bar. So barPct stays class-based (100% here) like every other branch.
     mLeft=Math.max(0,Math.ceil((eg.months_target||0)-(eg.months_done||0)));
-    reason='Minimum classes met — '+mLeft+' more month'+(mLeft===1?'':'s')+' minimum. Professor decides timing.';
+    // No anchor → don't fabricate a month countdown (it would date from the import
+    // and read "N more months" wrongly). Say the date isn't recorded instead.
+    reason=noAnchor
+      ?'Minimum classes met — promotion date not recorded. Professor decides timing.'
+      :'Minimum classes met — '+mLeft+' more month'+(mLeft===1?'':'s')+' minimum. Professor decides timing.';
   }else{
     reason='Working toward '+eg.label+' — '+remaining+' more class'+(remaining===1?'':'es')+' minimum. Professor decides timing.';
   }
-  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,classesMetTimeGated:(remaining<=0),monthsLeft:mLeft,label:eg.label,classesDone:eg.classes_done,classesTarget:eg.classes_target,reason};
+  return {hide:false,pct,barPct:pct,isReady:false,isPending:false,classesMetTimeGated:(remaining<=0),monthsLeft:mLeft,noAnchor,label:eg.label,classesDone:eg.classes_done,classesTarget:eg.classes_target,reason};
 }
 const DS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -7211,8 +7219,16 @@ function rARosterListInner(){
     if(eg&&eg.status==='eligible'){
       eligHint='<div style="margin-top:6px"><span style="display:inline-block;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:4px">Ready: '+eg.label+'</span></div>';
     } else if(eg&&eg.status==='in_progress'){
+      // last_marker_date (in-memory _lastMarkerDate) is the real anchor for the
+      // months clock and is NULL for ~60% of imported students; getLastMarkerDate
+      // then dates the clock to the import, fabricating "0/N mo". null is not zero
+      // — when the anchor is missing show classes only, plus (staff only) a muted
+      // "date not recorded" so the gap is visible instead of a fake 0/N.
+      const _moClause=s._lastMarkerDate
+        ?' · '+eg.months_done+'/'+eg.months_target+' mo'
+        :(isStaffOrOwner()?' · <span style="font-style:italic">date not recorded</span>':'');
       eligHint='<div style="font-size:12px;color:var(--text);font-weight:600;margin-top:6px">Next: '+eg.label+'</div>'
-        +'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+eg.classes_done+'/'+eg.classes_target+' classes · '+eg.months_done+'/'+eg.months_target+' mo</div>';
+        +'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+eg.classes_done+'/'+eg.classes_target+' classes'+_moClause+'</div>';
     } else if(eg&&eg.status==='pending'){
       eligHint='<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:4px">'+eg.message+'</div>';
     }
