@@ -421,6 +421,17 @@ const BK={
   green:         {label:'Green',         bg:'#16a34a',fg:'#fff',   tip:null},
   'green/black': {label:'Green/Black',   bg:'#16a34a',fg:'#fff',   tip:'black'}
 };
+// A kid can legitimately hold an ADULT belt: from the calendar year they turn
+// 16 they're eligible for Blue (see the 16-bridge, v345/v346). BK has no
+// blue/purple/brown/black, so a prog-only lookup fell through to BA.white and
+// rendered a 16-year-old blue belt as WHITE (John, 23 Jul). Try the programme's
+// own map first (so kids' white keeps its tip field), then the other map, then
+// white as the last resort. Returns the same {label,bg,fg,(tip),(bdr)} shape.
+function beltDef(belt,prog){
+  const primary=prog==='kids'?BK:BA;
+  const secondary=prog==='kids'?BA:BK;
+  return primary[belt]||secondary[belt]||BA.white;
+}
 const GGA={white:40,blue:60,purple:70,brown:80,black:120};
 // v1.39.x Fix 4 — GGK + MAXD extended to all 13 kids belt keys
 // (PROMO_CRITERIA.kids was already authoritative for stripe-by-stripe
@@ -1648,7 +1659,7 @@ function _avFallback(imgEl,ini,belt,sz){const w=imgEl&&imgEl.parentNode;if(w&&ty
 function _avFallbackTxt(imgEl,ini,fg){const w=imgEl&&imgEl.parentNode;if(w){w.textContent=ini;if(fg)w.style.color=fg;}}
 function _avq(v){return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 function beltSVG(belt,deg,prog,width){
-  width=width||120;const m=prog==='kids'?BK:BA;const b=m[belt]||BA.white;
+  width=width||120;const m=prog==='kids'?BK:BA;const b=beltDef(belt,prog);
   const h2=14;const r=4;const sw=width;const sh=h2*2;
   const tipW=18;
   // G17.2c.1 — unified IBJJF graduation bar across all belts. Black
@@ -1745,7 +1756,7 @@ function _renderRankBox(s,opts){
   const isStaff=opts.kind==='staff';
   const prog=isStaff?'adult':(s.prog||'adult');
   const m=(prog==='kids')?BK:BA;
-  const beltMeta=m[s.belt]||BA.white;
+  const beltMeta=beltDef(s.belt,prog);
   const deg=s.deg||0;
   const unit=(s.belt==='black')
     ?(deg===1?'degree':'degrees')
@@ -1792,7 +1803,7 @@ function _renderRankBox(s,opts){
   +'</div>';
 }
 function bb(belt,deg,prog,align){
-  deg=deg||0;const m=prog==='kids'?BK:BA;const b=m[belt]||BA.white;
+  deg=deg||0;const m=prog==='kids'?BK:BA;const b=beltDef(belt,prog);
   // G17.2c.1 — IBJJF terminology: "stripe(s)" for colored belts,
   // "degree(s)" for black belts. Singular when count===1. Container
   // already uppercases via CSS text-transform.
@@ -1888,7 +1899,7 @@ function rVC(url,title){
 // highlight so the user can spot themselves in the stack.
 function _stkAv(s,isMe){
   const m=(s.prog==='kids')?BK:BA;
-  const b=m[s.belt]||BA.white;
+  const b=beltDef(s.belt,s.prog);
   const bg=isMe?'var(--blue)':b.bg;
   const fg=isMe?'#fff':b.fg;
   // Self row prefers the live S.me.photoUrl: it's kept current on photo
@@ -1929,7 +1940,7 @@ function rAtts(all,cid){
   // so the row stays a fixed width whether 1 or 50 going.
   const P=6;
   const rest=all.length-P;
-  const ms=sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return null;const m=s.prog==='kids'?BK:BA;const b=m[s.belt]||BA.white;return{s,b,me:sid===S.me.id};};
+  const ms=sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return null;const b=beltDef(s.belt,s.prog);return{s,b,me:sid===S.me.id};};
   if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';const _bg=r.me?'var(--blue)':r.b.bg;const _ph=(r.me&&S.me&&S.me.photoUrl)?S.me.photoUrl:r.s.photoUrl;const _av=_ph?`<div class="acav" style="background:${_bg};overflow:hidden;padding:0"><img src="${photoSrc(_ph)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallbackTxt(this,'${_avq(r.s.initials)}','${_avq(r.me?'#fff':r.b.fg)}')"/></div>`:`<div class="acav" style="background:${_bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div>`;return `<div class="achip" onclick="viewStu('${sid}','class')" style="cursor:pointer;background:${r.me?'var(--blue-tint)':r.b.bg+'20'};border:1px solid ${r.me?'var(--blue-mid)':r.b.bg+'40'}">${_av}<span style="color:${r.me?'var(--blue)':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
   return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return _stkAv(r.s,r.me);}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">Show all</span></div></div>`;
 }
@@ -2091,7 +2102,7 @@ function rAttsStaff(rows,cid){
   };
   return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${stackHtml}${actionRow}<div style="height:10px"></div>${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];if(!s)return '';
-    const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+    const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
     // G9.2 — strikethrough the student name when class_value === 0
     // (instructor marked "X — doesn't count") so the row visually
     // reads "they were here but it doesn't count toward promotion".
@@ -2694,7 +2705,7 @@ function doPromote(id, isBeltPromotion){
     PROMOTION_LOG.unshift(newPromo);
     if(!s.journey)s.journey=[];
     const bl=s.prog==='kids'?BK:BA;
-    const nb=bl[nextBelt]||BA.white;
+    const nb=beltDef(nextBelt,s.prog);
     const doneIdx=s.journey.findLastIndex?s.journey.findLastIndex(j=>j.done):-1;
     if(doneIdx>=0)s.journey[doneIdx].current=false;
     s.journey.push({belt:nextBelt,label:nb.label+' belt',date:new Date().toISOString().slice(0,10),classes:s.total,done:true,current:true,auto:true});
@@ -2806,7 +2817,7 @@ function rSafetyBlock(s){
 }
 function rStuProf(){
   const s=STUDENTS.find(x=>x.id===S.viewStu);if(!s)return '';
-  const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+  const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
   // G9 Phase 1 follow-up 2 — stats / bar / reason now sourced from
   // PROMO_CRITERIA via _egDisplay. Legacy studentEligibility's
   // hardcoded 25/30 thresholds no longer surface here.
@@ -6138,7 +6149,7 @@ function rKidPeer(){
   const s=STUDENTS.find(x=>x.id===sid);
   if(!s){return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Member</div></div><div class="sbody"><div class="card" style="padding:16px">Member not found.</div></div></div>';}
   const first=(s.name||'').split(' ')[0]||'';
-  const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+  const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
   // G11 — peer-kid view (parent tapping another kid). Stats removed
   // per the peer-view privacy matrix; header + belt visual only.
   return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">'+first+'</div></div><div class="sbody">'
@@ -6405,7 +6416,7 @@ function rProgress(){
       ||STUDENTS.find(function(x){return x.id===s.id;})
       ||s;
     var bmap=s.prog==='kids'?BK:BA;
-    var bc=bmap[s.belt]||BA.white;
+    var bc=beltDef(s.belt,s.prog);
     // G9 Phase 1 follow-up 2 — coach progress card now reads
     // PROMO_CRITERIA via _egDisplay. nxlbl / GGA-GGK / hardcoded 40
     // fallback are gone.
@@ -6486,7 +6497,7 @@ function rProgress(){
        hasMybjjGi:stu.hasMybjjGi!=null?stu.hasMybjjGi:s.hasMybjjGi};
   }
   var bmap=s.prog==='kids'?BK:BA;
-  var b=bmap[s.belt]||BA.white;
+  var b=beltDef(s.belt,s.prog);
   // Mario's decision (22 Jul 2026): students & parents must NOT see promotion
   // targets/progress. The entire eligibility surface (heading, topRight, bar,
   // underBar, reason, giHint, .gnote and its eligibility card) is removed here.
@@ -6790,7 +6801,7 @@ function _evFaceBubble(s,sz){
   if(!s){
     return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:var(--input-bg);color:var(--text3);display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;border:2px solid var(--card);box-sizing:border-box">?</div>';
   }
-  const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+  const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
   if(s.photoUrl){
     return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+b.bg+';border:2px solid var(--card);box-sizing:border-box;overflow:hidden;display:inline-block"><img src="'+photoSrc(s.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block"/></div>';
   }
@@ -6827,7 +6838,7 @@ function evNamedList(ids,opts){
     const isStudent=!!s;
     if(!s)s=STAFF.find(x=>x.id===id);
     if(!s)return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text3);font-style:italic">Unknown member</div>';
-    const bmap=s.prog==='kids'?BK:BA;const b=bmap[s.belt]||BA.white;
+    const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
     const onclick=adminTap
       ?(isStudent?'onclick="viewStu(\''+s.id+'\',\'roster\')"':'onclick="viewStaff(\''+s.id+'\',\'roster\')"')
       :'';
@@ -7151,7 +7162,7 @@ function rARosterListInner(){
   // show a message when the list is genuinely empty.
   const rows=list.map(s=>{
     const bmap=s.prog==='kids'?BK:BA;
-    const b=bmap[s.belt]||BA.white;
+    const b=beltDef(s.belt,s.prog);
     // G9 Phase 1 consolidation — the per-card "ELIGIBLE FOR NEXT
     // STRIPE" green strip and the green dot before the name now read
     // from _egDisplay (same source as the eligHint pill below).
@@ -9080,7 +9091,7 @@ function shareBtnHtml(onclickAttr){return '<button onclick="'+onclickAttr+'" tit
 function sharePromoText(p,s){
   const prog=(s&&s.prog)||'adult';
   const bmap=prog==='kids'?BK:BA;
-  const beltLbl=((bmap[p.toBelt]||BA.white).label||'').toLowerCase();
+  const beltLbl=(beltDef(p.toBelt,prog).label||'').toLowerCase();
   const unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
   // Batch share-content — emoji prefixes removed (no emoji in copy).
   if(p.isNewBelt) return 'Congratulations to '+p.studentName+' who just received their '+beltLbl+' belt at MyBJJ '+unit+'! Hard work pays off.\n\n'+appShareUrl();
@@ -12159,7 +12170,7 @@ function _classAddListHTML(){
   }).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const rowHTML=(s,visitorUnit)=>{
     const already=attDbIds.has(s._dbId);
-    const b=(s.prog==='kids'?BK:BA)[s.belt]||BA.white;
+    const b=beltDef(s.belt,s.prog);
     const dim=already?'opacity:.5;cursor:not-allowed':'cursor:pointer';
     const onclick=already?'':`onclick="addStudentToClass('${cid}','${s.id}')"`;
     const tag=already?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">ALREADY IN</span>':'';
