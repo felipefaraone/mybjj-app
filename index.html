@@ -7232,7 +7232,7 @@ function rARosterListInner(){
     } else if(eg&&eg.status==='pending'){
       eligHint='<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:4px">'+eg.message+'</div>';
     }
-    const inviteRow=inviteStatusRow(s,s.prog==='kids'?'kidParent':'student');
+    const inviteRow=inviteStatusRow(s,s.prog==='kids'?'kidParent':'student',waiverChip(s));
     return '<div class="card" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
       +'<div style="display:flex;align-items:center;gap:10px">'+avStu(s,34)
@@ -8747,7 +8747,27 @@ function friendlyMutationError(err){
 //   'student'   — adult student, key off s.email / s._userId
 //   'kidParent' — kid student, key off s.parentEmail / s._parentUserId
 //   'staff'     — staff member, key off s.email / s._userId
-function inviteStatusRow(target,kind){
+// Waiver chip for the member roster card (John's "who's missing a waiver at a
+// glance" ask). Staff/owner ONLY — students & parents never see it. Signed
+// members render NOTHING (a clean card = done; badging the 99% OK state once
+// everyone signs would be noise). Both non-signed chips are tappable and open
+// the SAME waiver sheet (openWaiverSheet) that holds Copy link / Email it, so
+// staff can send or resend on the spot. Reads in-memory waiverSignedAt /
+// waiverSentAt (hydrated from students.waiver_signed_at / waiver_sent_at).
+function waiverChip(s){
+  if(!isStaffOrOwner())return '';
+  if(s.waiverSignedAt)return '';   // signed → clean card, no chip
+  const base='padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer';
+  const tap='onclick="event.stopPropagation();openWaiverSheet(\''+s.id+'\')"';
+  if(s.waiverSentAt){
+    // sent but not signed → muted, still tappable to resend
+    return '<span '+tap+' style="background:none;color:var(--text3);border:1px solid var(--border);'+base+'">Waiver sent</span>';
+  }
+  // neither → amber "No waiver"
+  return '<span '+tap+' style="background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);'+base+'">No waiver</span>';
+}
+
+function inviteStatusRow(target,kind,extraChip){
   const isParent=kind==='kidParent';
   const isStaff=kind==='staff';
   const email=isParent?target.parentEmail:target.email;
@@ -8777,6 +8797,7 @@ function inviteStatusRow(target,kind){
   return '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">'
     +'<span style="background:'+bg+';color:'+fg+';'+chipStyle+'">'+label+'</span>'
     +action
+    +(extraChip||'')
     +'</div>';
 }
 
