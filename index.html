@@ -1826,6 +1826,24 @@ function bb(belt,deg,prog,align){
   return `<div style="display:inline-flex;flex-direction:column;gap:2px">${beltSVG(belt,deg,prog,110)}<div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:${ta}">${b.label}${countLabel}</div></div>`;
 }
 function ct(id){const t=CT.find(x=>x.id===id)||CT[0];const giTag=t.gi?'<span class="ctag tgi">GI</span>':'<span class="ctag tnogi-badge">NO-GI</span>';return t.id==='nogi'?giTag:`${giTag}<span class="ctag ${t.tc}">${t.lbl}</span>`;}
+// Class type as PLAIN TEXT (no HTML) for the class-card metadata line —
+// combines the uniform word with the label, de-duplicated so we never
+// print "Gi · Gi", "No-Gi · No-Gi" or "No-Gi · Kids No-Gi". Unknown id
+// falls back to CT[0], same as ct().
+function ctText(id){
+  const t=CT.find(x=>x.id===id)||CT[0];
+  const uni=t.gi?'Gi':'No-Gi';
+  const lbl=String(t.lbl||'');
+  const uniLC=uni.toLowerCase();
+  // Rule 1 — label IS exactly the uniform word (the 'gi'/'nogi' ids): uniform only.
+  if(lbl.toLowerCase()===uniLC)return uni;
+  // Rule 2 — label already contains the uniform word as a WHOLE WORD
+  // (e.g. 'Kids No-Gi'): label only. Word-level, NOT substring, so
+  // 'Beginner' is not mistaken for containing 'Gi'.
+  if(lbl.split(/\s+/).some(w=>w.toLowerCase()===uniLC))return lbl;
+  // Rule 3 — combine: "Gi · All Levels", "No-Gi · Open Mat", "Gi · Mini Champs".
+  return uni+' · '+lbl;
+}
 // Class times are stored as 24h "HH:MM" on the DB; display uses
 // 12h am/pm in Australian lowercase style ("7:30am", "6:00pm"). Pass
 // through anything that doesn't match the HH:MM shape so callers can
@@ -4493,7 +4511,7 @@ function rClass(){
       const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
       attBlock=rAtts(_adultsOnly,c.id);
     }
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${ct(c.type)}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
+    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div></div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${ctText(c.type)} · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--amber)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Checked in. Only instructor-confirmed attendance counts toward your progress.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
 
 
