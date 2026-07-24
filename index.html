@@ -5533,7 +5533,26 @@ function rCommunityPeople(){
   let list=[];
   if(typeFilter==='students')list=students;
   else if(typeFilter==='instructors')list=instructors;
-  else list=[...instructors,...students]; // instructors surface first when "All"
+  else{
+    // Visual-dedupe for the merged "All" view only. 13 humans have BOTH a
+    // staff row (hand-made early) AND a student row (John's import brought
+    // the same person in), so when both records live in the same unit
+    // Community lists them twice — "Coach Jonathan Coeur" and "Jonathan
+    // Coeur". Community is the social directory: the person should read as
+    // one card, "Coach …". Drop the STUDENT entry and keep the INSTRUCTOR
+    // when their emails match. The student identity stays fully reachable
+    // in Admin → Roster (the promote / +class-count / feedback surface);
+    // this is display-only and touches neither STUDENTS nor STAFF.
+    // Match on email ONLY, case-insensitive, and ONLY when both sides have
+    // a non-empty email — never on name (two different people can share a
+    // name). Students filter to "Students" still shows the student card.
+    const instrEmails=new Set(instructors.map(st=>String(st.email||'').trim().toLowerCase()).filter(Boolean));
+    const dedupedStudents=students.filter(s=>{
+      const em=String(s.email||'').trim().toLowerCase();
+      return !(em&&instrEmails.has(em));
+    });
+    list=[...instructors,...dedupedStudents]; // instructors surface first when "All"
+  }
   if(beltFilter!=='all')list=list.filter(s=>String(s.belt||'').startsWith(beltFilter));
   // G-perf — free-text search NO LONGER pre-filters the list here. Every
   // belt/type/segment-filtered member is rendered once; the free-text query
