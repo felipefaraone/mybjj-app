@@ -2038,44 +2038,64 @@ function rAttsStaff(rows,cid){
   const visible=rows.filter(r=>r.status==='going'||r.status==='present'||r.status==='absent');
   const exp=!!S.expanded[cid];
   const cf=visible.filter(r=>r.status==='present').length;
-  const going=visible.filter(r=>r.status!=='absent').length;
   const locked=isClassLocked(cid);
   // Booked trials for THIS class, rendered above the members in every state
   // (they must be visible at a glance, not just when expanded). They never touch
   // the going/confirmed tallies above — a trial is a visitor, not a roster row.
   const trialsHtml=_trialsRosterHtml(cid);
-  // Action row: full-width brand-fill primary (Confirm attendance / Show
-  // less) + a compact square "+" icon button (Add student) to its right.
-  const primaryLbl=exp?'Show less':'Confirm attendance';
-  const primaryBtn=`<button onclick="toggleExp('${cid}')" style="flex:1;background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">${primaryLbl}</button>`;
-  // Add-student is now a compact icon (plus) button — same tinted style and
-  // height as before, ~42px wide, so "Confirm attendance" reads full-width.
+  // --- FOOTER — identical + always LAST in every state (collapsed /
+  // expanded / empty). Built ONCE here and reused, so nothing in it moves
+  // or changes when the middle expands. Structure: divider + [primary] [+].
+  // The "+" add-student stays a compact icon button, staff path, hidden when
+  // locked (the ONE and only add control on the card).
   const secondaryBtn=!locked
     ?`<button onclick="openClassAddStudent('${cid}')" aria-label="Add student" style="flex-shrink:0;width:42px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:9px 0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>`
     :'';
-  // "X of N confirmed" caption removed — it announced the OK state ("5 of 5
-  // confirmed") as loudly as the incomplete state, which is noise. The going
-  // facepile below already shows attendance; confirmation progress is visible
-  // when the instructor expands the roster. (A future change may re-add an
-  // amber "N still to confirm" ONLY when a PAST class has unconfirmed rows.)
-  const actionRow=`<div style="display:flex;align-items:center;gap:8px">${primaryBtn}${secondaryBtn}</div>`;
-  // Avatar stack body: shows the going attendees as overlapping circles
-  // with belt-color initials (or photo when present), capped at 6 with
-  // "+N" overflow. "Show all" toggles the per-student management list.
-  // Only rendered when there's at least one going row so the empty
-  // state below stays clean.
+  // Primary control — state driven by the CURRENT rows. Same size/position
+  // as the button in every state (flex:1, matching the "+" height).
+  //   • any row still 'going'        → active "Mark all present" (writes)
+  //   • no going, all present        → static green "✓ All present"
+  //   • no going, some absent        → static green "✓ Attendance done"
+  //   • locked                       → static, non-interactive (no write)
+  //   • empty class (no rows)        → hidden (footer is just the "+")
+  const stillGoing=visible.filter(r=>r.status==='going').length;
+  const allPresent=visible.length>0&&cf===visible.length;
+  const btnBase=`flex:1;border-radius:8px;padding:9px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;text-align:center`;
+  const donePill=`<div style="${btnBase};background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border)">${allPresent?'✓ All present':'✓ Attendance done'}</div>`;
+  let primaryCtl='';
+  if(locked){
+    // Locked = read-only. Never the active button (no destructive action).
+    if(visible.length)primaryCtl=stillGoing>0
+      ?`<div style="${btnBase};background:var(--bg);color:var(--text3);border:1px solid var(--border)">Attendance closed</div>`
+      :donePill;
+  }else if(stillGoing>0){
+    primaryCtl=`<button onclick="markAllPresent('${cid}')" style="${btnBase};background:var(--blue);color:#fff;border:none;cursor:pointer">Mark all present</button>`;
+  }else if(visible.length){
+    primaryCtl=donePill;
+  }
+  const footer=`<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:8px">${primaryCtl}${secondaryBtn}</div></div>`;
+  // --- MIDDLE — the going row IS the expand control. Whole row taps to
+  // toggle; a chevron on the right rotates 90° when expanded. Collapsed:
+  // facepile + "N going". Expanded: uppercase muted "N GOING" (the list
+  // below shows the faces). Rendered whenever there are rows so expand is
+  // always reachable — even an all-absent class. ("N going" counts every
+  // non-absent row, i.e. attending, unchanged from before.)
   const goingRows=visible.filter(r=>r.status!=='absent');
   const P=6;
   const restG=goingRows.length-P;
-  const stackHtml=goingRows.length
-    ?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div class="ast">${goingRows.slice(0,P).map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];return s?_stkAv(s,false):'';}).join('')}${restG>0?`<div class="amor">+${restG}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${goingRows.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">${exp?'Show less':'Show all'}</span></div>`
+  const chevron=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;transition:transform .15s;transform:rotate(${exp?90:0}deg)"><polyline points="9 18 15 12 9 6"/></svg>`;
+  const goingRow=visible.length
+    ?`<div onclick="toggleExp('${cid}')" style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:2px 0">`
+      +(exp
+        ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3)">${goingRows.length} going</span>`
+        :`<div class="ast">${goingRows.slice(0,P).map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];return s?_stkAv(s,false):'';}).join('')}${restG>0?`<div class="amor">+${restG}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${goingRows.length} going</span>`)
+      +`<span style="margin-left:auto;display:inline-flex;align-items:center">${chevron}</span></div>`
     :'';
   if(!visible.length){
-    // Empty state when no check-ins. Action row still available so the
-    // instructor can add a student manually.
-    return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}<div style="text-align:center;padding:10px 0 14px;font-size:13px;color:var(--text3)">No check-ins yet</div>${actionRow}</div>`;
+    // Empty state — no going row. Footer (just the "+") still present + last.
+    return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}<div style="text-align:center;padding:10px 0 4px;font-size:13px;color:var(--text3)">No check-ins yet</div>${footer}</div>`;
   }
-  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${actionRow}${stackHtml}</div>`;
+  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${goingRow}${footer}</div>`;
   const btnFor=(r,s)=>{
     if(locked){
       const lbl=r.status==='present'?'Present':r.status==='absent'?'Absent':'Going';
@@ -2130,7 +2150,10 @@ function rAttsStaff(rows,cid){
     const note=(s.holdNote&&String(s.holdNote).trim())||'';
     return '<span aria-label="On hold" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">ON HOLD'+(note?' · '+escHtml(note):'')+'</span>';
   };
-  return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${stackHtml}${actionRow}<div style="height:10px"></div>${visible.map(r=>{
+  // Expanded: going row (with rotated chevron) + per-student list, then the
+  // SAME footer, still last. Only the middle grew — the footer did not move
+  // or change. Per-student rows / btnFor / statusPill / cvChip unchanged.
+  const listHtml=`<div style="margin-top:6px">${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
     // G9.2 — strikethrough the student name when class_value === 0
@@ -2140,6 +2163,7 @@ function rAttsStaff(rows,cid){
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${holdPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
+  return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${goingRow}${listHtml}${footer}</div>`;
 }
 // _fmtJnyDate — journey entries store the date in two formats:
 //   - ISO "YYYY-MM-DD" (every entry written from this batch onward,
@@ -11964,7 +11988,11 @@ function _attStudent(sid){
   // who is only in S.classAdd._extra until the next refetch repopulates VISITORS.
   return STUDENTS.find(x=>x.id===sid)||VISITORS[sid]||(S.classAdd&&S.classAdd._extra&&S.classAdd._extra[sid])||null;
 }
-async function _setAttStatus(cid,sid,newStatus,classValue){
+async function _setAttStatus(cid,sid,newStatus,classValue,opts){
+  // opts.silentToast — suppress the per-row SUCCESS toast so a batch caller
+  // (markAllPresent) can show ONE summary toast instead of N. Error toasts
+  // always fire. Default (undefined) preserves the existing single-row UX.
+  const silent=!!(opts&&opts.silentToast);
   const s=_attStudent(sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
@@ -12010,7 +12038,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
         payload:payload,localDbId:local._dbId,
         userId:(S.profile&&S.profile.id)||null
       });
-      showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
+      if(!silent)showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
       try{render();}catch(_){}
       return;
     }
@@ -12020,7 +12048,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
       showSaveToast2(friendlyMutationError(r.error),'error');render();return;
     }
     if(r&&r.data)local._dbId=r.data.id;
-    showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
+    if(!silent)showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
     await refreshStudentStats(s._dbId);render();
     drainAttendanceQueue();
     return;
@@ -12058,7 +12086,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
       rowId:row._dbId,payload:updatePayload,
       userId:(S.profile&&S.profile.id)||null
     });
-    showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
+    if(!silent)showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
     try{render();}catch(_){}
     return;
   }
@@ -12072,7 +12100,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue){
     console.warn('[mybjj] update attendance ('+newStatus+'): 0 rows affected (RLS or stale id)');
     showSaveToast2("Couldn't save attendance",'error');render();return;
   }
-  showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
+  if(!silent)showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
   await refreshStudentStats(s._dbId);render();
   drainAttendanceQueue();
 }
@@ -12086,6 +12114,30 @@ function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
 // class_value is sent; recompute_student_stats's WHERE status='present'
 // clause keeps absent rows out of every stat sum.
 function markA(cid,sid){return _setAttStatus(cid,sid,'absent');}
+// Batch "Mark all present" — the staff card's primary action. Flips every
+// row for this class whose status is 'going' to 'present' at the DEFAULT
+// class_value (1.0). Rows already 'absent' are a deliberate decision and are
+// NEVER touched; 'present' rows keep their existing tier. REUSES the canonical
+// single-row write path (_setAttStatus → optimistic render + upsert/update +
+// offline queue + refreshStudentStats + drainAttendanceQueue) once per row,
+// with the per-row toast suppressed so we show ONE summary toast. Non-default
+// tiers still go through the per-student Present sheet in the expanded list.
+async function markAllPresent(cid){
+  if(!isStaffOrOwner())return;
+  if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
+  const c=_parseCID(cid);if(!c)return;
+  // Resolve this class's identity + unit exactly as _setAttStatus does, so a
+  // (date,time) shared by two classes still snapshots only the right rows.
+  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
+  const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
+  // Snapshot BEFORE mutating — only status==='going' (absent/present excluded).
+  const targets=ATTENDANCE.filter(a=>a.status==='going'&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
+  const sids=targets.map(a=>{const s=STUDENTS.find(x=>x._dbId===a.studentDbId)||VISITORS[a.studentDbId];return s?s.id:null;}).filter(Boolean);
+  if(!sids.length)return;
+  await Promise.all(sids.map(sid=>_setAttStatus(cid,sid,'present',1,{silentToast:true})));
+  showSaveToast2(sids.length+' marked present');
+}
 // Remove-from-class — a real DELETE of the attendance row (unlike markG,
 // which only sets status back to 'going', or markA, which records a false
 // no-show). For attendees added by mistake: leaves the student with NO
