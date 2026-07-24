@@ -13204,12 +13204,13 @@ function rEditStu(){
     +'</div>';
   // -------- Basic -------- (was "Personal" pre-G17.1.2)
   // Phone moved out of Basic into Contact (phone is a contact channel,
-  // not identity). DOB / Gender stay here.
+  // not identity). Gender stays here. DOB moved to the Training tab and is
+  // admin-only: age drives belt eligibility (the 16-year-old bridge) and the
+  // kids protections, so a student/parent must never edit their own DOB.
   const basicTab=`<div class="ef" style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:4px;border-bottom:1px solid var(--border)">${photoBlock}</div>
 <div class="ef" style="margin-top:8px">
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
-<div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0;text-align:right"/></div>
 <div class="erow"><div class="elbl">Started BJJ</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="width:100%;box-sizing:border-box;min-width:0;text-align:right"/><div style="font-size:11px;color:var(--text3);line-height:1.4">Optional. When this student first started practicing BJJ (anywhere).</div></div></div>
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender" style="text-align:right">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
 </div>`;
@@ -13273,6 +13274,13 @@ function rEditStu(){
   // SOCIAL card via openSocialEditor. `social` snapshot kept for the
   // unchanged saveEditStu local pre-write (still mirrors the existing
   // socialHandles when nothing here changes them).
+  // Date of birth — admin-only (isAdminViewer), same pattern as trainStartRow.
+  // Imported students often have date_of_birth NULL; without it the 16-year-old
+  // bridge (_kidEligibleForAdultBelts) silently fails and the age warnings are
+  // dead code. This row lets staff backfill it. Student/parent never see it.
+  const dobRow=isAdminViewer
+    ?`<div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>`
+    :'';
   const trainStartRow=isAdminViewer
     ?`<div class="erow"><div class="elbl">Training started</div><input class="einput" id="es-trainstart" type="date" value="${esc(trainingStartedAt)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>`
     :'';
@@ -13312,6 +13320,7 @@ function rEditStu(){
   }
   const trainingTab=progSection+beltVisual+`
 <div class="ef" style="margin-top:8px">
+${dobRow}
 ${trainStartRow}
 <div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(weightKg)}"/></div>
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
@@ -13494,7 +13503,11 @@ async function saveEditStu(){
     }
   }
   const isKids=willKids;   // guardian-field logic keys off the OUTGOING programme
-  const dob=D.dob!==undefined?(D.dob||null):(s.dob||null);
+  // DOB is admin-only (the input only renders for isAdminViewer, so D.dob is
+  // never captured from a student/parent). Guard the write too, mirroring
+  // trainingStartedAt: a non-admin save always falls back to the stored value.
+  // Empty string → null (clears the column), never persists ''.
+  const dob=(isAdminViewer&&D.dob!==undefined)?(D.dob||null):(s.dob||null);
   // Canonicalise to long form on write (legacy short → long; unknown kept as-is;
   // null stays null) so a save never persists a stale short code — even when the
   // basic tab wasn't rendered at capture time and this falls back to s.gender.
