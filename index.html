@@ -2026,17 +2026,21 @@ function rAttsStaff(rows,cid){
   // (they must be visible at a glance, not just when expanded). They never touch
   // the going/confirmed tallies above — a trial is a visitor, not a roster row.
   const trialsHtml=_trialsRosterHtml(cid);
-  // Action row: brand-fill primary (Confirm attendance / Show less) +
-  // tinted-outline secondary (+ Add student). "X of N confirmed" sits
-  // below as a muted caption — the only place the confirmed count
-  // appears (top of card carries the going pill, not confirmed).
+  // Action row: full-width brand-fill primary (Confirm attendance / Show
+  // less) + a compact square "+" icon button (Add student) to its right.
   const primaryLbl=exp?'Show less':'Confirm attendance';
   const primaryBtn=`<button onclick="toggleExp('${cid}')" style="flex:1;background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">${primaryLbl}</button>`;
+  // Add-student is now a compact icon (plus) button — same tinted style and
+  // height as before, ~42px wide, so "Confirm attendance" reads full-width.
   const secondaryBtn=!locked
-    ?`<button onclick="openClassAddStudent('${cid}')" style="flex-shrink:0;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:9px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;cursor:pointer">+ Add student</button>`
+    ?`<button onclick="openClassAddStudent('${cid}')" aria-label="Add student" style="flex-shrink:0;width:42px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:8px;padding:9px 0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>`
     :'';
-  const caption=`<div style="margin-top:8px;font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${cf} of ${going} confirmed</div>`;
-  const actionRow=`<div style="display:flex;align-items:center;gap:8px">${primaryBtn}${secondaryBtn}</div>${caption}`;
+  // "X of N confirmed" caption removed — it announced the OK state ("5 of 5
+  // confirmed") as loudly as the incomplete state, which is noise. The going
+  // facepile below already shows attendance; confirmation progress is visible
+  // when the instructor expands the roster. (A future change may re-add an
+  // amber "N still to confirm" ONLY when a PAST class has unconfirmed rows.)
+  const actionRow=`<div style="display:flex;align-items:center;gap:8px">${primaryBtn}${secondaryBtn}</div>`;
   // Avatar stack body: shows the going attendees as overlapping circles
   // with belt-color initials (or photo when present), capped at 6 with
   // "+N" overflow. "Show all" toggles the per-student management list.
@@ -2053,7 +2057,7 @@ function rAttsStaff(rows,cid){
     // instructor can add a student manually.
     return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}<div style="text-align:center;padding:10px 0 14px;font-size:13px;color:var(--text3)">No check-ins yet</div>${actionRow}</div>`;
   }
-  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${stackHtml}${actionRow}</div>`;
+  if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${actionRow}${stackHtml}</div>`;
   const btnFor=(r,s)=>{
     if(locked){
       const lbl=r.status==='present'?'Present':r.status==='absent'?'Absent':'Going';
