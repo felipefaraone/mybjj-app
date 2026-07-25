@@ -231,6 +231,15 @@ html,body{overscroll-behavior-y:none}
 }
 .einput[type="date"]::-webkit-inner-spin-button,
 .einput[type="date"]::-webkit-clear-button{display:none;-webkit-appearance:none;}
+/* Empty-date affordance. iOS Safari renders an EMPTY input[type=date] fully
+   blank — no dd/mm/yyyy, no calendar icon — so an unset date row is invisible
+   and there's nothing to tap (John couldn't add a DOB). _syncEmptyDates()
+   flags rows whose date input has no value with [data-emptydate] (removed the
+   instant a date is picked), and we paint a muted "Add date" where the value
+   would sit. Targets input[type=date] broadly (ev-date isn't .einput). Only
+   empty rows get the attribute, so a FILLED field is byte-for-byte unchanged. */
+.erow[data-emptydate]{position:relative}
+.erow[data-emptydate]::after{content:"Add date";position:absolute;right:16px;top:50%;transform:translateY(-50%);font-family:'Barlow',sans-serif;font-size:14px;color:var(--text3);pointer-events:none}
 /* G17.2a.2 — hide the native WebKit search-clear button so the Members
    search input shows only our custom × affordance (two clear buttons
    was the smoke regression). */
@@ -8277,6 +8286,42 @@ function hideSplash(){
   setTimeout(()=>{s.remove();document.body.classList.add('mybjj-splash-gone');},450);
 }
 
+// --- Empty-date affordance + whole-row picker (global, no per-field edits) ---
+// Every date field shares the .erow / input[type=date] structure. Rather than
+// editing all 9 call sites, we detect empty date inputs after each render and
+// flag their row so CSS can show "Add date", and delegate a single click
+// handler so tapping anywhere on the row opens the native picker.
+function _syncEmptyDates(){
+  const inputs=document.querySelectorAll('input[type="date"]');
+  for(let i=0;i<inputs.length;i++){
+    const el=inputs[i];const row=el.closest&&el.closest('.erow');
+    if(!row)continue;
+    if(el.value)row.removeAttribute('data-emptydate');
+    else row.setAttribute('data-emptydate','');
+  }
+}
+let _dateAffordanceBound=false;
+function _initDateAffordance(){
+  if(_dateAffordanceBound)return;
+  _dateAffordanceBound=true;
+  // Live-update the flag the moment a date is picked/cleared, so "Add date"
+  // vanishes immediately (not every date input triggers a re-render).
+  const upd=e=>{const el=e.target;if(el&&el.matches&&el.matches('input[type="date"]')){const row=el.closest('.erow');if(row){if(el.value)row.removeAttribute('data-emptydate');else row.setAttribute('data-emptydate','');}}};
+  document.addEventListener('input',upd,true);
+  document.addEventListener('change',upd,true);
+  // Whole-row tap opens the native picker. Ignore rows with no date input, a
+  // direct tap on the date input itself (browser handles it — no double-open),
+  // and taps on any other control that shares the row.
+  document.addEventListener('click',e=>{
+    const row=e.target.closest&&e.target.closest('.erow');
+    if(!row)return;
+    const dateEl=row.querySelector('input[type="date"]');
+    if(!dateEl||e.target===dateEl)return;
+    if(e.target.closest('button,select,textarea,a,.toggle,input:not([type="date"])'))return;
+    try{if(typeof dateEl.showPicker==='function'){dateEl.showPicker();return;}}catch(_){}
+    dateEl.focus();
+  });
+}
 function render(){
   const app=document.getElementById('app');
   // Preserve scroll position across the innerHTML swap. Without this,
@@ -8318,6 +8363,10 @@ function render(){
     // change, tab switch). No-ops off the People list. Runs synchronously
     // before paint, so there's no unfiltered flash.
     filterMembersDom();
+    // Bind the delegated date listeners once; flag any empty date rows in the
+    // freshly built DOM so the "Add date" affordance paints without a reload.
+    _initDateAffordance();
+    _syncEmptyDates();
     initPullToRefresh();
     // Glass-nav dynamics — slide the active pill to the current tab after
     // layout, and bind the scroll-shrink listener once. Both no-op / are
