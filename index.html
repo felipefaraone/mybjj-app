@@ -7277,12 +7277,10 @@ function rARosterListInner(){
   const rows=list.map(s=>{
     const bmap=s.prog==='kids'?BK:BA;
     const b=beltDef(s.belt,s.prog);
-    // G9 Phase 1 consolidation — the per-card "ELIGIBLE FOR NEXT
-    // STRIPE" green strip and the green dot before the name now read
-    // from _egDisplay (same source as the eligHint pill below).
-    // studentEligibility() has no callers after this batch.
-    const egd=_egDisplay(s);
-    const isElig=egd.isReady;
+    // Eligibility is surfaced by the eligHint pill below ("Ready: <label>")
+    // and the Roster's "Eligible only" filter. The per-card green strip and
+    // the green dot before the name (both same-source duplicates of the pill)
+    // were removed; _egDisplay/isElig are no longer read here.
     // ON HOLD badge — staff/admin only (never exposed to student/parent
     // viewers). Same amber tokens as the PHOTO PENDING pill.
     const onHoldNote=(s.holdNote&&String(s.holdNote).trim())||'';
@@ -7334,17 +7332,12 @@ function rARosterListInner(){
     return '<div class="card" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
       +'<div style="display:flex;align-items:center;gap:10px">'+avStu(s,34)
-      +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+(isElig?'<span title="Eligible for promotion" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-text)"></span>':'')+s.name+onHoldBadge+'</div>'
+      +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+s.name+onHoldBadge+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div></div></div>'
       +bb(s.belt,s.deg||0,s.prog,'left')+'</div>'
       +totalLine
       +breakdownLine
       +eligHint
-      // G9 Phase 1 follow-up — the "ELIGIBLE FOR NEXT STRIPE" all-caps strip
-      // was removed here: it repeated, in shouty caps, exactly what the
-      // eligHint pill above already says ("Ready: <label>"), from the same
-      // source (egd.isReady ⟺ getEligibilityStatus().status==='eligible').
-      // isElig stays — it still drives the green dot before the name.
       +inviteRow
       +'</div>';
   }).join('');
