@@ -245,7 +245,12 @@ html,body{overscroll-behavior-y:none}
    The value/placeholder is painted by ::after (input is opacity:0). No date
    row contains another control, so the overlay hijacks nothing clickable. */
 .erow[data-datelabel]{position:relative}
-.erow[data-datelabel] input[type="date"]{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;padding:0;border:none}
+/* z-index lifts the transparent input above the row's other children, and the
+   non-input children (only the .elbl label — no date row has an interactive
+   child) are made pass-through, so a tap ANYWHERE on the row hits the input
+   and opens the picker (not just the right edge over the input's value area). */
+.erow[data-datelabel] input[type="date"]{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;padding:0;border:none;z-index:2}
+.erow[data-datelabel]>*:not(input){pointer-events:none}
 .erow[data-datelabel]::after{content:attr(data-datelabel);position:absolute;right:16px;top:50%;transform:translateY(-50%);font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);pointer-events:none}
 .erow[data-emptydate]::after{color:var(--text3)}
 /* G17.2a.2 — hide the native WebKit search-clear button so the Members
@@ -2479,7 +2484,7 @@ ${prefillBanner}
 ${isKids?'':`<div class="erow"><div class="elbl">Email</div><input id="add-email" class="einput" type="email" placeholder="email@example.com" value="${v('email')}" oninput="S._addForm.email=this.value" autocomplete="off"/></div>
 <div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-cc','S._addForm.cc=this.value',phoneCC)}<input id="add-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('phone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.phone=this.value" style="text-align:left" autocomplete="off"/></div></div>`}
 <div class="erow"><div class="elbl">Date of birth</div><input id="add-dob" class="einput" type="date" value="${v('dob')}" oninput="S._addForm.dob=this.value"/></div>
-<div class="erow"><div class="elbl">Started BJJ</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><input id="add-bjjstart" class="einput" type="month" value="${v('bjjStartMonth')}" oninput="S._addForm.bjjStartMonth=this.value" style="width:100%;box-sizing:border-box;min-width:0"/><div style="font-size:11px;color:var(--text3);line-height:1.4">Optional. When this student first started practicing BJJ (anywhere).</div></div></div>
+<div class="erow"><div class="elbl">Started BJJ</div><input id="add-bjjstart" class="einput" type="month" value="${v('bjjStartMonth')}" oninput="S._addForm.bjjStartMonth=this.value" style="min-width:0"/></div>
 </div>
 <div class="slbl" style="margin-top:8px">Program & rank</div>
 <div class="ef">
@@ -13277,7 +13282,7 @@ function rEditStu(){
 <div class="ef" style="margin-top:8px">
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
-<div class="erow"><div class="elbl">Started BJJ</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="width:100%;box-sizing:border-box;min-width:0;text-align:right"/><div style="font-size:11px;color:var(--text3);line-height:1.4">Optional. When this student first started practicing BJJ (anywhere).</div></div></div>
+<div class="erow"><div class="elbl">Started BJJ</div><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="min-width:0"/></div>
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender" style="text-align:right">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
 </div>`;
   // -------- Training --------
