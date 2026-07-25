@@ -13628,15 +13628,27 @@ async function saveEditStu(){
   const parent2Phone=isKids?(trim(D.parent2Phone,s.parent2Phone||'')||null):s.parent2Phone;
   const parent2Email=isKids?((trim(D.parent2Email,s.parent2Email||'').toLowerCase())||null):s.parent2Email;
   if(isKids){
-    if(!wasKids){
-      // Moving INTO kids: a child's record without a guardian is not usable — the
-      // task rule is name + email required (phone stays optional at conversion).
-      if(!parentName||!parentEmail)return showErr('Moving to kids needs a guardian name and email.');
-    }else{
-      // Already kids — keep the stricter rule they had (name + phone + email).
-      if(!parentName||!parentPhone||!parentEmail)return showErr('Parent 1 name, phone and email are required for kids.');
+    // A kid needs a guardian that is EITHER a LINKED member OR has the manual
+    // Parent-1 fields filled. When the guardian is a linked member (David Said
+    // for William Said), the manual text inputs are removed from the DOM, so
+    // parentName/parentPhone/parentEmail derive to null here — the guardian
+    // identity lives on the linked adult's row, not the kid's columns. Validate
+    // the FACT (a guardian exists), not the empty attributes. _isLinked is
+    // scoped to rEditStu (render); read the same underlying condition here.
+    const _linkedGuardian=!!s._parentStudentId;
+    if(!_linkedGuardian){
+      if(!wasKids){
+        // Moving INTO kids: a child's record without a guardian is not usable — the
+        // task rule is name + email required (phone stays optional at conversion).
+        if(!parentName||!parentEmail)return showErr('Moving to kids needs a guardian name and email.');
+      }else{
+        // Already kids — keep the stricter rule they had (name + phone + email).
+        if(!parentName||!parentPhone||!parentEmail)return showErr('Parent 1 name, phone and email are required for kids.');
+      }
     }
-    if(!/^\S+@\S+\.\S+$/.test(parentEmail))return showErr((wasKids?'Parent 1':'Guardian')+' email format looks off.');
+    // Format checks fire ONLY when there's an actual manual value — a linked
+    // kid's derived parentEmail is null and must not trip the format check.
+    if(parentEmail&&!/^\S+@\S+\.\S+$/.test(parentEmail))return showErr((wasKids?'Parent 1':'Guardian')+' email format looks off.');
     if(parent2Email&&!/^\S+@\S+\.\S+$/.test(parent2Email))return showErr('Parent 2 email format looks off.');
     if(parent2Email&&parent2Email===parentEmail)return showErr('Parent 1 and Parent 2 emails must differ.');
   }
