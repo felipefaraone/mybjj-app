@@ -238,8 +238,16 @@ html,body{overscroll-behavior-y:none}
    instant a date is picked), and we paint a muted "Add date" where the value
    would sit. Targets input[type=date] broadly (ev-date isn't .einput). Only
    empty rows get the attribute, so a FILLED field is byte-for-byte unchanged. */
-.erow[data-emptydate]{position:relative}
-.erow[data-emptydate]::after{content:"Add date";position:absolute;right:16px;top:50%;transform:translateY(-50%);font-family:'Barlow',sans-serif;font-size:14px;color:var(--text3);pointer-events:none}
+/* Every date row is flagged [data-datelabel] by _syncEmptyDates (the formatted
+   value, or "Add date" when empty). The real input is laid transparent OVER
+   the whole row so a tap lands natively on it and iOS opens the picker itself
+   — showPicker() invoked from a delegated handler is blocked on iOS Safari.
+   The value/placeholder is painted by ::after (input is opacity:0). No date
+   row contains another control, so the overlay hijacks nothing clickable. */
+.erow[data-datelabel]{position:relative}
+.erow[data-datelabel] input[type="date"]{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;padding:0;border:none}
+.erow[data-datelabel]::after{content:attr(data-datelabel);position:absolute;right:16px;top:50%;transform:translateY(-50%);font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);pointer-events:none}
+.erow[data-emptydate]::after{color:var(--text3)}
 /* G17.2a.2 — hide the native WebKit search-clear button so the Members
    search input shows only our custom × affordance (two clear buttons
    was the smoke regression). */
@@ -2162,6 +2170,12 @@ function rAttsStaff(rows,cid){
   // Expanded: going row (with rotated chevron) + per-student list, then the
   // SAME footer, still last. Only the middle grew — the footer did not move
   // or change. Per-student rows / btnFor / statusPill / cvChip unchanged.
+  // Drop the divider on the FIRST rendered attendee — its top border sits
+  // right under the "N GOING" header, separating the heading from its own
+  // content (noise). Dividers BETWEEN attendees stay. Rows can return '' when
+  // the student isn't found, so "first rendered" isn't always index 0; track
+  // whether a row has actually been emitted rather than trusting the index.
+  let _rowShown=false;
   const listHtml=`<div style="margin-top:6px">${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
@@ -2170,7 +2184,8 @@ function rAttsStaff(rows,cid){
     // reads "they were here but it doesn't count toward promotion".
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="divider"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${holdPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    const _firstRow=!_rowShown;_rowShown=true;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${holdPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${goingRow}${listHtml}${footer}</div>`;
 }
@@ -8296,31 +8311,36 @@ function _syncEmptyDates(){
   for(let i=0;i<inputs.length;i++){
     const el=inputs[i];const row=el.closest&&el.closest('.erow');
     if(!row)continue;
-    if(el.value)row.removeAttribute('data-emptydate');
-    else row.setAttribute('data-emptydate','');
+    _applyDateLabel(row,el);
+  }
+}
+// Writes the row's visible date text into data-datelabel (painted by ::after,
+// since the real input is transparent). Empty → "Add date" + the muted
+// [data-emptydate] flag. Filled → the value formatted the way the native
+// input shows it on screen: browser-locale short date via toLocaleDateString
+// (parsed at LOCAL midnight so the day never shifts across time zones).
+function _applyDateLabel(row,el){
+  const v=el.value;
+  if(v){
+    row.removeAttribute('data-emptydate');
+    const d=new Date(v+'T00:00:00');
+    row.setAttribute('data-datelabel',isNaN(d.getTime())?v:d.toLocaleDateString());
+  }else{
+    row.setAttribute('data-emptydate','');
+    row.setAttribute('data-datelabel','Add date');
   }
 }
 let _dateAffordanceBound=false;
 function _initDateAffordance(){
   if(_dateAffordanceBound)return;
   _dateAffordanceBound=true;
-  // Live-update the flag the moment a date is picked/cleared, so "Add date"
-  // vanishes immediately (not every date input triggers a re-render).
-  const upd=e=>{const el=e.target;if(el&&el.matches&&el.matches('input[type="date"]')){const row=el.closest('.erow');if(row){if(el.value)row.removeAttribute('data-emptydate');else row.setAttribute('data-emptydate','');}}};
+  // Live-update the value/placeholder the moment a date is picked or cleared,
+  // so ::after reflects it immediately (not every date input re-renders). The
+  // row tap itself is handled purely in CSS now (transparent full-row input),
+  // so there is no click listener — showPicker() is unreliable on iOS.
+  const upd=e=>{const el=e.target;if(el&&el.matches&&el.matches('input[type="date"]')){const row=el.closest('.erow');if(row)_applyDateLabel(row,el);}};
   document.addEventListener('input',upd,true);
   document.addEventListener('change',upd,true);
-  // Whole-row tap opens the native picker. Ignore rows with no date input, a
-  // direct tap on the date input itself (browser handles it — no double-open),
-  // and taps on any other control that shares the row.
-  document.addEventListener('click',e=>{
-    const row=e.target.closest&&e.target.closest('.erow');
-    if(!row)return;
-    const dateEl=row.querySelector('input[type="date"]');
-    if(!dateEl||e.target===dateEl)return;
-    if(e.target.closest('button,select,textarea,a,.toggle,input:not([type="date"])'))return;
-    try{if(typeof dateEl.showPicker==='function'){dateEl.showPicker();return;}}catch(_){}
-    dateEl.focus();
-  });
 }
 function render(){
   const app=document.getElementById('app');
