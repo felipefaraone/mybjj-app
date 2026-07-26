@@ -9299,10 +9299,57 @@ async function resolveSignedUrls(paths){
   }catch(e){ console.warn('[mybjj] signed urls:', e); }
 }
 
+// --- Self-healing signer -----------------------------------------------------
+// SIGNED is volatile (an app update wipes it) and its URLs expire after 1h, but
+// resolveSignedUrls is only re-called on specific actions (open profile, unit
+// switch, photo queue). On a plain re-render after expiry, photoSrc returned ''
+// forever until the user opened the profile. Instead of making every call-site
+// remember to re-sign, photoSrc now self-heals: an unsigned/expired path is
+// queued and, one coalesced batch later, re-signed + a single render() upgrades
+// initials → photo with no user action. The immediate return stays '' so the
+// caller falls back to initials instantly (no broken image, no layout jump).
+const _signPending = new Set();          // paths awaiting a background re-sign
+const _signFailedAt = Object.create(null); // path -> epoch ms of last failed attempt
+const _SIGN_FAIL_COOLDOWN = 300000;      // 5 min — a broken/missing file retries at most this often
+let _signTimer = null;
+function _scheduleSign(path){
+  // Skip a path in an active failure cooldown — this is the loop breaker: after
+  // a drain, a path that still didn't sign is cooled down, so the follow-up
+  // render (and every render for the next 5 min) won't re-queue it.
+  const f = _signFailedAt[path];
+  if(f && (Date.now() - f) < _SIGN_FAIL_COOLDOWN) return;
+  if(_signPending.has(path)) return;
+  _signPending.add(path);
+  if(_signTimer) return;                 // one timer coalesces the whole render's worth of misses
+  _signTimer = setTimeout(_drainSign, 50);
+}
+async function _drainSign(){
+  _signTimer = null;
+  if(!_signPending.size) return;
+  const batch = Array.from(_signPending);
+  _signPending.clear();
+  const cli = initSupabase();
+  if(!cli){                              // offline / not ready — cool down, don't render (nothing changed)
+    const t = Date.now();
+    batch.forEach(function(p){ _signFailedAt[p] = t; });
+    return;
+  }
+  await resolveSignedUrls(batch);        // dedupes + skips fresh entries internally
+  const now = Date.now();
+  let any = false;
+  batch.forEach(function(p){
+    const hit = SIGNED[p];
+    if(hit && hit.exp > now){ any = true; delete _signFailedAt[p]; }  // signed → clear any old cooldown
+    else _signFailedAt[p] = now;                                      // still missing → cool down (no requeue storm)
+  });
+  if(any) render();                      // render ONLY when a photo actually became available → can't loop on broken paths
+}
 function photoSrc(path){
   if(!path) return '';
   const hit = SIGNED[path];
-  return (hit && hit.exp > Date.now()) ? hit.url : '';   // empty -> caller falls back to initials
+  if(hit && hit.exp > Date.now()) return hit.url;
+  _scheduleSign(path);                   // missing/expired → heal in the background
+  return '';                             // empty -> caller falls back to initials
 }
 function avStu(s,size){
   size=size||38;
