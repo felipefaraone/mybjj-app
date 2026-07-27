@@ -273,6 +273,10 @@ async function loadCurriculum(){
         + (cur?'<span class="now-tag">This week</span>':'') + '</h3>'
         + (bandsHtml(w) || '<p class="muted">No items listed.</p>') + '</div>';
     }).join('');
+    // If the disclosure is already open (user opened it while this was still
+    // loading, or switched unit while open), bring the current week to the top
+    // now that .week.current exists. No-op when the details is closed.
+    scrollCycleToCurrent();
   }catch(e){ host.innerHTML = '<p class="err">Could not load curriculum.</p>'; }
 }
 
@@ -324,6 +328,34 @@ document.getElementById('unitSwitch').addEventListener('click', function(e){
 });
 
 renderUnit();
+
+// Full-cycle disclosure — land the eye on THIS week, not Week 1. The page sits
+// in an iframe below the fold, so opening the <details> expands off-screen and
+// reads as "nothing happened". On USER open we smooth-scroll the current week
+// to the top of the view (fallback: the summary, so the revealed content shows).
+// Never auto-opens — this only reacts to the native <details> toggle.
+function scrollCycleToCurrent(){
+  var wrap = document.getElementById('cycleWrap');
+  if(!wrap || !wrap.open) return;                     // closed → nothing to reveal
+  var target = wrap.querySelector('.week.current')    // this week (preferred)
+            || wrap.querySelector('summary')          // fallback: no current week / not loaded yet
+            || wrap;
+  if(!target || !target.scrollIntoView) return;
+  // rAF so the just-expanded content has laid out before we scroll.
+  var run = function(){ target.scrollIntoView({ behavior:'smooth', block:'start' }); };
+  if(window.requestAnimationFrame) requestAnimationFrame(run); else run();
+}
+(function(){
+  var wrap = document.getElementById('cycleWrap');
+  if(!wrap) return;
+  wrap.addEventListener('toggle', function(){
+    // Label cue in addition to the CSS chevron rotation, so the state change is
+    // obvious even when the expanded content is off-screen.
+    var sum = wrap.querySelector('summary');
+    if(sum) sum.textContent = wrap.open ? 'Hide all weeks in the cycle' : 'See all weeks in the cycle';
+    if(wrap.open) scrollCycleToCurrent();
+  });
+})();
 
 // Height reporter for the parent iframe (embedded mode only). Inert if nobody
 // listens — this file adds NO message listener. Reuses the html.embedded class
