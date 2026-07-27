@@ -147,6 +147,16 @@
   .slot small{display:block;font-family:'Barlow';font-weight:500;font-size:11px;color:var(--ink3);letter-spacing:0;margin-top:2px}
   .slot.on{border-color:var(--blue);background:var(--blue);color:#fff}
   .slot.on small{color:rgba(255,255,255,.8)}
+  /* Day tabs — horizontal, scrollable; one chip per day WITH sessions. Active
+     chip reuses the .slot.on blue (fill --blue, white text via --card=#fff);
+     resting chips are outlined like a resting .slot. Tokens only. */
+  .daytabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;-webkit-overflow-scrolling:touch}
+  .daytab{flex-shrink:0;width:48px;background:var(--card);border:2px solid var(--line);border-radius:10px;padding:8px 4px;cursor:pointer;font-family:'Barlow Condensed';text-align:center;color:var(--ink);transition:.14s;line-height:1.05}
+  .daytab .dw{display:block;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--ink3)}
+  .daytab .dn{display:block;font-weight:700;font-size:18px;margin-top:2px}
+  .daytab:hover{border-color:var(--blue-mid)}
+  .daytab.on{border-color:var(--blue);background:var(--blue);color:var(--card)}
+  .daytab.on .dw{color:var(--card);opacity:.8}
   .nowork{margin-top:20px;font-size:14px}
   .nowork a{color:var(--blue);font-weight:600;cursor:pointer;text-decoration:underline}
   .emptynote{color:var(--ink2);font-size:15px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
@@ -478,9 +488,9 @@
       return r.unit_id===state.unit.id && r.type_code===state.typeCode && r.audience===state.audience;
     });
     var groups = [];
-    // Booking window: next 3 weeks (21 days). People book up to ~3 weeks ahead;
-    // the day-list groups by day, so a longer span just yields more day groups.
-    for(var i=0;i<21;i++){
+    // Booking window: next week (7 days) — matches the on-page "over the next
+    // week" copy. Each day WITH sessions becomes a day-tab in buildSlots.
+    for(var i=0;i<7;i++){
       var d = addDays(syd.dateStr,i);
       var dateStr = d.toISOString().slice(0,10);
       var dow = d.getUTCDay();
@@ -734,23 +744,60 @@
   // ============================================================================
   // STEP 3 — TIME
   // ============================================================================
+  // Day-tab state for step 3: only ONE day's slots are in the DOM at a time.
+  // _dayGroups caches this step-3 render's groups; _activeDay is the visible day.
+  var _dayGroups = [];
+  var _activeDay = 0;
   function buildSlots(){
-    var groups = projectSlots();
-    var dur = state.duration ? (state.duration+" min") : "";
-    var html="";
-    groups.forEach(function(gp){
-      html+='<div class="dayblock"><div class="d">'+esc(gp.label)+'</div><div class="slots">';
-      gp.slots.forEach(function(s){
-        html+='<button type="button" class="slot" data-cid="'+esc(s.class_id)+'" data-date="'+esc(gp.dateStr)+'" data-time="'+esc(s.time)+'" data-tl="'+esc(s.timeLabel)+'" data-day="'+esc(gp.label)+'">'+esc(s.timeLabel)+(dur?'<small>'+esc(dur)+'</small>':"")+'</button>';
-      });
-      html+='</div></div>';
-    });
-    if(!groups.length){
-      html='<div class="emptynote">No '+esc(state.typeLabel)+' sessions in the next 3 weeks. Use the link below and we\'ll find you a time.</div>';
+    _dayGroups = projectSlots();
+    if(!_dayGroups.length){
+      $("slotWrap").innerHTML='<div class="emptynote">No '+esc(state.typeLabel)+' sessions in the next week. Use the link below and we\'ll find you a time.</div>';
+      $("c3").disabled = !(state.slot && !state.fallback);   // stays disabled; no slots to pick
+      return;
     }
-    $("slotWrap").innerHTML=html;
+    // Default active day = the group containing the already-picked slot (so a
+    // returning user sees their pick highlighted), else the first (earliest) day.
+    _activeDay = 0;
+    if(state.slot){
+      for(var gi=0; gi<_dayGroups.length; gi++){
+        if(_dayGroups[gi].dateStr===state.slot.date){ _activeDay=gi; break; }
+      }
+    }
+    renderSlotDay();
+  }
+  // Renders the day-tab strip + ONLY the active day's slot grid, and (re)wires
+  // both. Called by buildSlots and on every tab switch. Never clears state.slot.
+  function renderSlotDay(){
+    var groups = _dayGroups;
+    if(_activeDay<0 || _activeDay>=groups.length) _activeDay=0;
+    var dur = state.duration ? (state.duration+" min") : "";
+    // Horizontal day tabs — weekday short over date number, one per day.
+    var tabs='<div class="daytabs">';
+    groups.forEach(function(gp,idx){
+      var parts = String(gp.label).split(" ");            // "Monday 27 Jul"
+      var wd = (parts[0]||"").slice(0,3).toUpperCase();    // MON
+      var dn = parts[1]||"";                               // 27
+      tabs+='<button type="button" class="daytab'+(idx===_activeDay?' on':'')+'" data-dayidx="'+idx+'"><span class="dw">'+esc(wd)+'</span><span class="dn">'+esc(dn)+'</span></button>';
+    });
+    tabs+='</div>';
+    // Only the active day's dayblock (same markup as before, for one group).
+    var gp = groups[_activeDay];
+    var block='<div class="dayblock"><div class="d">'+esc(gp.label)+'</div><div class="slots">';
+    gp.slots.forEach(function(s){
+      var sel = state.slot && state.slot.class_id===s.class_id && state.slot.date===gp.dateStr && state.slot.time===s.time;
+      block+='<button type="button" class="slot'+(sel?' on':'')+'" data-cid="'+esc(s.class_id)+'" data-date="'+esc(gp.dateStr)+'" data-time="'+esc(s.time)+'" data-tl="'+esc(s.timeLabel)+'" data-day="'+esc(gp.label)+'">'+esc(s.timeLabel)+(dur?'<small>'+esc(dur)+'</small>':"")+'</button>';
+    });
+    block+='</div></div>';
+    $("slotWrap").innerHTML = tabs+block;
     $("c3").disabled = !(state.slot && !state.fallback);
-
+    // Tab switch — change active day, re-render. Does NOT touch state.slot.
+    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".daytab"), function(tab){
+      tab.addEventListener("click", function(){
+        _activeDay = parseInt(tab.getAttribute("data-dayidx"),10) || 0;
+        renderSlotDay();
+      });
+    });
+    // Slot pick — unchanged contract: sets state.slot, .on highlight, enables c3, paintSummary.
     Array.prototype.forEach.call($("slotWrap").querySelectorAll(".slot"), function(btn){
       btn.addEventListener("click", function(){
         state.fallback=false;
