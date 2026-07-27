@@ -268,6 +268,7 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .toggle{width:44px;height:24px;border-radius:12px;background:var(--border2);border:none;cursor:pointer;position:relative;flex-shrink:0;transition:background .2s}.toggle.on{background:#1A5DAD}.toggle::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}.toggle.on::after{transform:translateX(20px)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:var(--sh)}
 .card.stp{border-color:var(--blue-mid);background:var(--blue-tint)}.card.stc{border-color:var(--green-border);background:var(--green-bg)}
+.card.ended{opacity:.55}
 .slbl{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:12px}
 .drow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}.drow:last-child{border-bottom:none}
 .blt{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase}
@@ -1829,6 +1830,26 @@ function _renderRankBox(s,opts){
   const statsRow=statHtml.length
     ?'<div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+statHtml.join(sep)+'</div>'
     :'';
+  // Student / parent (metaCols) path — HORIZONTAL card: belt SVG as the left
+  // anchor, a vertically-centred column on the right with the belt line then the
+  // meta columns STACKED (Awarded + Training since). Staff/coach never reach
+  // here (no metaCols) so their layout below stays byte-for-byte identical.
+  if(_metaCols.length){
+    const metaStack='<div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">'+_metaCols.map(function(c){
+        return '<div style="min-width:0"><div style="font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+c.label+'</div><div style="font-size:13px;color:var(--text2);margin-top:2px">'+c.value+'</div></div>';
+      }).join('')+'</div>';
+    return '<div class="slbl">Current rank</div>'
+      +'<div class="card">'
+      +'<div style="display:flex;align-items:center;gap:16px">'
+        +'<div style="flex-shrink:0">'+beltSVG(s.belt,deg,prog,140)+'</div>'
+        +'<div style="min-width:0">'
+          +'<div style="font-size:13px;color:var(--text2);font-weight:600">'+beltLine+'</div>'
+          +metaStack
+        +'</div>'
+      +'</div>'
+      +(opts.footerHtml||'')
+    +'</div>';
+  }
   return '<div class="slbl">Current rank</div>'
     +'<div class="card">'
     +'<div>'+beltSVG(s.belt,deg,prog,110)+'</div>'
@@ -2977,7 +2998,7 @@ function rStuProf(){
     +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
     +(isKids?rDetailRow('Parent email',parentEmailVal,''):'')
     +rDetailRow('Unit',unitName,'')
-    +rDetailRow('Joined',joinedDate,'')
+    +(joinedDate?rDetailRow('Joined',joinedDate,''):'')
     +giOwnedRow
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:var(--green-text);font-weight:600">Active</div></div>'
     +'</div>';
@@ -3254,7 +3275,7 @@ function _rClassHistorySection(s){
       splitHtml='<div style="display:flex;height:9px;border-radius:99px;overflow:hidden;margin-top:8px;background:var(--border)"><div style="width:'+giPct+'%;background:var(--blue)"></div><div style="width:'+nogiPct+'%;background:var(--blue-mid)"></div></div>'
         +'<div style="display:flex;gap:12px;margin-top:5px;font-size:11px;color:var(--text3)"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:var(--blue)"></span>Gi '+formatStat(Number(r.gi||0))+'</span><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:var(--blue-mid)"></span>No-Gi '+formatStat(Number(r.nogi||0))+'</span></div>';
     }
-    return '<div style="padding:10px 0;border-top:1px solid var(--border)">'+topRow+splitHtml+'</div>';
+    return '<div style="padding:10px 0;border-top:1px solid var(--border)">'+topRow+(splitHtml?'<div style="margin-left:36px">'+splitHtml+'</div>':'')+'</div>';
   }).join('');
   return '<div class="slbl" style="margin-top:16px">Class history</div>'
     +'<div class="card" style="padding:14px 16px">'+header+rowsHtml+'</div>';
@@ -3523,8 +3544,13 @@ function rStuAttList(){
         if(!sf)return null;
         return staffDisplayName(sf,{firstOnly:true});
       };
+      // Student-facing sheet (opened from own Progress / a parent viewing a kid):
+      // hide the PRESENT pill — a confirmed class is the norm and the pill reads
+      // as clutter to the member. ABSENT / GOING stay in every case. Admin/peer
+      // (neither flag) keeps PRESENT exactly as before.
+      const studentFacing=!!(stl.fromSelf||stl.fromParent);
       const pill=st=>{
-        if(st==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
+        if(st==='present')return studentFacing?'':'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
         if(st==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
         return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
       };
@@ -3544,7 +3570,7 @@ function rStuAttList(){
         else if(r.status==='going')trail='Awaiting confirmation';
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
           +'<div style="flex:1;min-width:0">'
-            +'<div style="font-size:13px;color:var(--text);font-weight:500">'+r.class_date+' · '+fmtT12(r.class_time)+modBadge(m)+'</div>'
+            +'<div style="font-size:13px;color:var(--text);font-weight:500">'+_fmtAttWhen(r.class_date,r.class_time)+modBadge(m)+'</div>'
             +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+trail+'</div>':'')
           +'</div>'
           +pill(r.status)
@@ -4560,7 +4586,7 @@ function rClass(){
         btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text2);cursor:default;width:100%">Checked in</button>`;
       }
     }
-    else if(isEnded){btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;}
+    else if(isEnded){cc='card ended';btn=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);text-align:center;padding:10px 0;width:100%">Ended</div>`;}
     else if(!isT){
       // G16-new — three-way split now. Past still shows "Class ended".
       // Tomorrow renders the active "I'm going" button (no end-of-day
@@ -4572,7 +4598,8 @@ function rClass(){
       const isPast=skSd<dk(TODAY);
       const isTomorrow=skSd===dk(TOMORROW);
       if(isPast){
-        btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);cursor:default;width:100%">Class ended</button>`;
+        cc='card ended';
+        btn=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);text-align:center;padding:10px 0;width:100%">Ended</div>`;
       } else if(isTomorrow){
         btn=onHoldBlock?onHoldPill:`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;
       } else {
@@ -4877,7 +4904,7 @@ function _renderProfileIdentity(s,opts){
       +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
       +(isKids?rDetailRow('Parent email',parentEmailVal,''):'')
       +rDetailRow('Unit',unitName,'')
-      +rDetailRow('Joined',joinedDate,'')
+      +(joinedDate?rDetailRow('Joined',joinedDate,''):'')
       +giRow
       +statusRow;
   }
@@ -4957,7 +4984,7 @@ function rProfileArea(){
     const settingsRows=[[icoBell,'Notification preferences','openSub(\'nprefs\')']]
       .concat([[icoLock,'Set password','openSub(\'setpwd\')']])
       .concat(!isOwnerNow?[[icoAddKid,'+ Add child','onAddChild()']]:[])
-      .concat([[icoUnit,'My unit','',unitTrail]]);
+      .concat(isStaffNow?[[icoUnit,'My unit','',unitTrail]]:[]);
     let rows='<div class="slbl" style="margin-top:18px">Settings</div>'+sectionCard(settingsRows);
     if(isStaffNow){
       const adminRows=[[icoSend,'Send notification','openSub(\'anotify\')'],[icoAddStu,'Add student','openSub(\'addstu\')']]
@@ -6495,6 +6522,17 @@ function _rTrainingCard(stu){
 // ── RECENT card — most recent 3 present sessions + View-all link ─────────────
 // Reads S.progressAtt only (no fetch). "View all attendance" opens the existing
 // full subview (openStuAttList). Loading/error → nothing (rest of tab renders).
+// Single source for the attendance "when" label — the RECENT card idiom, reused
+// by rStuAttList so both surfaces render identically (weekday day month + a muted
+// time span, no middle-dot separator). Returns HTML.
+function _fmtAttWhen(classDate,classTime){
+  const d=String(classDate||'');
+  const t=d?Date.parse(d+'T00:00:00'):NaN;
+  const dt=isNaN(t)?null:new Date(t);
+  const dl=dt?(DS[dt.getDay()]+' '+dt.getDate()+' '+MS[dt.getMonth()]):d;
+  const tm=classTime?fmtT12(classTime).replace(/\s+/g,'').toLowerCase():'';
+  return dl+(tm?' <span style="color:var(--text3)">'+tm+'</span>':'');
+}
 function _rRecentCard(stu,fromParent){
   if(!stu||!stu._dbId)return '';
   const slot=S.progressAtt;
@@ -6511,13 +6549,8 @@ function _rRecentCard(stu,fromParent){
   // the 9+9 inter-row gap. Rows after the first keep the border as a separator.
   const rowsHtml=recent.length
     ?recent.map(function(r,i){
-      const d=String(r.class_date||'');
-      const t=d?Date.parse(d+'T00:00:00'):NaN;
-      const dt=isNaN(t)?null:new Date(t);
-      const dl=dt?(DS[dt.getDay()]+' '+dt.getDate()+' '+MS[dt.getMonth()]):d;
-      const tm=r.class_time?fmtT12(r.class_time).replace(/\s+/g,'').toLowerCase():'';
       const mod=r.modality||_modalityFromType(r.class_type);
-      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;'+(i===0?'':'border-top:1px solid var(--border)')+'"><div style="font-size:13px;color:var(--text);min-width:0">'+dl+(tm?' <span style="color:var(--text3)">'+tm+'</span>':'')+'</div>'+chip(mod)+'</div>';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;'+(i===0?'':'border-top:1px solid var(--border)')+'"><div style="font-size:13px;color:var(--text);min-width:0">'+_fmtAttWhen(r.class_date,r.class_time)+'</div>'+chip(mod)+'</div>';
     }).join('')
     :'<div style="font-size:13px;color:var(--text3);padding:9px 0">No classes logged yet</div>';
   const openArg=fromParent?",{fromParent:true}":",{fromSelf:true}";
