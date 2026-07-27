@@ -258,11 +258,20 @@ async function loadThisWeek(){
   }catch(e){ host.innerHTML = '<p class="err">Could not load this week.</p>'; }
 }
 
+// Auto-scroll to the current week fires ONLY on a user open of the cycle.
+// _cycleScrollPending is a one-shot set when the user opens while the curriculum
+// is still loading (so the scroll runs once the data lands). _curriculumLoading
+// tracks an in-flight fetch so the toggle handler can tell "still loading" from
+// "loaded, just no current week". A plain unit switch touches neither flag.
+var _cycleScrollPending = false;
+var _curriculumLoading = false;
+
 async function loadCurriculum(){
   const url = SUPA + '/rest/v1/public_curriculum?unit_id=eq.' + UNITS[CURRENT].id
     + '&select=week_index,theme,is_current_week,fundamentals,mixed,advanced,kids,stand_up,ground&order=week_index';
   const host = document.getElementById('curriculum');
   host.innerHTML = '<p class="muted">Loading…</p>';
+  _curriculumLoading = true;
   try{
     const rows = await (await fetch(url, { headers })).json();
     if(!rows.length){ host.innerHTML = '<p class="muted">No curriculum published yet.</p>'; return; }
@@ -273,11 +282,19 @@ async function loadCurriculum(){
         + (cur?'<span class="now-tag">This week</span>':'') + '</h3>'
         + (bandsHtml(w) || '<p class="muted">No items listed.</p>') + '</div>';
     }).join('');
-    // If the disclosure is already open (user opened it while this was still
-    // loading, or switched unit while open), bring the current week to the top
-    // now that .week.current exists. No-op when the details is closed.
-    scrollCycleToCurrent();
   }catch(e){ host.innerHTML = '<p class="err">Could not load curriculum.</p>'; }
+  finally{
+    _curriculumLoading = false;
+    // Fire the scroll ONLY if the user opened the cycle while it was still
+    // loading (one-shot). A plain unit switch never sets the flag, so it never
+    // scrolls. Runs on every settle path (data / empty / error) so the flag is
+    // always cleared — never left stale to fire on a later render.
+    if(_cycleScrollPending){
+      _cycleScrollPending = false;
+      var wrap = document.getElementById('cycleWrap');
+      if(wrap && wrap.open) scrollCycleToCurrent();
+    }
+  }
 }
 
 async function loadTimetable(){
@@ -353,7 +370,15 @@ function scrollCycleToCurrent(){
     // obvious even when the expanded content is off-screen.
     var sum = wrap.querySelector('summary');
     if(sum) sum.textContent = wrap.open ? 'Hide all weeks in the cycle' : 'See all weeks in the cycle';
-    if(wrap.open) scrollCycleToCurrent();
+    if(wrap.open){
+      if(wrap.querySelector('.week.current')){
+        scrollCycleToCurrent();          // current week already rendered → scroll now
+      }else if(_curriculumLoading){
+        _cycleScrollPending = true;      // still loading → scroll once the data lands
+      }else{
+        scrollCycleToCurrent();          // loaded, no current week flagged → summary fallback now
+      }
+    }
   });
 })();
 
