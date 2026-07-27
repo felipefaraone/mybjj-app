@@ -4483,6 +4483,35 @@ function _maybePromoToast(){
   const n=PROMOTION_LOG.filter(p=>p&&p.isNewBelt&&p.fromBelt&&new Date(p.date)>=_tCut&&(!_tUnit||p.unit===_tUnit)&&STUDENTS.find(x=>x.id===p.studentId)).length;
   if(n>0)setTimeout(()=>showSaveToast2(n+' new promotion'+(n===1?'':'s')+' this week'),400);
 }
+// Cross-unit check-in banner (owner/staff, multi-unit only). Attendance loads
+// for ALL units for admins, but the Class tab lists only the ACTIVE unit's
+// classes (getDC → TT[day] is active-unit scoped), so check-ins logged in
+// another unit have no card to hang on and look "lost". This surfaces the count
+// for the SELECTED day in each OTHER unit and lets the owner jump there in one
+// tap. Purely additive — never changes the one-unit-at-a-time schedule model.
+function _otherUnitCheckinsBanner(dayKey){
+  if(!isStaffOrOwner())return '';
+  if(UNITS.filter(u=>u.active).length<2)return '';
+  const activeU=UNITS.find(u=>u.name===S.unit)||{};
+  const activeId=activeU._dbId||null;   // ATTENDANCE.unitId is the DB uuid (r.unit_id) → compare against _dbId, not the legacy .id
+  const counts={};
+  for(const a of ATTENDANCE){
+    if(!a||a.classDate!==dayKey)continue;
+    if(a.status!=='going'&&a.status!=='present')continue;
+    if(!a.unitId||a.unitId===activeId)continue;
+    counts[a.unitId]=(counts[a.unitId]||0)+1;
+  }
+  let html='';
+  for(const uid in counts){
+    const n=counts[uid];if(!n)continue;
+    const u=UNITS.find(x=>x._dbId===uid);if(!u)continue;
+    const nm=u.name;
+    const nmEsc=String(nm).replace(/'/g,"\\'");
+    const suffix=' check-in'+(n===1?'':'s')+' in '+nm;
+    html+='<div onclick="pickUnit(\''+nmEsc+'\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer"><div style="font-size:13px;color:var(--text2)"><span style="font-weight:700;color:var(--blue)">'+n+'</span>'+suffix+'</div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></div>';
+  }
+  return html;
+}
 function rClass(){
   const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const isT=sk===dk(TODAY);const hol=isHol(sd);const me=S.me;
   // G12 — audience gate. Non-staff see only classes whose audience matches
@@ -4524,6 +4553,7 @@ function rClass(){
   })();
   _maybePromoToast();
   return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div></div>
+  ${_otherUnitCheckinsBanner(sk)}
   ${hol?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${HN[sk]||'Public Holiday'}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Academy closed · No classes scheduled today</div></div></div>`
   :cls.length===0?`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`
   :cls.map(c=>{
