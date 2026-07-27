@@ -147,22 +147,25 @@
   .slot small{display:block;font-family:'Barlow';font-weight:500;font-size:11px;color:var(--ink3);letter-spacing:0;margin-top:2px}
   .slot.on{border-color:var(--blue);background:var(--blue);color:#fff}
   .slot.on small{color:rgba(255,255,255,.8)}
-  /* Week + day picker (Calendly-style). Week tabs pick a calendar week; the
-     7-col grid shows that week Mon–Sun (days without sessions dimmed & inert);
-     the active day's slots render below. Active states reuse the .slot.on blue
+  /* Month calendar (Calendly-style) — vertical, mobile-first. Header arrows +
+     "Month Year", a Monday-first weekday row, then a 7-col month grid. Session
+     days are tappable buttons carrying a dot; past / no-session / beyond-window
+     days are dimmed inert divs. Active day + arrows reuse the .slot.on blue
      (fill --blue, white via --card). Tokens only; fits 7 cells at 360px. */
-  .weektabs{display:flex;gap:8px;margin-bottom:12px}
-  .weektab{flex:1;background:var(--card);border:2px solid var(--line);border-radius:10px;padding:9px 4px;cursor:pointer;font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:.3px;color:var(--ink);transition:.14s;text-align:center;white-space:nowrap}
-  .weektab:hover{border-color:var(--blue-mid)}
-  .weektab.on{border-color:var(--blue);background:var(--blue);color:var(--card)}
-  .daygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px}
-  .daycell{background:var(--card);border:2px solid var(--line);border-radius:9px;padding:7px 1px;cursor:pointer;font-family:'Barlow Condensed';text-align:center;color:var(--ink);transition:.14s;line-height:1.05}
-  .daycell .dw{display:block;font-weight:700;font-size:10px;letter-spacing:.2px;color:var(--ink3)}
-  .daycell .dn{display:block;font-weight:700;font-size:16px;margin-top:1px}
-  .daycell:hover{border-color:var(--blue-mid)}
-  .daycell.on{border-color:var(--blue);background:var(--blue);color:var(--card)}
-  .daycell.on .dw{color:var(--card);opacity:.8}
-  .daycell.off{opacity:.4;pointer-events:none;cursor:default}
+  .calhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .calmonth{font-family:'Barlow Condensed';font-weight:700;font-size:18px;letter-spacing:.4px;color:var(--ink);text-transform:uppercase}
+  .calnav{width:34px;height:34px;flex-shrink:0;background:var(--card);border:2px solid var(--line);border-radius:9px;cursor:pointer;font-family:'Barlow Condensed';font-weight:700;font-size:20px;line-height:1;color:var(--blue);transition:.14s;display:flex;align-items:center;justify-content:center}
+  .calnav:hover{border-color:var(--blue-mid)}
+  .calnav.off{opacity:.3;pointer-events:none;cursor:default}
+  .calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px}
+  .calwd{text-align:center;font-family:'Barlow Condensed';font-weight:700;font-size:10px;letter-spacing:.3px;color:var(--ink3);padding-bottom:2px}
+  .calcell{position:relative;min-height:40px;background:var(--card);border:2px solid var(--line);border-radius:9px;cursor:pointer;font-family:'Barlow Condensed';font-weight:700;font-size:15px;color:var(--ink);transition:.14s;display:flex;align-items:center;justify-content:center}
+  .calcell:hover{border-color:var(--blue-mid)}
+  .calcell.on{border-color:var(--blue);background:var(--blue);color:var(--card)}
+  .calcell.off{opacity:.35;pointer-events:none;cursor:default}
+  .calcell.blank{border:none;background:none;pointer-events:none}
+  .caldot{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--blue)}
+  .calcell.on .caldot{background:var(--card)}
   .nowork{margin-top:20px;font-size:14px}
   .nowork a{color:var(--blue);font-weight:600;cursor:pointer;text-decoration:underline}
   .emptynote{color:var(--ink2);font-size:15px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
@@ -258,7 +261,7 @@
     <!-- ===== 3 · TIME ===== -->
     <section class="screen" id="s3">
       <button class="backlink" data-go="2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back</button>
-      <div class="lead"><h2>When suits you?</h2><p>These are the real sessions running over the next 3 weeks.</p></div>
+      <div class="lead"><h2>When suits you?</h2><p>These are the real sessions running over the coming weeks.</p></div>
       <div id="slotWrap"></div>
       <div class="nowork" id="noWork">None of these times work? <a id="noWorkLink">Tell us your availability instead</a></div>
       <div class="actionbar"><button class="btn primary" id="c3" disabled>Continue</button><span class="hintline">Pick a session to continue</span></div>
@@ -494,9 +497,10 @@
       return r.unit_id===state.unit.id && r.type_code===state.typeCode && r.audience===state.audience;
     });
     var groups = [];
-    // Booking window: next 3 weeks (21 days). Day tabs keep the scroll short.
-    // week" copy. Each day WITH sessions becomes a day-tab in buildSlots.
-    for(var i=0;i<21;i++){
+    // Booking window: the coming ~5 weeks (35 days from today, today = day 1 →
+    // furthest bookable is today+34). The month calendar in buildSlots surfaces
+    // the days WITH sessions; everything else renders dimmed/inert.
+    for(var i=0;i<35;i++){
       var d = addDays(syd.dateStr,i);
       var dateStr = d.toISOString().slice(0,10);
       var dow = d.getUTCDay();
@@ -750,96 +754,86 @@
   // ============================================================================
   // STEP 3 — TIME
   // ============================================================================
-  // Week-based picker state for step 3 (Calendly-style). _dayGroups caches this
-  // render's day-groups (days WITH sessions). _activeDay indexes into it (the day
-  // whose slots show). _activeWeek (0=this week … Mon-anchored) drives the grid.
+  // Month-calendar picker state for step 3 (Calendly-style). _dayGroups caches
+  // this render's day-groups (days WITH sessions, window-bounded). _activeDay
+  // indexes into it (the day whose slots show). _calY/_calM = the visible month.
   var _dayGroups = [];
   var _activeDay = 0;
-  var _activeWeek = 0;
-  // Monday (YYYY-MM-DD) of the calendar week containing today (Sydney). Days
-  // before today in week 0 simply have no sessions → they render dimmed.
-  function _week0MondayStr(){
-    var syd = sydneyNow();
-    var dow = addDays(syd.dateStr,0).getUTCDay();          // 0=Sun … 6=Sat
-    var mondayOffset = (dow===0) ? -6 : (1-dow);
-    return addDays(syd.dateStr, mondayOffset).toISOString().slice(0,10);
-  }
-  // Which week index (0/1/2/…) a YYYY-MM-DD date falls in, relative to week 0's Monday.
-  function _weekOfDate(ds){
-    var w0 = _week0MondayStr();
-    var days = Math.round((new Date(ds+"T00:00:00Z") - new Date(w0+"T00:00:00Z"))/86400000);
-    return Math.floor(days/7);
+  var _calY = 0, _calM = 0;
+  // Year + 0-based month of a YYYY-MM-DD string, and a comparable month key.
+  function _ymOf(ds){ return { y:+String(ds).slice(0,4), m:(+String(ds).slice(5,7))-1 }; }
+  function _monthKey(y,m){ return y*12+m; }
+  // First _dayGroups index in month (y,m): the state.slot day if it's in that
+  // month, else the earliest session there (-1 if the month has none).
+  function _dayIdxInMonth(y,m){
+    var key=_monthKey(y,m), pick=-1, first=-1;
+    for(var i=0;i<_dayGroups.length;i++){
+      var t=_ymOf(_dayGroups[i].dateStr);
+      if(_monthKey(t.y,t.m)!==key) continue;
+      if(first<0) first=i;
+      if(state.slot && _dayGroups[i].dateStr===state.slot.date) pick=i;
+    }
+    return pick>=0?pick:first;
   }
   function buildSlots(){
     _dayGroups = projectSlots();
     if(!_dayGroups.length){
-      $("slotWrap").innerHTML='<div class="emptynote">No '+esc(state.typeLabel)+' sessions in the next 3 weeks. Use the link below and we\'ll find you a time.</div>';
+      $("slotWrap").innerHTML='<div class="emptynote">No '+esc(state.typeLabel)+' sessions in the coming weeks. Use the link below and we\'ll find you a time.</div>';
       $("c3").disabled = !(state.slot && !state.fallback);   // stays disabled; no slots to pick
       return;
     }
     // Default active day = the group containing the already-picked slot (so a
     // returning user lands on their pick), else the first (earliest) day. The
-    // default week follows that day, so back-nav opens the right week.
+    // visible month follows that day, so back-nav opens the right month.
     _activeDay = 0;
     if(state.slot){
       for(var gi=0; gi<_dayGroups.length; gi++){
         if(_dayGroups[gi].dateStr===state.slot.date){ _activeDay=gi; break; }
       }
     }
-    _activeWeek = _weekOfDate(_dayGroups[_activeDay].dateStr);
-    renderSlotDay();
+    var ym = _ymOf(_dayGroups[_activeDay].dateStr);
+    _calY = ym.y; _calM = ym.m;
+    renderMonth();
   }
-  // First _dayGroups index in week w: the state.slot day if it's in that week,
-  // else the earliest session in that week (-1 if the week has none).
-  function _dayIdxInWeek(w){
-    var pick=-1, first=-1;
-    for(var i=0;i<_dayGroups.length;i++){
-      if(_weekOfDate(_dayGroups[i].dateStr)!==w) continue;
-      if(first<0) first=i;
-      if(state.slot && _dayGroups[i].dateStr===state.slot.date) pick=i;
-    }
-    return pick>=0?pick:first;
-  }
-  // Renders: week tabs (only weeks that have sessions; hidden when just one) +
-  // a 7-col Mon–Sun grid for the active week (days w/o sessions dimmed & inert) +
-  // the active day's slots. (Re)wires all three. Never clears state.slot.
-  function renderSlotDay(){
+  // Renders the month calendar (header ‹ Month Year › + Mon-first weekday row +
+  // 7-col day grid) and the active day's slots. Session days are tappable
+  // buttons with a dot; past / no-session / beyond-window days are dimmed inert
+  // divs (not in _dayGroups). Nav is session-bounded. (Re)wires everything.
+  // Never clears state.slot.
+  function renderMonth(){
     var groups = _dayGroups;
     if(_activeDay<0 || _activeDay>=groups.length) _activeDay=0;
     var dur = state.duration ? (state.duration+" min") : "";
-    var WK_LABELS = ["This week","Next week","In 2 weeks","In 3 weeks"];
     var WD = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
-    // Weeks that actually contain sessions (sorted, deduped).
-    var weeksPresent = [];
-    groups.forEach(function(gp){ var w=_weekOfDate(gp.dateStr); if(weeksPresent.indexOf(w)<0) weeksPresent.push(w); });
-    weeksPresent.sort(function(a,b){ return a-b; });
-    // Defensive: keep _activeWeek on a week with sessions, and _activeDay inside it.
-    if(weeksPresent.indexOf(_activeWeek)<0) _activeWeek = weeksPresent.length?weeksPresent[0]:0;
-    if(!(groups[_activeDay] && _weekOfDate(groups[_activeDay].dateStr)===_activeWeek)){
-      var di=_dayIdxInWeek(_activeWeek); if(di>=0) _activeDay=di;
-    }
+    var MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    var visKey = _monthKey(_calY,_calM);
+    // Session-bounded nav: enable prev/next only toward a month that actually
+    // has sessions — never lands on an all-empty (past or beyond-window) month.
+    var hasPrev=false, hasNext=false;
+    for(var i=0;i<groups.length;i++){ var t=_ymOf(groups[i].dateStr); var k=_monthKey(t.y,t.m); if(k<visKey)hasPrev=true; else if(k>visKey)hasNext=true; }
     var html="";
-    // Week tabs — only when more than one week is bookable (single week: no strip).
-    if(weeksPresent.length>1){
-      html+='<div class="weektabs">';
-      weeksPresent.forEach(function(w){
-        html+='<button type="button" class="weektab'+(w===_activeWeek?' on':'')+'" data-week="'+w+'">'+esc(WK_LABELS[w]||("Week "+(w+1)))+'</button>';
-      });
-      html+='</div>';
-    }
-    // 7-col day grid for the active week (Mon-anchored).
-    var weekMondayStr = addDays(_week0MondayStr(), _activeWeek*7).toISOString().slice(0,10);
-    html+='<div class="daygrid">';
-    for(var off=0; off<7; off++){
-      var cd = addDays(weekMondayStr, off);
-      var cds = cd.toISOString().slice(0,10);
-      var dn = cd.getUTCDate();
+    // Header — ‹ prev / MONTH YEAR / next ›. Disabled arrows are dimmed + inert.
+    html+='<div class="calhead">';
+    html+='<button type="button" class="calnav'+(hasPrev?'':' off')+'" data-nav="prev" aria-label="Previous month">‹</button>';
+    html+='<div class="calmonth">'+esc(MONTHS[_calM]+' '+_calY)+'</div>';
+    html+='<button type="button" class="calnav'+(hasNext?'':' off')+'" data-nav="next" aria-label="Next month">›</button>';
+    html+='</div>';
+    // Weekday header + month grid (Monday-first).
+    html+='<div class="calgrid">';
+    WD.forEach(function(w){ html+='<div class="calwd">'+w+'</div>'; });
+    var firstDow = new Date(Date.UTC(_calY,_calM,1)).getUTCDay();   // 0=Sun … 6=Sat
+    var lead = (firstDow===0) ? 6 : (firstDow-1);                   // Monday-first blanks
+    for(var b=0;b<lead;b++){ html+='<div class="calcell blank"></div>'; }
+    var daysInMonth = new Date(Date.UTC(_calY,_calM+1,0)).getUTCDate();
+    for(var d=1; d<=daysInMonth; d++){
+      var cds = new Date(Date.UTC(_calY,_calM,d)).toISOString().slice(0,10);
       var gidx=-1;
       for(var g=0; g<groups.length; g++){ if(groups[g].dateStr===cds){ gidx=g; break; } }
       if(gidx<0){
-        html+='<div class="daycell off"><span class="dw">'+WD[off]+'</span><span class="dn">'+dn+'</span></div>';
+        // Past / no-session / beyond-window (none are in _dayGroups) → dimmed, inert.
+        html+='<div class="calcell off"><span class="dn">'+d+'</span></div>';
       }else{
-        html+='<button type="button" class="daycell'+(gidx===_activeDay?' on':'')+'" data-dayidx="'+gidx+'"><span class="dw">'+WD[off]+'</span><span class="dn">'+dn+'</span></button>';
+        html+='<button type="button" class="calcell'+(gidx===_activeDay?' on':'')+'" data-dayidx="'+gidx+'"><span class="dn">'+d+'</span><span class="caldot"></span></button>';
       }
     }
     html+='</div>';
@@ -853,21 +847,22 @@
     html+='</div></div>';
     $("slotWrap").innerHTML = html;
     $("c3").disabled = !(state.slot && !state.fallback);
-    // Week switch — move to that week's default day (state.slot's day if in-week,
-    // else its first session). Never touches state.slot.
-    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".weektab"), function(tab){
-      tab.addEventListener("click", function(){
-        _activeWeek = parseInt(tab.getAttribute("data-week"),10) || 0;
-        var di=_dayIdxInWeek(_activeWeek); if(di>=0) _activeDay=di;
-        renderSlotDay();
+    // Month nav — step one month, then land on that month's default day
+    // (state.slot's day if in-month, else its first session). Never touches state.slot.
+    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".calnav[data-nav]"), function(nav){
+      nav.addEventListener("click", function(){
+        if(nav.getAttribute("data-nav")==="prev"){ if(!hasPrev)return; _calM--; if(_calM<0){_calM=11;_calY--;} }
+        else{ if(!hasNext)return; _calM++; if(_calM>11){_calM=0;_calY++;} }
+        var di=_dayIdxInMonth(_calY,_calM); if(di>=0) _activeDay=di;
+        renderMonth();
       });
     });
-    // Day switch — only real (session) cells carry data-dayidx; .off cells are
-    // divs and never match. Does NOT touch state.slot.
-    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".daycell[data-dayidx]"), function(cell){
+    // Day switch — only real (session) cells carry data-dayidx; .off/.blank cells
+    // are divs and never match. Does NOT touch state.slot.
+    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".calcell[data-dayidx]"), function(cell){
       cell.addEventListener("click", function(){
         _activeDay = parseInt(cell.getAttribute("data-dayidx"),10) || 0;
-        renderSlotDay();
+        renderMonth();
       });
     });
     // Slot pick — unchanged contract: sets state.slot, .on highlight, enables c3, paintSummary.
