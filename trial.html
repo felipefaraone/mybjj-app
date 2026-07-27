@@ -147,16 +147,22 @@
   .slot small{display:block;font-family:'Barlow';font-weight:500;font-size:11px;color:var(--ink3);letter-spacing:0;margin-top:2px}
   .slot.on{border-color:var(--blue);background:var(--blue);color:#fff}
   .slot.on small{color:rgba(255,255,255,.8)}
-  /* Day tabs — horizontal, scrollable; one chip per day WITH sessions. Active
-     chip reuses the .slot.on blue (fill --blue, white text via --card=#fff);
-     resting chips are outlined like a resting .slot. Tokens only. */
-  .daytabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px;-webkit-overflow-scrolling:touch}
-  .daytab{flex-shrink:0;width:48px;background:var(--card);border:2px solid var(--line);border-radius:10px;padding:8px 4px;cursor:pointer;font-family:'Barlow Condensed';text-align:center;color:var(--ink);transition:.14s;line-height:1.05}
-  .daytab .dw{display:block;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--ink3)}
-  .daytab .dn{display:block;font-weight:700;font-size:18px;margin-top:2px}
-  .daytab:hover{border-color:var(--blue-mid)}
-  .daytab.on{border-color:var(--blue);background:var(--blue);color:var(--card)}
-  .daytab.on .dw{color:var(--card);opacity:.8}
+  /* Week + day picker (Calendly-style). Week tabs pick a calendar week; the
+     7-col grid shows that week Mon–Sun (days without sessions dimmed & inert);
+     the active day's slots render below. Active states reuse the .slot.on blue
+     (fill --blue, white via --card). Tokens only; fits 7 cells at 360px. */
+  .weektabs{display:flex;gap:8px;margin-bottom:12px}
+  .weektab{flex:1;background:var(--card);border:2px solid var(--line);border-radius:10px;padding:9px 4px;cursor:pointer;font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:.3px;color:var(--ink);transition:.14s;text-align:center;white-space:nowrap}
+  .weektab:hover{border-color:var(--blue-mid)}
+  .weektab.on{border-color:var(--blue);background:var(--blue);color:var(--card)}
+  .daygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px}
+  .daycell{background:var(--card);border:2px solid var(--line);border-radius:9px;padding:7px 1px;cursor:pointer;font-family:'Barlow Condensed';text-align:center;color:var(--ink);transition:.14s;line-height:1.05}
+  .daycell .dw{display:block;font-weight:700;font-size:10px;letter-spacing:.2px;color:var(--ink3)}
+  .daycell .dn{display:block;font-weight:700;font-size:16px;margin-top:1px}
+  .daycell:hover{border-color:var(--blue-mid)}
+  .daycell.on{border-color:var(--blue);background:var(--blue);color:var(--card)}
+  .daycell.on .dw{color:var(--card);opacity:.8}
+  .daycell.off{opacity:.4;pointer-events:none;cursor:default}
   .nowork{margin-top:20px;font-size:14px}
   .nowork a{color:var(--blue);font-weight:600;cursor:pointer;text-decoration:underline}
   .emptynote{color:var(--ink2);font-size:15px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
@@ -744,10 +750,26 @@
   // ============================================================================
   // STEP 3 — TIME
   // ============================================================================
-  // Day-tab state for step 3: only ONE day's slots are in the DOM at a time.
-  // _dayGroups caches this step-3 render's groups; _activeDay is the visible day.
+  // Week-based picker state for step 3 (Calendly-style). _dayGroups caches this
+  // render's day-groups (days WITH sessions). _activeDay indexes into it (the day
+  // whose slots show). _activeWeek (0=this week … Mon-anchored) drives the grid.
   var _dayGroups = [];
   var _activeDay = 0;
+  var _activeWeek = 0;
+  // Monday (YYYY-MM-DD) of the calendar week containing today (Sydney). Days
+  // before today in week 0 simply have no sessions → they render dimmed.
+  function _week0MondayStr(){
+    var syd = sydneyNow();
+    var dow = addDays(syd.dateStr,0).getUTCDay();          // 0=Sun … 6=Sat
+    var mondayOffset = (dow===0) ? -6 : (1-dow);
+    return addDays(syd.dateStr, mondayOffset).toISOString().slice(0,10);
+  }
+  // Which week index (0/1/2/…) a YYYY-MM-DD date falls in, relative to week 0's Monday.
+  function _weekOfDate(ds){
+    var w0 = _week0MondayStr();
+    var days = Math.round((new Date(ds+"T00:00:00Z") - new Date(w0+"T00:00:00Z"))/86400000);
+    return Math.floor(days/7);
+  }
   function buildSlots(){
     _dayGroups = projectSlots();
     if(!_dayGroups.length){
@@ -756,44 +778,95 @@
       return;
     }
     // Default active day = the group containing the already-picked slot (so a
-    // returning user sees their pick highlighted), else the first (earliest) day.
+    // returning user lands on their pick), else the first (earliest) day. The
+    // default week follows that day, so back-nav opens the right week.
     _activeDay = 0;
     if(state.slot){
       for(var gi=0; gi<_dayGroups.length; gi++){
         if(_dayGroups[gi].dateStr===state.slot.date){ _activeDay=gi; break; }
       }
     }
+    _activeWeek = _weekOfDate(_dayGroups[_activeDay].dateStr);
     renderSlotDay();
   }
-  // Renders the day-tab strip + ONLY the active day's slot grid, and (re)wires
-  // both. Called by buildSlots and on every tab switch. Never clears state.slot.
+  // First _dayGroups index in week w: the state.slot day if it's in that week,
+  // else the earliest session in that week (-1 if the week has none).
+  function _dayIdxInWeek(w){
+    var pick=-1, first=-1;
+    for(var i=0;i<_dayGroups.length;i++){
+      if(_weekOfDate(_dayGroups[i].dateStr)!==w) continue;
+      if(first<0) first=i;
+      if(state.slot && _dayGroups[i].dateStr===state.slot.date) pick=i;
+    }
+    return pick>=0?pick:first;
+  }
+  // Renders: week tabs (only weeks that have sessions; hidden when just one) +
+  // a 7-col Mon–Sun grid for the active week (days w/o sessions dimmed & inert) +
+  // the active day's slots. (Re)wires all three. Never clears state.slot.
   function renderSlotDay(){
     var groups = _dayGroups;
     if(_activeDay<0 || _activeDay>=groups.length) _activeDay=0;
     var dur = state.duration ? (state.duration+" min") : "";
-    // Horizontal day tabs — weekday short over date number, one per day.
-    var tabs='<div class="daytabs">';
-    groups.forEach(function(gp,idx){
-      var parts = String(gp.label).split(" ");            // "Monday 27 Jul"
-      var wd = (parts[0]||"").slice(0,3).toUpperCase();    // MON
-      var dn = parts[1]||"";                               // 27
-      tabs+='<button type="button" class="daytab'+(idx===_activeDay?' on':'')+'" data-dayidx="'+idx+'"><span class="dw">'+esc(wd)+'</span><span class="dn">'+esc(dn)+'</span></button>';
-    });
-    tabs+='</div>';
-    // Only the active day's dayblock (same markup as before, for one group).
+    var WK_LABELS = ["This week","Next week","In 2 weeks","In 3 weeks"];
+    var WD = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
+    // Weeks that actually contain sessions (sorted, deduped).
+    var weeksPresent = [];
+    groups.forEach(function(gp){ var w=_weekOfDate(gp.dateStr); if(weeksPresent.indexOf(w)<0) weeksPresent.push(w); });
+    weeksPresent.sort(function(a,b){ return a-b; });
+    // Defensive: keep _activeWeek on a week with sessions, and _activeDay inside it.
+    if(weeksPresent.indexOf(_activeWeek)<0) _activeWeek = weeksPresent.length?weeksPresent[0]:0;
+    if(!(groups[_activeDay] && _weekOfDate(groups[_activeDay].dateStr)===_activeWeek)){
+      var di=_dayIdxInWeek(_activeWeek); if(di>=0) _activeDay=di;
+    }
+    var html="";
+    // Week tabs — only when more than one week is bookable (single week: no strip).
+    if(weeksPresent.length>1){
+      html+='<div class="weektabs">';
+      weeksPresent.forEach(function(w){
+        html+='<button type="button" class="weektab'+(w===_activeWeek?' on':'')+'" data-week="'+w+'">'+esc(WK_LABELS[w]||("Week "+(w+1)))+'</button>';
+      });
+      html+='</div>';
+    }
+    // 7-col day grid for the active week (Mon-anchored).
+    var weekMondayStr = addDays(_week0MondayStr(), _activeWeek*7).toISOString().slice(0,10);
+    html+='<div class="daygrid">';
+    for(var off=0; off<7; off++){
+      var cd = addDays(weekMondayStr, off);
+      var cds = cd.toISOString().slice(0,10);
+      var dn = cd.getUTCDate();
+      var gidx=-1;
+      for(var g=0; g<groups.length; g++){ if(groups[g].dateStr===cds){ gidx=g; break; } }
+      if(gidx<0){
+        html+='<div class="daycell off"><span class="dw">'+WD[off]+'</span><span class="dn">'+dn+'</span></div>';
+      }else{
+        html+='<button type="button" class="daycell'+(gidx===_activeDay?' on':'')+'" data-dayidx="'+gidx+'"><span class="dw">'+WD[off]+'</span><span class="dn">'+dn+'</span></button>';
+      }
+    }
+    html+='</div>';
+    // Active day's dayblock (same slot markup/contract as before).
     var gp = groups[_activeDay];
-    var block='<div class="dayblock"><div class="d">'+esc(gp.label)+'</div><div class="slots">';
+    html+='<div class="dayblock"><div class="d">'+esc(gp.label)+'</div><div class="slots">';
     gp.slots.forEach(function(s){
       var sel = state.slot && state.slot.class_id===s.class_id && state.slot.date===gp.dateStr && state.slot.time===s.time;
-      block+='<button type="button" class="slot'+(sel?' on':'')+'" data-cid="'+esc(s.class_id)+'" data-date="'+esc(gp.dateStr)+'" data-time="'+esc(s.time)+'" data-tl="'+esc(s.timeLabel)+'" data-day="'+esc(gp.label)+'">'+esc(s.timeLabel)+(dur?'<small>'+esc(dur)+'</small>':"")+'</button>';
+      html+='<button type="button" class="slot'+(sel?' on':'')+'" data-cid="'+esc(s.class_id)+'" data-date="'+esc(gp.dateStr)+'" data-time="'+esc(s.time)+'" data-tl="'+esc(s.timeLabel)+'" data-day="'+esc(gp.label)+'">'+esc(s.timeLabel)+(dur?'<small>'+esc(dur)+'</small>':"")+'</button>';
     });
-    block+='</div></div>';
-    $("slotWrap").innerHTML = tabs+block;
+    html+='</div></div>';
+    $("slotWrap").innerHTML = html;
     $("c3").disabled = !(state.slot && !state.fallback);
-    // Tab switch — change active day, re-render. Does NOT touch state.slot.
-    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".daytab"), function(tab){
+    // Week switch — move to that week's default day (state.slot's day if in-week,
+    // else its first session). Never touches state.slot.
+    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".weektab"), function(tab){
       tab.addEventListener("click", function(){
-        _activeDay = parseInt(tab.getAttribute("data-dayidx"),10) || 0;
+        _activeWeek = parseInt(tab.getAttribute("data-week"),10) || 0;
+        var di=_dayIdxInWeek(_activeWeek); if(di>=0) _activeDay=di;
+        renderSlotDay();
+      });
+    });
+    // Day switch — only real (session) cells carry data-dayidx; .off cells are
+    // divs and never match. Does NOT touch state.slot.
+    Array.prototype.forEach.call($("slotWrap").querySelectorAll(".daycell[data-dayidx]"), function(cell){
+      cell.addEventListener("click", function(){
+        _activeDay = parseInt(cell.getAttribute("data-dayidx"),10) || 0;
         renderSlotDay();
       });
     });
