@@ -10341,6 +10341,32 @@ function rPhotoQueue(){
 // uMap is rebuilt from the in-memory UNITS list (dbId → legacy id), identical
 // to hydrateData's uMap, so no units re-fetch is needed. Returns true when any
 // of the three arrays received rows (so hydrateData can set its touched flag).
+// PostgREST silently caps a select at its default max-rows (1000). The -21d/+14d
+// attendance window can exceed that for admins whose RLS returns all units (the
+// owner sees ~1083 rows across both units), and with NO ORDER BY the dropped
+// rows are the most recently inserted — the check-ins just entered. Page through
+// the full window deterministically: class_date desc keeps the most recent data
+// if a cap is ever hit again, and the id tiebreaker makes paging stable (no
+// dupes/skips). Resolves to the same {data,error} shape the caller already
+// handles, so the downstream at.data/at.error branch is unchanged.
+async function _fetchAllAttendance(c, fromDate, toDate){
+  const PAGE = 1000;
+  const COLS = 'id,unit_id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value';
+  let all = [], from = 0;
+  for (let page = 0; page < 10; page++) {          // safety cap: 10 pages / 10k rows
+    const r = await c.from('attendance').select(COLS)
+      .gte('class_date', fromDate).lte('class_date', toDate)
+      .order('class_date', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (r && r.error) return { data: null, error: r.error };
+    const rows = (r && r.data) || [];
+    all = all.concat(rows);
+    if (rows.length < PAGE) break;
+    from += PAGE;
+  }
+  return { data: all, error: null };
+}
 async function refetchUnitScopedData(){
   const c=initSupabase(); if(!c) return false;
   const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
@@ -10357,7 +10383,7 @@ async function refetchUnitScopedData(){
     c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,hidden,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
     c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
     c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
-    c.from('attendance').select('id,unit_id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value').gte('class_date',dk(new Date(Date.now()-21*864e5))).lte('class_date',dk(new Date(Date.now()+14*864e5))),
+    _fetchAllAttendance(c,dk(new Date(Date.now()-21*864e5)),dk(new Date(Date.now()+14*864e5))),
     // Etapa 5 — feedback hydrated from public.feedback. RLS scopes
     // rows automatically: staff of unit see every student's feedback;
     // students see their own; parents see their kid's. Each row is
