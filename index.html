@@ -2122,7 +2122,11 @@ function rAttsStaff(rows,cid){
   }else if(visible.length){
     primaryCtl=donePill;
   }
-  const footer=`<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:8px${primaryCtl?'':';justify-content:flex-end'}">${primaryCtl}${secondaryBtn}</div></div>`;
+  const footerInner=`<div style="display:flex;align-items:center;gap:8px${primaryCtl?'':';justify-content:flex-end'}">${primaryCtl}${secondaryBtn}</div>`;
+  const footer=`<div class="divider" style="margin-top:12px;padding-top:12px">${footerInner}</div>`;
+  // Empty-state footer: no top-border rule (drawing rules around an empty state
+  // implies rows that don't exist). margin-top keeps the gap to the text above.
+  const footerNoRule=`<div style="margin-top:12px">${footerInner}</div>`;
   // --- MIDDLE — the going row IS the expand control. Whole row taps to
   // toggle; a chevron on the right rotates 90° when expanded. Collapsed:
   // facepile + "N going". Expanded: uppercase muted "N GOING" (the list
@@ -2141,8 +2145,10 @@ function rAttsStaff(rows,cid){
       +`<span style="margin-left:auto;display:inline-flex;align-items:center">${chevron}</span></div>`
     :'';
   if(!visible.length){
-    // Empty state — no going row. Footer (just the "+") still present + last.
-    return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}<div style="text-align:center;padding:10px 0 4px;font-size:13px;color:var(--text3)">No check-ins yet</div>${footer}</div>`;
+    // Empty state — no going row, and NO divider rules (above or below): rules
+    // around an empty state imply rows/sections that aren't there. Same
+    // margin-top/padding-top so the vertical rhythm is unchanged.
+    return `<div style="margin-top:12px;padding-top:12px">${trialsHtml}<div style="text-align:center;padding:10px 0 4px;font-size:13px;color:var(--text3)">No check-ins yet</div>${footerNoRule}</div>`;
   }
   if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${goingRow}${footer}</div>`;
   const btnFor=(r,s)=>{
