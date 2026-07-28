@@ -505,6 +505,32 @@ function _modalityFromType(type){
   if(_MODALITY_NOGI.indexOf(type)>=0)return 'nogi';
   return null;
 }
+// Class Labels Phase B — modality straight from the uniform axis. Preferred over
+// _modalityFromType for NEW check-ins (which carry uniform); Mixed earns no
+// gi/nogi credit (still counts as a class — matches has_full_split behaviour).
+function _modalityFromUniform(u){
+  if(u==='Gi')return 'gi';
+  if(u==='No-Gi')return 'nogi';
+  return null;   // Mixed / unknown
+}
+// Best-effort legacy CT id from the three axes, so type stays synced for
+// historical consumers (public_timetable embed, _modalityFromType fallback).
+// GUARANTEE: the returned id classifies modality-consistently — Gi→a _MODALITY_GI
+// id, No-Gi→a _MODALITY_NOGI id, Mixed→'omat' (classifies null). Beyond that it
+// picks the closest level-specific CT id for display fidelity.
+function _legacyTypeFrom(uniform,level,aud){
+  const isKids=(aud==='Kids');
+  if(level==='MMA')return isKids?'jmma':'mma';                 // distinct discipline in CT
+  if(uniform==='Mixed'||level==='Open Mat')return 'omat';      // omat → modality null
+  if(uniform==='No-Gi')return isKids?'jnogi':'nogi';
+  // Gi uniform (default): closest level-specific id, else base 'gi'.
+  if(level==='Mini Champs')return 'mini';
+  if(isKids)return 'jun';
+  if(level==='All Levels')return 'alev';
+  if(level==='Beginner')return 'beg';
+  if(level==='Advanced')return 'adv';
+  return 'gi';                                                 // Masters / anything else under Gi
+}
 // G16a — social handle platforms. Same array drives:
 //   1. Edit Profile Contact tab inputs.
 //   2. Details card icon-button row + peer-view social block.
@@ -785,6 +811,10 @@ function _validHandle(platform,v){
   return /^[A-Za-z0-9_.@-]+$/.test(s);
 }
 const AUD=['Adults','Kids','All'];
+// Class Labels Phase B — the two NEW axes alongside AUD. Uniform drives
+// attendance modality (Gi→gi, No-Gi→nogi, Mixed→null); Level is display-only.
+const UNIFORMS=['Gi','No-Gi','Mixed'];
+const LEVELS=['Beginner','All Levels','Advanced','Masters','Open Mat','MMA','Mini Champs'];
 // G9.2 — 5-tier attendance marking. Maps to John's physical-card
 // system: instructor picks the same glyph they'd write on the card,
 // app records the corresponding class_value (numeric(3,2) on
@@ -1258,6 +1288,8 @@ function _projClsRow(row){
     instructorId:row.instructor_id||null,
     time:String(row.time||'').slice(0,5),
     type:row.type,
+    uniform:row.uniform||null,
+    level:row.level||null,
     ins:insName,
     dur:row.duration_minutes||60,
     aud:row.audience||'Adults',
@@ -1892,6 +1924,28 @@ function ctText(id){
   if(lbl.split(/\s+/).some(w=>w.toLowerCase()===uniLC))return lbl;
   // Rule 3 — combine: "Gi · All Levels", "No-Gi · Open Mat", "Gi · Mini Champs".
   return uni+' · '+lbl;
+}
+// Class Labels Phase B — display label from the uniform+level axes (NOT type).
+// Close to ctText's rules. Callers use this when row.uniform is set, else fall
+// back to ctText(row.type) for historical/embed rows with no axes.
+function _clsLabel(row){
+  const u=(row&&row.uniform)||'';
+  const lv=(row&&row.level)||'';
+  // Self-describing disciplines that read fine without a uniform qualifier.
+  const STANDALONE=['Open Mat','MMA','Mini Champs'];
+  if(u==='Mixed'){
+    if(lv&&STANDALONE.indexOf(lv)>=0)return lv;      // "Open Mat", "MMA", "Mini Champs"
+    return lv?('Mixed · '+lv):'Mixed';                // "Mixed · Beginner"
+  }
+  // Gi / No-Gi (or missing uniform): join axis words, de-duping repeats so we
+  // never render "No-Gi · No-Gi".
+  const parts=[];
+  [u,lv].forEach(function(w){
+    if(!w)return;
+    if(parts.some(p=>p.toLowerCase()===w.toLowerCase()))return;
+    parts.push(w);
+  });
+  return parts.join(' · ')||(u||lv||'');
 }
 // Class times are stored as 24h "HH:MM" on the DB; display uses
 // 12h am/pm in Australian lowercase style ("7:30am", "6:00pm"). Pass
@@ -4671,7 +4725,7 @@ function rClass(){
       const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
       attBlock=rAtts(_adultsOnly,c.id);
     }
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div></div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${ctText(c.type)} · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div>`;}).join('')}
+    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div></div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div>`;}).join('')}
   <div style="height:16px"></div>`;}
 
 
@@ -8030,7 +8084,7 @@ function rCEdit(){
   // type/audience un-highlighted, instructor placeholder. Edit mode
   // pre-fills from the row. Default duration stays at 60 because the
   // brief only flagged instructor/type/audience.
-  const c=S.editCls||{time:'',type:null,ins:'',dur:60,aud:null};
+  const c=S.editCls||{time:'',type:null,uniform:null,level:null,ins:'',dur:60,aud:null};
   const dow=S.editDow||2;
   const busy=!!S.clsSaving;
   // Type chip highlight source: prefer the in-form pick (S._cet),
@@ -8038,6 +8092,10 @@ function rCEdit(){
   // In Add mode S._cet/_cea start null → no chip is highlighted.
   const cetSel=S._cet||c.type||null;
   const ceaSel=S._cea||c.aud||null;
+  // Class Labels Phase B — Uniform (segmented) + Level (select) highlight
+  // sources, same prefer-in-form-then-row shape as audience above.
+  const ceuSel=S._ceu||c.uniform||null;
+  const celSel=S._cel||c.level||null;
   const bottomAction=isNew?'':`<button class="bdel" style="width:100%;padding:12px;border-radius:10px;font-size:14px;margin-top:8px" onclick="reqDel('${c.id}',${dow})" ${busy?'disabled':''}>Delete</button>`;
   // Instructor select: in Add mode prepend a disabled placeholder
   // option so nothing is implicitly selected. In Edit mode the
@@ -8045,7 +8103,7 @@ function rCEdit(){
   const insHtml=isNew
     ?'<option value="" disabled selected>Pick instructor</option>'+instructorOptionsHtml('')
     :instructorOptionsHtml(c.ins);
-  return `<div class="sub open cedit-sub"><div class="shdr"><button class="sback" onclick="closeCEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">${isNew?'Add class':'Edit class'}</div><button class="ssave" onclick="saveCls()" ${busy?'disabled':''}>${busy?'…':'Save'}</button></div><div class="sbody"><div class="ef"><div class="erow"><div class="elbl">Day</div><select class="esel" id="ce-dow" style="text-align:right">${[1,2,3,4,5,6,0].map(d=>`<option value="${d}" ${d===dow?'selected':''}>${DL[d]}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Time</div><input class="einput" id="ce-time" type="time" value="${c.time||''}" style="text-align:right"/></div><div class="erow"><div class="elbl">Duration</div><select class="esel" id="ce-dur" style="text-align:right">${[30,45,50,60,90,120].map(d=>`<option value="${d}" ${d===c.dur?'selected':''}>${d} min</option>`).join('')}</select></div></div><div class="slbl" style="margin-top:8px">Class type</div><div class="ef"><div class="erow" style="flex-wrap:wrap;gap:8px;padding:12px 16px">${CT.map(t=>`<div onclick="setCet('${t.id}')" data-ce-cet="${t.id}" style="cursor:pointer;opacity:${cetSel===t.id?'1':'.4'}"><span class="ctag ${t.tc}" style="cursor:pointer">${t.lbl}</span></div>`).join('')}</div></div><div class="slbl" style="margin-top:8px">Audience & instructor</div><div class="ef"><div class="erow"><div class="elbl">Audience</div><div class="seg">${AUD.map(a=>`<button class="segb ${ceaSel===a?'on':''}" data-ce-cea="${a}" onclick="setCea('${a}')">${a}</button>`).join('')}</div></div><div class="erow"><div class="elbl">Instructor</div><select class="esel" id="ce-ins" style="text-align:right">${insHtml}</select></div></div>${bottomAction}<div style="height:24px"></div></div></div>`;
+  return `<div class="sub open cedit-sub"><div class="shdr"><button class="sback" onclick="closeCEdit()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">${isNew?'Add class':'Edit class'}</div><button class="ssave" onclick="saveCls()" ${busy?'disabled':''}>${busy?'…':'Save'}</button></div><div class="sbody"><div class="ef"><div class="erow"><div class="elbl">Day</div><select class="esel" id="ce-dow" style="text-align:right">${[1,2,3,4,5,6,0].map(d=>`<option value="${d}" ${d===dow?'selected':''}>${DL[d]}</option>`).join('')}</select></div><div class="erow"><div class="elbl">Time</div><input class="einput" id="ce-time" type="time" value="${c.time||''}" style="text-align:right"/></div><div class="erow"><div class="elbl">Duration</div><select class="esel" id="ce-dur" style="text-align:right">${[30,45,50,60,90,120].map(d=>`<option value="${d}" ${d===c.dur?'selected':''}>${d} min</option>`).join('')}</select></div></div><div class="slbl" style="margin-top:8px">Class</div><div class="ef"><div class="erow"><div class="elbl">Uniform</div><div class="seg">${UNIFORMS.map(u=>`<button class="segb ${ceuSel===u?'on':''}" data-ce-ceu="${u}" onclick="setCeu('${u}')">${u}</button>`).join('')}</div></div><div class="erow"><div class="elbl">Level</div><select class="esel" id="ce-level" style="text-align:right" onchange="setCel(this.value)">${celSel?'':'<option value="" disabled selected>Pick level</option>'}${LEVELS.map(l=>`<option value="${l}" ${celSel===l?'selected':''}>${l}</option>`).join('')}</select></div></div><div class="slbl" style="margin-top:8px">Audience & instructor</div><div class="ef"><div class="erow"><div class="elbl">Audience</div><div class="seg">${AUD.map(a=>`<button class="segb ${ceaSel===a?'on':''}" data-ce-cea="${a}" onclick="setCea('${a}')">${a}</button>`).join('')}</div></div><div class="erow"><div class="elbl">Instructor</div><select class="esel" id="ce-ins" style="text-align:right">${insHtml}</select></div></div>${bottomAction}<div style="height:24px"></div></div></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -10385,7 +10443,7 @@ async function refetchUnitScopedData(){
     // Etapa 1 — schedule lives in public.classes. Join staff so we
     // can render the instructor's clean display name without a
     // second lookup. Order so rebuildTT sees a stable shape.
-    c.from('classes').select('id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
+    c.from('classes').select('id,unit_id,day_of_week,time,type,uniform,level,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
     c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,hidden,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
     c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
     c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
@@ -11929,7 +11987,7 @@ async function doCI(id){
   // Conflict-ignored returns an empty data array; in that case fetch
   // the existing row's id so the local-prefix reconciliation still
   // lands and we don't leak an orphan local row.
-  const _mod=_modalityFromType(t.type);
+  const _mod=(t.uniform?_modalityFromUniform(t.uniform):_modalityFromType(t.type));
   const _payload={student_id:stu._dbId,unit_id:_unitId,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:'going'};
   let r=null,_caught=null;
   try{
@@ -12298,7 +12356,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
     render();
     if(!cli)return;
     // Batch A — keep gi consistent with modality on every new write.
-    const _mod=_modalityFromType(t.type);
+    const _mod=(t.uniform?_modalityFromUniform(t.uniform):_modalityFromType(t.type));
     const payload={student_id:s._dbId,unit_id:_unitId,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
     if(isPresent)payload.class_value=cv;
     // Upsert with ignoreDuplicates:false so the instructor's mark
@@ -12719,7 +12777,7 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   // Batch A — upsert so an admin-add upgrades any existing 'going'
   // row to 'present' in place, and never duplicates. gi mirrors
   // modality on every write so the canonical/derived pair never drifts.
-  const _mod=_modalityFromType(tt.type);
+  const _mod=(tt.uniform?_modalityFromUniform(tt.uniform):_modalityFromType(tt.type));
   const _payload={
     student_id:s._dbId,
     unit_id:_unitId,
@@ -14330,15 +14388,15 @@ function saveJny(){
   S.editJny=null;
   render();
 }
-function openAddCls(dow){S.addCls=true;S.editCls=null;S.editDow=dow;S._cet=null;S._cea=null;render();}
+function openAddCls(dow){S.addCls=true;S.editCls=null;S.editDow=dow;S._cet=null;S._cea=null;S._ceu=null;S._cel=null;render();}
 // TT only contains active classes — the only ones the UI manages now
 // that the archive flow is gone. Lookup is straight against TT.
 function openEditCls(cid,dow){
   const c=(TT[dow]||[]).find(x=>x.id===cid);
   if(!c)return;
-  S.editCls={...c};S.editDow=dow;S.addCls=false;S._cet=c.type;S._cea=c.aud;render();
+  S.editCls={...c};S.editDow=dow;S.addCls=false;S._cet=c.type;S._cea=c.aud;S._ceu=c.uniform||null;S._cel=c.level||null;render();
 }
-function closeCEdit(){S.editCls=null;S.addCls=false;S._cet=null;S._cea=null;S._clsFormSnapshot=null;render();}
+function closeCEdit(){S.editCls=null;S.addCls=false;S._cet=null;S._cea=null;S._ceu=null;S._cel=null;S._clsFormSnapshot=null;render();}
 // B1 — setCet/setCea now toggle classes in the DOM instead of calling
 // render(). Re-rendering the whole modal would wipe the user's in-DOM
 // choices for time / duration / instructor (those <input>/<select>
@@ -14354,12 +14412,22 @@ function setCea(a){
   const els=document.querySelectorAll('[data-ce-cea]');
   els.forEach(el=>{el.classList.toggle('on',el.getAttribute('data-ce-cea')===a);});
 }
+// Class Labels Phase B — Uniform mirrors setCea (segmented .on toggle); Level is
+// a native <select>, so setCel just records the value (the select shows itself).
+function setCeu(u){
+  S._ceu=u;
+  const els=document.querySelectorAll('[data-ce-ceu]');
+  els.forEach(el=>{el.classList.toggle('on',el.getAttribute('data-ce-ceu')===u);});
+}
+function setCel(v){
+  S._cel=v;
+}
 // saveCls persists to public.classes. Insert on add, update on edit.
 // The hard DB UNIQUE (unit_id, day_of_week, time, type) was dropped in
 // migration 79 — Camperdown HQ runs legit simultaneous same-type classes
 // (2 mats). Duplicate protection is now a soft client-side confirm below;
 // skipDupConfirm bypasses it on the confirmed "Create anyway" retry.
-const _CLS_SELECT='id,unit_id,day_of_week,time,type,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)';
+const _CLS_SELECT='id,unit_id,day_of_week,time,type,uniform,level,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)';
 async function saveCls(skipDupConfirm){
   if(S.clsSaving)return;
   const cli=initSupabase();
@@ -14380,7 +14448,8 @@ async function saveCls(skipDupConfirm){
     time:(document.getElementById('ce-time')?.value||'').slice(0,5),
     dur:parseInt(document.getElementById('ce-dur')?.value||60,10),
     insName:document.getElementById('ce-ins')?.value||'',
-    type:S._cet||(S.editCls&&S.editCls.type)||null,
+    uniform:S._ceu||(S.editCls&&S.editCls.uniform)||null,
+    level:S._cel||(S.editCls&&S.editCls.level)||null,
     aud:S._cea||(S.editCls&&S.editCls.aud)||null
   });
   let form;
@@ -14390,18 +14459,21 @@ async function saveCls(skipDupConfirm){
     form=readForm();
     S._clsFormSnapshot=form;
   }
-  const {dow,time,dur,insName,type,aud}=form;
+  const {dow,time,dur,insName,uniform,level,aud}=form;
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showSaveToast2('Time must be HH:MM.','error');return;}
   if(!(dur>=15&&dur<=240)){showSaveToast2('Duration must be 15–240 minutes.','error');return;}
-  if(!type||!CT.some(t=>t.id===type)){showSaveToast2('Pick a class type.','error');return;}
+  if(!uniform||UNIFORMS.indexOf(uniform)<0){showSaveToast2('Pick a uniform.','error');return;}
+  if(!level||LEVELS.indexOf(level)<0){showSaveToast2('Pick a level.','error');return;}
   if(!aud||AUD.indexOf(aud)<0){showSaveToast2('Pick an audience.','error');return;}
+  // Legacy type kept in sync for historical consumers (embed / modality fallback).
+  const type=_legacyTypeFrom(uniform,level,aud);
   const cur=UNITS.find(u=>u.name===S.unit);
   const unitDbId=cur&&cur._dbId;
   if(!unitDbId){showSaveToast2('Unit not set. Pick a unit first.','error');return;}
   const insStaff=insName?STAFF.find(s=>staffDisplayName(s)===insName):null;
   const instructor_id=insStaff?insStaff._dbId:null;
   if(!instructor_id){showSaveToast2('Pick a valid instructor.','error');return;}
-  const payload={unit_id:unitDbId,day_of_week:dow,time,type,instructor_id,duration_minutes:dur,audience:aud,active:true};
+  const payload={unit_id:unitDbId,day_of_week:dow,time,uniform,level,type,instructor_id,duration_minutes:dur,audience:aud,active:true};
   const isAdd=S.addCls;
   // Soft duplicate guard (replaces the DB UNIQUE dropped in migration 79).
   // Same (unit, day, time, type) as an existing class → confirm before
