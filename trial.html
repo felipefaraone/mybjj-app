@@ -296,6 +296,7 @@
             <option>Other</option>
           </select>
         </label>
+        <label class="field full" id="referrerRow" style="display:none"><span class="lab">What is their name?</span><input type="text" id="referrer_name" autocomplete="off" /></label>
         <label class="field full" id="friendToggleRow" style="display:none"><span style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--ink2)"><input type="checkbox" id="friendToggle" style="width:17px;height:17px;flex-shrink:0;accent-color:var(--blue)" />Bringing a friend? Their first class is free too.</span></label>
         <div class="field full" id="friendFields" style="display:none;grid-column:1/-1">
           <div class="formgrid">
@@ -929,6 +930,14 @@
   $("friendToggle").addEventListener("change", function(){
     $("friendFields").style.display = this.checked ? "block" : "none";
   });
+  // Reveal the referrer-name field only when "Friend or family" is chosen (same
+  // display:none mechanism as the friend fields); clear it on any other choice
+  // so a stale name never travels in the payload.
+  $("how_heard").addEventListener("change", function(){
+    var show = this.value === "Friend or family";
+    $("referrerRow").style.display = show ? "block" : "none";
+    if(!show) $("referrer_name").value = "";
+  });
 
   // ---- Turnstile (explicit render; only once, when step 4 is first shown) ----
   function ensureTurnstile(){
@@ -998,6 +1007,7 @@
       email: val("email"),
       phone: val("phone"),
       how_heard: val("how_heard"),
+      referrer_name: ($("how_heard").value === "Friend or family") ? val("referrer_name") : "",
       class_id: state.fallback ? "" : (state.slot ? state.slot.class_id : ""),
       class_date: state.fallback ? "" : (state.slot ? state.slot.date : ""),
       class_time: state.fallback ? "" : (state.slot ? state.slot.time : ""),
