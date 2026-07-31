@@ -461,6 +461,40 @@ function beltDef(belt,prog){
   const secondary=prog==='kids'?BA:BK;
   return primary[belt]||secondary[belt]||BA.white;
 }
+// Membership level — source of truth (DB key → display label + promotion rule).
+// NULL/undefined/unknown = regular full member: no badge, counts for promotion.
+// Only the three visitor/casual-dropin levels are excluded from belt eligibility
+// (owner's rule); casual_member, the 3 plans, and NULL all count.
+const _MEMBERSHIP_LABELS={
+  visitor_other_gym:'Visitor (other myBJJ gym)',
+  visitor_unaffiliated:'Visitor (non affiliated)',
+  casual_dropin:'Casual Drop-In',
+  casual_member:'Casual Member',
+  plan_1_lesson:'One Lesson Membership',
+  plan_2_lesson:'Two Lesson Membership',
+  plan_unlimited:'Unlimited Membership'
+};
+const _MEMBERSHIP_KEYS=Object.keys(_MEMBERSHIP_LABELS);
+const _MEMBERSHIP_NO_PROMO=['visitor_other_gym','visitor_unaffiliated','casual_dropin'];
+function membershipDef(level){
+  const key=(level&&_MEMBERSHIP_LABELS[level])?level:null;
+  return {key:key,label:key?_MEMBERSHIP_LABELS[key]:null,countsForPromotion:_MEMBERSHIP_NO_PROMO.indexOf(key)<0};
+}
+// <option> list for the add-student / editor selects: blank default (Full member
+// → writes null) + the 7 canonical levels. `selected` is the current DB key ('').
+function _membershipOptions(selected){
+  const cur=selected||'';
+  let out='<option value="" '+(cur===''?'selected':'')+'>Full member</option>';
+  for(const k of _MEMBERSHIP_KEYS)out+='<option value="'+k+'" '+(cur===k?'selected':'')+'>'+escHtml(_MEMBERSHIP_LABELS[k])+'</option>';
+  return out;
+}
+// Small informational pill for a student's membership level; '' when full member
+// (null). Neutral tokens (not amber — it's a label, not a warning).
+function membershipBadge(s){
+  const m=membershipDef(s&&s.membershipLevel);
+  if(!m.label)return '';
+  return '<span style="display:inline-flex;align-items:center;background:var(--bg);color:var(--text2);border:1px solid var(--border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;white-space:nowrap">'+escHtml(m.label)+'</span>';
+}
 const GGA={white:40,blue:60,purple:70,brown:80,black:120};
 // v1.39.x Fix 4 — GGK + MAXD extended to all 13 kids belt keys
 // (PROMO_CRITERIA.kids was already authoritative for stripe-by-stripe
@@ -1008,6 +1042,10 @@ function getLastMarkerDate(student){
 }
 function getEligibilityStatus(student){
   if(!student)return null;
+  // Owner's rule — visitor/casual-drop-in levels don't accrue toward promotion.
+  // null is the established "no eligibility" contract (_egDisplay → hide:true;
+  // rfNear/rfEligible/roster-sort all null-check), covering every surface at once.
+  if(!membershipDef(student.membershipLevel).countsForPromotion)return null;
   if(student.belt==='black')return null;
   // Every kids belt now has published criteria (14 Jul 2026 sign-off), so the
   // pending state is now only a safety net for an unrecognised belt key.
@@ -2579,6 +2617,7 @@ ${isKids?'':`<div class="erow"><div class="elbl">Email</div><input id="add-email
 <div class="erow"><div class="elbl">Unit</div><select id="add-unit" class="esel" onchange="S._addForm.unit=this.value">${unitSel}</select></div>
 <div class="erow"><div class="elbl">Belt</div><select id="add-belt" class="esel" onchange="S._addForm.belt=this.value">${beltOpts.map(b=>'<option value="'+b+'" '+(b===belt?'selected':'')+'>'+((isKids?BK:BA)[b]||{label:b}).label+'</option>').join('')}</select></div>
 <div class="erow"><div class="elbl">Degree</div><select id="add-degree" class="esel" onchange="S._addForm.degree=this.value">${[0,1,2,3,4].map(i=>'<option value="'+i+'" '+(String(i)===degree?'selected':'')+'>'+i+'</option>').join('')}</select></div>
+<div class="erow"><div class="elbl">Membership</div><select id="add-membership" class="esel" onchange="S._addForm.membership=this.value">${_membershipOptions(F.membership)}</select></div>
 </div>
 ${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.5">Required for students under 18. The parent/guardian will receive login access to view their child’s progress.</div>
 <div class="ef">
@@ -3058,6 +3097,7 @@ function rStuProf(){
     +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
     +(isKids?rDetailRow('Parent email',parentEmailVal,''):'')
     +rDetailRow('Unit',unitName,'')
+    +(membershipBadge(s)?rDetailRow('Membership',membershipBadge(s),''):'')
     +(joinedDate?rDetailRow('Joined',joinedDate,''):'')
     +giOwnedRow
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:var(--green-text);font-weight:600">Active</div></div>'
@@ -7534,7 +7574,7 @@ function rARosterListInner(){
     return '<div class="card" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
       +'<div style="display:flex;align-items:center;gap:10px">'+avStu(s,34)
-      +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px">'+s.name+onHoldBadge+'</div>'
+      +'<div><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+s.name+onHoldBadge+membershipBadge(s)+'</div>'
       +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div></div></div>'
       +bb(s.belt,s.deg||0,s.prog,'left')+'</div>'
       +totalLine
@@ -7807,7 +7847,7 @@ async function convertTrialToMemberAction(trialDbId){
   const chk=await cli.from('trial_bookings').select('id,converted_at,converted_student_id').eq('id',trialDbId).single();
   if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');throw chk.error;}
   if(!chk||!chk.data||!chk.data.converted_at){showSaveToast2('Conversion not confirmed','error');throw new Error('convert not confirmed');}
-  STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null,convertedAt:nowIso,_parentStudentId:null,_parent2StudentId:null});
+  STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null,convertedAt:nowIso,membershipLevel:null,_parentStudentId:null,_parent2StudentId:null});
   TRIALS=TRIALS.filter(x=>x._dbId!==trialDbId);
   render();showSaveToast2('Converted to member');
 }
@@ -7943,7 +7983,7 @@ async function convertKidAction(){
       if(!linked)waiverWarn=true;
     }
     // Local state — mirror the adult path: push into STUDENTS, drop from TRIALS.
-    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok',convertedAt:nowIso,_parentStudentId:null,_parent2StudentId:null});
+    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok',convertedAt:nowIso,membershipLevel:null,_parentStudentId:null,_parent2StudentId:null});
     TRIALS=TRIALS.filter(x=>x._dbId!==t._dbId);
     S.convertKid=null;render();
     if(waiverWarn)showSaveToast2('Member created, but the health waiver could not be linked — ask an owner to do it','error');
@@ -8232,6 +8272,9 @@ async function sendInvite(dispatch,chain){
   const formBelt=beltOptsForProg.includes(formBeltRaw)?formBeltRaw:'white';
   const formDegree=Number.isFinite(parseInt(F.degree,10))?parseInt(F.degree,10):0;
   const formDob=String(F.dob||'').trim()||null;
+  // Membership level (staff-only add form). membershipDef normalises to a valid
+  // key or null (blank "Full member" → null). DB column: membership_level.
+  const formMembership=membershipDef(F.membership).key;
   // Batch — Started BJJ field. <input type="month"> returns "YYYY-MM";
   // we persist as a date by appending "-01". Optional. Validation:
   // must not be in the future. (joined_at comparison is moot for a
@@ -8281,7 +8324,7 @@ async function sendInvite(dispatch,chain){
     const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
     const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
     const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
-    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob,bjj_start_date:formBjjStartDate}).select('id,legacy_id').single();
+    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob,bjj_start_date:formBjjStartDate,membership_level:formMembership}).select('id,legacy_id').single();
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
     // Immediate parent link: if the parent_email already matches a
@@ -8304,7 +8347,7 @@ async function sendInvite(dispatch,chain){
       }catch(e){console.warn('[mybjj] parent_user_id link exception:',e);}
     }
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob,bjjStartDate:formBjjStartDate,_parentStudentId:null,_parent2StudentId:null});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob,bjjStartDate:formBjjStartDate,membershipLevel:formMembership,_parentStudentId:null,_parent2StudentId:null});
       saved=true;
     }
     // Skip the parent whitelist invite when the user already exists —
@@ -8370,12 +8413,12 @@ async function sendInvite(dispatch,chain){
       const ins=await cli.from('students').insert(Object.assign(
         {legacy_id:legacy},
         editable,
-        {prog:'adult',total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId}
+        {prog:'adult',total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,membership_level:formMembership}
       )).select('id,legacy_id').single();
       if(ins&&ins.error){console.warn('[mybjj] add adult invite:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
       console.log('[mybjj] add adult invite OK');
       if(ins&&ins.data){
-        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob,bjjStartDate:formBjjStartDate,_parentStudentId:null,_parent2StudentId:null});
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob,bjjStartDate:formBjjStartDate,membershipLevel:formMembership,_parentStudentId:null,_parent2StudentId:null});
         saved=true;
       }
     }
@@ -10435,7 +10478,7 @@ async function refetchUnitScopedData(){
   const c=initSupabase(); if(!c) return false;
   const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
   const res=await Promise.allSettled([
-    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,nogi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_student_id,parent2_student_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)'),
+    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,nogi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_student_id,parent2_student_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,membership_level,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)'),
     // RLS-2 — staff.feedback dropped from the select; Head Instructor
     // Notes now live in public.staff_notes and are fetched lazily per
     // STAFF row by _fetchStaffNotes when the owner opens the profile.
@@ -10481,7 +10524,7 @@ async function refetchUnitScopedData(){
     // Postgres numeric as String to avoid precision loss; wrap with
     // Number() so downstream math (sort, eligibility, formatStat)
     // compares numerically instead of lexicographically.
-    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_parentStudentId:r.parent_student_id||null,_parent2StudentId:r.parent2_student_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),nogiTotal:Number(r.nogi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),nogiGrade:Number(r.nogi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,waiverToken:r.waiver_token||null,waiverSentAt:r.waiver_sent_at||null,waiverSignedAt:r.waiver_signed_at||null,_safety:false,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
+    STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_parentStudentId:r.parent_student_id||null,_parent2StudentId:r.parent2_student_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),nogiTotal:Number(r.nogi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),nogiGrade:Number(r.nogi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',membershipLevel:r.membership_level||null,holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,waiverToken:r.waiver_token||null,waiverSentAt:r.waiver_sent_at||null,waiverSignedAt:r.waiver_signed_at||null,_safety:false,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
     got=true;
   }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
   // Migration 99 — attach _safety (student has a signed waiver with ≥1 safety
@@ -13305,6 +13348,7 @@ function _captureEditStuTab(){
   const d=v('es-dob');       if(d!==undefined)D.dob=d;
   const p=v('es-phone');     if(p!==undefined)D.phone=p;
   const g=v('es-gender');    if(g!==undefined)D.gender=g;
+  const ml=v('es-membership');if(ml!==undefined)D.membership=ml;
   const w=v('es-weight');    if(w!==undefined)D.weightKg=w;
   const h=v('es-height');    if(h!==undefined)D.heightCm=h;
   const ts=v('es-trainstart');if(ts!==undefined)D.trainingStartedAt=ts;
@@ -13466,6 +13510,7 @@ function rEditStu(){
   // Module 1 — admin-only account standing flag. Resolved here alongside
   // the other draft-first fields; rendered only inside the isAdminViewer
   // gate on the Training tab (students/parents never see it).
+  const membershipLevel=draftOr(D.membership,s.membershipLevel||'');
   const standingOn=draftOr(D.standing,(s.standing||'ok'))==='on_hold';
   const holdNote=draftOr(D.holdNote,s.holdNote||'');
   // Batch — bjj_start_date. Stored as date (YYYY-MM-DD) but edited via
@@ -13618,6 +13663,10 @@ function rEditStu(){
   const trainStartRow=isAdminViewer
     ?`<div class="erow"><div class="elbl">Training started</div><input class="einput" id="es-trainstart" type="date" value="${esc(trainingStartedAt)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>`
     :'';
+  // Membership level — staff-only (same isAdminViewer gate as standing/dob).
+  const membershipRow=isAdminViewer
+    ?`<div class="erow"><div class="elbl">Membership</div><select class="esel" id="es-membership" style="text-align:right">${_membershipOptions(membershipLevel)}</select></div>`
+    :'';
   // Module 1 — account standing control. Admin-only (isAdminViewer);
   // never rendered for student-self / parent-on-kid. Flag write only —
   // the check-in block it documents lands in a later prompt.
@@ -13655,6 +13704,7 @@ function rEditStu(){
   const trainingTab=progSection+beltVisual+`
 <div class="ef" style="margin-top:8px">
 ${dobRow}
+${membershipRow}
 ${trainStartRow}
 <div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(weightKg)}"/></div>
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
@@ -13855,6 +13905,9 @@ async function saveEditStu(){
   const trainingStartedAt=(isAdminViewer&&trainingStartedAtRaw)?String(trainingStartedAtRaw):null;
   // Module 1 — account standing. Admin-only: for student-self / parent
   // viewers preserve the current row values (they can't touch the flag).
+  // Membership level — admin-only (mirrors standing). membershipDef normalises to
+  // a valid key or null (blank → null). Non-admin path preserves the stored value.
+  const membershipOut=isAdminViewer?(D.membership!==undefined?membershipDef(D.membership).key:(s.membershipLevel||null)):(s.membershipLevel||null);
   const standingOut=isAdminViewer?(D.standing!==undefined?(D.standing==='on_hold'?'on_hold':'ok'):(s.standing||'ok')):(s.standing||'ok');
   const holdNoteOut=isAdminViewer?(D.holdNote!==undefined?(String(D.holdNote||'').trim()||null):(s.holdNote||null)):(s.holdNote||null);
   // Batch — bjj_start_date. Personal-info tier: editable by anyone who
@@ -13928,7 +13981,7 @@ async function saveEditStu(){
   s.dob=dob;s.phone=phone||null;s.gender=gender;
   s.weightKg=weightKg;s.heightCm=heightCm;
   s.hasMybjjGi=hasMybjjGi;
-  s.standing=standingOut;s.holdNote=holdNoteOut;
+  s.standing=standingOut;s.holdNote=holdNoteOut;s.membershipLevel=membershipOut;
   if(isAdminViewer){s.prog=progOut;s.belt=beltOut;s.trainingStartedAt=trainingStartedAt;}
   s.bjjStartDate=bjjStartDateOut;
   s.ecName=ecName;s.ecPhone=ecPhone;
@@ -13977,6 +14030,7 @@ async function saveEditStu(){
     training_started_at:trainingStartedAt,
     bjj_start_date:bjjStartDateOut,
     standing:standingOut,
+    membership_level:membershipOut,
     hold_note:holdNoteOut
   };
   if(isKids){
