@@ -322,6 +322,7 @@ interface StaffNotifyData {
   email: string;
   phone: string;
   howHeard: string;       // "" when the lead didn't say
+  referredBy: string;     // referrer name; "" unless "Friend or family"
   preferredDay: string;   // fallback path only (no concrete slot)
   isKid: boolean;
   kidName: string;
@@ -353,6 +354,7 @@ function buildStaffNotifyEmail(d: StaffNotifyData): { subject: string; html: str
     ["Contact", `${d.email} · ${d.phone}`],
   ];
   if (d.howHeard) rows.push(["How they heard", d.howHeard]);
+  if (d.referredBy) rows.push(["Referred by", d.referredBy]);
   // One extra row when the booker also brought a friend (a second real booking).
   if (d.friend) rows.push(["Bringing a friend", d.friend]);
 
@@ -440,6 +442,9 @@ Deno.serve(async (req) => {
   const email = str(payload.email, 160).toLowerCase();
   const phone = str(payload.phone, 40);
   const howHeard = str(payload.how_heard, 200);
+  // Optional referrer name — shown only when the lead picked "Friend or family".
+  // Same str()/titleCase() bound as friend_name; absence is never an error.
+  const referrerName = titleCase(str(payload.referrer_name, 120));
   const preferredDay = str(payload.preferred_day, 400);
   const kidName = titleCase(str(payload.kid_name, 120));
 
@@ -681,6 +686,7 @@ Deno.serve(async (req) => {
     email,
     phone,
     howHeard,
+    referredBy: referrerName,
     preferredDay,
     isKid,
     kidName,
