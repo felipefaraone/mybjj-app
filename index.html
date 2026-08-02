@@ -1285,8 +1285,9 @@ function defaultInstructorName(){
   const list=STAFF.filter(s=>s._active!==false);
   return list.length?staffDisplayName(list[0]):'';
 }
-const PH=new Set(['2026-01-01','2026-01-26','2026-04-03','2026-04-04','2026-04-05','2026-04-06','2026-04-25','2026-06-08','2026-10-05','2026-12-25','2026-12-26']);
-const HN={'2026-04-03':'Good Friday','2026-04-04':'Easter Saturday','2026-04-05':'Easter Sunday','2026-04-06':'Easter Monday','2026-04-25':'Anzac Day','2026-12-25':'Christmas Day','2026-12-26':'Boxing Day'};
+// Phase B1.5 — the hardcoded public-holiday list (PH), its names (HN), and isHol
+// were retired here. Day closure is now data-driven via class_exceptions
+// kind='closed' (see dayClosure); staff close days from data, per unit.
 const GICO=`<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.47 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
 const CHV=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><polyline points="9 18 15 12 9 6"/></svg>`;
 const BACK=`<button class="sback" onclick="closeSub()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;
@@ -1628,19 +1629,38 @@ function cycleWeekForDate(unit, date){
 }
 // Convenience — "what cycle week is it today" for a unit.
 function currentCycleWeek(unit){return cycleWeekForDate(unit, new Date());}
-function isHol(d){return PH.has(dk(d));}
-// Phase B1 — getDC now folds class_exceptions over the recurring timetable for
-// the day. The leading holiday short-circuit is UNCHANGED (PH/isHol owns that;
-// Phase B1.5 revisits it). Recurring cards are annotated (never removed) by
-// cancelled/instructor_override; one-off exceptions inject synthetic cards.
-// Annotations (_cancelled/_override/_subId/_exReason/_oneoff) are ADDITIVE — no
-// consumer requires them yet (this phase is read-only surfacing).
+// Phase B1.5 — day closure is DATA-DRIVEN (class_exceptions kind='closed'),
+// scoped to the ACTIVE unit; returns the closed row (carries .reason) or null.
+// The dev-maintained holiday list (PH/isHol/HN) is retired — John closes days
+// himself, and a closed row in one unit never closes another unit's day.
+function dayClosure(d){
+  const cur=UNITS.find(u=>u.name===S.unit);const unitDbId=cur&&cur._dbId;
+  if(!unitDbId)return null;
+  return (_exsForDay(dk(d),unitDbId)||[]).find(e=>e.kind==='closed')||null;
+}
+// Phase B1.5 — single source for the synthetic one-off card, so getDC's normal
+// path and its closed-day path emit BYTE-IDENTICAL objects (dated oneoff_<uuid>
+// id, _oneoff:true). _occFor builds the same shape inline (kept in sync).
+function _oneoffCard(e,dateKey){
+  const sub=STAFF.find(s=>s._dbId===e.substituteInstructorId);
+  return {classId:null,instructorId:(sub&&sub._userId)||null,time:e.oneoffTime,type:null,uniform:e.oneoffUniform||null,level:e.oneoffLevel||null,ins:sub?sub.name:'TBD',dur:e.oneoffDurationMinutes||60,aud:e.oneoffAudience||'Adults',date:dateKey,id:dateKey+'_'+e.oneoffTime+'_oneoff_'+e.id,_oneoff:true};
+}
+// Phase B1 — getDC folds class_exceptions over the recurring timetable. B1.5:
+// a CLOSED day suppresses the recurring base AND the cancelled/override fold
+// (recurring classes don't run) but STILL shows one-off cards — closed + open
+// mat is closed, NOT empty. Closed with no oneoff → []. Annotations
+// (_cancelled/_override/_subId/_exReason/_oneoff) are ADDITIVE.
 function getDC(d){
-  if(isHol(d))return [];
   const cur=UNITS.find(u=>u.name===S.unit);const unitDbId=cur&&cur._dbId;
   const dateKey=dk(d);
-  const base=(TT[d.getDay()]||[]).map(c=>({...c,date:dateKey,id:dateKey+'_'+c.time+'_'+c.id}));
   const exs=_exsForDay(dateKey,unitDbId);
+  const closed=dayClosure(d);
+  if(closed){
+    const oo=exs.filter(e=>e.kind==='oneoff'&&e.oneoffTime).map(e=>_oneoffCard(e,dateKey));
+    oo.sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+    return oo;
+  }
+  const base=(TT[d.getDay()]||[]).map(c=>({...c,date:dateKey,id:dateKey+'_'+c.time+'_'+c.id}));
   // Match recurring cards to exceptions by CLASSID only — never by time.
   for(const card of base){
     for(const e of exs){
@@ -1652,13 +1672,10 @@ function getDC(d){
       }
     }
   }
-  // Inject one-off classes (class_id NULL) as synthetic cards for this date. The
-  // id embeds 'oneoff_<uuid>' so _parseCID/_occFor can round-trip it (oneoffTime
-  // is HH:MM, so the composite still matches the _parseCID regex).
+  // Inject one-off classes (class_id NULL) as synthetic cards for this date.
   for(const e of exs){
     if(e.kind!=='oneoff'||!e.oneoffTime)continue;
-    const sub=STAFF.find(s=>s._dbId===e.substituteInstructorId);
-    base.push({classId:null,instructorId:(sub&&sub._userId)||null,time:e.oneoffTime,type:null,uniform:e.oneoffUniform||null,level:e.oneoffLevel||null,ins:sub?sub.name:'TBD',dur:e.oneoffDurationMinutes||60,aud:e.oneoffAudience||'Adults',date:dateKey,id:dateKey+'_'+e.oneoffTime+'_oneoff_'+e.id,_oneoff:true});
+    base.push(_oneoffCard(e,dateKey));
   }
   base.sort((a,b)=>String(a.time).localeCompare(String(b.time)));
   return base;
@@ -4547,13 +4564,17 @@ function rDayStrip(){
     const isT=k===tk;
     const isSel=k===sk;
     const isPast=k<tk; // string compare on YYYY-MM-DD is correct
-    const hol=isHol(d);
-    const hasCls=getDC(d).length>0&&!hol;
-    let cls='dp '+(isSel?'active':hol?'hol':hasCls?'hc':'nc');
+    // Phase B1.5 — closed = data-driven day closure (active unit). A closed day
+    // with a one-off has hasCls=true, so it stays tappable; a closed-empty day is
+    // non-tappable like a no-class day. Keep the 'hol' CSS token (no CSS churn);
+    // the badge reads CLOSED, sourced from class_exceptions not the retired HN.
+    const closed=dayClosure(d);
+    const hasCls=getDC(d).length>0;
+    let cls='dp '+(isSel?'active':closed?'hol':hasCls?'hc':'nc');
     if(isPast)cls+=' past';
-    const tappable=isT||(!hol&&(hasCls||isSel));
+    const tappable=isT||hasCls||isSel;
     const onclick=tappable?`selDay('${k}')`:'';
-    return `<div class="${cls}" id="dp-${k}" onclick="${onclick}"><div class="dpn">${isT?'Today':DS[d.getDay()]}</div><div class="dpd">${d.getDate()}</div>${hol?'<div style="font-family:Barlow Condensed,sans-serif;font-size:7px;font-weight:700;color:var(--amber);letter-spacing:.5px;margin-top:1px">HOL</div>':(hasCls&&!isPast)?'<div class="dpdot"></div>':'<div style="height:5px"></div>'}</div>`;
+    return `<div class="${cls}" id="dp-${k}" onclick="${onclick}"><div class="dpn">${isT?'Today':DS[d.getDay()]}</div><div class="dpd">${d.getDate()}</div>${closed?'<div style="font-family:Barlow Condensed,sans-serif;font-size:7px;font-weight:700;color:var(--amber);letter-spacing:.5px;margin-top:1px">CLOSED</div>':(hasCls&&!isPast)?'<div class="dpdot"></div>':'<div style="height:5px"></div>'}</div>`;
   }).join('')}</div></div>`;
 }
 
@@ -4684,7 +4705,7 @@ function _otherUnitCheckinsBanner(dayKey){
   return html;
 }
 function rClass(){
-  const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const isT=sk===dk(TODAY);const hol=isHol(sd);const me=S.me;
+  const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const isT=sk===dk(TODAY);const closed=dayClosure(sd);const me=S.me;
   // G12 — audience gate. Non-staff see only classes whose audience matches
   // their active programme (or 'All'). Staff (instructor + unit owner) are
   // exempt — they manage the full schedule.
@@ -4725,9 +4746,8 @@ function rClass(){
   _maybePromoToast();
   return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div></div>
   ${_otherUnitCheckinsBanner(sk)}
-  ${hol?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${HN[sk]||'Public Holiday'}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Academy closed · No classes scheduled today</div></div></div>`
-  :cls.length===0?`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`
-  :cls.map(c=>{
+  ${closed?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${escHtml(closed.reason||'Academy closed')}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Regular classes cancelled</div></div></div>`:''}
+  ${cls.length>0?cls.map(c=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];
     // c.classId is the DB class_id (set by _projClsRow); c.id here is the synthetic
     // "date_time_legacy" composite (getDC overrides it), so it must NOT be used to
@@ -4836,7 +4856,7 @@ function rClass(){
       const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
       attBlock=rAtts(_adultsOnly,c.id);
     }
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div></div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div>`;}).join('')}
+    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div></div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div>`;}).join(''):(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
   <div style="height:16px"></div>`;}
 
 
