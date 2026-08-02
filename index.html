@@ -1308,6 +1308,14 @@ let UNITS=[];
 // downstream code uses when writing attendance rows.
 let CLASSES=[];
 let TT={0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
+// Phase B1 — class_exceptions, keyed by exception_date ('YYYY-MM-DD') → array of
+// camelCase rows (kind: cancelled / instructor_override / oneoff). Hydrated
+// additively by refetchUnitScopedData; getDC/_occFor read it at render time.
+// {} on boot and on any fetch error, so exceptions never block the schedule.
+let CEXC={};
+// Source of truth for "which exceptions apply on this date for this unit". The
+// fetch is unit-agnostic (RLS open); unit scoping happens here, at read time.
+function _exsForDay(dateKey,unitDbId){return (CEXC[dateKey]||[]).filter(e=>!unitDbId||e.unitId===unitDbId);}
 // _projClsRow — project a raw public.classes row (with joined
 // instructor staff) into the TT-shape entry every consumer expects.
 // Used by rebuildTT(). Migration 43 switched the attendance FK to
@@ -1621,7 +1629,70 @@ function cycleWeekForDate(unit, date){
 // Convenience — "what cycle week is it today" for a unit.
 function currentCycleWeek(unit){return cycleWeekForDate(unit, new Date());}
 function isHol(d){return PH.has(dk(d));}
-function getDC(d){if(isHol(d))return [];return(TT[d.getDay()]||[]).map(c=>({...c,date:dk(d),id:dk(d)+'_'+c.time+'_'+c.id}));}
+// Phase B1 — getDC now folds class_exceptions over the recurring timetable for
+// the day. The leading holiday short-circuit is UNCHANGED (PH/isHol owns that;
+// Phase B1.5 revisits it). Recurring cards are annotated (never removed) by
+// cancelled/instructor_override; one-off exceptions inject synthetic cards.
+// Annotations (_cancelled/_override/_subId/_exReason/_oneoff) are ADDITIVE — no
+// consumer requires them yet (this phase is read-only surfacing).
+function getDC(d){
+  if(isHol(d))return [];
+  const cur=UNITS.find(u=>u.name===S.unit);const unitDbId=cur&&cur._dbId;
+  const dateKey=dk(d);
+  const base=(TT[d.getDay()]||[]).map(c=>({...c,date:dateKey,id:dateKey+'_'+c.time+'_'+c.id}));
+  const exs=_exsForDay(dateKey,unitDbId);
+  // Match recurring cards to exceptions by CLASSID only — never by time.
+  for(const card of base){
+    for(const e of exs){
+      if(!e.classId||e.classId!==card.classId)continue;
+      if(e.kind==='cancelled'){card._cancelled=true;card._exReason=e.reason||null;}
+      else if(e.kind==='instructor_override'){
+        const sub=STAFF.find(s=>s._dbId===e.substituteInstructorId);
+        if(sub){card.ins=sub.name;card.instructorId=sub._userId||card.instructorId;card._override=true;card._subId=e.substituteInstructorId;}
+      }
+    }
+  }
+  // Inject one-off classes (class_id NULL) as synthetic cards for this date. The
+  // id embeds 'oneoff_<uuid>' so _parseCID/_occFor can round-trip it (oneoffTime
+  // is HH:MM, so the composite still matches the _parseCID regex).
+  for(const e of exs){
+    if(e.kind!=='oneoff'||!e.oneoffTime)continue;
+    const sub=STAFF.find(s=>s._dbId===e.substituteInstructorId);
+    base.push({classId:null,instructorId:(sub&&sub._userId)||null,time:e.oneoffTime,type:null,uniform:e.oneoffUniform||null,level:e.oneoffLevel||null,ins:sub?sub.name:'TBD',dur:e.oneoffDurationMinutes||60,aud:e.oneoffAudience||'Adults',date:dateKey,id:dateKey+'_'+e.oneoffTime+'_oneoff_'+e.id,_oneoff:true});
+  }
+  base.sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+  return base;
+}
+// Phase B1 — source-of-truth resolver: a synthetic occurrence cid → its resolved
+// card. Recurring: returns a CLONE of the TT template (legacy .id preserved, so
+// it's a drop-in for the old inline `TT[dow].find(...)`) plus cancelled/override
+// annotations. One-off: the same synthetic shape getDC injects. NEVER throws;
+// returns {} (not null) when unresolved, so callers reading t.classId||null work.
+function _occFor(cid){
+  const p=_parseCID(cid);if(!p)return {};
+  const cur=UNITS.find(u=>u.name===S.unit);const unitDbId=cur&&cur._dbId;
+  if(p.legacy.indexOf('oneoff_')===0){
+    const exId=p.legacy.slice(7);
+    for(const e of (CEXC[p.date]||[])){
+      if(e.kind!=='oneoff'||e.id!==exId)continue;
+      const sub=STAFF.find(s=>s._dbId===e.substituteInstructorId);
+      return {classId:null,instructorId:(sub&&sub._userId)||null,time:e.oneoffTime,type:null,uniform:e.oneoffUniform||null,level:e.oneoffLevel||null,ins:sub?sub.name:'TBD',dur:e.oneoffDurationMinutes||60,aud:e.oneoffAudience||'Adults',date:p.date,id:p.date+'_'+e.oneoffTime+'_oneoff_'+e.id,_oneoff:true};
+    }
+    return {};
+  }
+  const found=(TT[new Date(p.date+'T00:00:00').getDay()]||[]).find(x=>x.id===p.legacy);
+  if(!found)return {};
+  const card={...found};
+  for(const e of _exsForDay(p.date,unitDbId)){
+    if(!e.classId||e.classId!==card.classId)continue;
+    if(e.kind==='cancelled'){card._cancelled=true;card._exReason=e.reason||null;}
+    else if(e.kind==='instructor_override'){
+      const sub=STAFF.find(s=>s._dbId===e.substituteInstructorId);
+      if(sub){card.ins=sub.name;card.instructorId=sub._userId||card.instructorId;card._override=true;card._subId=e.substituteInstructorId;}
+    }
+  }
+  return card;
+}
 // Mini-fix Batch 1 — schedule day strip spans 7 past + today + 6 future.
 // Past range matches the staff retroactive-edit window from Batch 1 so
 // instructors can navigate to any class they're allowed to mark. TODAY
@@ -2125,7 +2196,7 @@ function rAtts(all,cid){
 // synthetic composite; the DB class_id lives on the TT slot's .classId.
 function trialsForClass(cid){
   const c=_parseCID(cid);if(!c)return [];
-  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const classId=t.classId||null;
   if(!classId)return [];  // no class identity → never match (fallback trials carry classId null)
   return TRIALS.filter(tr=>(tr.status==='booked'||tr.status==='attended')&&tr.classId===classId&&tr.classDate===c.date);
@@ -10506,9 +10577,13 @@ async function refetchUnitScopedData(){
     // attended a class at the active unit but train elsewhere. Staff-only +
     // unit-bounded server-side; returns 0 rows for non-staff / no visitors.
     c.rpc('visitor_students_for_unit'),
+    // Phase B1 — class_exceptions for the SAME -21/+14 window as attendance.
+    // Unit-agnostic fetch (RLS SELECT is open; unit filtering is done at read via
+    // _exsForDay). No staff join — sub instructors resolve from STAFF in memory.
+    c.from('class_exceptions').select('id,unit_id,class_id,exception_date,kind,substitute_instructor_id,reason,oneoff_time,oneoff_uniform,oneoff_level,oneoff_audience,oneoff_duration_minutes,created_by,created_at').gte('exception_date',dk(new Date(Date.now()-21*864e5))).lte('exception_date',dk(new Date(Date.now()+14*864e5))).order('exception_date',{ascending:true}).order('id',{ascending:true}),
   ]);
   const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9);
+  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9),ce=get(10);
   // Rebuild the visitor map each refetch (empty on error / non-staff).
   VISITORS={};
   if(vs&&vs.data){for(const r of vs.data){if(r&&r.id)VISITORS[r.id]={id:r.id,_dbId:r.id,name:r.full_name,belt:r.belt,prog:r.prog,initials:r.initials,unit:uMap[r.unit_id]||null,_visitor:true};}}
@@ -10568,6 +10643,24 @@ async function refetchUnitScopedData(){
     console.warn('[mybjj] hydrate classes:',cl.error);
     CLASSES=[];rebuildTT();
   }
+  // Phase B1 — group class_exceptions by exception_date, camelCase. Reset to {}
+  // each refetch; on error/empty it stays {} so a failed fetch never blocks
+  // hydrate or leaves stale exception rows. Never sets `got` (additive, optional).
+  CEXC={};
+  if(ce&&ce.data){
+    for(const r of ce.data){
+      if(!r||!r.exception_date)continue;
+      const k=r.exception_date;
+      (CEXC[k]||(CEXC[k]=[])).push({
+        id:r.id,unitId:r.unit_id||null,classId:r.class_id||null,exceptionDate:r.exception_date,kind:r.kind,
+        substituteInstructorId:r.substitute_instructor_id||null,reason:r.reason||null,
+        oneoffTime:r.oneoff_time?String(r.oneoff_time).slice(0,5):null,
+        oneoffUniform:r.oneoff_uniform||null,oneoffLevel:r.oneoff_level||null,
+        oneoffAudience:r.oneoff_audience||null,oneoffDurationMinutes:r.oneoff_duration_minutes||null,
+        createdBy:r.created_by||null
+      });
+    }
+  }else if(ce&&ce.error){console.warn('[mybjj] hydrate class_exceptions:',ce.error);}
   if(tr.data){
     // Module 1 — trial bookings mapped to camelCase, same style as
     // STUDENTS. unit resolved via uMap (legacy id) so render can scope
@@ -11791,7 +11884,7 @@ function _parseCID(id){const m=String(id||'').match(/^(\d{4}-\d{2}-\d{2})_(\d{2}
 // gates writes on class_date + class_time + classes.duration_minutes.
 function _classEndedToday(c){
   if(!c||c.date!==dk(TODAY))return false;
-  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const dur=t.dur||60;
   const [hh,mm]=String(c.time||'00:00').split(':').map(Number);
   const endMin=((hh|0)*60+(mm|0))+dur;
@@ -12012,7 +12105,7 @@ async function doCI(id){
     showSaveToast2("Class already ended. Can't check in.",'error');
     return;
   }
-  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   // Multi-unit — attendance.unit_id must be the CLASS's unit (where the
   // class happens), not the student's home unit, so the active-unit
   // instructor can confirm a visiting student (the attendance_update
@@ -12125,7 +12218,7 @@ async function undoCI(id){
   }
   // Resolve the class (t.classId = DB class_id) so undo targets the exact class,
   // not any same-time sibling. _unitId only backs the legacy null-classId guard.
-  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const _unitId=(t.classId?(CLASSES.find(cl=>cl.id===t.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   const ix=ATTENDANCE.findIndex(a=>a.studentDbId===stu._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
   if(ix<0)return;
@@ -12233,7 +12326,7 @@ async function sendN(){
 function classMinutesAfterEnd(cid){
   const c=_parseCID(cid);if(!c)return null;
   if(c.date!==dk(TODAY))return null;
-  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const [h,m]=String(c.time||'00:00').split(':').map(Number);
   const startMin=(h||0)*60+(m||0);
   const endMin=startMin+(t.dur||60);
@@ -12373,7 +12466,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
   const s=_attStudent(sid);if(!s||!s._dbId)return;
   const c=_parseCID(cid);if(!c)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
-  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   // Multi-unit — attendance.unit_id is the CLASS's unit (where the class
   // happens), not the student's home unit, so the active-unit instructor
   // can confirm a visiting student's presence. Resolve the class row by
@@ -12505,7 +12598,7 @@ async function markAllPresent(cid){
   const c=_parseCID(cid);if(!c)return;
   // Resolve this class's identity + unit exactly as _setAttStatus does, so a
   // (date,time) shared by two classes still snapshots only the right rows.
-  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
   const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   // Snapshot BEFORE mutating — only status==='going' (absent/present excluded).
@@ -12525,7 +12618,7 @@ function removeAtt(cid,sid){
   const c=_parseCID(cid);if(!c)return;
   // Class identity (t.classId) so we remove the right class's row when two run
   // at the same time; _unitId backs the legacy null-classId fallback only.
-  const t=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const _unitId=(t.classId?(CLASSES.find(cl=>cl.id===t.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
   if(!row){showSaveToast2('No attendance record to remove.','error');return;}
@@ -12683,7 +12776,7 @@ function _classAddListHTML(){
   const c=_parseCID(cid);if(!c)return '';
   // Resolve unit from the class's day-of-week template entry. Falls
   // back to the current side-panel unit so a stand-alone open works.
-  const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const tt=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const curU=UNITS.find(u=>u.name===S.unit);
   const unitLegacy=curU?curU.id:null;
   // G12 — picker filter driven by the class's audience (Etapa 2 column
@@ -12756,7 +12849,7 @@ function rClassAddStudentModal(){
   if(!S.classAdd)return '';
   const{cid,q,allProgs}=S.classAdd;
   const c=_parseCID(cid);if(!c)return '';
-  const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const tt=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const ctLabel=(CT.find(x=>x.id===tt.type)||{}).lbl||tt.type||'class';
   return `<div class="cov" onclick="closeClassAddStudent()" style="align-items:center;justify-content:center;z-index:280;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:460px;width:100%;margin:0 auto;padding:18px;max-height:calc(100vh - 32px);overflow:hidden;display:flex;flex-direction:column">
 <button onclick="closeClassAddStudent()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
@@ -12787,7 +12880,7 @@ async function addStudentToClass(cid,legacyId){
   const s=STUDENTS.find(x=>x.id===legacyId)||(S.classAdd&&S.classAdd._extra&&S.classAdd._extra[legacyId])||null;if(!s||!s._dbId)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
   // "Already on this class" by class identity (tt.classId), not (date,time).
-  const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const tt=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const _unitId=(tt.classId?(CLASSES.find(cl=>cl.id===tt.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,tt.classId||null,c.date,c.time,_unitId));
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
@@ -12798,7 +12891,7 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   const c=_parseCID(cid);if(!c)return;
   const s=STUDENTS.find(x=>x.id===legacyId)||(S.classAdd&&S.classAdd._extra&&S.classAdd._extra[legacyId])||null;if(!s||!s._dbId)return;
   if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
-  const tt=(TT[(new Date(c.date+'T00:00:00')).getDay()]||[]).find(x=>x.id===c.legacy)||{};
+  const tt=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   // Multi-unit — attendance.unit_id is the CLASS's unit (where the class
   // happens), not the student's home unit, so an instructor adding a
   // VISITING student writes their own unit (the attendance_update policy
