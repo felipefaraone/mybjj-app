@@ -200,7 +200,7 @@ html,body{overscroll-behavior-y:none}
    signed legal document renders identically on screen in EITHER theme and on
    paper — the app's theme tokens flip white↔dark and would print wrong. These
    few literals are a deliberate, document-scoped paper palette, not app chrome. */
-#waiver-doc-print{--wp-paper:#ffffff;--wp-ink:#1b1b1b;--wp-ink2:#5a5a5a;--wp-line:#e2e2e2;--wp-accent:#1A5DAD;background:var(--wp-paper)}
+#waiver-doc-print{z-index:300;--wp-paper:#ffffff;--wp-ink:#1b1b1b;--wp-ink2:#5a5a5a;--wp-line:#e2e2e2;--wp-accent:#1A5DAD;background:var(--wp-paper)}
 .wdoc-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;border-bottom:1px solid var(--wp-line);background:var(--wp-paper);flex-shrink:0}
 .wdoc-back{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--wp-accent);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.3px;cursor:pointer;padding:4px 0}
 .wdoc-print{display:inline-flex;align-items:center;gap:6px;background:var(--wp-accent);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:.4px;cursor:pointer}
@@ -9698,6 +9698,7 @@ function _fetchWaiverDoc(dbId){
 function openWaiverDoc(dbId){
   if(!isOwner())return;                 // owner-only — instructors never reach the document
   if(!dbId)return;
+  S._waiverDocPrevSub=S.sub;S.sub=null;
   S.waiverDoc={studentId:dbId};
   if(typeof document!=='undefined')document.body.classList.add('wdoc-open');   // scopes @media print to this doc
   _fetchWaiverDoc(dbId);
@@ -9705,6 +9706,7 @@ function openWaiverDoc(dbId){
 }
 function closeWaiverDoc(){
   S.waiverDoc=null;
+  if(S._waiverDocPrevSub!==undefined){S.sub=S._waiverDocPrevSub;S._waiverDocPrevSub=undefined;}
   if(typeof document!=='undefined')document.body.classList.remove('wdoc-open');
   render();
 }
