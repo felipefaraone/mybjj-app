@@ -4744,7 +4744,7 @@ function rClass(){
     return h*60+m;
   })();
   _maybePromoToast();
-  return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div></div>
+  return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?(closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`):''}</div>
   ${_otherUnitCheckinsBanner(sk)}
   ${closed?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${escHtml(closed.reason||'Academy closed')}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Regular classes cancelled</div></div></div>`:''}
   ${cls.length>0?cls.map(c=>{
@@ -4856,7 +4856,17 @@ function rClass(){
       const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
       attBlock=rAtts(_adultsOnly,c.id);
     }
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div></div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${btn?`<div style="flex-shrink:0;min-width:96px">${btn}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div>`;}).join(''):(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
+    // Phase B2a — cancelled recurring class stays visible, dimmed, with a
+    // CANCELLED pill. Reuses .card.ended's opacity (no CSS churn). The B1 fold
+    // sets c._cancelled; the check-in column is left untouched (do-not-touch).
+    if(c._cancelled&&cc.indexOf('ended')<0)cc+=' ended';
+    const cancelPill=c._cancelled?`<span style="display:inline-flex;align-items:center;background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;text-transform:uppercase">Cancelled</span>`:'';
+    // Phase B2a — discreet staff kebab (⋯), STACKED above the check-in column so
+    // it never competes with "I'm going". Staff-only; offered on plain recurring
+    // or already-cancelled cards (classId present, not oneoff/override).
+    const _exEligible=isStaffOrOwner()&&c.classId&&!c._oneoff&&!c._override;
+    const staffKebab=_exEligible?`<button onclick="event.stopPropagation();openCardEx('${escAttr(c.id)}','${escAttr(c.classId)}','${escAttr(c.date)}','${escAttr(c.time)}')" title="Class options" aria-label="Class options" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 4px;line-height:1;font-size:22px;letter-spacing:1px;height:22px">⋯</button>`:'';
+    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${cancelPill}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${(staffKebab||btn)?`<div style="flex-shrink:0;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">${staffKebab}${btn?`<div style="width:100%">${btn}</div>`:''}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div>`;}).join(''):(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
   <div style="height:16px"></div>`;}
 
 
@@ -8289,7 +8299,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${S.cdel?rCDel():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -14738,6 +14748,127 @@ async function confDel(){
   showSaveToast2('Class deleted.');
 }
 function cancelDel(){if(S.clsSaving)return;S.cdel=null;queueMicrotask(render);/* deferred: closing the confirm mid-click re-exposes the list; a re-dispatched click could otherwise land on a recreated Delete button */}
+// ── Phase B2a — class_exceptions WRITE UI (per-class cancel + whole-day close) ──
+// Optimistic local writes mirroring confDel: mutate CEXC in place, render, NO
+// refetch — getDC/dayClosure read CEXC live, so the greyed-cancel / closed-banner
+// states appear on the very next render. DB payload is snake_case; CEXC rows are
+// camelCase (identical shape to the hydrate map). S.exSaving is the busy flag.
+// Note: confirm buttons use color:#fff on the coloured fill, matching rCDel/.bblue
+// exactly (no white design token exists) — the only non-token colour, per pattern.
+async function _writeException(payload){
+  if(S.exSaving)return null;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue. Please try again.','error');return null;}
+  S.exSaving=true;render();
+  try{
+    const r=await cli.from('class_exceptions').insert(payload).select('id,unit_id,class_id,exception_date,kind,substitute_instructor_id,reason,oneoff_time,oneoff_uniform,oneoff_level,oneoff_audience,oneoff_duration_minutes,created_by,created_at').single();
+    if(r&&r.error){
+      // Unique partial index enforces one 'closed' per (unit_id, exception_date).
+      if(r.error.code==='23505'&&payload.kind==='closed')showSaveToast2('This day is already closed.','error');
+      else{console.warn('[mybjj] _writeException:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');}
+      return null;
+    }
+    const row=r&&r.data;
+    if(row){
+      const k=row.exception_date;
+      (CEXC[k]||(CEXC[k]=[])).push({
+        id:row.id,unitId:row.unit_id||null,classId:row.class_id||null,exceptionDate:row.exception_date,kind:row.kind,
+        substituteInstructorId:row.substitute_instructor_id||null,reason:row.reason||null,
+        oneoffTime:row.oneoff_time?String(row.oneoff_time).slice(0,5):null,
+        oneoffUniform:row.oneoff_uniform||null,oneoffLevel:row.oneoff_level||null,
+        oneoffAudience:row.oneoff_audience||null,oneoffDurationMinutes:row.oneoff_duration_minutes||null,
+        createdBy:row.created_by||null
+      });
+      showSaveToast2(payload.kind==='closed'?'Day closed.':'Class cancelled.');
+    }
+    return row||null;
+  }catch(e){console.warn('[mybjj] _writeException ex:',e);showSaveToast2('Something went wrong.','error');return null;}
+  finally{S.exSaving=false;render();}
+}
+async function _deleteException(id,dateKey,okMsg){
+  if(S.exSaving)return false;
+  const cli=initSupabase();
+  if(!cli){showSaveToast2('Connection issue. Please try again.','error');return false;}
+  S.exSaving=true;render();
+  try{
+    const r=await cli.from('class_exceptions').delete().eq('id',id);
+    if(r&&r.error){console.warn('[mybjj] _deleteException:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');return false;}
+    const arr=CEXC[dateKey];if(arr){const ix=arr.findIndex(e=>e.id===id);if(ix>=0)arr.splice(ix,1);}
+    showSaveToast2(okMsg||'Restored.');
+    return true;
+  }catch(e){console.warn('[mybjj] _deleteException ex:',e);showSaveToast2('Something went wrong.','error');return false;}
+  finally{S.exSaving=false;render();}
+}
+// Human "when" label for the exception sheets: "Tue 4 Aug" (+ "6:00pm" if time).
+function _cardExWhen(dateKey,time){
+  let dl=String(dateKey||'');
+  const t=Date.parse(dl+'T00:00:00');
+  if(!isNaN(t)){const dt=new Date(t);dl=DS[dt.getDay()]+' '+dt.getDate()+' '+MS[dt.getMonth()];}
+  return dl+(time?' '+fmtT12(time).replace(/\s+/g,'').toLowerCase():'');
+}
+// ── Per-class cancel / restore ──
+function openCardEx(cid,classId,date,time){if(!isStaffOrOwner())return;S.cardEx={cid,classId,date,time,step:null};render();}
+function closeCardEx(){S.cardEx=null;render();}
+function cardExStep(){if(!S.cardEx)return;S.cardEx.step='confirm';render();}
+async function cardExConfirm(){
+  const cx=S.cardEx;if(!cx||S.exSaving)return;
+  if(!isStaffOrOwner())return;
+  // Cancel targets the CLASS's own unit (a visiting instructor may be on another
+  // unit's card), resolved from CLASSES — not the active unit.
+  const clsUnit=(CLASSES.find(cl=>cl.id===cx.classId)||{}).unit_id||null;
+  const cancelledRow=(_exsForDay(cx.date,clsUnit)||[]).find(e=>e.kind==='cancelled'&&e.classId===cx.classId);
+  let ok;
+  if(cancelledRow)ok=await _deleteException(cancelledRow.id,cx.date,'Class restored.');
+  else{
+    if(!cx.classId){showSaveToast2('Class id missing.','error');return;}
+    ok=!!(await _writeException({unit_id:clsUnit,class_id:cx.classId,exception_date:cx.date,kind:'cancelled',reason:null,substitute_instructor_id:null,oneoff_time:null}));
+  }
+  if(ok){S.cardEx=null;render();}
+}
+function rCardExSheet(){
+  const cx=S.cardEx;if(!cx)return '';
+  const busy=!!S.exSaving;
+  const clsUnit=(CLASSES.find(cl=>cl.id===cx.classId)||{}).unit_id||null;
+  const isCancelled=!!(_exsForDay(cx.date,clsUnit)||[]).find(e=>e.kind==='cancelled'&&e.classId===cx.classId);
+  const whenLbl=_cardExWhen(cx.date,cx.time);
+  const body=cx.step==='confirm'
+    ? `<div style="font-size:14px;color:var(--text2);margin-bottom:20px;line-height:1.5">${isCancelled?`Restore the ${escHtml(whenLbl)} class? It comes back on the schedule.`:`Cancel the ${escHtml(whenLbl)} class? Students will see it greyed out as cancelled.`}</div><div style="display:flex;gap:10px"><button class="bsm" style="flex:1;padding:13px;border-radius:10px;font-size:15px" onclick="closeCardEx()" ${busy?'disabled':''}>${isCancelled?'Keep cancelled':'Keep'}</button><button style="flex:1;background:${isCancelled?'var(--blue)':'var(--red)'};color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="cardExConfirm()" ${busy?'disabled':''}>${busy?'Working…':(isCancelled?'Restore class':'Cancel class')}</button></div>`
+    : `<button onclick="cardExStep()" style="width:100%;text-align:left;background:none;border:1px solid ${isCancelled?'var(--blue-mid)':'var(--red-border)'};border-radius:12px;padding:14px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:${isCancelled?'var(--blue)':'var(--red-text)'};cursor:pointer">${isCancelled?'Restore this class':'Cancel this class'}</button><div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.4">Change instructor & one-off classes arrive in a later update.</div>`;
+  return `<div class="cov" onclick="${busy?'':'closeCardEx()'}"><div class="csheet" onclick="event.stopPropagation()"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:var(--text);margin-bottom:4px">${escHtml(whenLbl)} class</div><div style="font-size:12px;color:var(--text3);margin-bottom:18px">Staff options</div>${body}</div></div>`;
+}
+// ── Whole-day close / reopen ──
+function openCloseDay(dateKey){if(!isStaffOrOwner())return;S.closeDay={date:dateKey,reopen:false};render();}
+function askReopenDay(dateKey){if(!isStaffOrOwner())return;S.closeDay={date:dateKey,reopen:true};render();}
+function closeCloseDay(){S.closeDay=null;render();}
+async function closeDayConfirm(){
+  const cd=S.closeDay;if(!cd||S.exSaving)return;
+  if(!isStaffOrOwner())return;
+  const reasonEl=document.getElementById('closeday-reason');
+  const reason=(reasonEl&&reasonEl.value||'').trim()||null;
+  // Whole-day close targets the ACTIVE unit (John closes his own academy's day).
+  const cur=UNITS.find(u=>u.name===S.unit);const unitDbId=cur&&cur._dbId;
+  if(!unitDbId){showSaveToast2('Unit not set. Pick a unit first.','error');return;}
+  const ok=await _writeException({unit_id:unitDbId,exception_date:cd.date,kind:'closed',reason,class_id:null,substitute_instructor_id:null,oneoff_time:null});
+  if(ok){S.closeDay=null;render();}
+}
+async function reopenDayConfirm(){
+  const cd=S.closeDay;if(!cd||S.exSaving)return;
+  if(!isStaffOrOwner())return;
+  const cur=UNITS.find(u=>u.name===S.unit);const unitDbId=cur&&cur._dbId;
+  const row=(_exsForDay(cd.date,unitDbId)||[]).find(e=>e.kind==='closed');
+  if(!row){S.closeDay=null;render();return;}
+  const ok=await _deleteException(row.id,cd.date,'Day reopened.');
+  if(ok){S.closeDay=null;render();}
+}
+function rCloseDaySheet(){
+  const cd=S.closeDay;if(!cd)return '';
+  const busy=!!S.exSaving;
+  const dayLbl=_cardExWhen(cd.date,null);
+  if(cd.reopen){
+    return `<div class="cov" onclick="${busy?'':'closeCloseDay()'}"><div class="csheet" onclick="event.stopPropagation()"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:var(--text);margin-bottom:8px">Reopen this day?</div><div style="font-size:14px;color:var(--text2);margin-bottom:20px;line-height:1.5">${escHtml(dayLbl)} — regular classes come back.</div><div style="display:flex;gap:10px"><button class="bsm" style="flex:1;padding:13px;border-radius:10px;font-size:15px" onclick="closeCloseDay()" ${busy?'disabled':''}>Cancel</button><button style="flex:1;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="reopenDayConfirm()" ${busy?'disabled':''}>${busy?'Working…':'Reopen day'}</button></div></div></div>`;
+  }
+  return `<div class="cov" onclick="${busy?'':'closeCloseDay()'}"><div class="csheet" onclick="event.stopPropagation()"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:var(--text);margin-bottom:8px">Close ${escHtml(dayLbl)}?</div><div style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.5">Regular classes won't run that day. One-off classes (e.g. an open mat) still show.</div><input id="closeday-reason" class="einput" maxlength="120" placeholder="Reason (optional) e.g. World Cup Finale" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:10px;padding:11px 12px;margin-bottom:18px;background:var(--bg);color:var(--text);font-family:Barlow,sans-serif;font-size:14px"/><div style="display:flex;gap:10px"><button class="bsm" style="flex:1;padding:13px;border-radius:10px;font-size:15px" onclick="closeCloseDay()" ${busy?'disabled':''}>Cancel</button><button style="flex:1;background:var(--amber);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="closeDayConfirm()" ${busy?'disabled':''}>${busy?'Working…':'Close day'}</button></div></div></div>`;
+}
 // Batch programme-redesign — editW/handlers now take _localId (UUID for
 // committed rows, 'draft' for the in-flight create row) so a week_index
 // collision (allowed since the DB doesn't UNIQUE on week_index) can't
