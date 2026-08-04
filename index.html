@@ -286,7 +286,7 @@ html,body{overscroll-behavior-y:none}
    non-input children (only the .elbl label — no date row has an interactive
    child) are made pass-through, so a tap ANYWHERE on the row hits the input
    and opens the picker (not just the right edge over the input's value area). */
-.erow[data-datelabel] input[type="date"]{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;padding:0;border:none;z-index:2}
+.erow[data-datelabel] input[type="date"],.erow[data-datelabel] input[type="month"]{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;padding:0;border:none;z-index:2}
 .erow[data-datelabel]>*:not(input){pointer-events:none}
 .erow[data-datelabel]::after{content:attr(data-datelabel);position:absolute;right:16px;top:50%;transform:translateY(-50%);font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);pointer-events:none}
 .erow[data-emptydate]::after{color:var(--text3)}
@@ -8700,7 +8700,7 @@ function hideSplash(){
 // flag their row so CSS can show "Add date", and delegate a single click
 // handler so tapping anywhere on the row opens the native picker.
 function _syncEmptyDates(){
-  const inputs=document.querySelectorAll('input[type="date"]');
+  const inputs=document.querySelectorAll('input[type="date"],input[type="month"]');
   for(let i=0;i<inputs.length;i++){
     const el=inputs[i];const row=el.closest&&el.closest('.erow');
     if(!row)continue;
@@ -8714,13 +8714,24 @@ function _syncEmptyDates(){
 // (parsed at LOCAL midnight so the day never shifts across time zones).
 function _applyDateLabel(row,el){
   const v=el.value;
+  const isMonth=el.type==='month';   // type="month" value is "YYYY-MM"
   if(v){
     row.removeAttribute('data-emptydate');
-    const d=new Date(v+'T00:00:00');
-    row.setAttribute('data-datelabel',isNaN(d.getTime())?v:d.toLocaleDateString());
+    let lbl=v;
+    if(isMonth){
+      // Build from year+month parts — NEVER `new Date('2024-09'+'T00:00:00')`,
+      // which is Invalid Date. Locale-appropriate short month, e.g. "Sep 2024".
+      const m=/^(\d{4})-(\d{2})$/.exec(v);
+      if(m){const d=new Date(Number(m[1]),Number(m[2])-1,1);lbl=isNaN(d.getTime())?v:d.toLocaleDateString(undefined,{month:'short',year:'numeric'});}
+    }else{
+      const d=new Date(v+'T00:00:00');   // date: parse at LOCAL midnight (day never shifts)
+      lbl=isNaN(d.getTime())?v:d.toLocaleDateString();
+    }
+    row.setAttribute('data-datelabel',lbl);
   }else{
     row.setAttribute('data-emptydate','');
-    row.setAttribute('data-datelabel','Add date');
+    // "Add month" reads clearer on a month picker; keep "Add date" for date rows.
+    row.setAttribute('data-datelabel',isMonth?'Add month':'Add date');
   }
 }
 let _dateAffordanceBound=false;
@@ -8731,7 +8742,7 @@ function _initDateAffordance(){
   // so ::after reflects it immediately (not every date input re-renders). The
   // row tap itself is handled purely in CSS now (transparent full-row input),
   // so there is no click listener — showPicker() is unreliable on iOS.
-  const upd=e=>{const el=e.target;if(el&&el.matches&&el.matches('input[type="date"]')){const row=el.closest('.erow');if(row)_applyDateLabel(row,el);}};
+  const upd=e=>{const el=e.target;if(el&&el.matches&&el.matches('input[type="date"],input[type="month"]')){const row=el.closest('.erow');if(row)_applyDateLabel(row,el);}};
   document.addEventListener('input',upd,true);
   document.addEventListener('change',upd,true);
 }
