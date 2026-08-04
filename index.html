@@ -2734,7 +2734,14 @@ ${prefillBanner}
 ${isKids?'':`<div class="erow"><div class="elbl">Email</div><input id="add-email" class="einput" type="email" placeholder="email@example.com" value="${v('email')}" oninput="S._addForm.email=this.value" autocomplete="off"/></div>
 <div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-cc','S._addForm.cc=this.value',phoneCC)}<input id="add-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('phone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.phone=this.value" style="text-align:left" autocomplete="off"/></div></div>`}
 <div class="erow"><div class="elbl">Date of birth</div><input id="add-dob" class="einput" type="date" value="${v('dob')}" oninput="S._addForm.dob=this.value"/></div>
-<div class="erow"><div class="elbl">Started BJJ</div><input id="add-bjjstart" class="einput" type="month" value="${v('bjjStartMonth')}" oninput="S._addForm.bjjStartMonth=this.value" style="min-width:0"/></div>
+<!-- Gender: options mirror rEditStu es-gender EXACTLY (blank/unset default + the same 4 values). -->
+<div class="erow"><div class="elbl">Gender</div><select class="esel" id="add-gender" style="text-align:right" onchange="S._addForm.gender=this.value">${[{v:'',l:'—'},{v:'Female',l:'Female'},{v:'Male',l:'Male'},{v:'Other',l:'Other'},{v:'Prefer not to say',l:'Prefer not to say'}].map(g=>'<option value="'+g.v+'" '+(g.v===(F.gender||'')?'selected':'')+'>'+g.l+'</option>').join('')}</select></div>
+<!-- Two distinct dates John kept confusing: "Joined myBJJ" (training_started_at, day-to-day)
+     comes FIRST, then "Started BJJ (anywhere)" (bjj_start_date, life history). The plain
+     type="date" row is auto-flagged whole-row-tappable by _syncEmptyDates() after every render
+     (same as add-dob) — no manual data-datelabel needed. -->
+<div class="erow"><div class="elbl">Joined myBJJ</div><input id="add-trainstart" class="einput" type="date" value="${v('trainingStartedAt')}" oninput="S._addForm.trainingStartedAt=this.value"/></div>
+<div class="erow"><div class="elbl">Started BJJ (anywhere)</div><input id="add-bjjstart" class="einput" type="month" value="${v('bjjStartMonth')}" oninput="S._addForm.bjjStartMonth=this.value" style="min-width:0"/></div>
 </div>
 <div class="slbl" style="margin-top:8px">Program & rank</div>
 <div class="ef">
@@ -2750,6 +2757,15 @@ ${isKids?`<div class="slbl" style="margin-top:8px">Parent / Guardian</div><div s
 <div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-p-cc','S._addForm.parentCc=this.value',parentCC)}<input id="add-p-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('parentPhone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.parentPhone=this.value" style="text-align:left" autocomplete="off"/></div></div>
 <div class="erow"><div class="elbl">Email</div><input id="add-p-email" class="einput" type="email" placeholder="parent@email.com" value="${v('parentEmail')}" oninput="S._addForm.parentEmail=this.value" autocomplete="off"/></div>
 </div>`:''}
+<!-- Emergency contact — ALWAYS visible (adults + kids). It's a safety field, not a
+     guardian sub-item: an adult has one without a guardian. Mirrors rEditStu es-ecname/
+     es-ecphone (autocapitalize words / type=tel + _phoneSanitize). "Same as guardian"
+     toggle intentionally skipped — the two plain inputs are the requirement. -->
+<div class="slbl" style="margin-top:8px">Emergency contact</div>
+<div class="ef">
+<div class="erow"><div class="elbl">Emergency name</div><input id="add-ecname" class="einput" placeholder="Optional" value="${v('ecName')}" oninput="S._addForm.ecName=this.value" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
+<div class="erow"><div class="elbl">Emergency phone</div><input id="add-ecphone" class="einput" type="tel" inputmode="tel" placeholder="Optional" oninput="this.value=_phoneSanitize(this.value);S._addForm.ecPhone=this.value" value="${v('ecPhone')}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
+</div>
 <div class="slbl" style="margin-top:8px">Background</div>
 <div class="ef">
 <div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb ${isTransfer==='new'?'on':''}" onclick="S._addTransfer='new';render()">New</button><button class="segb ${isTransfer==='transfer'?'on':''}" onclick="S._addTransfer='transfer';render()">Transfer</button><button class="segb ${isTransfer==='returning'?'on':''}" onclick="S._addTransfer='returning';render()">Returning</button></div></div>
@@ -8427,6 +8443,14 @@ async function sendInvite(dispatch,chain){
     if(_bjj>new Date().toISOString().slice(0,10))return showSaveToast2('Started BJJ can\'t be in the future.','error');
     formBjjStartDate=_bjj;
   }
+  // Batch — the 3 fields John asked for at signup, all NULLABLE (empty → null,
+  // never '' on the column). gender → gender; trainingStartedAt → training_started_at
+  // (a 'YYYY-MM-DD' date = when they joined myBJJ, DISTINCT from bjj_start_date above);
+  // ecName/ecPhone → emergency_contact_name/phone.
+  const formGender=String(F.gender||'').trim()||null;
+  const formTrainingStartedAt=String(F.trainingStartedAt||'').trim()||null;
+  const formEcName=String(F.ecName||'').trim()||null;
+  const formEcPhone=String(F.ecPhone||'').trim()||null;
   // Background seeds (transfer / returning). Belt/degree are NOT
   // overridden by Background — admin's rank picks above are an
   // independent signal from how the student joined.
@@ -8464,7 +8488,7 @@ async function sendInvite(dispatch,chain){
     const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
     const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
     const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
-    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob,bjj_start_date:formBjjStartDate,membership_level:formMembership}).select('id,legacy_id').single();
+    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob,bjj_start_date:formBjjStartDate,gender:formGender,training_started_at:formTrainingStartedAt,emergency_contact_name:formEcName,emergency_contact_phone:formEcPhone,membership_level:formMembership}).select('id,legacy_id').single();
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
     // Immediate parent link: if the parent_email already matches a
@@ -8487,7 +8511,7 @@ async function sendInvite(dispatch,chain){
       }catch(e){console.warn('[mybjj] parent_user_id link exception:',e);}
     }
     if(ins&&ins.data){
-      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob,bjjStartDate:formBjjStartDate,membershipLevel:formMembership,_parentStudentId:null,_parent2StudentId:null});
+      STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:unitLegacy,gender:formGender,journey:initialJourney,feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone,parentEmail,parentUserName:parentUserFullName,dob:formDob,bjjStartDate:formBjjStartDate,trainingStartedAt:formTrainingStartedAt,ecName:formEcName,ecPhone:formEcPhone,membershipLevel:formMembership,_parentStudentId:null,_parent2StudentId:null});
       saved=true;
     }
     // Skip the parent whitelist invite when the user already exists —
@@ -8524,12 +8548,15 @@ async function sendInvite(dispatch,chain){
       email,full_name:fullName,first_name:fname,last_name:lname,
       belt:formBelt,degree:formDegree,
       phone:phone,date_of_birth:formDob,
-      bjj_start_date:formBjjStartDate
+      bjj_start_date:formBjjStartDate,
+      gender:formGender,training_started_at:formTrainingStartedAt,
+      emergency_contact_name:formEcName,emergency_contact_phone:formEcPhone
     };
     if(emailMatch){
       const m=emailMatch;
       m.email=email;m.name=fullName;m.firstName=fname;m.lastName=lname;
       m.belt=formBelt;m.deg=formDegree;m.phone=phone;m.dob=formDob;
+      m.gender=formGender;m.trainingStartedAt=formTrainingStartedAt;m.ecName=formEcName;m.ecPhone=formEcPhone;
       const patch=Object.assign({},editable);
       if(initialJourney.length&&!(m.journey&&m.journey.length)){
         patch.journey=initialJourney;m.journey=initialJourney;
@@ -8540,6 +8567,7 @@ async function sendInvite(dispatch,chain){
       const m=nameMatches[0];
       m.email=email;m.firstName=fname;m.lastName=lname;
       m.belt=formBelt;m.deg=formDegree;m.phone=phone;m.dob=formDob;
+      m.gender=formGender;m.trainingStartedAt=formTrainingStartedAt;m.ecName=formEcName;m.ecPhone=formEcPhone;
       const patch=Object.assign({},editable);
       if(initialJourney.length&&!(m.journey&&m.journey.length)){
         patch.journey=initialJourney;m.journey=initialJourney;
@@ -8558,7 +8586,7 @@ async function sendInvite(dispatch,chain){
       if(ins&&ins.error){console.warn('[mybjj] add adult invite:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
       console.log('[mybjj] add adult invite OK');
       if(ins&&ins.data){
-        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:null,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob,bjjStartDate:formBjjStartDate,membershipLevel:formMembership,_parentStudentId:null,_parent2StudentId:null});
+        STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email,name:fullName,firstName:fname,lastName:lname,belt:formBelt,deg:formDegree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:unitLegacy,gender:formGender,journey:initialJourney,feedback:[],photoUrl:null,phone:phone,dob:formDob,bjjStartDate:formBjjStartDate,trainingStartedAt:formTrainingStartedAt,ecName:formEcName,ecPhone:formEcPhone,membershipLevel:formMembership,_parentStudentId:null,_parent2StudentId:null});
         saved=true;
       }
     }
