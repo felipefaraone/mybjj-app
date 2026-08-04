@@ -8745,6 +8745,28 @@ function _initDateAffordance(){
   const upd=e=>{const el=e.target;if(el&&el.matches&&el.matches('input[type="date"],input[type="month"]')){const row=el.closest('.erow');if(row)_applyDateLabel(row,el);}};
   document.addEventListener('input',upd,true);
   document.addEventListener('change',upd,true);
+  // Desktop-only click→showPicker. On web, clicking the body of an opacity:0
+  // date/month input does NOT open the native picker (only the now-transparent
+  // calendar icon would), so the row is effectively un-openable. We restore it
+  // by calling el.showPicker() on click — but ONLY on a real mouse pointer
+  // (hover:hover + pointer:fine). That media query cleanly excludes ALL touch
+  // devices, including iOS/iPadOS Safari where showPicker() from a handler is
+  // blocked/janky; there the native tap already opens the picker, so the
+  // handler must stay a no-op. Scoped to affordance rows (.erow[data-datelabel])
+  // so date inputs elsewhere are untouched. showPicker throws without a user
+  // gesture / when unsupported — swallow. No preventDefault, so focus + the
+  // input/change repaint above still fire normally.
+  let _desktopPointer=false;
+  try{_desktopPointer=!!(window.matchMedia&&window.matchMedia('(hover:hover) and (pointer:fine)').matches);}catch(_){_desktopPointer=false;}
+  if(_desktopPointer){
+    document.addEventListener('click',e=>{
+      const el=e.target;
+      if(!el||!el.matches||!el.matches('input[type="date"],input[type="month"]'))return;
+      if(!el.closest('.erow[data-datelabel]'))return;
+      if(typeof el.showPicker!=='function')return;
+      try{el.showPicker();}catch(_){/* not user-activated / unsupported — ignore */}
+    },true);
+  }
 }
 function render(){
   const app=document.getElementById('app');
