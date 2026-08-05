@@ -7960,11 +7960,16 @@ function rescheduleTrial(trialDbId){
   S.rescheduleTrial=trialDbId;render();
 }
 function closeRescheduleTrial(){S.rescheduleTrial=null;render();}
-// Project the trial's unit's trial-bookable classes onto the next 7 days in
-// Australia/Sydney — rules IDENTICAL to trial.html's public picker (do not soften
-// them): only trial-bookable type_codes (adv / omat are not entry points), only
-// the trial's OWN audience (a kid is never offered an adult class, and vice-versa),
-// and nothing starting within 2h. Returns [{label,dateStr,slots:[{classId,time,timeLabel}]}].
+// Project the trial's unit's trial-bookable classes onto the last 2 days + next 7
+// days in Australia/Sydney. Class-eligibility rules are IDENTICAL to trial.html's
+// public picker (do not soften them): only trial-bookable type_codes (adv / omat
+// are not entry points), only the trial's OWN audience (a kid is never offered an
+// adult class, and vice-versa). #4 (John): the range now REACHES BACK 2 days so
+// staff can log a class the person actually did (e.g. filled the form after their
+// Friday 5pm MMA). The ≥2h future-guard therefore applies ONLY to days AFTER
+// today — past days and today show ALL their classes (a class earlier today may be
+// the one they came for). Groups carry past:true when dateStr < today.
+// Returns [{label,dateStr,past,slots:[{classId,time,timeLabel}]}].
 function _trialSlotGroups(t){
   const TRIAL_TYPES={beg:1,alev:1,nogi:1,mma:1,jmma:1,jun:1,mini:1};
   const LEAD_MIN=120;
@@ -7979,14 +7984,16 @@ function _trialSlotGroups(t){
   const nowMin=(parseInt(o.hour==='24'?'00':o.hour,10)||0)*60+(parseInt(o.minute,10)||0);
   const matches=(CLASSES||[]).filter(cl=>cl&&cl.active===true&&cl.unit_id===t._unitId&&TRIAL_TYPES[cl.type]&&cl.audience===aud);
   const groups=[];
-  for(let i=0;i<7;i++){
+  for(let i=-2;i<7;i++){
     const d=new Date(nowDate+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+i);
     const dateStr=d.toISOString().slice(0,10);const dow=d.getUTCDay();
-    // 2h lead time, applied to every day (day i*1440 + start minute ≥ now + 120).
-    let day=matches.filter(cl=>cl.day_of_week===dow&&(i*1440+hhmmToMin(cl.time))>=nowMin+LEAD_MIN);
+    // ≥2h lead time applies ONLY to days AFTER today (i>0). Past days and today
+    // (i<=0) show ALL their classes — a class that already ran may be the one the
+    // person came for; excluding it is exactly the bug #4 fixes.
+    let day=matches.filter(cl=>cl.day_of_week===dow&&(i<=0||(i*1440+hhmmToMin(cl.time))>=nowMin+LEAD_MIN));
     if(!day.length)continue;
     day.sort((a,b)=>hhmmToMin(a.time)-hhmmToMin(b.time));
-    groups.push({label:DOW[dow]+' '+d.getUTCDate()+' '+MON[d.getUTCMonth()],dateStr,slots:day.map(cl=>({classId:cl.id,time:String(cl.time||'').slice(0,5),timeLabel:fmtT12(cl.time)}))});
+    groups.push({label:DOW[dow]+' '+d.getUTCDate()+' '+MON[d.getUTCMonth()],dateStr,past:dateStr<nowDate,slots:day.map(cl=>({classId:cl.id,time:String(cl.time||'').slice(0,5),timeLabel:fmtT12(cl.time)}))});
   }
   return groups;
 }
@@ -7996,20 +8003,33 @@ function rRescheduleModal(){
   const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
   const who=(t.isKid&&t.kidName)?t.kidName:(t.name||'this trial');
   const groups=_trialSlotGroups(t);
+  const pastGroups=groups.filter(g=>g.past);
+  const upGroups=groups.filter(g=>!g.past);
   let body;
   if(!groups.length){
     // No confirm button when there's nothing to pick — never an empty list.
-    body='<div style="font-size:13px;color:var(--text2);text-align:center;padding:22px 8px;line-height:1.5">No slots available in the next 7 days.</div>';
+    body='<div style="font-size:13px;color:var(--text2);text-align:center;padding:22px 8px;line-height:1.5">No slots in the last few days or the week ahead.</div>';
   }else{
-    body=groups.map(g=>{
-      const slots=g.slots.map(s=>'<button class="bsm" style="padding:8px 13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px" onclick="_doRescheduleTrial(\''+t._dbId+'\',\''+esc(s.classId)+'\',\''+esc(g.dateStr)+'\',\''+esc(s.time)+'\')">'+s.timeLabel+'</button>').join('');
+    // #4 — one group renderer, reused for both sections. Past-day buttons are
+    // slightly muted (opacity) so staff can tell they're logging a class that
+    // already happened, not booking a future one. Button markup + write call
+    // are otherwise UNCHANGED.
+    const renderGroup=(g,isPast)=>{
+      const slots=g.slots.map(s=>'<button class="bsm" style="padding:8px 13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px'+(isPast?';opacity:.9':'')+'" onclick="_doRescheduleTrial(\''+t._dbId+'\',\''+esc(s.classId)+'\',\''+esc(g.dateStr)+'\',\''+esc(s.time)+'\')">'+s.timeLabel+'</button>').join('');
       return '<div style="margin-bottom:14px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:7px">'+esc(g.label)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+slots+'</div></div>';
-    }).join('');
+    };
+    const secHdr=(txt)=>'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:10px">'+txt+'</div>';
+    // Past FIRST so the retro option is the thing staff notice; upcoming after.
+    // The "Upcoming" header only appears when a past section precedes it (to
+    // separate them); with no past days, upcoming stands alone unlabelled as before.
+    const pastSection=pastGroups.length?secHdr('Earlier this week')+pastGroups.map(g=>renderGroup(g,true)).join(''):'';
+    const upSection=upGroups.length?((pastGroups.length?secHdr('Upcoming'):'')+upGroups.map(g=>renderGroup(g,false)).join('')):'';
+    body=pastSection+upSection;
   }
   return `<div class="cov" onclick="closeRescheduleTrial()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:400px;width:100%;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
 <button onclick="closeRescheduleTrial()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">Reschedule trial</div>
-<div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.4">Pick a new slot for <b style="color:var(--text2)">${esc(who)}</b> — ${t.isKid?'kids':'adult'} classes, next 7 days.</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.4">Pick a new slot for <b style="color:var(--text2)">${esc(who)}</b> — ${t.isKid?'kids':'adult'} classes, the last few days or upcoming.</div>
 ${body}
 </div></div>`;
 }
