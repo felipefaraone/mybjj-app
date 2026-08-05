@@ -7851,6 +7851,28 @@ function rTrialsBlock(){
     actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Reschedule</button>');
     actBtns.push('<button class="admin-action-btn" onclick="lapseTrial(\''+t._dbId+'\')" style="color:var(--red-text)">'+iLapse+'Lapse</button>');
     const actionsRow='<div style="display:flex;gap:8px;margin-top:12px">'+actBtns.join('')+'</div>';
+    // #5 (John's trial list) — running contact-attempt log so Patricia/Evelin
+    // don't double up on follow-ups. Entries render most-recent-first (defensive
+    // date-desc sort). Channel + short date (_fmtAttWhen, the app's day/month
+    // formatter) + who. "Log contact" is staff-only. The trials tab is admin-only,
+    // so the block only renders for staff (or when a log already exists).
+    const CH_LBL={email:'Email',call:'Call',text:'Text',other:'Other'};
+    const clArr=Array.isArray(t.contactLog)?t.contactLog:[];
+    const clSorted=clArr.slice().sort((a,b)=>String((b&&b.date)||'').localeCompare(String((a&&a.date)||'')));
+    const clLines=clSorted.map(e=>{
+      const ch=CH_LBL[e&&e.channel]||'Contact';
+      const dt=(e&&e.date)?_fmtAttWhen(e.date,null):'';
+      return '<div style="font-size:11px;color:var(--text3);padding:1px 0">'+ch+' · '+dt+' · '+escHtml((e&&e.by)||'—')+'</div>';
+    }).join('');
+    const clBtn=isStaffOrOwner()
+      ?'<button onclick="openContactLog(\''+t._dbId+'\')" style="background:none;border:none;padding:'+(clArr.length?'6px':'0')+' 0 0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'+(clArr.length?'Log another contact':'Log contact')+'</button>'
+      :'';
+    const contactBlock=(isStaffOrOwner()||clArr.length)
+      ?'<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">'
+        +(clArr.length?'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Contact log ('+clArr.length+')</div>'+clLines:'')
+        +clBtn
+        +'</div>'
+      :'';
     return '<div class="card">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
       +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text)">'+displayName+'</span>'
@@ -7860,6 +7882,7 @@ function rTrialsBlock(){
       +slotLine
       +copyWaiverBtn
       +actionsRow
+      +contactBlock
       +'</div>';
   };
   // Current section — always rendered once past the both-empty guard, so its
@@ -8441,7 +8464,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header"><div class="hdr-l"><img src="${LOGO_DATA_URI}" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}">${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}</div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -10905,7 +10928,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings. Scope to active trials only
     // (booked|attended); converted/lapsed rows are excluded in the
     // query so TRIALS only ever holds rows that still need action.
-    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,waiver_token,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended','no_show','lapsed']).order('booked_at',{ascending:false}).limit(200),
+    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,waiver_token,is_kid,kid_name,admin_note,contact_log,created_at').in('trial_status',['booked','attended','no_show','lapsed']).order('booked_at',{ascending:false}).limit(200),
     // Cross-unit visitors — minimal display-only rows for students who
     // attended a class at the active unit but train elsewhere. Staff-only +
     // unit-bounded server-side; returns 0 rows for non-staff / no visitors.
@@ -10998,7 +11021,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings mapped to camelCase, same style as
     // STUDENTS. unit resolved via uMap (legacy id) so render can scope
     // to the current unit the same way the member roster does.
-    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,classId:r.class_id||null,classDate:r.class_date||null,classTime:r.class_time||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,waiverToken:r.waiver_token||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
+    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,classId:r.class_id||null,classDate:r.class_date||null,classTime:r.class_time||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,waiverToken:r.waiver_token||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,contactLog:Array.isArray(r.contact_log)?r.contact_log:[],unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
     got=true;
   }else if(tr.error)console.warn('[mybjj] hydrate trials:',tr.error);
   if(pm.data){
@@ -13694,6 +13717,88 @@ function rPrivateSheet(){
 <div style="display:flex;gap:10px;margin-top:18px">
 <button class="bout" style="flex:1" onclick="closePrivate()" ${busy?'disabled':''}>Cancel</button>
 <button class="bmain" style="flex:1" onclick="savePrivate('${escAttr(s.id)}')" ${busy?'disabled':''}>${busy?'Saving…':'Save'}</button>
+</div>
+</div></div>`;
+}
+// ── Trial contact log (#5) ───────────────────────────────────────────────────
+// A running history of follow-up attempts on a trial so Patricia/Evelin can see
+// who tried, how, and when (and not double up). Entry shape:
+// {date:'YYYY-MM-DD', by:'<staff name>', byId:'<staff._dbId|null>', channel}.
+// Read-modify-write of trial_bookings.contact_log (jsonb array): re-read the
+// current array, append, write the whole thing back, then re-read to CONFIRM
+// (trust-nothing, like _doRescheduleTrial). Last-write-wins — low concurrency.
+function openContactLog(sid){ if(!isStaffOrOwner())return; S.contactLogFor=sid; S.contactSaving=false; render(); }
+function closeContactLog(){ S.contactLogFor=null; S.contactSaving=false; render(); }
+async function saveContactEntry(trialDbId){
+  if(!isStaffOrOwner())return;
+  if(S.contactSaving)return;
+  const t=TRIALS.find(x=>x._dbId===trialDbId); if(!t){showSaveToast2('Trial not found','error');return;}
+  const dateEl=document.getElementById('cl-date');
+  const chEl=document.getElementById('cl-channel');
+  const byEl=document.getElementById('cl-by');
+  const date=String((dateEl&&dateEl.value)||'').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){showSaveToast2('Pick a date.','error');return;}
+  const channel=String((chEl&&chEl.value)||'');
+  if(['email','call','text','other'].indexOf(channel)<0){showSaveToast2('Pick how you contacted them.','error');return;}
+  // "By" picker value is a staff._dbId; store both the display name (for the card,
+  // no re-lookup) and byId (stable reference).
+  const byDbId=(byEl&&byEl.value)||'';
+  const byStaff=STAFF.find(x=>x._dbId===byDbId)||null;
+  const byName=byStaff?staffDisplayName(byStaff):((S.me&&S.me.name)||'Staff');
+  const entry={date:date,by:byName,byId:byStaff?byStaff._dbId:null,channel:channel};
+  S.contactSaving=true; render();
+  const cli=initSupabase();
+  if(!cli){S.contactSaving=false;showSaveToast2('Connection issue','error');render();return;}
+  // Re-read the current array before appending so a concurrent add isn't clobbered
+  // by a stale in-memory copy; fall back to in-memory on read failure.
+  let base=Array.isArray(t.contactLog)?t.contactLog:[];
+  try{
+    const cur=await cli.from('trial_bookings').select('contact_log').eq('id',trialDbId).single();
+    if(cur&&!cur.error&&cur.data&&Array.isArray(cur.data.contact_log))base=cur.data.contact_log;
+  }catch(_){}
+  const next=base.concat([entry]);
+  const upd=await cli.from('trial_bookings').update({contact_log:next}).eq('id',trialDbId);
+  if(upd&&upd.error){S.contactSaving=false;console.warn('[mybjj] contact_log update:',upd.error);showSaveToast2(friendlyMutationError(upd.error),'error');render();return;}
+  const chk=await cli.from('trial_bookings').select('contact_log').eq('id',trialDbId).single();
+  S.contactSaving=false;
+  if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');render();return;}
+  const saved=(chk&&chk.data&&Array.isArray(chk.data.contact_log))?chk.data.contact_log:null;
+  if(!saved||saved.length!==next.length){showSaveToast2('Could not log contact','error');render();return;}
+  t.contactLog=saved;               // adopt the confirmed server array
+  S.contactLogFor=null;
+  render(); showSaveToast2('Contact logged.');
+}
+function rContactLogSheet(){
+  if(!S.contactLogFor)return '';
+  const t=TRIALS.find(x=>x._dbId===S.contactLogFor); if(!t)return '';
+  const busy=!!S.contactSaving;
+  const today=dk(new Date());
+  const who=(t.isKid&&t.kidName)?t.kidName:(t.name||'this trial');
+  const meStaff=STAFF.find(x=>x._userId===((S.profile&&S.profile.id)||null))||null;
+  const defSel=meStaff?meStaff._dbId:'';
+  const CH_LBL={email:'Email',call:'Call',text:'Text',other:'Other'};
+  const clArr=Array.isArray(t.contactLog)?t.contactLog:[];
+  const clSorted=clArr.slice().sort((a,b)=>String((b&&b.date)||'').localeCompare(String((a&&a.date)||'')));
+  const existing=clArr.length
+    ?'<div style="margin-bottom:14px;max-height:160px;overflow-y:auto">'+clSorted.map(e=>{
+        const ch=CH_LBL[e&&e.channel]||'Contact';
+        const dt=(e&&e.date)?_fmtAttWhen(e.date,null):'';
+        return '<div style="font-size:12px;color:var(--text2);padding:6px 0;border-bottom:1px solid var(--border)">'+ch+' · '+dt+' · '+escHtml((e&&e.by)||'—')+'</div>';
+      }).join('')+'</div>'
+    :'<div style="font-size:12px;color:var(--text3);margin-bottom:14px">No contact logged yet.</div>';
+  const channelSel='<select class="esel" id="cl-channel" style="text-align:right">'+['email','call','text','other'].map(c=>'<option value="'+c+'">'+CH_LBL[c]+'</option>').join('')+'</select>';
+  return `<div class="cov" onclick="${busy?'':'closeContactLog()'}" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:360px;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
+<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">Contact log</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:14px">${escHtml(who)}</div>
+${existing}
+<div class="ef" style="margin-bottom:0">
+<div class="erow"><div class="elbl">Date</div><input class="einput" id="cl-date" type="date" value="${escAttr(today)}"/></div>
+<div class="erow"><div class="elbl">How</div>${channelSel}</div>
+<div class="erow"><div class="elbl">By</div><select class="esel" id="cl-by" style="text-align:right">${_exInstructorOptions(t._unitId,defSel)}</select></div>
+</div>
+<div style="display:flex;gap:10px;margin-top:18px">
+<button class="bout" style="flex:1" onclick="closeContactLog()" ${busy?'disabled':''}>Cancel</button>
+<button class="bmain" style="flex:1" onclick="saveContactEntry('${escAttr(t._dbId)}')" ${busy?'disabled':''}>${busy?'Saving…':'Add entry'}</button>
 </div>
 </div></div>`;
 }
