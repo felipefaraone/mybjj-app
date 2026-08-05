@@ -1611,7 +1611,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'people',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -7762,11 +7762,20 @@ function rARosterListInner(){
 function rTrialsBlock(){
   const curU=UNITS.find(u=>u.name===S.unit);
   const list=TRIALS.filter(t=>!t._unitId||(curU&&t._unitId===curU._dbId));
-  // Trials is now its own tab, so an empty result shows an empty state rather than
-  // rendering nothing (which was right when it was embedded above the roster).
-  if(!list.length)return '<div style="margin-bottom:20px"><div class="slbl">Trials</div><div class="card" style="text-align:center;padding:32px 20px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No trials yet</div><div style="font-size:12px;color:var(--text3);line-height:1.5">Bookings from the trial page appear here.</div></div></div>';
+  // #2 (John's trial list) — split the funnel into two groups: Current prospects
+  // (still live: booked/attended) and Lapsed (didn't come / gave up: no_show/
+  // lapsed). 'converted' trials are already excluded by the fetch (they're members
+  // on the roster now); drop them here too, belt-and-suspenders, so they can never
+  // leak into either group.
+  const current=list.filter(t=>t.status==='booked'||t.status==='attended');
+  const lapsed=list.filter(t=>t.status==='no_show'||t.status==='lapsed');
+  // Trials is its own tab, so an empty result shows an empty state rather than
+  // rendering nothing. Both groups empty → the single "No trials yet" state.
+  if(!current.length&&!lapsed.length)return '<div style="margin-bottom:20px"><div class="slbl">Trials</div><div class="card" style="text-align:center;padding:32px 20px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No trials yet</div><div style="font-size:12px;color:var(--text3);line-height:1.5">Bookings from the trial page appear here.</div></div></div>';
   const chipBase='display:inline-flex;align-items:center;gap:4px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px';
-  const rows=list.map(t=>{
+  // Card HTML per trial is unchanged — the map body is now a per-trial helper
+  // called once per group (grouping is the only new wrapper).
+  const renderCard=(t)=>{
     const isAttended=t.status==='attended';
     const isNoShow=t.status==='no_show';
     const statusChip=isAttended
@@ -7841,9 +7850,29 @@ function rTrialsBlock(){
       +slotLine
       +actionsRow
       +'</div>';
-  }).join('');
-  return '<div style="margin-bottom:20px"><div class="slbl">Trials ('+list.length+')</div>'+rows+'</div>';
+  };
+  // Current section — always rendered once past the both-empty guard, so its
+  // header is never confusingly missing; empty current (but lapsed present) shows
+  // a light note where the cards would be.
+  const currentBody=current.length?current.map(renderCard).join(''):'<div class="card" style="padding:16px 18px;font-size:12px;color:var(--text3)">No current prospects.</div>';
+  const currentSection='<div style="margin-bottom:14px"><div class="slbl">Current prospects ('+current.length+')</div>'+currentBody+'</div>';
+  // Lapsed section — rendered ONLY when non-empty (never an empty "Lapsed (0)"
+  // header). Long lists collapse behind a Show-all toggle so current prospects
+  // stay the focus (lapsed is reference, not daily action). Mirrors the journey
+  // collapse pattern — S.showAllLapsed / toggleShowAllLapsed.
+  let lapsedSection='';
+  if(lapsed.length){
+    const LAP_COLLAPSE_AT=10;
+    const lapCollapsed=lapsed.length>LAP_COLLAPSE_AT&&!S.showAllLapsed;
+    const lapShown=lapCollapsed?lapsed.slice(0,LAP_COLLAPSE_AT):lapsed;
+    const lapToggle=(lapsed.length>LAP_COLLAPSE_AT)
+      ?'<div style="padding:8px 16px 2px;text-align:center"><button onclick="toggleShowAllLapsed()" style="background:none;border:none;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--blue);cursor:pointer;padding:4px 8px">'+(S.showAllLapsed?'Show less ↑':'Show all ('+lapsed.length+') →')+'</button></div>'
+      :'';
+    lapsedSection='<div><div class="slbl">Lapsed ('+lapsed.length+')</div>'+lapShown.map(renderCard).join('')+lapToggle+'</div>';
+  }
+  return '<div style="margin-bottom:20px">'+currentSection+lapsedSection+'</div>';
 }
+function toggleShowAllLapsed(){S.showAllLapsed=!S.showAllLapsed;render();}
 // Module 1 action side — trial state mutations. Every action does a
 // confirming re-fetch scoped to .eq('id',trialDbId): Supabase can return
 // a success-shaped empty result for a no-op/RLS-filtered write, so the
@@ -10845,7 +10874,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings. Scope to active trials only
     // (booked|attended); converted/lapsed rows are excluded in the
     // query so TRIALS only ever holds rows that still need action.
-    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended','no_show']).order('booked_at',{ascending:false}),
+    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,is_kid,kid_name,admin_note,created_at').in('trial_status',['booked','attended','no_show','lapsed']).order('booked_at',{ascending:false}).limit(200),
     // Cross-unit visitors — minimal display-only rows for students who
     // attended a class at the active unit but train elsewhere. Staff-only +
     // unit-bounded server-side; returns 0 rows for non-staff / no visitors.
