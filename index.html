@@ -7789,7 +7789,23 @@ function rTrialsBlock(){
     // Compact — email · phone · prefDay collapse onto one line. Each bit is
     // its own span so flex-wrap breaks between them (not mid-value) and a
     // long email wraps rather than overflowing on a narrow screen.
-    const metaBits=[t.email,t.phone,t.preferredDay?('Prefers '+t.preferredDay):null].filter(Boolean);
+    // #3 (John's trial list) — surface the booked slot at a glance. Confirmed
+    // class (t.classDate set): human date+time via _fmtAttWhen (the app's
+    // attendance/day-strip formatter — handles null classTime) + the class label
+    // via _clsLabel when the class resolves from CLASSES by classId; date+time
+    // only when it doesn't. Soft preferred-day-only (no classDate): "Prefers
+    // <day> · time to confirm" so it reads as an unlocked slot. preferredDay is
+    // dropped from metaBits (email/phone) to avoid duplicating it. Neither set →
+    // no line (no undefined/null artifacts).
+    let slotLine='';
+    if(t.classDate){
+      const _cls=t.classId?CLASSES.find(c=>c.id===t.classId):null;
+      const _clsL=_cls?_clsLabel(_cls):'';
+      slotLine='<div style="font-size:11.5px;color:var(--text2);font-weight:500;margin-top:6px;word-break:break-word">'+_fmtAttWhen(t.classDate,t.classTime)+(_clsL?' · '+escHtml(_clsL):'')+'</div>';
+    }else if(t.preferredDay){
+      slotLine='<div style="font-size:11px;color:var(--text3);margin-top:6px">Prefers '+escHtml(t.preferredDay)+' <span style="opacity:.75">· time to confirm</span></div>';
+    }
+    const metaBits=[t.email,t.phone].filter(Boolean);
     const meta=metaBits.length?'<div style="font-size:11px;color:var(--text3);margin-top:6px;display:flex;flex-wrap:wrap;gap:2px 8px;word-break:break-word">'+metaBits.map((b,i)=>'<span>'+(i>0?'· ':'')+b+'</span>').join('')+'</div>':'';
     // Module 1 action side — per-trial state actions. Mark attended only
     // appears while still booked. Convert: adults are one click (they can log in
@@ -7822,6 +7838,7 @@ function rTrialsBlock(){
       +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+statusChip+waiverChip+kidChip+'</div>'
       +'</div>'
       +meta
+      +slotLine
       +actionsRow
       +'</div>';
   }).join('');
