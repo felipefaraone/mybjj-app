@@ -436,9 +436,6 @@
   // server-side, because a client-side list is not a control.
   var TRIAL_TYPES = { beg:1, alev:1, nogi:1, mma:1, jmma:1, jun:1, mini:1 };
 
-  // No slot is bookable within this many minutes of "now" (Australia/Sydney) — a
-  // class starting in 18 minutes helps nobody and the front desk can't prepare.
-  var LEAD_MIN = 120;
 
   // ---- state ----------------------------------------------------------------
   var state = {
@@ -488,7 +485,7 @@
   // Projects the weekly grid (public_timetable rows for the selected unit + type
   // + audience) onto the next 7 DAYS starting today in Australia/Sydney. Emits a
   // slot on each date whose weekday === the class's day_of_week, dropping any
-  // occurrence starting less than LEAD_MIN (2h) from now. Returns day groups; a
+  // occurrence that has already ended (start + duration ≤ now). Returns day groups; a
   // day left empty simply doesn't render, and an empty window falls through to
   // the "none of these times work" fallback (buildSlots handles both).
   // ============================================================================
@@ -506,11 +503,16 @@
       var dateStr = d.toISOString().slice(0,10);
       var dow = d.getUTCDay();
       var daySlots = matches.filter(function(r){ return r.day_of_week===dow; });
-      // 2-hour lead time: a slot's absolute offset from today's Sydney midnight
-      // (day i * 1440 min + start minute) must be at least LEAD_MIN past "now".
-      // Applied to EVERY day (handles the cross-midnight edge), replacing the old
-      // "drop today's already-passed" rule that let an 18-min-away class book.
-      daySlots = daySlots.filter(function(r){ return (i*1440 + hhmmToMin(r.start_time_raw)) >= syd.minutes + LEAD_MIN; });
+      // Show a class until it ENDS, not until 2h before it starts: keep the slot
+      // while its end time (day i*1440 + start minute + duration) is still in the
+      // future vs "now". So future classes show, a class in progress (started but
+      // not finished) still shows — John's "arrived a few minutes late" case — and
+      // a class that already ended drops. Applied to EVERY day (cross-midnight
+      // edge). Missing/zero duration falls back to 60 min so the row still behaves.
+      daySlots = daySlots.filter(function(r){
+        var durationMin = Number(r.duration_minutes) || 60;
+        return (i*1440 + hhmmToMin(r.start_time_raw) + durationMin) > syd.minutes;
+      });
       if(!daySlots.length) continue;
       daySlots.sort(function(a,b){ return hhmmToMin(a.start_time_raw)-hhmmToMin(b.start_time_raw); });
       groups.push({
