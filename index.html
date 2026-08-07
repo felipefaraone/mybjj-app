@@ -2725,6 +2725,21 @@ function rAddStu(){
   const prefillBanner=_prefillParentName
     ?`<div style="margin-bottom:14px;padding:12px 14px;background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;font-size:14px;color:var(--blue);line-height:1.4">Adding child for ${escHtml(_prefillParentName)}</div>`
     :'';
+  // Date of birth — three Day/Month/Year selects instead of a native type="date".
+  // On desktop (Mac) type="date" can't jump to a distant birth year without dozens
+  // of arrow clicks; three dropdowns pick a year directly and behave identically on
+  // iPhone. State stays a "YYYY-MM-DD" string in S._addForm.dob (assembled by
+  // _addDobSync), so the insert path is unchanged. Days are a flat 1–31 (no
+  // per-month clamp — the DB stores what's given, matching prior no-validation
+  // behaviour). Prefill: split an existing F.dob back into its parts.
+  const _dobParts=String(F.dob||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const _dobY=_dobParts?_dobParts[1]:'',_dobM=_dobParts?_dobParts[2]:'',_dobD=_dobParts?_dobParts[3]:'';
+  const _pad2=n=>(n<10?'0':'')+n;
+  const _dobMonNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const _dobDayOpts='<option value="">Day</option>'+Array.from({length:31},(_,i)=>{const d=_pad2(i+1);return '<option value="'+d+'" '+(d===_dobD?'selected':'')+'>'+(i+1)+'</option>';}).join('');
+  const _dobMonOpts='<option value="">Month</option>'+_dobMonNames.map((nm,i)=>{const m=_pad2(i+1);return '<option value="'+m+'" '+(m===_dobM?'selected':'')+'>'+nm+'</option>';}).join('');
+  const _dobCurYear=new Date().getFullYear();
+  const _dobYrOpts='<option value="">Year</option>'+Array.from({length:_dobCurYear-1940+1},(_,i)=>{const y=String(_dobCurYear-i);return '<option value="'+y+'" '+(y===_dobY?'selected':'')+'>'+y+'</option>';}).join('');
   return `<div class="sub open"><div class="shdr"><button class="sback" onclick="closeAddStu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Add Student</div></div><div class="sbody">
 ${prefillBanner}
 <div class="slbl">Personal info</div>
@@ -2733,7 +2748,7 @@ ${prefillBanner}
 <div class="erow"><div class="elbl">Last name</div><input id="add-last" class="einput" placeholder="Last name" value="${v('last')}" oninput="S._addForm.last=this.value" autocomplete="off"/></div>
 ${isKids?'':`<div class="erow"><div class="elbl">Email</div><input id="add-email" class="einput" type="email" placeholder="email@example.com" value="${v('email')}" oninput="S._addForm.email=this.value" autocomplete="off"/></div>
 <div class="erow"><div class="elbl">Phone</div><div style="display:flex;align-items:center;gap:6px;flex:1">${ccSelect('add-cc','S._addForm.cc=this.value',phoneCC)}<input id="add-phone" class="einput" type="tel" inputmode="tel" placeholder="4xx xxx xxx" value="${v('phone')}" oninput="this.value=_phoneSanitize(this.value);S._addForm.phone=this.value" style="text-align:left" autocomplete="off"/></div></div>`}
-<div class="erow"><div class="elbl">Date of birth</div><input id="add-dob" class="einput" type="date" value="${v('dob')}" oninput="S._addForm.dob=this.value"/></div>
+<div class="erow"><div class="elbl">Date of birth</div><div style="display:flex;gap:6px;flex:1;flex-wrap:wrap;justify-content:flex-end"><select class="esel" id="add-dob-d" style="flex:1;min-width:60px;text-align:left" onchange="_addDobSync()">${_dobDayOpts}</select><select class="esel" id="add-dob-m" style="flex:1;min-width:68px;text-align:left" onchange="_addDobSync()">${_dobMonOpts}</select><select class="esel" id="add-dob-y" style="flex:1;min-width:74px;text-align:left" onchange="_addDobSync()">${_dobYrOpts}</select></div></div>
 <!-- Gender: options mirror rEditStu es-gender EXACTLY (blank/unset default + the same 4 values). -->
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="add-gender" style="text-align:right" onchange="S._addForm.gender=this.value">${[{v:'',l:'—'},{v:'Female',l:'Female'},{v:'Male',l:'Male'},{v:'Other',l:'Other'},{v:'Prefer not to say',l:'Prefer not to say'}].map(g=>'<option value="'+g.v+'" '+(g.v===(F.gender||'')?'selected':'')+'>'+g.l+'</option>').join('')}</select></div>
 <!-- Two distinct dates John kept confusing: "Joined myBJJ" (training_started_at, day-to-day)
@@ -2778,6 +2793,17 @@ ${isTransfer==='returning'?'<div class="gnote" style="margin-top:4px">Returning 
 <div style="display:flex;gap:10px;margin-bottom:10px"><button onclick="sendInvite(true)" class="bblue" style="flex:1;padding:12px;font-size:15px">Save & invite</button><button onclick="sendInvite(false)" class="bout" style="flex:1;padding:12px;font-size:15px;border-width:1px;margin-bottom:0">Save only</button></div>
 ${!isKids?`<div style="margin-bottom:24px"><button onclick="sendInvite(false,true)" class="bout" style="width:100%;padding:12px;font-size:14px;border-width:1px;margin-bottom:0">Save & add child</button></div>`:'<div style="height:14px"></div>'}
 </div></div>`;
+}
+// Add-Student DOB: assemble the three Day/Month/Year selects into the same
+// "YYYY-MM-DD" string the insert path already expects — or '' when any part is
+// unset (incomplete = no DOB, exactly as the old single input behaved). No
+// calendar validation (e.g. 31 Feb passes through) — the DB stores what's given.
+function _addDobSync(){
+  if(!S._addForm)return;
+  const d=(document.getElementById('add-dob-d')||{}).value||'';
+  const m=(document.getElementById('add-dob-m')||{}).value||'';
+  const y=(document.getElementById('add-dob-y')||{}).value||'';
+  S._addForm.dob=(d&&m&&y)?(y+'-'+m+'-'+d):'';
 }
 
 function rMUnits(){
