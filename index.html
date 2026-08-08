@@ -8535,7 +8535,12 @@ async function sendInvite(dispatch,chain){
   }
   const curU=UNITS.find(u=>u.name===(F.unit||S.unit));
   const unitLegacy=curU?curU.id:null;
-  const unitDbId=meUnitDbId();
+  // Bug fix — the DB unit_id must be the CHOSEN unit (dropdown → curU), not the
+  // admin's active unit. Previously meUnitDbId() (S.unit) meant Patricia adding an
+  // NB student while Camperdown was active saved them to Camperdown, diverging from
+  // unitLegacy (which already used curU). Fall back to the active unit only if curU
+  // somehow didn't resolve.
+  const unitDbId=curU?curU._dbId:meUnitDbId();
   if(!unitLegacy||!unitDbId)return showSaveToast2('Unit not set. Pick a unit first.','error');
   const fullName=(fname+' '+lname).trim();
   const cli=initSupabase();
