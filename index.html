@@ -2253,7 +2253,15 @@ function trialsForClass(cid){
   const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const classId=t.classId||null;
   if(!classId)return [];  // no class identity → never match (fallback trials carry classId null)
-  return TRIALS.filter(tr=>(tr.status==='booked'||tr.status==='attended')&&tr.classId===classId&&tr.classDate===c.date);
+  // Phase B — a trial is "going" to this occurrence if ANY of its sessions matches
+  // (class + date), OR (defensive fallback) the legacy single class field matches.
+  // Only the matching predicate widened — the displayed rows/behaviour are unchanged.
+  return TRIALS.filter(tr=>{
+    if(tr.status!=='booked'&&tr.status!=='attended')return false;
+    const sess=Array.isArray(tr.sessions)?tr.sessions:null;
+    if(sess&&sess.some(s=>s&&s.classId===classId&&s.classDate===c.date))return true;
+    return tr.classId===classId&&tr.classDate===c.date;   // legacy single-field fallback
+  });
 }
 // One trial row inside the trials block. The "TRIAL · N" section label (below)
 // already says these people are not members, so the row carries only the name and
@@ -7854,13 +7862,26 @@ function rTrialsBlock(){
     // <day> · time to confirm" so it reads as an unlocked slot. preferredDay is
     // dropped from metaBits (email/phone) to avoid duplicating it. Neither set →
     // no line (no undefined/null artifacts).
+    // Phase B — show ALL trial sessions (a person may do several trial classes),
+    // stacked as a small list. Each line: date/time (_fmtAttWhen) · class label
+    // (_clsLabel when it resolves) + a subtle "done" marker when attended. Empty
+    // sessions + preferredDay → the prefer line. Defensive: if t.sessions is
+    // missing (older cached state), fall back to the legacy single class_date line.
     let slotLine='';
-    if(t.classDate){
-      const _cls=t.classId?CLASSES.find(c=>c.id===t.classId):null;
+    const _sessArr=Array.isArray(t.sessions)?t.sessions:null;
+    const _prefLine=t.preferredDay?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Prefers '+escHtml(t.preferredDay)+' <span style="opacity:.75">· time to confirm</span></div>':'';
+    const _sessLine=(dateStr,timeStr,classId,attended)=>{
+      const _cls=classId?CLASSES.find(c=>c.id===classId):null;
       const _clsL=_cls?_clsLabel(_cls):'';
-      slotLine='<div style="font-size:11.5px;color:var(--text2);font-weight:500;margin-top:6px;word-break:break-word">'+_fmtAttWhen(t.classDate,t.classTime)+(_clsL?' · '+escHtml(_clsL):'')+'</div>';
+      const _done=attended?' <span style="color:var(--green-text);font-weight:700">✓ done</span>':'';
+      return '<div style="font-size:11.5px;color:var(--text2);font-weight:500;margin-top:6px;word-break:break-word">'+_fmtAttWhen(dateStr,timeStr)+(_clsL?' · '+escHtml(_clsL):'')+_done+'</div>';
+    };
+    if(_sessArr&&_sessArr.length){
+      slotLine=_sessArr.map(s=>_sessLine(s.classDate,s.classTime,s.classId,s.attended)).join('');
+    }else if(_sessArr===null&&t.classDate){
+      slotLine=_sessLine(t.classDate,t.classTime,t.classId,t.status==='attended');   // defensive legacy fallback
     }else if(t.preferredDay){
-      slotLine='<div style="font-size:11px;color:var(--text3);margin-top:6px">Prefers '+escHtml(t.preferredDay)+' <span style="opacity:.75">· time to confirm</span></div>';
+      slotLine=_prefLine;
     }
     const metaBits=[t.email,t.phone].filter(Boolean);
     const meta=metaBits.length?'<div style="font-size:11px;color:var(--text3);margin-top:6px;display:flex;flex-wrap:wrap;gap:2px 8px;word-break:break-word">'+metaBits.map((b,i)=>'<span>'+(i>0?'· ':'')+b+'</span>').join('')+'</div>':'';
@@ -10990,9 +11011,15 @@ async function refetchUnitScopedData(){
     // Unit-agnostic fetch (RLS SELECT is open; unit filtering is done at read via
     // _exsForDay). No staff join — sub instructors resolve from STAFF in memory.
     c.from('class_exceptions').select('id,unit_id,class_id,exception_date,kind,substitute_instructor_id,reason,oneoff_time,oneoff_uniform,oneoff_level,oneoff_audience,oneoff_duration_minutes,created_by,created_at').gte('exception_date',dk(new Date(Date.now()-21*864e5))).lte('exception_date',dk(new Date(Date.now()+14*864e5))).order('exception_date',{ascending:true}).order('id',{ascending:true}),
+    // Phase B — trial_sessions (unlimited trial classes per person). Fetch ALL
+    // rows (not scoped by trial id — the trial_bookings query runs concurrently in
+    // this batch, so the ids aren't known yet); RLS scopes to staff/owner. Grouped
+    // onto TRIALS[].sessions below. Legacy single class_id/date/time on the trial
+    // stay live (reschedule still uses them this phase).
+    c.from('trial_sessions').select('id,trial_booking_id,class_id,class_date,class_time,attended').order('class_date',{ascending:true}).limit(500),
   ]);
   const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9),ce=get(10);
+  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9),ce=get(10),ts=get(11);
   // Rebuild the visitor map each refetch (empty on error / non-staff).
   VISITORS={};
   if(vs&&vs.data){for(const r of vs.data){if(r&&r.id)VISITORS[r.id]={id:r.id,_dbId:r.id,name:r.full_name,belt:r.belt,prog:r.prog,initials:r.initials,unit:uMap[r.unit_id]||null,_visitor:true};}}
@@ -11075,6 +11102,13 @@ async function refetchUnitScopedData(){
     // STUDENTS. unit resolved via uMap (legacy id) so render can scope
     // to the current unit the same way the member roster does.
     TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,classId:r.class_id||null,classDate:r.class_date||null,classTime:r.class_time||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,waiverToken:r.waiver_token||null,isKid:!!r.is_kid,kidName:r.kid_name||null,adminNote:r.admin_note||null,contactLog:Array.isArray(r.contact_log)?r.contact_log:[],unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
+    // Phase B — group trial_sessions by trial_booking_id and attach as t.sessions
+    // (camelCase, date-sorted). No sessions → []. Legacy classId/classDate/classTime
+    // are untouched (reschedule still reads them this phase).
+    const _sessByTrial={};
+    if(ts&&ts.data){for(const s of ts.data){if(!s||!s.trial_booking_id)continue;(_sessByTrial[s.trial_booking_id]||(_sessByTrial[s.trial_booking_id]=[])).push({_dbId:s.id,classId:s.class_id||null,classDate:s.class_date||null,classTime:s.class_time||null,attended:!!s.attended});}}
+    else if(ts&&ts.error)console.warn('[mybjj] trial_sessions:',ts.error);
+    for(const _t of TRIALS){const _arr=_sessByTrial[_t._dbId]||[];_arr.sort((a,b)=>String(a.classDate||'').localeCompare(String(b.classDate||'')));_t.sessions=_arr;}
     got=true;
   }else if(tr.error)console.warn('[mybjj] hydrate trials:',tr.error);
   if(pm.data){
