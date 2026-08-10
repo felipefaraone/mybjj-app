@@ -7870,16 +7870,21 @@ function rTrialsBlock(){
     let slotLine='';
     const _sessArr=Array.isArray(t.sessions)?t.sessions:null;
     const _prefLine=t.preferredDay?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Prefers '+escHtml(t.preferredDay)+' <span style="opacity:.75">· time to confirm</span></div>':'';
-    const _sessLine=(dateStr,timeStr,classId,attended)=>{
+    // Phase C — a real session row (sessDbId) gets a staff-only × to remove it.
+    // The defensive legacy-fallback line has no session row → no × (nothing to
+    // delete; it's the trial_bookings mirror).
+    const _canEditSess=isStaffOrOwner();
+    const _sessLine=(dateStr,timeStr,classId,attended,sessDbId)=>{
       const _cls=classId?CLASSES.find(c=>c.id===classId):null;
       const _clsL=_cls?_clsLabel(_cls):'';
       const _done=attended?' <span style="color:var(--green-text);font-weight:700">✓ done</span>':'';
-      return '<div style="font-size:11.5px;color:var(--text2);font-weight:500;margin-top:6px;word-break:break-word">'+_fmtAttWhen(dateStr,timeStr)+(_clsL?' · '+escHtml(_clsL):'')+_done+'</div>';
+      const _rm=(_canEditSess&&sessDbId)?'<button onclick="_removeTrialSession(\''+t._dbId+'\',\''+escAttr(sessDbId)+'\')" aria-label="Remove class" title="Remove class" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 2px;margin-left:6px;font-size:14px;line-height:1;flex-shrink:0">×</button>':'';
+      return '<div style="font-size:11.5px;color:var(--text2);font-weight:500;margin-top:6px;word-break:break-word;display:flex;align-items:center;gap:2px"><span style="flex:1;min-width:0">'+_fmtAttWhen(dateStr,timeStr)+(_clsL?' · '+escHtml(_clsL):'')+_done+'</span>'+_rm+'</div>';
     };
     if(_sessArr&&_sessArr.length){
-      slotLine=_sessArr.map(s=>_sessLine(s.classDate,s.classTime,s.classId,s.attended)).join('');
+      slotLine=_sessArr.map(s=>_sessLine(s.classDate,s.classTime,s.classId,s.attended,s._dbId)).join('');
     }else if(_sessArr===null&&t.classDate){
-      slotLine=_sessLine(t.classDate,t.classTime,t.classId,t.status==='attended');   // defensive legacy fallback
+      slotLine=_sessLine(t.classDate,t.classTime,t.classId,t.status==='attended',null);   // defensive legacy fallback (no × — no session row)
     }else if(t.preferredDay){
       slotLine=_prefLine;
     }
@@ -7907,7 +7912,7 @@ function rTrialsBlock(){
         actBtns.push('<button class="admin-action-btn primary" onclick="convertTrialToMember(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
       }
     }
-    actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Reschedule</button>');
+    actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Add class</button>');
     actBtns.push('<button class="admin-action-btn" onclick="lapseTrial(\''+t._dbId+'\')" style="color:var(--red-text)">'+iLapse+'Lapse</button>');
     const actionsRow='<div style="display:flex;gap:8px;margin-top:12px">'+actBtns.join('')+'</div>';
     // #5 (John's trial list) — running contact-attempt log so Patricia/Evelin
@@ -8099,7 +8104,7 @@ function rRescheduleModal(){
     // already happened, not booking a future one. Button markup + write call
     // are otherwise UNCHANGED.
     const renderGroup=(g,isPast)=>{
-      const slots=g.slots.map(s=>'<button class="bsm" style="padding:8px 13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px'+(isPast?';opacity:.9':'')+'" onclick="_doRescheduleTrial(\''+t._dbId+'\',\''+esc(s.classId)+'\',\''+esc(g.dateStr)+'\',\''+esc(s.time)+'\')">'+s.timeLabel+'</button>').join('');
+      const slots=g.slots.map(s=>'<button class="bsm" style="padding:8px 13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px'+(isPast?';opacity:.9':'')+'" onclick="_doAddTrialSession(\''+t._dbId+'\',\''+esc(s.classId)+'\',\''+esc(g.dateStr)+'\',\''+esc(s.time)+'\')">'+s.timeLabel+'</button>').join('');
       return '<div style="margin-bottom:14px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:7px">'+esc(g.label)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+slots+'</div></div>';
     };
     const secHdr=(txt)=>'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:10px">'+txt+'</div>';
@@ -8112,8 +8117,8 @@ function rRescheduleModal(){
   }
   return `<div class="cov" onclick="closeRescheduleTrial()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:400px;width:100%;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
 <button onclick="closeRescheduleTrial()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">Reschedule trial</div>
-<div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.4">Pick a new slot for <b style="color:var(--text2)">${esc(who)}</b> — ${t.isKid?'kids':'adult'} classes, the last few days or upcoming.</div>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">Add a class</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.4">Pick a class for <b style="color:var(--text2)">${esc(who)}</b> — ${t.isKid?'kids':'adult'} classes, the last few days or upcoming. They can do as many trial classes as you like.</div>
 ${body}
 </div></div>`;
 }
@@ -8136,6 +8141,62 @@ async function _doRescheduleTrial(trialDbId,classId,dateStr,timeHHMM){
   if(t){t.classId=chk.data.class_id;t.classDate=chk.data.class_date;t.classTime=chk.data.class_time;t.preferredDay=null;}
   S.rescheduleTrial=null;
   render();showSaveToast2('Trial rescheduled');
+}
+// Phase C — RETIRED: the card no longer reschedules (moves) a trial; it ADDS
+// sessions. _doRescheduleTrial is left defined (no live caller) in case a future
+// path wants a single-class move; the modal now calls _doAddTrialSession.
+// ── Add a trial session (unlimited trial classes per person) ──
+async function _doAddTrialSession(trialDbId,classId,dateStr,timeHHMM){
+  if(!isStaffOrOwner())return;
+  const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t){showSaveToast2('Trial not found','error');return;}
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
+  if(!Array.isArray(t.sessions))t.sessions=[];
+  // Duplicate guard — same class + date already on their list.
+  if(t.sessions.some(s=>s&&s.classId===classId&&s.classDate===dateStr)){showSaveToast2('That class is already on their list.','error');return;}
+  // Legacy backfill — a NEW public booking (post-migration) has trial_bookings
+  // class fields but NO trial_sessions row. Adding only the 2nd class would hide
+  // the first (the card reads sessions once any exist). So when sessions is empty
+  // and a DIFFERENT legacy class is set, materialise it as a session FIRST, so the
+  // original class stays visible. (If the picked class IS the legacy one, the plain
+  // insert below covers it — no double.)
+  if(!t.sessions.length&&t.classDate&&t.classId&&!(t.classId===classId&&t.classDate===dateStr)){
+    const legacyIns=await cli.from('trial_sessions').insert({trial_booking_id:trialDbId,class_id:t.classId,class_date:t.classDate,class_time:t.classTime,attended:t.status==='attended'}).select('id').single();
+    if(legacyIns&&legacyIns.error){showSaveToast2(friendlyMutationError(legacyIns.error),'error');return;}
+    if(legacyIns&&legacyIns.data)t.sessions.push({_dbId:legacyIns.data.id,classId:t.classId,classDate:t.classDate,classTime:t.classTime,attended:t.status==='attended'});
+  }
+  const ins=await cli.from('trial_sessions').insert({trial_booking_id:trialDbId,class_id:classId,class_date:dateStr,class_time:timeHHMM,attended:false}).select('id').single();
+  if(ins&&ins.error){showSaveToast2(friendlyMutationError(ins.error),'error');return;}
+  const newId=ins&&ins.data&&ins.data.id;
+  // Confirming re-read — Supabase returns success-shaped-empty for an RLS-filtered
+  // no-op, so never trust the insert alone.
+  if(newId){
+    const chk=await cli.from('trial_sessions').select('id').eq('id',newId).single();
+    if((chk&&chk.error)||!chk||!chk.data){showSaveToast2('Could not add the class','error');return;}
+  }
+  t.sessions.push({_dbId:newId||('local-'+Date.now()),classId:classId,classDate:dateStr,classTime:timeHHMM,attended:false});
+  t.sessions.sort((a,b)=>String(a.classDate||'').localeCompare(String(b.classDate||'')));
+  S.rescheduleTrial=null;
+  render();showSaveToast2('Class added.');
+}
+// Remove a trial session — staff-only, confirm-gated. Zero sessions is a valid
+// state (a trial with no class yet), so there's no minimum.
+function _removeTrialSession(trialDbId,sessionDbId){
+  if(!isStaffOrOwner())return;
+  openConfirm({
+    title:'Remove this class?',
+    message:'Remove this trial class from their list?',
+    dangerLabel:'Remove',
+    onConfirm:()=>_doRemoveTrialSession(trialDbId,sessionDbId)
+  });
+}
+async function _doRemoveTrialSession(trialDbId,sessionDbId){
+  if(!isStaffOrOwner())return;
+  const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
+  const del=await cli.from('trial_sessions').delete().eq('id',sessionDbId);
+  if(del&&del.error){showSaveToast2(friendlyMutationError(del.error),'error');return;}
+  if(Array.isArray(t.sessions)){const ix=t.sessions.findIndex(s=>s&&s._dbId===sessionDbId);if(ix>=0)t.sessions.splice(ix,1);}
+  render();showSaveToast2('Class removed.');
 }
 function convertTrialToMember(trialDbId){
   const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
