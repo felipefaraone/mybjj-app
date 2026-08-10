@@ -56,9 +56,6 @@ const SYDNEY_TZ = "Australia/Sydney";
 // (gi/fund are member class flavours with no trial card either.)
 const TRIAL_TYPE_CODES = new Set(["beg", "alev", "nogi", "mma", "jmma", "jun", "mini"]);
 
-// No slot may be booked within this window of "now" (Australia/Sydney) — a class
-// starting in a few minutes helps nobody and the front desk cannot prepare.
-const LEAD_TIME_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 // ---- confirmation email (Resend) --------------------------------------------
 // Sender identity for the trial confirmation email. Kept as named constants so a
@@ -498,7 +495,7 @@ Deno.serve(async (req) => {
 
     const { data: cls, error: clsErr } = await supabase
       .from("classes")
-      .select("id, unit_id, day_of_week, time, active, audience, type")
+      .select("id, unit_id, day_of_week, time, active, audience, type, duration_minutes")
       .eq("id", classId)
       .maybeSingle();
 
@@ -522,11 +519,15 @@ Deno.serve(async (req) => {
       return bad("Please pick a time within the next week.", origin);
     }
 
-    // 2-hour lead time: the booked start (Sydney wall-clock) must be at least 2h
-    // out. Mirrors trial.html's LEAD_MIN filter; enforced here because the client
-    // grid is only an affordance.
-    if (sydneyWallToEpoch(classDate, String(cls.time)) - Date.now() < LEAD_TIME_MS) {
-      return bad("That class starts too soon to book. Please pick a later time.", origin);
+    // Reject only if the class has ALREADY ENDED (start + duration ≤ now), not if
+    // it merely starts soon. Mirrors trial.html's end-time slot filter so a class
+    // in progress — e.g. someone arriving a few minutes late — is still bookable;
+    // enforced here too because the client grid is only an affordance. Fallback of
+    // 60 min when duration_minutes is missing/zero.
+    const startEpoch = sydneyWallToEpoch(classDate, String(cls.time));
+    const durationMs = (Number(cls.duration_minutes) || 60) * 60 * 1000;
+    if (startEpoch + durationMs <= Date.now()) {
+      return bad("That class has already finished. Please pick a later class.", origin);
     }
 
     // is_kid is DERIVED from the class, never taken from the client.
