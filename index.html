@@ -7836,6 +7836,13 @@ function rTrialsBlock(){
     const showQrBtn=canCopyWaiver
       ?'<button onclick="openTrialQR(\''+t._dbId+'\')" style="background:none;border:none;padding:6px 0 0 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="17"/><line x1="17" y1="14" x2="21" y2="14"/><line x1="21" y1="17" x2="21" y2="21"/><line x1="14" y1="21" x2="17" y2="21"/></svg>Show QR</button>'
       :'';
+    // #1 — View the full signed waiver document for a TRIAL, the same owner-only
+    // view members get. Shows ONLY when signed (mutually exclusive with the copy/QR
+    // buttons, which show only when UNSIGNED) and ONLY to an owner (isOwner) — a
+    // minor's document must never reach a non-owner. Opens by trial_booking_id.
+    const viewWaiverBtn=(t.waiverSignedAt&&isOwner())
+      ?'<button onclick="openWaiverDoc(\''+t._dbId+'\',\'trial\')" style="background:none;border:none;padding:6px 0 0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View waiver</button>'
+      :'';
     // Compact — email · phone · prefDay collapse onto one line. Each bit is
     // its own span so flex-wrap breaks between them (not mid-value) and a
     // long email wraps rather than overflowing on a narrow screen.
@@ -7913,6 +7920,7 @@ function rTrialsBlock(){
       +slotLine
       +copyWaiverBtn
       +showQrBtn
+      +viewWaiverBtn
       +actionsRow
       +contactBlock
       +'</div>';
@@ -9879,19 +9887,24 @@ async function _signWaiverSig(path){
 // Medical key → human label. answers.medical is the ONLY source of per-condition
 // detail (the 8 boolean columns carry no detail text) — render from it here.
 const WAIVER_MED_LABELS={has_asthma:'Asthma',has_heart_condition:'Heart condition',has_diabetes:'Diabetes',has_epilepsy:'Epilepsy',is_pregnant:'Pregnant',takes_medication:'Takes medication',has_allergies:'Allergies',has_recent_injury:'Recent injury',has_bp:'Blood pressure',has_dizzy:'Dizziness or fainting',has_concussion:'Concussion history',has_other:'Other'};
-function _fetchWaiverDoc(dbId){
+function _fetchWaiverDoc(dbId,by){
   if(!isOwner())return;
   if(!dbId)return;
+  // `by` picks the lookup column: a trial's waiver is linked by trial_booking_id
+  // (no student_id until conversion), a member's by student_id. Both uuids are
+  // distinct, so the dbId cache key can't collide; store `by` on the slot anyway.
+  by=(by==='trial')?'trial':'student';
+  const lookupCol=(by==='trial')?'trial_booking_id':'student_id';
   if(!S._waiverDoc)S._waiverDoc={};
   let slot=S._waiverDoc[dbId];
-  if(!slot)slot=S._waiverDoc[dbId]={loaded:false,loading:false,data:null,sigUrl:null};
+  if(!slot)slot=S._waiverDoc[dbId]={loaded:false,loading:false,data:null,sigUrl:null,by:by};
   if(slot.loaded||slot.loading)return;
   slot.loading=true;
   const cli=initSupabase();
   if(!cli){slot.loading=false;slot.loaded=true;render();return;}
   cli.from('health_waivers')
     .select('id,participant_name,is_minor,signed_by_name,signed_by_relationship,signed_at,waiver_text_version,signature_path,emergency_name,emergency_phone,emergency_relationship,safety_notes,answers')
-    .eq('student_id',dbId)
+    .eq(lookupCol,dbId)
     .order('signed_at',{ascending:false})
     .limit(1)
     .then(async r=>{
@@ -9903,13 +9916,16 @@ function _fetchWaiverDoc(dbId){
       render();
     });
 }
-function openWaiverDoc(dbId){
+function openWaiverDoc(dbId,by){
   if(!isOwner())return;                 // owner-only — instructors never reach the document
   if(!dbId)return;
+  by=(by==='trial')?'trial':'student';
   S._waiverDocPrevSub=S.sub;S.sub=null;
-  S.waiverDoc={studentId:dbId};
+  // studentId kept as an alias so rWaiverDocView's existing read is unchanged; id
+  // is the generic key, by tells the fetch which column to look the row up by.
+  S.waiverDoc={studentId:dbId,id:dbId,by:by};
   if(typeof document!=='undefined')document.body.classList.add('wdoc-open');   // scopes @media print to this doc
-  _fetchWaiverDoc(dbId);
+  _fetchWaiverDoc(dbId,by);
   render();
 }
 function closeWaiverDoc(){
