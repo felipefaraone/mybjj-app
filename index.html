@@ -3844,6 +3844,22 @@ function rStuAttList(){
         const n=r.class_value!=null?Number(r.class_value):1;
         return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px;margin-left:6px">PRIVATE · '+formatStat(n)+' class'+(n===1?'':'es')+'</span>';
       };
+      // Behaviour/value mark — for KIDS the class_value is a behaviour signal, not a
+      // time one (John: ○ half = disrupted, ✕ = kicked out for behaviour), and it
+      // legitimately affects grading. A FULL class (1.0) is the norm → nothing (no
+      // clutter). Any sub-full present value shows the CLASS_VALUE_TIERS glyph + a
+      // plain-English label so a PARENT sees when their kid didn't get a full class.
+      // Amber (the app's "attention, not error" tone) — factual, never punitive red.
+      // Private rows already carry their own chip. Display only — reads class_value,
+      // never writes; no grading change.
+      const valueMark=r=>{
+        if(r.status!=='present'||r.class_type==='private')return '';
+        const v=r.class_value!=null?Number(r.class_value):1;
+        if(!(v<1))return '';                                      // 1.0+ → no mark
+        const g=(CLASS_VALUE_TIERS.find(t=>t.value===v)||{}).glyph||_cvChipLabel(v)||'';
+        const lbl=v===0?'No credit':v===0.5?'Half class':'Brief';
+        return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">'+g+' '+lbl+'</span>';
+      };
       body='<div class="card" style="padding:2px 14px">'+visible.map((r,i)=>{
         const last=i===visible.length-1;
         const m=r.modality||_modalityFromType(r.class_type);
@@ -3855,7 +3871,7 @@ function rStuAttList(){
         else if(r.status==='going')trail='Awaiting confirmation';
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
           +'<div style="flex:1;min-width:0">'
-            +'<div style="font-size:13px;color:var(--text);font-weight:500">'+_fmtAttWhen(r.class_date,r.class_time)+modBadge(m)+privateChip(r)+'</div>'
+            +'<div style="font-size:13px;color:var(--text);font-weight:500">'+_fmtAttWhen(r.class_date,r.class_time)+modBadge(m)+privateChip(r)+valueMark(r)+'</div>'
             +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+trail+'</div>':'')
           +'</div>'
           +pill(r.status)
