@@ -177,6 +177,20 @@ input.err,select.err{border-color:var(--red)}
       <h1>Health check</h1>
       <p>Takes about three minutes, mostly yes or no. Do it now and walk straight onto the mats — no paperwork at reception.</p>
     </div>
+    <!-- GENERIC identity block — shown ONLY when there's no token (public waiver).
+         Tokened mode keeps it hidden: identity comes from the booking. -->
+    <div id="gid" style="display:none">
+      <div class="grouphdr" style="margin-top:0">Your details</div>
+      <div class="formgrid">
+        <label class="field"><span class="lab">First name<span class="req"> *</span></span><input type="text" id="gid_first" autocomplete="given-name"/></label>
+        <label class="field"><span class="lab">Last name<span class="req"> *</span></span><input type="text" id="gid_last" autocomplete="family-name"/></label>
+        <label class="field full"><span class="lab">Email<span class="req"> *</span></span><input type="email" id="gid_email" placeholder="you@example.com" autocomplete="email"/></label>
+        <label class="field full"><span class="lab">Which location?<span class="req"> *</span></span>
+          <select id="gid_unit"><option value="">Select…</option><option value="c851cef5-d5b7-4d5b-b400-11f6ca760970">Neutral Bay</option><option value="3654625a-a157-4392-966a-7be69d4b0c6e">Camperdown</option></select></label>
+        <label class="field full" style="flex-direction:row;align-items:center;gap:10px;cursor:pointer"><input type="checkbox" id="gid_iskid" onchange="gidKidToggle(this)" style="width:18px;height:18px;flex:none"/><span class="lab" style="margin:0">This waiver is for my child</span></label>
+        <label class="field full" id="gid-kidname-wrap" style="display:none"><span class="lab">Child's name<span class="req"> *</span></span><input type="text" id="gid_kidname" oninput="gidKidName()"/></label>
+      </div>
+    </div>
     <div class="who" id="whobox"></div>
     <div class="formgrid">
       <label class="field"><span class="lab">Date of birth<span class="req"> *</span></span><input type="date" id="dob"/></label>
@@ -313,6 +327,11 @@ var TURNSTILE_SITE_KEY = "0x4AAAAAADzwYmJWCVteEQfI";
 
 var TOKEN = new URLSearchParams(location.search).get("t") || "";
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// No valid token → GENERIC public waiver (the fixed "anyone can fill it" link that
+// replaces the JotForm). We can't tell "expired" from "never given" on the client,
+// so a bare visit (no/invalid ?t) is treated as a fresh generic sign-up and shows
+// the FORM — badlink is now reached only when a TOKENED submit returns 404/410.
+var GENERIC = !UUID_RE.test(TOKEN);
 
 var st = { minor:false, cfToken:"", yn:{}, goals:[] };
 
@@ -376,6 +395,16 @@ function validateStep(n){
   ["dob","participant_phone","address","em_name","em_phone","em_rel"].forEach(function(id){ mark(id,false); });
 
   if(n === 1){
+    // Generic mode collects the person's identity (no booking to read it from).
+    if(GENERIC){
+      ["gid_first","gid_last","gid_email","gid_unit","gid_kidname"].forEach(function(id){ mark(id,false); });
+      if(!val("gid_first")){ mark("gid_first",true); missing.push("first name"); }
+      if(!val("gid_last")){  mark("gid_last",true);  missing.push("last name"); }
+      if(!val("gid_email")){ mark("gid_email",true); missing.push("email"); }
+      else if(!/^\S+@\S+\.\S+$/.test(val("gid_email"))){ mark("gid_email",true); badFormat.push("a valid email address"); }
+      if(!val("gid_unit")){  mark("gid_unit",true);  missing.push("which location"); }
+      if(st.minor && !val("gid_kidname")){ mark("gid_kidname",true); missing.push("your child's name"); }
+    }
     if(!val("dob")){
       mark("dob",true); missing.push("date of birth");
     } else {
@@ -567,30 +596,50 @@ window.onloadTurnstileCallback = function(){
   if(n>0) setTimeout(function(){ waitCf(n-1); }, 200);
 })(25);
 
-// ---- boot ----
-if(!UUID_RE.test(TOKEN)){
-  $("steps").style.display = "none";
-  show("badlink");
-} else {
-  // We don't fetch the booking (the endpoint only writes). The page renders for
-  // both cases; the minor wording is driven by ?k=1 in the emailed link.
-  st.minor = new URLSearchParams(location.search).get("k") === "1";
-  var name = new URLSearchParams(location.search).get("n") || "";
-  $("whobox").innerHTML = st.minor
+// Apply (or reset) all the minor-vs-adult wording from st.minor. One function for
+// BOTH paths: the tokened boot (one-shot, ?k=1) AND the generic "for my child"
+// toggle. The adult branch reproduces the exact HTML defaults, so a tokened adult
+// render is byte-identical to before. `name` is the child's name for the whobox
+// banner (from ?n= when tokened, or the typed Child's name when generic).
+function applyMinorUI(name){
+  var m = st.minor;
+  $("whobox").innerHTML = m
     ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'+
       '<span>You are completing this <b>on behalf of your child</b>'+(name?(' ('+name+')'):'')+', as their parent or legal guardian. The health questions below are about <b>them</b>; the signature at the end is <b>yours</b>.</span>'
     : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>'+
       '<span>Everything here stays private with the academy. It takes about three minutes.</span>';
-  if(st.minor){
-    $("legal-minor").style.display = "block";
-    $("agreetx").textContent = "I am the parent or legal guardian and I accept this waiver on behalf of my child.";
-    $("namelab").innerHTML = 'Type your name (parent or guardian)<span class="req"> *</span>';
-    $("siglab").textContent = "Sign below (parent or guardian)";
-    $("medlead").textContent = "About your child. Saying yes just means the coach keeps an eye out — it rarely stops anyone training.";
-    // A young child likely has no phone; the guardian's is the emergency contact.
-    $("ph-lab").innerHTML = "Child's phone (if they have one)";
-  }
-  $("dob").max = new Date().toISOString().split("T")[0];
+  $("legal-minor").style.display = m ? "block" : "none";
+  $("agreetx").textContent = m ? "I am the parent or legal guardian and I accept this waiver on behalf of my child." : "I have read and accept the waiver above.";
+  $("namelab").innerHTML   = m ? 'Type your name (parent or guardian)<span class="req"> *</span>' : 'Type your full name<span class="req"> *</span>';
+  $("siglab").textContent  = m ? "Sign below (parent or guardian)" : "Sign below";
+  $("medlead").textContent = m ? "About your child. Saying yes just means the coach keeps an eye out — it rarely stops anyone training." : "Saying yes just means your coach keeps an eye out. It rarely stops anyone training.";
+  // A young child likely has no phone; the guardian's is the emergency contact.
+  $("ph-lab").innerHTML    = m ? "Child's phone (if they have one)" : 'Your phone<span class="req"> *</span>';
+}
+// Generic "for my child" toggle → drives the SAME st.minor machinery as ?k=1.
+window.gidKidToggle = function(cb){
+  st.minor = !!(cb && cb.checked);
+  var w = $("gid-kidname-wrap"); if(w) w.style.display = st.minor ? "" : "none";
+  applyMinorUI(st.minor ? val("gid_kidname") : "");
+};
+// Live-refresh the whobox banner with the child's name as it's typed.
+window.gidKidName = function(){ if(st.minor) applyMinorUI(val("gid_kidname")); };
+
+// ---- boot ----
+$("dob").max = new Date().toISOString().split("T")[0];
+if(GENERIC){
+  // Public generic waiver: show the form + identity block, NOT badlink. st.minor
+  // starts false; the "for my child" toggle flips it (and the wording).
+  $("gid").style.display = "";
+  st.minor = false;
+  applyMinorUI("");
+  show("s1");
+} else {
+  // Tokened — identity comes from the booking (not collected here); minor wording
+  // is driven by ?k=1 in the emailed link. Byte-identical to before.
+  st.minor = new URLSearchParams(location.search).get("k") === "1";
+  var name = new URLSearchParams(location.search).get("n") || "";
+  applyMinorUI(name);
   show("s1");
 }
 
@@ -653,6 +702,22 @@ window.submitWaiver = function(){
       }, {})
     }
   };
+
+  // Generic mode: no booking exists, so send generic:true + the identity fields the
+  // Edge Function needs to mint a new trial lead. token MUST be empty — the EF only
+  // takes the generic path when generic===true AND no token (a non-empty invalid
+  // token would route to the tokened path and 400). Tokened payload is UNCHANGED.
+  if(GENERIC){
+    payload.token = "";
+    payload.generic = true;
+    payload.first_name = val("gid_first");
+    payload.last_name = val("gid_last");
+    payload.email = val("gid_email");
+    payload.phone = val("participant_phone");
+    payload.is_kid = st.minor;
+    payload.kid_name = st.minor ? val("gid_kidname") : null;
+    payload.unit_id = val("gid_unit");
+  }
 
   var btn=$("submitBtn");
   btn.disabled=true; btn.textContent="Saving…";
