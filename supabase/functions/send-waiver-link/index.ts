@@ -153,10 +153,47 @@ Deno.serve(async (req) => {
   }
   if (!ok) return json({ error: "forbidden" }, 403, origin);
 
-  // ---- Load the student. ---------------------------------------------------
+  // ---- Resolve the subject: EITHER a member (student_id) OR a trial lead
+  // (trial_booking_id). Exactly ONE must be a valid UUID. Both valid → 400 (an
+  // ambiguous request, never silently pick one); neither valid → 400.
   const studentId = str(payload.student_id, 64);
-  if (!UUID_RE.test(studentId)) return json({ error: "bad_student_id" }, 400, origin);
+  const trialId = str(payload.trial_booking_id, 64);
+  const studentValid = UUID_RE.test(studentId);
+  const trialValid = UUID_RE.test(trialId);
+  if (studentValid && trialValid) return json({ error: "bad_request" }, 400, origin);
+  if (!studentValid && !trialValid) return json({ error: "bad_request" }, 400, origin);
 
+  // ---- Trial path (trial_bookings). -----------------------------------------
+  // trial_bookings has NO parent_email and NO waiver_sent_at column: `to` is always
+  // the row's `email` (the parent's email on a kid booking), and we NEVER stamp a
+  // sent timestamp here. Everything else (link shape, buildEmail, sendViaResend)
+  // mirrors the member path.
+  if (trialValid) {
+    const { data: tr, error: tErr } = await svc
+      .from("trial_bookings")
+      .select("id, first_name, last_name, email, is_kid, kid_name, waiver_token, waiver_signed_at")
+      .eq("id", trialId)
+      .maybeSingle();
+    if (tErr || !tr) return json({ error: "trial_not_found" }, 404, origin);
+
+    const to = str(tr.email);   // single source — no parent_email on trials
+    if (!to) return json({ error: "no_email" }, 422, origin);
+
+    const isKid = tr.is_kid === true;   // the real boolean column, not derived
+    // Greeting/&n name: the child's name for a kid (buildEmail's kid branch reads
+    // "for your child, <name>"), else the lead's first name (enough to match the
+    // member path's tone).
+    const name = isKid ? str(tr.kid_name as string, 160) : str(tr.first_name as string, 160);
+    let link = `${WAIVER_ORIGIN}/waiver.html?t=${encodeURIComponent(String(tr.waiver_token))}`;
+    if (isKid) link += "&k=1";
+    if (name) link += `&n=${encodeURIComponent(name)}`;
+
+    const { sent, reason } = await sendViaResend(to, buildEmail(name, link, isKid));
+    // No waiver_sent_at on trial_bookings — do NOT stamp anything for trials.
+    return json({ ok: true, sent, reason }, 200, origin);
+  }
+
+  // ---- Member (student) path — UNCHANGED. -----------------------------------
   const { data: st, error: sErr } = await svc
     .from("students")
     .select("id, full_name, prog, email, parent_email, waiver_token")
