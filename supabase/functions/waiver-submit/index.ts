@@ -269,36 +269,79 @@ Deno.serve(async (req) => {
   // member path; the trial path ignores it (the booking already collected one).
   const participantPhone = str(payload.participant_phone, 40);
 
-  // ---- 4. Insert the waiver (we need the id for the signature path) ---------
-  // Generic path: create the trial lead NOW (just-in-time). Everything that could
-  // reject a bad/incomplete submit — turnstile, contact fields, and the full waiver
-  // payload above — has already passed, so this is the last gate before there's a
-  // real subject to attach the waiver to. how_heard marks the generic-form origin
-  // so Patricia knows where it came from; a fresh waiver_token is set explicitly
-  // (the tokened flow relies on it, and the column also DB-defaults one).
+  // ---- 4. Resolve the trial lead (we need the id for the signature path) ----
+  // Generic path: FIND-OR-CREATE the trial lead NOW (just-in-time). Everything that
+  // could reject a bad/incomplete submit — turnstile, contact fields, and the full
+  // waiver payload above — has already passed, so this is the last gate before
+  // there's a real subject to attach the waiver to.
   if (isGeneric && genericLead && subject) {
-    const { data: lead, error: leadErr } = await supabase
+    // De-dupe: a person who already booked (has a trial_bookings row) but fills the
+    // GENERIC waiver instead of their personal link must NOT get a second trial.
+    // Look for a reuse candidate FIRST — same email, waiver NOT yet signed, booked
+    // within the last 60 days (the same TTL as token expiry, so a stale old lead
+    // never silently absorbs a fresh signup), most recent first.
+    //
+    // Case-insensitive match via ILIKE with SQL-LIKE metachars escaped, so a literal
+    // "_"/"%" in an email is matched literally, not as a wildcard. (Both current
+    // insert paths — trial-booking and this generic path — already lowercase email;
+    // ILIKE additionally guards any legacy mixed-case rows.)
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 86400_000).toISOString();
+    const emailPat = genericLead.email.replace(/[\\%_*]/g, "\\$&");
+    const { data: existing, error: findErr } = await supabase
       .from("trial_bookings")
-      .insert({
-        first_name:   genericLead.first_name,
-        last_name:    genericLead.last_name,
-        email:        genericLead.email,
-        phone:        genericLead.phone,
-        is_kid:       genericLead.is_kid,
-        kid_name:     genericLead.kid_name,
-        unit_id:      genericLead.unit_id,
-        how_heard:    "Website waiver",
-        waiver_token: crypto.randomUUID(),
-        trial_status: "booked",
-        booked_at:    new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-    if (leadErr || !lead) {
-      console.error("[waiver-submit] generic lead insert:", leadErr?.message);
-      return json({ error: "lead_create_failed" }, 500, origin);
+      .select("id, unit_id")
+      .ilike("email", emailPat)
+      .is("waiver_signed_at", null)
+      .gte("booked_at", sixtyDaysAgo)
+      .order("booked_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (findErr) {
+      // A lookup hiccup must not block the signup — fall through to create a fresh
+      // lead (worst case a duplicate, i.e. the pre-dedupe behaviour).
+      console.error("[waiver-submit] generic dedupe lookup:", findErr.message);
     }
-    subject.id = lead.id as string;   // the placeholder id set in step 2 is now real
+
+    if (existing) {
+      // REUSE — attach the waiver to the existing trial and stamp ITS
+      // waiver_signed_at (below). Do NOT overwrite the original booking's
+      // name/phone/etc (that data is authoritative — this is the same person
+      // re-entering). Only FILL a NULL unit_id from the form, never overwrite one.
+      subject.id = existing.id as string;
+      if (!existing.unit_id && genericLead.unit_id) {
+        const { error: uErr } = await supabase
+          .from("trial_bookings")
+          .update({ unit_id: genericLead.unit_id })
+          .eq("id", existing.id);
+        if (uErr) console.error("[waiver-submit] generic dedupe unit fill:", uErr.message);
+      }
+    } else {
+      // No candidate → CREATE a new lead (unchanged behaviour). how_heard marks the
+      // generic-form origin; a fresh waiver_token is set explicitly (the tokened
+      // flow relies on it, and the column also DB-defaults one).
+      const { data: lead, error: leadErr } = await supabase
+        .from("trial_bookings")
+        .insert({
+          first_name:   genericLead.first_name,
+          last_name:    genericLead.last_name,
+          email:        genericLead.email,
+          phone:        genericLead.phone,
+          is_kid:       genericLead.is_kid,
+          kid_name:     genericLead.kid_name,
+          unit_id:      genericLead.unit_id,
+          how_heard:    "Website waiver",
+          waiver_token: crypto.randomUUID(),
+          trial_status: "booked",
+          booked_at:    new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      if (leadErr || !lead) {
+        console.error("[waiver-submit] generic lead insert:", leadErr?.message);
+        return json({ error: "lead_create_failed" }, 500, origin);
+      }
+      subject.id = lead.id as string;   // the placeholder id set in step 2 is now real
+    }
   }
 
   const waiverRow = {
