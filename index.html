@@ -7844,6 +7844,12 @@ function rTrialsBlock(){
     const showQrBtn=canCopyWaiver
       ?'<button onclick="openTrialQR(\''+t._dbId+'\')" style="background:none;border:none;padding:6px 0 0 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="17"/><line x1="17" y1="14" x2="21" y2="14"/><line x1="21" y1="17" x2="21" y2="21"/><line x1="14" y1="21" x2="17" y2="21"/></svg>Show QR</button>'
       :'';
+    // Email waiver — same gate as Copy/QR (unsigned + token present), staff-only.
+    // POSTs the trial to send-waiver-link (which emails the waiver to the lead's
+    // email on file). Mutually exclusive with View waiver (signed).
+    const emailWaiverBtn=canCopyWaiver
+      ?'<button onclick="emailTrialWaiver(\''+t._dbId+'\')" style="background:none;border:none;padding:6px 0 0 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></svg>Email waiver</button>'
+      :'';
     // #1 — View the full signed waiver document for a TRIAL, the same owner-only
     // view members get. Shows ONLY when signed (mutually exclusive with the copy/QR
     // buttons, which show only when UNSIGNED) and ONLY to an owner (isOwner) — a
@@ -7946,6 +7952,7 @@ function rTrialsBlock(){
       +slotLine
       +copyWaiverBtn
       +showQrBtn
+      +emailWaiverBtn
       +viewWaiverBtn
       +actionsRow
       +contactBlock
@@ -15148,6 +15155,44 @@ async function emailWaiverLink(sid){
     // the error's name + message and say plainly the request never left the browser.
     const nm=(e&&e.name)||'Error';const ms=(e&&e.message)||String(e);
     console.warn('[mybjj] emailWaiverLink: fetch threw before any response (likely CORS/network) —',nm+': '+ms);
+    showSaveToast2("Couldn't reach the email service — the request was blocked before it ran. Copy the link instead.",'error');
+  }
+}
+// Trial version of emailWaiverLink — POSTs {trial_booking_id} to the SAME
+// send-waiver-link EF (now accepts either id), which emails the waiver to the
+// trial's email on file. Same auth (session token + apikey — verify_jwt=ON) and
+// the same failure copy. No waiver_sent_at column on trials, so nothing to stamp
+// locally — just the toast.
+async function emailTrialWaiver(trialDbId){
+  if(!isStaffOrOwner())return;
+  const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t||!t._dbId)return;
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
+  let session=null;
+  try{ const r=await cli.auth.getSession(); session=r&&r.data&&r.data.session; }catch(_){}
+  if(!session||!session.access_token){showSaveToast2('Session expired — sign in again.','error');return;}
+  const who=((t.name||'').split(' ')[0]||'them').trim();
+  showSaveToast2('Sending…');
+  try{
+    const resp=await fetch(SUPABASE_URL+'/functions/v1/send-waiver-link',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({trial_booking_id:t._dbId})
+    });
+    let body=null; try{ body=await resp.json(); }catch(_){}
+    console.warn('[mybjj] send-waiver-link (trial):',resp.status,JSON.stringify(body));
+    if(resp.ok&&body&&body.ok&&body.sent===true){ showSaveToast2('Waiver emailed to '+who+'.'); return; }
+    let msg;
+    if(resp.status===401)msg='Session expired — sign in again.';
+    else if(resp.status===403)msg="You don't have permission to send this.";
+    else if(resp.status===404)msg='Trial not found — refresh and try again.';
+    else if(resp.status===422&&body&&body.error==='no_email')msg='No email on file for this trial — copy the link instead.';
+    else if(body&&body.sent===false&&(body.reason==='resend_rejected'||body.reason==='not_configured'))msg='The email service rejected the send. Copy the link instead.';
+    else if(body&&body.sent===false)msg="Couldn't reach the email service. Copy the link instead.";
+    else msg='Could not send ('+(resp.status||'network')+'). Copy the link instead.';
+    showSaveToast2(msg,'error');
+  }catch(e){
+    const nm=(e&&e.name)||'Error';const ms=(e&&e.message)||String(e);
+    console.warn('[mybjj] emailTrialWaiver: fetch threw before any response (likely CORS/network) —',nm+': '+ms);
     showSaveToast2("Couldn't reach the email service — the request was blocked before it ran. Copy the link instead.",'error');
   }
 }
