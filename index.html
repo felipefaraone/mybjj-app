@@ -2257,10 +2257,17 @@ function trialsForClass(cid){
   // (class + date), OR (defensive fallback) the legacy single class field matches.
   // Only the matching predicate widened — the displayed rows/behaviour are unchanged.
   return TRIALS.filter(tr=>{
-    if(tr.status!=='booked'&&tr.status!=='attended')return false;
+    // A converted trial is a member now — never on the mat.
+    if(tr.status==='converted')return false;
     const sess=Array.isArray(tr.sessions)?tr.sessions:null;
+    // A booked SESSION for THIS exact occurrence (class + date) means the person is
+    // expected HERE, regardless of the trial-level scalar. trial_status reflects a
+    // PAST class, so a no_show/lapse must not hide a freshly re-added class.
     if(sess&&sess.some(s=>s&&s.classId===classId&&s.classDate===c.date))return true;
-    return tr.classId===classId&&tr.classDate===c.date;   // legacy single-field fallback
+    // Legacy single-field path (trials with NO sessions) keeps the original gate:
+    // a pure no_show/lapse with only the legacy class field stays off the mat.
+    if(tr.status!=='booked'&&tr.status!=='attended')return false;
+    return tr.classId===classId&&tr.classDate===c.date;
   });
 }
 // One trial row inside the trials block. The "TRIAL · N" section label (below)
