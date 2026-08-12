@@ -8265,9 +8265,28 @@ async function convertTrialToMemberAction(trialDbId){
   const chk=await cli.from('trial_bookings').select('id,converted_at,converted_student_id').eq('id',trialDbId).single();
   if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');throw chk.error;}
   if(!chk||!chk.data||!chk.data.converted_at){showSaveToast2('Conversion not confirmed','error');throw new Error('convert not confirmed');}
-  STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null,convertedAt:nowIso,membershipLevel:null,_parentStudentId:null,_parent2StudentId:null});
+  // Carry the signed health waiver onto the new member. The adult convert path used
+  // to drop it: health_waivers stayed on trial_booking_id (student_id NULL) and
+  // students.waiver_signed_at was never set, so both the badge and the retrievable
+  // document went invisible. Runs ONLY when the trial actually has a signed waiver —
+  // two updates (stamp the student, re-link the waiver row) + two verify selects;
+  // a write that doesn't land warns rather than silently losing the waiver. Mirrors
+  // the kid path's re-link (which stops short of stamping students).
+  let _waiverWarn=false;
+  if(t.waiverSignedAt){
+    await cli.from('students').update({waiver_signed_at:t.waiverSignedAt}).eq('id',ins.data.id);
+    await cli.from('health_waivers').update({student_id:ins.data.id}).eq('trial_booking_id',trialDbId).is('student_id',null);
+    const wchk=await cli.from('health_waivers').select('id,student_id').eq('trial_booking_id',trialDbId);
+    const _linked=!!(wchk&&wchk.data&&wchk.data.some(w=>w.student_id===ins.data.id));
+    const schk=await cli.from('students').select('waiver_signed_at').eq('id',ins.data.id).single();
+    const _stamped=!!(schk&&schk.data&&schk.data.waiver_signed_at);
+    if(!_linked||!_stamped)_waiverWarn=true;
+  }
+  STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:null,_active:true,email:t.email||null,name:fullName,firstName:t.firstName||null,lastName:t.lastName||null,belt:'white',deg:0,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'adult',unit:t.unit||null,gender:null,journey:[],feedback:[],photoUrl:null,phone:t.phone||null,dob:null,bjjStartDate:null,convertedAt:nowIso,waiverSignedAt:t.waiverSignedAt||null,membershipLevel:null,_parentStudentId:null,_parent2StudentId:null});
   TRIALS=TRIALS.filter(x=>x._dbId!==trialDbId);
-  render();showSaveToast2('Converted to member');
+  render();
+  if(_waiverWarn)showSaveToast2('Converted, but the health waiver could not be linked — ask an owner to do it','error');
+  else showSaveToast2('Converted to member');
 }
 // Phase 4 — kid conversion. Unlike the adult one-click path, a kid opens a
 // pre-filled REVIEW form: a kids students row is the only record of a person who
