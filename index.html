@@ -517,6 +517,17 @@ function membershipDef(level){
   const key=(level&&_MEMBERSHIP_LABELS[level])?level:null;
   return {key:key,label:key?_MEMBERSHIP_LABELS[key]:null,countsForPromotion:_MEMBERSHIP_NO_PROMO.indexOf(key)<0};
 }
+const _MEMBERSHIP_NON_MEMBER=['visitor_other_gym','visitor_unaffiliated','casual_dropin','casual_member'];
+// "Counting member" for the roster headcount — distinct from countsForPromotion
+// (which counts casual_member). Excludes visitors, both casual tiers, on-hold and
+// inactive. NULL membership_level = Full member = counts.
+// NOTE: spec said standing!=='hold', but the real hydrated on-hold value is
+// 'on_hold' (see line ~11148, standing:r.standing||'ok'; 'hold' never occurs).
+// Using 'on_hold' so on-hold members are actually excluded per the requirement.
+function isCountingMember(s){
+  return !!s && s._active!==false && s.standing!=='on_hold'
+    && _MEMBERSHIP_NON_MEMBER.indexOf(s.membershipLevel||null)<0;
+}
 // <option> list for the add-student / editor selects: blank default (Full member
 // → writes null) + the 7 canonical levels. `selected` is the current DB key ('').
 function _membershipOptions(selected){
@@ -8484,8 +8495,9 @@ function rARoster(){
     +(canEditClassCounts()?'<button onclick="toggleRFInactive()" style="'+chipBase+';background:'+(S.rfInactive?'var(--amber-bg)':'transparent')+';border-color:'+(S.rfInactive?'var(--amber-border)':'var(--border)')+';color:'+(S.rfInactive?'var(--amber-text)':'var(--text3)')+'">Show inactive'+(S.rfInactive?' ✕':'')+'</button>':'')
     +'</div>';
 
+  const memCount=allAdults.filter(isCountingMember).length+allKids.filter(isCountingMember).length;
   const totalReg=allAdults.length+allKids.length;
-  const regLine='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">'+totalReg+' registered students</div>';
+  const regLine='<div style="font-size:12px;color:var(--text3);margin-bottom:8px">'+memCount+' members · '+totalReg+' registered</div>';
   // While "Eligible only" is on the list spans both progs, so the Adults/Kids
   // toggle would be misleading (it can't narrow the list). Swap it for a note.
   const seg=rfEligible
