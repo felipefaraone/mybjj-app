@@ -2500,8 +2500,35 @@ function rTL(journey,subject){
   // ascending; equal dates keep their original order (stable sort + a comparator
   // that returns 0 for equals — never NaN, which would give undefined ordering).
   const jnyTime=(m)=>{const d=m&&m.date;if(d==null||d==='')return null;const t=new Date(d).getTime();return Number.isNaN(t)?null:t;};
-  const arr=_rawJny.slice().sort((a,b)=>{const ka=jnyTime(a),kb=jnyTime(b);if(ka===null&&kb===null)return 0;if(ka===null)return -1;if(kb===null)return 1;return ka-kb;});
   const s=subject||null;
+  // V3 — ONE chronological list. "Started BJJ" (bjjStartDate, life history) and
+  // "Joined myBJJ" (trainingStartedAt, academy join) are merged in as ordinary
+  // DATED items — no longer pinned anchors — alongside belt/stripe milestones
+  // from the journey array. UNDATED entries (origin nodes carrying date:null,
+  // legacy unparseable dates) are OMITTED entirely: nothing synthetic-without-
+  // data renders, and there is no "Date not set / Add date" node in the timeline
+  // (that affordance lives only in the edit form — openEditStu, id es-bjjstart).
+  // Sort ascending by date; on an EQUAL date, tie-break by belt rank then stripe
+  // degree so "White belt" precedes "4th stripe White" and both precede "Blue
+  // belt". Work on a COPY — s.journey is stored in insertion order and mutating
+  // it would reorder the in-memory record as a render side effect.
+  const _syn=[];
+  if(s){
+    if(s.bjjStartDate)_syn.push({_synthetic:'started',label:'Started BJJ',date:s.bjjStartDate,done:true});
+    if(s.trainingStartedAt)_syn.push({_synthetic:'joined',label:'Joined myBJJ',date:s.trainingStartedAt,done:true});
+  }
+  const _tlOrder=(s&&s.prog==='kids')?BELT_ORDER_K:BELT_ORDER_A;
+  const _tlRank=(m)=>{
+    if(m._synthetic==='started')return -2;        // life-history origin sorts first on an equal date
+    if(m._synthetic==='joined')return -1;          // academy join next
+    const bi=m.belt?_tlOrder.indexOf(m.belt):-1;
+    if(bi<0)return 9999;                            // belt:null (transfer/left/return) → after belts on equal date
+    const dg=parseInt(m.label,10);                  // leading int = stripe degree; NaN for "Blue belt" (belt promo → 0)
+    return bi*100+(Number.isFinite(dg)?dg:0);
+  };
+  const arr=_rawJny.concat(_syn)
+    .filter(m=>jnyTime(m)!==null)                    // omit undated / unparseable entirely
+    .sort((a,b)=>{const ka=jnyTime(a),kb=jnyTime(b);if(ka!==kb)return ka-kb;return _tlRank(a)-_tlRank(b);});
   // V2 — current-item meta line shows the class count only for staff
   // viewers (owner/instructor). Staff status is an independent fact: it does
   // NOT depend on whether the viewer also has a students row, mirroring the
@@ -2557,43 +2584,23 @@ function rTL(journey,subject){
       +'</div>';
     }
   }
-  // V2 — synthetic "Started BJJ" entry pinned to the TOP of the
-  // timeline (above "Joined MyBJJ app"). Only renders for students
-  // (subject with .bjjStartDate slot) — staff journeys don't carry
-  // this concept and the property isn't present on STAFF rows.
-  let startedNode='';
-  if(s&&Object.prototype.hasOwnProperty.call(s,'bjjStartDate')){
-    let subText='';
-    const _raw=s.bjjStartDate;
-    if(_raw){
-      const dt=new Date(_raw);
-      if(!isNaN(dt)){
-        const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
-        subText=mo+' '+dt.getFullYear();
-      }
+  // "Started BJJ" and "Joined myBJJ" are no longer pinned nodes — they were
+  // merged into `arr` above and render inline in date order via the _synthetic
+  // branch inside the map below.
+  return `<div class="tl"><div class="tlline"></div>${arr.map((m,i)=>{
+    if(m._synthetic){
+      // Non-belt life-event node ("Started BJJ" / "Joined myBJJ"): plain dot +
+      // title + date, no belt visual / class count / "You are here" pill.
+      const _sd=_fmtJnyDate(m.date);
+      const _sicon=m._synthetic==='joined'
+        ?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
+        :'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>';
+      return '<div class="tli"><div class="tldot" style="background:var(--bg);color:var(--text3);border:2px solid var(--border2)">'+_sicon+'</div>'
+        +'<div class="tlb"'+((i===arr.length-1&&!nextNode)?' style="padding-bottom:4px"':'')+'>'
+          +'<div class="tlt" style="color:var(--text)">'+m.label+'</div>'
+          +(_sd?'<div class="tld">'+_sd+'</div>':'')
+        +'</div></div>';
     }
-    let subHtml;
-    if(subText){
-      subHtml='<div class="tld">'+subText+'</div>';
-    }else{
-      // Date-not-set state. Staff viewers get an inline "Add date"
-      // link that opens the edit modal on this student; non-staff
-      // viewers see the muted label only.
-      const _canAddDate=(typeof isStaffOrOwner==='function')&&isStaffOrOwner()&&s.id;
-      const _addLink=_canAddDate
-        ?' <a href="#" onclick="event.preventDefault();openEditStu(\''+s.id+'\')" style="color:var(--blue);text-decoration:underline;font-size:11px">Add date</a>'
-        :'';
-      subHtml='<div class="tld" style="color:var(--text3);font-style:italic">Date not set'+_addLink+'</div>';
-    }
-    startedNode=''
-      +'<div class="tli"><div class="tldot" style="background:var(--bg);color:var(--text3);border:2px solid var(--border2)">'
-        +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>'
-      +'</div><div class="tlb">'
-        +'<div class="tlt" style="color:var(--text)">Started BJJ</div>'
-        +subHtml
-      +'</div></div>';
-  }
-  return `<div class="tl"><div class="tlline"></div>${startedNode}${arr.map((m,i)=>{
     const bl=beltDef(m.belt,subject&&subject.prog);const isFut=!m.done;const isTr=!!m.xfer;
     const isCur=useDerived?(i===curIdx):!!m.current;
     const dateLbl=_fmtJnyDate(m.date);
@@ -7016,7 +7023,7 @@ function rProgress(){
   var s=S.me;
   // The signed-in user's linked students row, if any. Owners and
   // professors often train as students in their own academy, in which
-  // case this is the row that carries their "Joined MyBJJ app" /
+  // case this is the row that carries their personal training /
   // belt-promotion journey. Preferred over staff.journey (which is the
   // instructor career timeline, not personal training) whenever it
   // exists.
@@ -7031,8 +7038,7 @@ function rProgress(){
       // Instructor with STAFF record — show rank, journey, techniques.
       // If they also have a student row (training in their own academy),
       // surface that row's journey here so personal milestones like
-      // "Joined MyBJJ app" or stripe promotions land where the user
-      // looks for them.
+      // belt/stripe promotions land where the user looks for them.
       var sJourney=(myStu&&myStu.journey&&myStu.journey.length?myStu.journey:staff.journey)||[];
       // Batch 7b — staff rank box uses the shared component. Stat is
       // member-since only (staff don't promote by class count; the
@@ -8840,8 +8846,9 @@ async function sendInvite(dispatch,chain){
   // Origin date is only meaningful when the student starts from the programme's
   // FIRST belt with ZERO stripes — a genuine beginner joining now. Anyone
   // registered at a higher belt/stripe brought that grade from elsewhere, on a
-  // date we don't know, so it stays null (the timeline renders "Started BJJ —
-  // Date not set" with an Add-date link for staff, same as the hydrate backfill).
+  // date we don't know, so it stays null. An undated origin entry is OMITTED
+  // from the timeline (rTL drops date-less items); staff can set the real
+  // bjj_start_date later via the edit form (openEditStu, id es-bjjstart).
   const initialJourney=[];
   const _originBeltLabel=((isKids?BK:BA)[formBelt]||{label:formBelt}).label;
   const _isStartingBelt=(formBelt===((isKids?BELT_ORDER_K:BELT_ORDER_A)[0]))&&(Number(formDegree||0)===0);
