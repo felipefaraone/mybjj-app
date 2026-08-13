@@ -6308,7 +6308,9 @@ function rCommunityWall(){
   // so navigating away and back doesn't re-fetch unnecessarily, but
   // a new promotion landing in PROMOTION_LOG (different set) triggers
   // a fresh fetch automatically.
-  const promoIds=rows.filter(r=>r.kind==='promo'&&r.p).map(r=>r.p._dbId).filter(Boolean);
+  const promoIds=rows.filter(r=>r.kind==='promo'&&r.p).map(r=>r.p._dbId)
+    .concat(rows.filter(r=>r.kind==='welcome'&&r.s).map(r=>r.s._dbId))
+    .filter(Boolean);
   _ensureWallReactions(promoIds);
   const beltLabel=k=>(BA[k]||BK[k]||{label:k}).label;
   // Staff-only discreet "hide from Wall" kebab, absolutely positioned in the
@@ -6337,7 +6339,10 @@ function rCommunityWall(){
           +'<div style="'+wDate+'">'+wWhen+'</div>'
         +'</div>'
         +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+bb('white',0,'adult')+'</div>'
-      +'</div></div>';
+      +'</div>'
+      +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
+      +_ossControlHtml(s._dbId)
+    +'</div>';
     }
     const {p,s}=item;
     const isBelt=!!p.isNewBelt||p.type==='belt';
