@@ -10095,7 +10095,15 @@ function _rWaiverDocBody(slot){
   if(ma.years)maBits.push(String(ma.years)+' yr');
   if(ma.rank)maBits.push(String(ma.rank));
   if(ma.academy)maBits.push('@ '+String(ma.academy));
-  const personalRows=[row('Date of birth',a.dob),row('Gender',a.gender),row('Address',a.address),row('Occupation',a.occupation),row('Goals',goals)].join('');
+  // Participant's own phone lives on trial_bookings/students, not health_waivers
+  // or answers — resolve it from the already-hydrated in-memory record (no fetch)
+  // keyed by S.waiverDoc.id + by. row() drops empty values, so no-phone renders nothing.
+  const _wd=(typeof S!=='undefined'&&S.waiverDoc)?S.waiverDoc:{};
+  const _pRec=_wd.by==='trial'
+    ? ((typeof TRIALS!=='undefined'&&TRIALS.find(t=>t._dbId===_wd.id))||null)
+    : ((typeof STUDENTS!=='undefined'&&STUDENTS.find(s=>s._dbId===_wd.id))||null);
+  const _pPhone=_pRec?(_pRec.phone||''):'';
+  const personalRows=[row('Phone',_pPhone),row('Date of birth',a.dob),row('Gender',a.gender),row('Address',a.address),row('Occupation',a.occupation),row('Goals',goals)].join('');
   const trainingRows=`${row('Trained before',trainedBefore)}`+(maBits.length?`<div class="wdoc-row"><div class="k">Experience</div><div class="v">${E(maBits.join(' · '))}</div></div>`:'');
   const personal=(personalRows.trim()||trainingRows.trim())?`<div class="wdoc-sec"><div class="wdoc-h">Personal details</div>${personalRows}${trainingRows}</div>`:'';
   const emg=(w.emergency_name||w.emergency_phone||w.emergency_relationship)?`<div class="wdoc-sec"><div class="wdoc-h">Emergency contact</div>${row('Name',w.emergency_name)}${row('Phone',w.emergency_phone)}${row('Relationship',w.emergency_relationship)}</div>`:'';
