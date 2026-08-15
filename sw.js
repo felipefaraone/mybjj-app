@@ -1,8 +1,9 @@
-const CACHE = 'mybjj-v420';
+const CACHE = 'mybjj-v421';
 const STATIC = [
   '/', '/index.html', '/manifest.json',
   '/icon-192.png', '/icon-512.png',
   '/icon-192-maskable.png', '/icon-512-maskable.png',
+  '/logo.png', '/favicon.ico', '/apple-touch-icon.png',
   '/og-image.png',
   '/splash-750x1334.png', '/splash-1125x2436.png', '/splash-1170x2532.png',
   '/splash-1284x2778.png', '/splash-1290x2796.png',
