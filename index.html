@@ -1515,23 +1515,25 @@ function isUnitOwner(target,units){
 function staffTitle(target){
   // Multi-title — role_title (free text: Professor / Coach / Head Professor
   // / Admin) is the source of truth and wins verbatim when set. Only when
-  // it's blank do we derive from ownership + belt: owner → Head Professor,
+  // it's blank do we derive from ownership + belt: owner → Professor,
   // black belt → Professor, below black → Coach (reverses G14's Instructor).
+  // Batch 5 Item 5 — academy decision: "Head Professor" is never DISPLAYED,
+  // so a stored 'Head Professor' collapses to 'Professor' here and ownership
+  // no longer derives it. The DB value is untouched; the admin edit-staff
+  // Title row still reads/writes the real stored string.
   if(!target)return 'Coach';
   const rt=String(target.role_title||target.roleTitle||'').trim();
-  if(rt)return rt;
-  if(isUnitOwner(target)) return 'Head Professor';
+  if(rt)return rt==='Head Professor'?'Professor':rt;
+  if(isUnitOwner(target)) return 'Professor';
   if(target.belt==='black') return 'Professor';
   return 'Coach';
 }
-// Public-facing display of a staff title. Academy decision: non-staff viewers
-// (students / parents) see "Head Professor" collapsed to "Professor" — the DB
-// value and staff/owner-facing display are unchanged. Only affects the two
-// public render sites (People instructor chip + Details Role row).
+// Public-facing display of a staff title. Batch 5 Item 5 — the collapse now
+// lives in staffTitle() and applies to EVERY viewer (staff included), so this
+// is a thin passthrough kept for its two call sites (People instructor chip +
+// Details Role row).
 function publicStaffTitle(s){
-  const t=(s&&s.roleTitle)||staffTitle(s);
-  if(t==='Head Professor'&&!isStaffOrOwner())return 'Professor';
-  return t;
+  return staffTitle(s);
 }
 
 // ---------------------------------------------------------------------------
@@ -1567,7 +1569,7 @@ function _initialsFromName(name){
 function getStaffBJJTitle(s){
   if(!s)return null;
   const rt=String(s.role_title||s.roleTitle||'').trim();
-  if(rt)return rt;
+  if(rt)return rt==='Head Professor'?'Professor':rt;
   if(!s.belt)return null;
   const deg=(s.degree!=null?s.degree:(s.deg!=null?s.deg:0))|0;
   if(s.belt==='black'){
@@ -1965,8 +1967,8 @@ function beltSVG(belt,deg,prog,width){
 // surfaces. Replaces three divergent rank-box renders.
 //   opts.kind        'staff' | 'student' (default 'student')
 //   opts.footerHtml  optional HTML appended inside the card (e.g. the
-//                    "Degree progression is recognised by the Head
-//                    Professor." caption shown to non-owner staff)
+//                    "Degree progression is recognised by the
+//                    academy." caption shown to non-owner staff)
 function _memberSince(s){
   // Format any of the supported "joined" sources to a compact "Mon ’YY".
   // Order of preference:
@@ -2065,7 +2067,7 @@ function _renderRankBox(s,opts){
     +(opts.footerHtml||'')
   +'</div>';
 }
-function bb(belt,deg,prog,align){
+function bb(belt,deg,prog,align,hideCaption){
   deg=deg||0;const m=prog==='kids'?BK:BA;const b=beltDef(belt,prog);
   // G17.2c.1 — IBJJF terminology: "stripe(s)" for colored belts,
   // "degree(s)" for black belts. Singular when count===1. Container
@@ -2078,6 +2080,11 @@ function bb(belt,deg,prog,align){
     :(deg===1?'stripe':'stripes');
   const countLabel=deg>0?' · '+deg+' '+unit:'';
   const ta=align==='left'?'left':'center';
+  // Batch 5 Item 4 — optional hideCaption. People cards and the two Wall
+  // cards render the belt visual alone (the name/eyebrow beside it already
+  // carries the context, so the caption read as duplication). Undefined
+  // keeps the captioned default for every other call site.
+  if(hideCaption)return `<div style="display:inline-flex;flex-direction:column;gap:2px">${beltSVG(belt,deg,prog,110)}</div>`;
   return `<div style="display:inline-flex;flex-direction:column;gap:2px">${beltSVG(belt,deg,prog,110)}<div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:${ta}">${b.label}${countLabel}</div></div>`;
 }
 function ct(id){const t=CT.find(x=>x.id===id)||CT[0];const giTag=t.gi?'<span class="ctag tgi">GI</span>':'<span class="ctag tnogi-badge">NO-GI</span>';return t.id==='nogi'?giTag:`${giTag}<span class="ctag ${t.tc}">${t.lbl}</span>`;}
@@ -6222,9 +6229,15 @@ function rCommunityPeople(){
     // prevents an icon tap from also firing the card's tap-to-open.
     const showSocial=isInstr||segment==='adult';
     const socialChips=showSocial?_socialIconsRow(m.socialHandles,{size:32,stopProp:true}):'';
+    // Batch 5 Item 1 — equal card heights. When the segment shows socials
+    // but this member has none, render the SAME row shell (divider + one
+    // text line) so cards with and without chips measure the same. Kids
+    // (showSocial false) still render no row at all.
     const socialRow=socialChips
       ?'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px">'+socialChips+'</div>'
-      :'';
+      :(showSocial
+        ?'<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">No social links yet</div>'
+        :'');
     // data-search — the lowercased clean name filterMembersDom() matches the
     // free-text query against (same string the old q-filter used). Quotes
     // escaped so a name can't break out of the attribute.
@@ -6235,7 +6248,7 @@ function rCommunityPeople(){
         +'<div style="flex:1;min-width:0">'
         +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+displayName+'</div>'
         +'</div>'
-        +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog,'left')+'</div>'
+        +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog,'left',true)+'</div>'
       +'</div>'
       +socialRow
       +'</div>';
@@ -6345,7 +6358,7 @@ function rCommunityWall(){
           +'<div style="'+wName+'">'+s.name+'</div>'
           +'<div style="'+wDate+'">'+wWhen+'</div>'
         +'</div>'
-        +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+bb('white',0,'adult')+'</div>'
+        +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+bb('white',0,'adult',undefined,true)+'</div>'
       +'</div>'
       +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
       +_ossControlHtml(s._dbId)
@@ -6373,7 +6386,7 @@ function rCommunityWall(){
       // at deg 0 (bb() draws the belt name under it, e.g. "PURPLE").
       _eyebrow='New promotion';
       _trail='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'
-        +bb(p.toBelt,0,'adult')
+        +bb(p.toBelt,0,'adult',undefined,true)
       +'</div>';
     }else{
       // Stripe — eyebrow "NEW STRIPE" (or "NEW DEGREE" on black);
@@ -7048,7 +7061,7 @@ function rProgress(){
       // Pass the STAFF row directly — it carries _createdAt (hydrate
       // pulls staff.created_at) and belt/deg are already in sync with
       // S.me via enrichMeFromHydrate.
-      var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the Head Professor.</div>';
+      var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the academy.</div>';
       var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter});
       var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney,myStu||staff)+'</div>'+((myStu&&myStu._dbId)?_rClassHistorySection(myStu):'');
       var iContent=S.ptab==='journey'?journeyTab:rankTab;
@@ -10630,7 +10643,7 @@ function rAddStaffModal(){
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="as-fname" placeholder="e.g. Maria" autocapitalize="words" oninput="asAutoInitials()"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="as-lname" placeholder="e.g. Silva" autocapitalize="words" oninput="asAutoInitials()"/></div>
 <div class="erow"><div class="elbl">Email</div><input class="einput" id="as-email" type="email" placeholder="maria@example.com" autocapitalize="none" autocorrect="off"/></div>
-<div class="erow"><div class="elbl">Title</div><select class="esel" id="as-role" onchange="asRoleChange()"><option value="Professor" selected>Professor</option><option value="Coach">Coach</option><option value="Head Professor">Head Professor</option><option value="Admin">Admin</option></select></div>
+<div class="erow"><div class="elbl">Title</div><select class="esel" id="as-role" onchange="asRoleChange()"><option value="Professor" selected>Professor</option><option value="Coach">Coach</option><option value="Admin">Admin</option></select></div>
 <div class="erow" id="as-belt-row"><div class="elbl">Belt</div><select class="esel" id="as-belt"><option value="black" selected>Black</option><option value="brown">Brown</option><option value="purple">Purple</option><option value="blue">Blue</option><option value="white">White</option></select></div>
 <div class="erow" id="as-degree-row"><div class="elbl">Degree</div><select class="esel" id="as-degree">${[0,1,2,3,4,5,6].map(i=>'<option value="'+i+'">'+i+'</option>').join('')}</select></div>
 <div class="erow"><div class="elbl">Unit</div><select class="esel" id="as-unit">${unitOpts}</select></div>
@@ -10668,15 +10681,20 @@ function rEditStaff(){
   const ownerEdit=isOwner();
   const isSelf=isStaffSelf(s);
   // Multi-title — the four supported titles (free text on public.staff):
-  // Professor (black belt), Coach (below black), Head Professor (head
-  // instructor / owner), Admin (non-teaching, may have no belt).
-  const ROLE_TITLES=['Professor','Coach','Head Professor','Admin'];
+  // Professor (black belt or head instructor / owner), Coach (below
+  // black), Admin (non-teaching, may have no belt).
+  // Batch 5 Item 5 follow-up — 'Head Professor' is no longer offered or
+  // suggested anywhere in the UI. Stored rows keep their DB value
+  // untouched; a stored 'Head Professor' just preselects 'Professor' so
+  // the select has a valid match instead of falling back to option 1.
+  const ROLE_TITLES=['Professor','Coach','Admin'];
   const BELT_OPTS=['black','brown','purple','blue','white'];
   // Default the selector to the current role_title when set, else a
-  // belt-derived suggestion (owner → Head Professor, black → Professor,
+  // belt-derived suggestion (owner → Professor, black → Professor,
   // below black → Coach). The admin picks; this is only the default.
-  const _roleSuggest=isUnitOwner(s)?'Head Professor':(String(beltVal||'').toLowerCase()==='black'?'Professor':'Coach');
-  const roleTitleSel=String(roleTitle||'').trim()||_roleSuggest;
+  const _roleSuggest=isUnitOwner(s)?'Professor':(String(beltVal||'').toLowerCase()==='black'?'Professor':'Coach');
+  let roleTitleSel=String(roleTitle||'').trim()||_roleSuggest;
+  if(roleTitleSel==='Head Professor')roleTitleSel='Professor';
   // Photo block: tap own avatar to upload (same photo_approvals flow
   // students use); admin views static avatar.
   const photoBlock=isSelf
@@ -10726,11 +10744,13 @@ ${degField}
 <div style="margin-top:12px;font-size:11px;color:var(--text3);line-height:1.5;padding:0 4px">Promotion history is automatically updated when you use the Promote button. To fix historical entries, <a href="mailto:info@mybjj.com.au" style="color:var(--blue);text-decoration:underline">contact support</a>.</div>`;
   const body=tab==='training'?trainingTab:basicTab;
   return `<div class="sub open"><div class="shdr"><button class="sback" onclick="closeEditStaff()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Cancel</button><div class="stitle">Edit profile</div></div><div class="sbody">
+<div style="display:flex;flex-direction:column;min-height:100%">
 ${tabsHtml}
 ${body}
 <div id="esf-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="esf-err-txt"></span></div>
 <div style="height:16px"></div>
-<div style="position:sticky;bottom:-16px;margin:8px -16px 0;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 12px rgba(0,0,0,.04)"><button class="bblue" style="width:100%;margin:0" onclick="saveEditStaff('${s.id}')">Save changes</button></div>
+<div style="position:sticky;bottom:-16px;margin:auto -16px -16px;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 12px rgba(0,0,0,.04)"><button class="bblue" style="width:100%;margin:0" onclick="saveEditStaff('${s.id}')">Save changes</button></div>
+</div>
 </div></div>`;
 }
 
@@ -14663,8 +14683,8 @@ ${_staff?`<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="
   // Invite-only — email is admin-controlled. Self sees it read-only; only
   // admin-of-other (owner/instructor editing a student) keeps the change
   // link (admin RPC path via openChangeEmail).
-  const _emailChangeLink=isSelf?'':'<a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-start">Change email</a>';
-  const emailRowAdult='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.email||'—')+'</div>'+_emailChangeLink+'</div></div>';
+  const _emailChangeLink=isSelf?'':'<a href="#" onclick="event.preventDefault();openChangeEmail(\'student\',\''+s.id+'\');" style="color:var(--blue);font-size:11px;text-decoration:underline;align-self:flex-end">Change email</a>';
+  const emailRowAdult='<div class="erow"><div class="elbl">Email</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">'+esc(s.email||'—')+'</div>'+_emailChangeLink+'</div></div>';
   const contactTab=`<div class="ef" style="margin-top:8px">${emailRowAdult}
 <div class="erow"><div class="elbl">Phone</div><input class="einput" id="es-phone" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)" value="${esc(phone)}" autocomplete="off" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Emergency name</div><input class="einput" id="es-ecname" placeholder="Optional" value="${esc(ecName)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
@@ -14789,12 +14809,21 @@ ${_staff?`<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="
   // user scrolls through long forms (kids' parent fields, social
   // platforms list). Negative margins span the sbody padding so the
   // sticky band hugs the bottom edge.
+  // Batch 5 Item 3 — the body + footer sit in a flex-column wrapper with
+  // min-height:100% so margin-top:auto drops the footer to the bottom on
+  // SHORT tabs (position:sticky alone only pins while content overflows,
+  // so the button used to float mid-panel and jump between tabs). The
+  // -16px bottom margin pulls the band through .sbody's padding so its
+  // resting position is identical on short and long tabs. Wrapper is
+  // local to this form — .sbody is shared by ~21 sub-views.
   return `<div class="sub open"><div class="shdr"><button class="sback" onclick="closeEditStu()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Cancel</button><div class="stitle">Edit profile</div></div><div class="sbody">
+<div style="display:flex;flex-direction:column;min-height:100%">
 ${tabsHtml}
 ${body}
 <div id="es-err" class="inv" style="display:none;margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="es-err-txt"></span></div>
 <div style="height:16px"></div>
-<div style="position:sticky;bottom:-16px;margin:8px -16px 0;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 12px rgba(0,0,0,.04)"><button class="bblue" style="width:100%;margin:0" onclick="saveEditStu()">Save changes</button></div>
+<div style="position:sticky;bottom:-16px;margin:auto -16px -16px;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 12px rgba(0,0,0,.04)"><button class="bblue" style="width:100%;margin:0" onclick="saveEditStu()">Save changes</button></div>
+</div>
 </div></div>`;
 }
 
