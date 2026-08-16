@@ -509,18 +509,36 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
      visual effect on a rail that should never move. Mobile is untouched. */
   .bnav.glass{transform:none!important;opacity:1!important}
 
-  /* ---- centre the pre-login column ------------------------------------ */
-  /* .lw is the login/pending wrapper (rAuth + rPending only) and is mounted as
-     #app's sole child, so it never meets the rail — it centres in the whole
-     viewport. It is already display:flex;flex-direction:column, so the default
-     align-items:stretch makes .lhero and .lbody fill the constrained width:
-     the hero banner caps at the column instead of going full-bleed, and the
-     Google button / email field / Continue button inherit the width from their
-     container. No generic class (.bout/.lf/.linput/.bmain) is touched.
-     width:100% is load-bearing: .lw is a flex item in #app's column, where the
-     auto side margins override align-items:stretch and would otherwise let it
-     shrink-to-fit its content (~252px) instead of filling the 440px cap. */
-  .lw{width:100%;max-width:440px;margin-left:auto;margin-right:auto}
+  /* ---- split-screen pre-login (replaces the v430 centred card) --------- */
+  /* .lw is the login/pending wrapper (rAuth + rPending only), mounted as #app's
+     sole child, so it never meets the rail and owns the whole viewport. It
+     already has EXACTLY two children — .lhero (from authHero()) and .lbody —
+     so the two columns exist in the markup and no wrapper is needed.
+     Base .lw is display:flex;flex-direction:column;height:100dvh;overflow-y:auto;
+     only the direction and the v430 width cap are overridden. height/overflow
+     are inherited, so the split is full-height and still scrolls if a form ever
+     outgrows the viewport. */
+  .lw{
+    width:auto;max-width:none;margin:0;
+    flex-direction:row;align-items:stretch;
+  }
+  /* brand half — flex:1 1 50% also cancels the base flex-shrink:0. Its
+     background (set in the base rule) and text-align:center are untouched, and
+     align-items:stretch on the parent makes the blue fill top-to-bottom. */
+  .lhero{
+    flex:1 1 50%;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+  }
+  /* form half. NOT capped with max-width: a max-width violation on a flex item
+     makes flexbox freeze it and hand the slack to .lhero, which would break the
+     50/50. The panel stays a true half and the padding centres a 440px form
+     column inside it — children keep stretching to that width, so no generic
+     class (.bout/.lf/.linput/.bmain) is touched. */
+  .lbody{
+    flex:1 1 50%;
+    display:flex;flex-direction:column;justify-content:center;
+    padding:40px max(40px,(50vw - 440px)/2);
+  }
 }
 </style>
 </head>
