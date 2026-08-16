@@ -180,6 +180,12 @@ html,body{overscroll-behavior-y:none}
 .dpd{font-family:'Bebas Neue',sans-serif;font-size:23px;line-height:1;color:var(--text)}
 .dp.active .dpn,.dp.active .dpd{color:#fff}
 .dpdot{width:5px;height:5px;border-radius:50%;background:#1A5DAD;margin-top:1px}.dp.active .dpdot{background:rgba(255,255,255,.7)}
+/* Classes agenda — mobile keeps today's plain stacked cards: .agenda/.crow are
+   inert blocks and the rail's time column + node are hidden. Desktop turns
+   .crow into a 3-col grid and draws the rail via .agenda::before. */
+.agenda{position:relative}
+.crow{position:relative}
+.ctime,.cnode{display:none}
 .ov{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:200;display:none}.ov.open{display:block}
 .panel{position:absolute;top:0;right:0;bottom:0;width:86%;max-width:340px;background:var(--surface);z-index:260;transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:var(--sh-lg)}.panel.open{transform:translateX(0)}
 .phdr{padding:44px 20px 14px;background:#1A5DAD;flex-shrink:0}
@@ -613,6 +619,21 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
   .dstrip > *:first-child{margin-left:0}
   .dstrip > *:last-child{margin-right:0}
   .dp{min-width:0}
+
+  /* ---- Classes agenda: chronological rail + time column + node --------- */
+  .agenda{margin-top:6px}
+  /* rail sits at 99px = the 82px time column + half the 36px node column */
+  .agenda::before{content:"";position:absolute;left:99px;top:14px;bottom:14px;width:2px;background:var(--border)}
+  .crow{display:grid;grid-template-columns:82px 36px 1fr;align-items:start;margin-bottom:14px}
+  /* the card carries its own stacking margin for mobile; the grid row owns it here */
+  .crow > .card{margin-bottom:0}
+  .ctime{display:block;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:24px;line-height:1.05;text-align:right;color:var(--text);padding-top:16px}
+  .crow.past .ctime{color:var(--text3)}
+  .cnode{display:flex;justify-content:center;padding-top:24px}
+  .cnode i{width:11px;height:11px;border-radius:50%;background:var(--card);border:3px solid var(--blue);display:block;position:relative;z-index:1}
+  .crow.past .cnode i{border-color:var(--border2)}
+  /* the time now lives in the .ctime column, so hide the card's own copy */
+  .crow .ctime-inline{display:none}
 }
 </style>
 </head>
@@ -5170,7 +5191,7 @@ function rClass(){
   return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}</div>`:''}</div>
   ${_otherUnitCheckinsBanner(sk)}
   ${closed?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${escHtml(closed.reason||'Academy closed')}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Regular classes cancelled</div></div></div>`:''}
-  ${cls.length>0?cls.map(c=>{
+  ${cls.length>0?'<div class="agenda">'+cls.map(c=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];
     // c.classId is the DB class_id (set by _projClsRow); c.id here is the synthetic
     // "date_time_legacy" composite (getDC overrides it), so it must NOT be used to
@@ -5291,7 +5312,21 @@ function rClass(){
     // classId; one-off cards carry _oneoff with a null classId.
     const _exEligible=isStaffOrOwner()&&(c.classId||c._oneoff);
     const staffKebab=_exEligible?`<button onclick="event.stopPropagation();openCardEx('${escAttr(c.id)}','${escAttr(c.classId)}','${escAttr(c.date)}','${escAttr(c.time)}')" title="Class options" aria-label="Class options" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 4px;line-height:1;font-size:22px;letter-spacing:1px;height:22px">⋯</button>`:'';
-    return `<div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${cancelPill}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${(staffKebab||btn)?`<div style="flex-shrink:0;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">${staffKebab}${btn?`<div style="width:100%">${btn}</div>`:''}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div>`;}).join(''):(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
+    // Desktop agenda time column. Built here rather than from fmtT12(), whose
+    // output is lowercase and space-less ("6:00am") and so can't be split into
+    // hour / meridiem lines. Same hour math (h%12, 0->12); a c.time that isn't
+    // HH:MM falls through as the raw string with no <br>. Hidden on mobile.
+    const _ctm=String(c.time||'').match(/^(\d{1,2}):(\d{2})/);
+    let _ctHtml=String(c.time||'');
+    if(_ctm){
+      let _h=parseInt(_ctm[1],10);
+      const _ap=_h>=12?'PM':'AM';
+      _h=_h%12;if(_h===0)_h=12;
+      _ctHtml=_h+':'+_ctm[2]+'<br>'+_ap;
+    }
+    // .crow wraps the card untouched — time column, rail node, then the card
+    // exactly as it was. 'past' reuses the existing `ended` signal in cc.
+    return `<div class="crow${cc.indexOf('ended')>=0?' past':''}"><div class="ctime">${_ctHtml}</div><div class="cnode"><i></i></div><div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div class="ctime-inline" style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${cancelPill}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${(staffKebab||btn)?`<div style="flex-shrink:0;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">${staffKebab}${btn?`<div style="width:100%">${btn}</div>`:''}</div>`:''}</div>${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div></div>`;}).join('')+'</div>':(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
   <div style="height:16px"></div>`;}
 
 
