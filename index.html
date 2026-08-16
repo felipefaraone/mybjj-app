@@ -317,6 +317,15 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .wsel::-webkit-scrollbar{display:none}
 .wseg{flex:0 0 auto;min-width:0;height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2px;cursor:pointer;display:flex;align-items:center;justify-content:center;text-align:center;white-space:nowrap}
 .wseg.active{background:#1A5DAD;color:#fff;border-color:var(--blue)}
+/* Programme B.2 — desktop week stepper. Both week-nav variants are always in
+   the DOM; the breakpoint hides one. Hidden by default so mobile is unaffected. */
+.wk-step{display:none}
+.stepper{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.steparrow{width:var(--ctrl-h);height:var(--ctrl-h);flex-shrink:0;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text2);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.steparrow:disabled{opacity:.4;cursor:not-allowed}
+.stepinfo{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:.5px;color:var(--text);line-height:1.1}
+.stepinfo small{display:block;font-family:'Barlow',sans-serif;font-weight:500;font-size:11px;letter-spacing:0;color:var(--text3);margin-top:2px}
+.wjump{margin-left:auto;height:var(--ctrl-h);border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text2);font-family:'Barlow',sans-serif;font-weight:500;font-size:13px;padding:0 12px;cursor:pointer;flex-shrink:0}
 .wseg-add{flex:0 0 auto;min-width:0;height:36px;padding:0 12px;border-radius:8px;border:1.5px dashed var(--border2);background:transparent;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px}
 .bblue{width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
 .admin-action-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--blue);cursor:pointer;transition:background .15s ease,border-color .15s ease}
@@ -585,6 +594,10 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
   .mgrid > .card{margin-bottom:0}
   /* the empty-state card must span both columns, not sit in one */
   .mgrid > #members-empty{grid-column:1/-1}
+
+  /* ---- Programme B.2: stepper replaces the horizontal week pills ------- */
+  .wk-pills{display:none}
+  .wk-step{display:block}
 }
 </style>
 </head>
@@ -7670,6 +7683,52 @@ function rSchedule(){
   const weekTabsHtml=(weeksThisPeriod.length||isA)
     ?('<div class="mblock"><div class="wsel">'+_weekSegs+_addSeg+'</div></div>')
     :'';
+  // Desktop week stepper — rendered ALONGSIDE the mobile pills; .wk-pills /
+  // .wk-step hide one by breakpoint. Reuses weeksThisPeriod (already sorted
+  // ascending by week), selW, _cycleWeek, _curUnit and isA — nothing is
+  // recomputed — and calls the SAME handlers the pills call. Cycle-off keeps
+  // weekStepHtml empty, so that (dead-in-prod) path falls back to the pills.
+  let weekStepHtml='';
+  if(_cycleOn){
+    const _selIdx=weeksThisPeriod.findIndex(x=>selW&&x._localId===selW._localId);
+    const _prevW=_selIdx>0?weeksThisPeriod[_selIdx-1]:null;
+    const _nextW=(_selIdx>=0&&_selIdx<weeksThisPeriod.length-1)?weeksThisPeriod[_selIdx+1]:null;
+    // Arrows walk the EXISTING week list only, so they can never land on a
+    // ghost slot. At either end the neighbour is null and the button renders
+    // disabled; with no weeks at all (_selIdx===-1) both are disabled.
+    const _arrow=(w,glyph,label)=>'<button class="steparrow" aria-label="'+label+'"'
+      +(w?' onclick="setSelectedWeek(\''+w._localId+'\')"':' disabled')
+      +'>'+glyph+'</button>';
+    // Month label mirrors the week-body header. weekStart is only a month
+    // anchor and is null on a freshly created week, so the "· MONTH YEAR" half
+    // is dropped rather than printing a dangling separator.
+    const _stepDate=selW?_parseISODate(selW.weekStart):null;
+    const _stepMonth=_stepDate?_monthLabel(_stepDate.getMonth(),_stepDate.getFullYear()).toUpperCase():'';
+    const _stepTitle=selW?('WEEK '+selW.week+(_stepMonth?' · '+_stepMonth:'')):'WEEK —';
+    const _stepSub=selW
+      ?(selW.week===_cycleWeek?'Current week':'Week '+_cycleWeek+' is current')
+      :'No weeks yet';
+    // Same first-wins index the pill loop builds, so both variants agree on
+    // which row owns a week number when duplicates exist.
+    const _byIdxJump={};
+    weeksThisPeriod.forEach(x=>{if(_byIdxJump[x.week]===undefined)_byIdxJump[x.week]=x;});
+    const _jumpOpts=[];
+    for(let n=1;n<=_curUnit.cycleLengthWeeks;n++){
+      const _jw=_byIdxJump[n];
+      if(_jw){
+        _jumpOpts.push('<option value="'+_jw._localId+'"'+((selW&&selW._localId===_jw._localId)?' selected':'')+'>Week '+n+(n===_cycleWeek?' · now':'')+'</option>');
+      }else if(isA){
+        // Ghost slot — admin only; students never see a week that doesn't exist.
+        _jumpOpts.push('<option value="ghost:'+n+'">Week '+n+' (create)</option>');
+      }
+    }
+    weekStepHtml='<div class="stepper">'
+      +_arrow(_prevW,'‹','Previous week')
+      +'<div class="stepinfo">'+_stepTitle+'<small>'+_stepSub+'</small></div>'
+      +_arrow(_nextW,'›','Next week')
+      +'<select class="wjump" onchange="_wjump(this.value)" aria-label="Jump to week">'+_jumpOpts.join('')+'</select>'
+    +'</div>';
+  }
   // Cycle on → small muted caption above the selector telling everyone
   // where we are in the cycle, with an admin-only gear to open settings.
   const _cycleGear=(_cycleOn&&isA)
@@ -7750,7 +7809,7 @@ function rSchedule(){
       }
     },0);
   }
-  return '<div style="height:16px"></div>'+segHtml+periodSelect+cycleHeader+weekTabsHtml+bodyHtml+cycleEntry+'<div style="height:16px"></div>'+draftEditor;
+  return '<div style="height:16px"></div>'+segHtml+periodSelect+cycleHeader+'<div class="wk-pills">'+weekTabsHtml+'</div>'+'<div class="wk-step">'+weekStepHtml+'</div>'+bodyHtml+cycleEntry+'<div style="height:16px"></div>'+draftEditor;
 }
 function setSchedMode(m){S.schedMode=m==='events'?'events':'curriculum';S.editWeek=false;render();}
 function setSchedPeriod(k){S.schedPeriod=k;S.sweek=null;render();}
@@ -7758,6 +7817,15 @@ function setSelectedWeek(lid){
   S.sweek=lid||null;
   S.editWeek=false;
   render();
+}
+// Router for the desktop stepper's jump <select>. A select fires ONE onchange,
+// so unlike the pills (a button per slot) the existing-vs-ghost decision can't
+// be baked per option — it is encoded in the value and resolved here. Delegates
+// to the same two handlers the pills use; no new state, no new fetch.
+function _wjump(v){
+  v=String(v||'');
+  if(v.indexOf('ghost:')===0){createCycleWeek(parseInt(v.slice(6),10));return;}
+  if(v)setSelectedWeek(v);
 }
 
 // Batch event-facepile — small overlapping avatar stack shown on the
