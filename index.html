@@ -398,6 +398,18 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .fbfoot{padding:8px 12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end}.fbsend{background:#1A5DAD;color:#fff;border:none;border-radius:7px;padding:6px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
 .rsw{display:flex;gap:8px;margin-bottom:16px;align-items:stretch}.rseg{flex:1;height:var(--ctrl-h);box-sizing:border-box;padding:0 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;background:var(--card);color:var(--text2);text-align:center;display:inline-flex;align-items:center;justify-content:center;line-height:1}.rseg.active{background:#1A5DAD;color:#fff;border-color:var(--blue)}
 .mblock{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:10px;margin-bottom:14px}
+/* Community B.2 — desktop filter bar. Both filter variants are always in the
+   DOM; the breakpoint hides one. Hidden by default so mobile is unaffected. */
+.mfilt-desktop{display:none}
+.filterbar{display:flex;gap:10px;align-items:center;justify-content:flex-start;margin:2px 0 18px}
+.miniseg{display:flex;border:1px solid var(--border);border-radius:12px;overflow:hidden;flex-shrink:0}
+.miniseg button{border:none;background:var(--card);height:var(--ctrl-h);padding:0 18px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text2);cursor:pointer}
+.miniseg button.active{background:var(--blue);color:#fff}
+.miniseg button.disabled{opacity:.5;cursor:not-allowed}
+.mfilt-sel{height:var(--ctrl-h);border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text2);font-family:'Barlow',sans-serif;font-weight:600;font-size:13.5px;padding:0 14px;cursor:pointer;flex-shrink:0}
+/* Wall column cap — inert at phone widths, only bites on wide desktop, so the
+   feed structure is identical in both viewports. */
+.feed{max-width:620px}
 .mswitch{position:relative;display:flex;width:100%;height:var(--ctrl-h);box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:3px;margin-bottom:10px}
 .mswitch-thumb{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);background:var(--card);border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .18s ease;z-index:0}
 .mswitch.k .mswitch-thumb{transform:translateX(100%)}
@@ -563,6 +575,16 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
      the two column labels line up. Desktop-only: adding it in the markup would
      shift the whole mobile Journey tab down by 16px. */
   .prog-pair > div:first-child > .slbl{margin-top:16px}
+
+  /* ---- Community B.2: selects replace pills, People goes 2-up ---------- */
+  .mfilt-mobile{display:none}
+  .mfilt-desktop{display:block}
+  .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  /* the cards carry their own margin-bottom for the mobile stack; the grid
+     gap owns the spacing here, so drop it */
+  .mgrid > .card{margin-bottom:0}
+  /* the empty-state card must span both columns, not sit in one */
+  .mgrid > #members-empty{grid-column:1/-1}
 }
 </style>
 </head>
@@ -6334,10 +6356,25 @@ function rCommunityPeople(){
   // shows/hides cards in the DOM (filterMembersDom) so typing never triggers
   // a full render (which reflowed the whole page and made it jump). Belt /
   // type / segment filters still route through render() as before.
-  // Stable sort: keep instructor section together at top in "All" mode,
-  // alphabetical within each section.
+  // Tier + rank sort (both viewports). Tier 0 = professor (black-belt
+  // instructor), 1 = coach (instructor below black), 2 = student; within a tier
+  // the highest belt comes first, then the most degrees, then name. Purely a
+  // reordering — membership of `list` is untouched.
+  const _memberTier=(m)=>{
+    if(m._kind==='instructor'&&String(m.belt||'').toLowerCase()==='black')return 0;
+    if(m._kind==='instructor')return 1;
+    return 2;
+  };
+  // Belt order arrays are lowercase; an unknown belt yields -1 and therefore
+  // sorts last inside its tier, which is the safe place for bad data.
+  const _beltRankIdx=(m)=>(m.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A).indexOf(String(m.belt||'').toLowerCase());
   list=list.slice().sort((a,b)=>{
-    if(a._kind!==b._kind)return a._kind==='instructor'?-1:1;
+    const ta=_memberTier(a),tb=_memberTier(b);
+    if(ta!==tb)return ta-tb;
+    const ra=_beltRankIdx(a),rb=_beltRankIdx(b);
+    if(ra!==rb)return rb-ra;
+    const da=a.deg|0,db=b.deg|0;
+    if(da!==db)return db-da;
     return (a.name||'').localeCompare(b.name||'');
   });
   // Batch 4 — Kids always renders so the toggle reads as a real two-way
@@ -6382,7 +6419,35 @@ function rCommunityPeople(){
   // Recessed containment block groups the level-2 switch with the
   // level-3 filter chips, subordinating them to the People/Wall pill.
   const filterBlock='<div class="mblock">'+segHtml+typeChips+beltChips+'</div>';
-  if(!list.length)return headline+filterBlock+searchHtml+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
+  // Desktop filter bar — the SAME state and the SAME three setters the mobile
+  // pills use (setMembersSegment / setMembersType / setMembersBelt), just drawn
+  // as a segmented control + selects. Both variants are always rendered and the
+  // breakpoint hides one, so there is no new JS and no new id: classes only.
+  // The roles select mirrors typeChips' adult-only conditional; Kids stays
+  // visible-but-disabled for non-admin viewers, matching the mobile switch.
+  const _selOpt=(v,label,cur)=>'<option value="'+v+'"'+(cur===v?' selected':'')+'>'+label+'</option>';
+  const desktopBar='<div class="filterbar">'
+    +'<div class="miniseg">'
+      +'<button class="'+(segment==='adult'?'active':'')+'" onclick="setMembersSegment(\'adult\')">Adults</button>'
+      +(canSeeKids
+        ?'<button class="'+(segment==='kids'?'active':'')+'" onclick="setMembersSegment(\'kids\')">Kids</button>'
+        :'<button class="disabled" aria-disabled="true">Kids</button>')
+    +'</div>'
+    +(segment==='adult'
+      ?'<select class="mfilt-sel" onchange="setMembersType(this.value)">'
+        +_selOpt('all','All roles',typeFilter)
+        +_selOpt('students','Students',typeFilter)
+        +_selOpt('instructors','Instructors',typeFilter)
+      +'</select>'
+      :'')
+    +'<select class="mfilt-sel" onchange="setMembersBelt(this.value)">'
+      +_selOpt('all','All belts',beltFilter)
+      +validBelts.map(b=>_selOpt(b,b.charAt(0).toUpperCase()+b.slice(1),beltFilter)).join('')
+    +'</select>'
+  +'</div>';
+  // searchHtml sits OUTSIDE both wrappers — one search input for both viewports.
+  const filterZone='<div class="mfilt-mobile">'+filterBlock+'</div>'+'<div class="mfilt-desktop">'+desktopBar+'</div>'+searchHtml;
+  if(!list.length)return headline+filterZone+'<div class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No members match this filter.</div>';
   const rows=list.map(m=>{
     const isInstr=m._kind==='instructor';
     const av=isInstr?avStaff(m,40):avStu(m,40);
@@ -6437,7 +6502,7 @@ function rCommunityPeople(){
   // filterMembersDom() once after this DOM lands to apply any pre-existing
   // query (e.g. after a belt/tab change that DID re-render).
   const emptyState='<div id="members-empty" class="card" style="text-align:center;padding:32px;color:var(--text3);font-size:13px;display:none"></div>';
-  return headline+filterBlock+searchHtml+'<div id="members-list">'+rows+emptyState+'</div>';
+  return headline+filterZone+'<div id="members-list" class="mgrid">'+rows+emptyState+'</div>';
 }
 // Batch community-wall — global promotions feed for the Community
 // hub. Adult students (prog='adult') only — kids' promotions are
@@ -6496,10 +6561,12 @@ function rCommunityWall(){
   const rows=feed.slice(0,_wallShown);
   // Empty state only when BOTH promotions and welcomes are empty.
   if(!rows.length){
-    return '<div class="card" style="text-align:center;padding:32px 20px">'
+    return '<div class="feed">'
+      +'<div class="card" style="text-align:center;padding:32px 20px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No promotions yet</div>'
       +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Belt and stripe promotions will appear here as they happen.</div>'
-      +'</div>';
+      +'</div>'
+    +'</div>';
   }
   // Batch wall-4b — kick off a one-time fetch of wall_reactions for
   // the visible promotions. The fetch is keyed by the sorted UUID set
@@ -6598,7 +6665,7 @@ function rCommunityWall(){
   const _loadMore=(feed.length>_wallShown)
     ?'<button onclick="wallLoadMore()" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--blue);cursor:pointer;margin-top:4px">Load more</button>'
     :'';
-  return cards+_loadMore;
+  return '<div class="feed">'+cards+_loadMore+'</div>';
 }
 // Wall hide — soft, reversible-by-SQL, staff-only. The card is removed from
 // the public feed (a flag); the underlying promotion / member record stays
