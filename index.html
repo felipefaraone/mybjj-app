@@ -6094,12 +6094,34 @@ function rMembers(){
   // V2 hierarchy — top-level People/Wall reuses the same `.rsw / .rseg`
   // class as the nested Adults/Kids toggle so parent and child read
   // visually equivalent.
-  const segBtn=(key,lbl)=>'<div class="rseg '+(tab===key?'active':'')+'" onclick="setCommTab(\''+key+'\')">'+lbl+'</div>';
+  const segBtn=(key,lbl)=>'<div class="rseg '+(tab===key?'active':'')+'" data-ct="'+key+'" onclick="setCommTab(\''+key+'\')">'+lbl+'</div>';
   const segHtml='<div class="rsw">'+segBtn('people','People')+segBtn('wall','Wall')+'</div>';
-  const body=tab==='wall'?rCommunityWall():rCommunityPeople();
+  // Flicker fix — BOTH bodies are mounted, the inactive one hidden via
+  // display:none, so setCommTab can swap tabs by flipping display instead
+  // of calling render(). render() does app.innerHTML=rApp(), which destroys
+  // and recreates every <img>; even with a stable signed URL that costs a
+  // one-frame repaint (very visible on iOS Safari). Stable ids give
+  // setCommTab something to target.
+  const body='<div id="comm-body-people"'+(tab==='people'?'':' style="display:none"')+'>'+rCommunityPeople()+'</div>'
+            +'<div id="comm-body-wall"'+(tab==='wall'?'':' style="display:none"')+'>'+rCommunityWall()+'</div>';
   return '<div style="height:16px"></div>'+segHtml+body;
 }
-function setCommTab(t){S.commTab=t==='wall'?'wall':'people';if(S.commTab==='wall')S.wallShown=5;render();}
+function setCommTab(t){
+  const tab=t==='wall'?'wall':'people';
+  S.commTab=tab;
+  const p=document.getElementById('comm-body-people'),w=document.getElementById('comm-body-wall');
+  // Parent / kid-aggregate viewers get rParentMembers() instead, so neither
+  // body exists — fall back to a full render there rather than no-op.
+  if(!p||!w){render();return;}
+  p.style.display=tab==='people'?'':'none';
+  w.style.display=tab==='wall'?'':'none';
+  // Repaint the active pill in place. [data-ct] scopes this to the
+  // People/Wall switch — the Adults/Kids and Schedule toggles reuse
+  // .rsw/.rseg but carry no data-ct, so they're never touched.
+  document.querySelectorAll('.rsw .rseg[data-ct]').forEach(el=>el.classList.toggle('active',el.getAttribute('data-ct')===tab));
+  // S.wallShown is deliberately NOT reset here: the Wall stays mounted, so
+  // resetting the pager without re-rendering would desync state from DOM.
+}
 function wallLoadMore(){S.wallShown=(S.wallShown||5)+10;render();}
 function rCommunityPeople(){
   const curU=UNITS.find(u=>u.name===S.unit);
@@ -6507,7 +6529,18 @@ function _ossControlHtml(promoDbId){
       :'';
     stackHtml='<div onclick="event.stopPropagation();openOssList(\'promotion\',\''+promoDbId+'\')" style="display:inline-flex;align-items:center;cursor:pointer;gap:4px"><div style="display:flex">'+avs+'</div>'+overflow+'</div>';
   }
-  return '<div style="display:inline-flex;align-items:center;gap:8px;padding:0 12px 10px 14px">'+btn+stackHtml+'</div>';
+  return '<div id="oss-slot-'+promoDbId+'" style="display:inline-flex;align-items:center;gap:8px;padding:0 12px 10px 14px">'+btn+stackHtml+'</div>';
+}
+// Surgical re-render of just the Oss controls. Replaces the render() calls
+// in _ensureWallReactions / toggleOss so a reactions load or a tap repaints
+// only its own slot instead of rebuilding the whole app tree (which would
+// recreate every avatar <img> and flash the Wall).
+function _patchOssSlots(ids){
+  if(!ids||!ids.length)return;
+  ids.forEach(function(id){
+    const el=document.getElementById('oss-slot-'+id);
+    if(el)el.outerHTML=_ossControlHtml(id);
+  });
 }
 async function _ensureWallReactions(ids){
   if(!ids||!ids.length){S.wallReactions={};S.wallReactionsKey='';return;}
@@ -6536,7 +6569,7 @@ async function _ensureWallReactions(ids){
     if(myUid&&row.reactor_user_id===myUid)m.reacted=true;
   });
   S.wallReactions=map;
-  render();
+  _patchOssSlots(ids);
 }
 async function toggleOss(targetType,targetId){
   if(!targetId)return;
@@ -6559,7 +6592,7 @@ async function toggleOss(targetType,targetId){
   const without=(cur.reactors||[]).filter(u=>u!==myUid);
   cur.reactors=cur.reacted&&myUid?without.concat([myUid]):without;
   S.wallReactions[targetId]=cur;
-  render();
+  _patchOssSlots([targetId]);
 }
 function openOssList(targetType,targetId){
   if(!targetId)return;
