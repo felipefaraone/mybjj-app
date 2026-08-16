@@ -2038,23 +2038,43 @@ function _renderRankBox(s,opts){
   const statsRow=statHtml.length
     ?'<div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+statHtml.join(sep)+'</div>'
     :'';
-  // Student / parent (metaCols) path — HORIZONTAL card: belt SVG as the left
-  // anchor, a vertically-centred column on the right with the belt line then the
-  // meta columns STACKED (Awarded + Training since). Staff/coach never reach
-  // here (no metaCols) so their layout below stays byte-for-byte identical.
-  if(_metaCols.length){
-    const metaStack='<div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">'+_metaCols.map(function(c){
-        return '<div style="min-width:0"><div style="font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+c.label+'</div><div style="font-size:13px;color:var(--text2);margin-top:2px">'+c.value+'</div></div>';
-      }).join('')+'</div>';
+  // A.2 HERO — student / parent only. Gated on opts.statStrip (the 3-column data
+  // array from _rStatRow), NOT on metaCols: a student with no dates on file has
+  // an EMPTY metaCols but must still get the hero, and _rStatRow always returns
+  // three columns. Staff/coach never pass statStrip, so they can never satisfy
+  // this gate and fall through to the untouched return below.
+  //
+  // Layout: belt SVG (140) + belt line on top, a full-width divider, then the
+  // 3-column strip. The strip is a 3-ROW grid (labels / values / subs) with the
+  // columns placed explicitly, so every value sits in the same grid row and the
+  // values stay baseline-aligned even when a label wraps to two lines at narrow
+  // widths. Separators are 1px grid tracks spanning all three rows.
+  // 360px: the value font uses clamp() so it scales down instead of clipping —
+  // three columns always fit, never a horizontal scroll and never a collapse to
+  // two. The old stacked Awarded/Training-since meta block is gone: Training
+  // since is COL 1 and Awarded is COL 3's "since <date>" sub, so nothing dupes.
+  if(Array.isArray(opts.statStrip)&&opts.statStrip.length){
+    const _cells=[];
+    opts.statStrip.forEach(function(c,i){
+      const gc=(i*2)+1;
+      const valColor=c.isCount?'var(--blue)':(c.muted?'var(--text3)':'var(--text)');
+      if(i>0){
+        _cells.push('<div aria-hidden="true" style="grid-column:'+(gc-1)+';grid-row:1/4;background:var(--border)"></div>');
+      }
+      _cells.push('<div style="grid-column:'+gc+';grid-row:1;min-width:0;font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+c.label+'</div>');
+      _cells.push('<div style="grid-column:'+gc+';grid-row:2;min-width:0;margin-top:4px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:clamp(18px,6.2vw,26px);line-height:1.1;color:'+valColor+';overflow-wrap:anywhere">'+c.value+'</div>');
+      _cells.push('<div style="grid-column:'+gc+';grid-row:3;min-width:0;font-size:11px;color:var(--text3)">'+(c.sub?'<div style="margin-top:3px">'+c.sub+'</div>':'')+'</div>');
+    });
+    const strip='<div style="display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr;column-gap:6px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">'+_cells.join('')+'</div>';
     return '<div class="slbl">Current rank</div>'
       +'<div class="card">'
       +'<div style="display:flex;align-items:center;gap:16px">'
         +'<div style="flex-shrink:0">'+beltSVG(s.belt,deg,prog,140)+'</div>'
         +'<div style="min-width:0">'
           +'<div style="font-size:13px;color:var(--text2);font-weight:600">'+beltLine+'</div>'
-          +metaStack
         +'</div>'
       +'</div>'
+      +strip
       +(opts.footerHtml||'')
     +'</div>';
   }
@@ -7060,7 +7080,7 @@ function _rRecentCard(stu,fromParent){
   const viewAll='<div style="margin-top:6px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+stu.id+'\''+openArg+')" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:6px 0 0">View all attendance →</button></div>';
   return '<div class="slbl" style="margin-top:16px">Recent</div><div class="card" style="padding:9px 16px">'+rowsHtml+viewAll+'</div>';
 }
-// ── Two-stat row (student Progress) — SINGLE SOURCE OF TRUTH ─────────────────
+// ── Hero stat strip (student Progress) — SINGLE SOURCE OF TRUTH ──────────────
 // Reads ONLY the raw STUDENTS row. Deliberately does NOT touch _egDisplay or
 // rProgress's merged `s` overlay: egd.classesDone reduces to student.grade on
 // every branch (getEligibilityStatus sets classesDone=student.grade||0), and the
@@ -7068,44 +7088,54 @@ function _rRecentCard(stu,fromParent){
 // writes both as Number(...||0). Same numbers, no hidden coupling to
 // membershipLevel/_lastMarkerDate, which the overlay never carries.
 //
-// LEFT  = lifetime classes (always).
-// RIGHT = classes since the last grading, labelled by rank; and for a
-//         never-graded student (deg 0, no prior grading) the count would just
-//         equal the lifetime total, so the slot shows the START DATE instead.
-//         With no date on file there is no right cell at all — LEFT goes
-//         full-width, exactly as before. Nothing is ever fabricated.
+// A.2 — returns DATA, not markup: exactly three column objects
+//   {label, value, sub, isCount, muted}
+// consumed by _renderRankBox's hero branch via opts.statStrip. isCount paints
+// the value var(--blue) (counts); muted paints it var(--text3) (the em-dash
+// placeholder); otherwise var(--text) (dates). ALWAYS three columns so the
+// strip never reflows between students — an absent value shows an em dash, and
+// nothing is ever fabricated as a zero.
+//
+//   COL 1  Training since — the academy join date.
+//   COL 2  Classes logged — lifetime total.
+//   COL 3  adaptive: classes since the last grading, labelled by rank; for a
+//          never-graded student that count would just equal the lifetime total,
+//          so the slot shows when they STARTED BJJ (bjj_start_date — a distinct
+//          fact from COL 1's academy join date); with no such date, or one that
+//          would just repeat COL 1, it falls back to the em dash.
 function _rStatRow(stu){
-  if(!stu)return '';
+  var EMDASH='—';
+  if(!stu)return [];
   var deg=Number(stu.deg||0);
   var hasGrading=_progHasPriorGrading(stu);
   var allTime=Number(stu.total||0);
   var sinceCount=Number(stu.grade||0);
   var awVal=_fmtJnyDate(_progAwardDate(stu));
-  var startedVal=_fmtJnyDate(stu.trainingStartedAt||null);
-  var _statBox=function(label,valNum,sub){
-    return '<div class="card" style="padding:13px 15px"><div style="font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+label+'</div>'
-      +'<div style="margin-top:4px"><span style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--blue);line-height:1">'+formatStat(valNum)+'</span> <span style="font-size:12px;color:var(--text2)">class'+(valNum===1?'':'es')+'</span></div>'
-      +(sub?'<div style="font-size:11px;color:var(--text3);margin-top:3px">'+sub+'</div>':'')
-    +'</div>';
-  };
-  // Date twin of _statBox: same card, same label style, same 28px value line —
-  // but the value is a DATE, so no formatStat and no "classes" suffix. Carries
-  // the same optional third line so a date cell and a count cell sitting side by
-  // side in the 1fr 1fr grid are the same height.
-  var _dateBox=function(label,valTxt,sub){
-    return '<div class="card" style="padding:13px 15px"><div style="font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+label+'</div>'
-      +'<div style="margin-top:4px"><span style="font-family:Bebas Neue,sans-serif;font-size:28px;color:var(--blue);line-height:1">'+valTxt+'</span></div>'
-      +(sub?'<div style="font-size:11px;color:var(--text3);margin-top:3px">'+sub+'</div>':'')
-    +'</div>';
-  };
-  var leftBox=_statBox('Classes logged',allTime,'at myBJJ');
-  var rightLabel=deg>=1?'Since this stripe':(hasGrading?'Since this belt':null);
-  var rightBox=rightLabel
-    ?_statBox(rightLabel,sinceCount,awVal?('since '+awVal):'')
-    :(startedVal?_dateBox('Started',startedVal,'on the mats'):null);
-  return rightBox
-    ?'<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:16px">'+leftBox+rightBox+'</div>'
-    :'<div style="margin-top:16px">'+leftBox+'</div>';
+  var tsFmt=_fmtJnyDate(stu.trainingStartedAt||null);      // COL 1 — joined myBJJ
+  var startedLife=_fmtJnyDate(stu.bjjStartDate||null);     // COL 3 — started BJJ
+  // Decision tree preserved from A.1 — only the labels shorten (the strip is
+  // narrower than the old two-card row) and the output is data, not markup.
+  //
+  // COL 3's never-graded slot shows the LIFE-HISTORY start (bjj_start_date, the
+  // same field rTL uses for its "Started BJJ" node), not the academy join date —
+  // that one is already COL 1, and sourcing both from trainingStartedAt printed
+  // the same date twice. Compared on the FORMATTED value because that is what
+  // the user sees: two raw dates inside one month both render "Jan 2020", and
+  // showing it twice would still read as a duplicate. No life-history date on
+  // file, or one that collapses onto COL 1, falls back to the em dash.
+  var rightLabel=deg>=1?'This stripe':(hasGrading?'This belt':null);
+  var col3=rightLabel
+    ?{label:rightLabel,value:formatStat(sinceCount),sub:awVal?('since '+awVal):'',isCount:true,muted:false}
+    :((startedLife&&startedLife!==tsFmt)
+      ?{label:'Started',value:startedLife,sub:'on the mats',isCount:false,muted:false}
+      :{label:'This belt',value:EMDASH,sub:'',isCount:false,muted:true});
+  return [
+    tsFmt
+      ?{label:'Training since',value:tsFmt,sub:'',isCount:false,muted:false}
+      :{label:'Training since',value:EMDASH,sub:'',isCount:false,muted:true},
+    {label:'Classes logged',value:formatStat(allTime),sub:'at myBJJ',isCount:true,muted:false},
+    col3
+  ];
 }
 function rProgress(){
   // B3b-2 — parent kid Progress now conforms to the student tabbed
@@ -7259,9 +7289,11 @@ function rProgress(){
   var _metaCols=[];
   if(_tsVal)_metaCols.push({label:'Training since',value:_tsVal});
   if(_awVal)_metaCols.push({label:'Awarded',value:_awVal});
-  // B. Two-stat row — now built by _rStatRow(stu), the shared source of truth
-  // defined beside _rTrainingCard / _rRecentCard. It reads raw stu only (no
-  // _egDisplay, no `s` overlay) and owns the never-graded "Started" fallback.
+  // B. A.2 — the two-stat row is gone; its numbers now live in the rank card's
+  // 3-column hero strip. _rStatRow(stu) still derives them (raw stu only, no
+  // _egDisplay / no `s` overlay) but returns DATA, which _renderRankBox renders
+  // via opts.statStrip. _metaCols stays populated: it keeps the default-stats
+  // block at the top of _renderRankBox suppressed for students.
   // E. Latest instructor feedback note (fold-in of the old Feedback tab). Nothing
   // at all when there is none -- no empty "No feedback yet" card.
   var _fbArr=(stu.feedback||[]).slice().sort(function(a,b2){return String(b2.date||'').localeCompare(String(a.date||''));});
@@ -7269,7 +7301,7 @@ function rProgress(){
   var feedbackCard=_latestFb?('<div class="slbl" style="margin-top:16px">From your instructors</div><div class="card"><div class="fbitem"><div class="fbhdr"><div class="fbins">'+_latestFb.ins+'</div><div class="fbdate">'+_latestFb.date+'</div></div><div class="fbtxt">'+_latestFb.text+'</div></div></div>'):'';
   // MY BELT tab: belt box (meta cols, no total line) -> two-stat row -> YOUR
   // TRAINING (summary or chart) -> RECENT (3 sessions + View all) -> feedback.
-  var rankTab=_renderRankBox(stu,{kind:'student',metaCols:_metaCols})+_rStatRow(stu)+_rTrainingCard(stu)+_rRecentCard(stu,!!_kidActive)+feedbackCard;
+  var rankTab=_renderRankBox(stu,{kind:'student',metaCols:_metaCols,statStrip:_rStatRow(stu)})+_rTrainingCard(stu)+_rRecentCard(stu,!!_kidActive)+feedbackCard;
   var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div>${(stu&&stu._dbId)?_rClassHistorySection(stu):''}`;
   // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
   // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
