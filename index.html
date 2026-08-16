@@ -539,6 +539,13 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
     display:flex;flex-direction:column;justify-content:center;
     padding:40px max(40px,(50vw - 440px)/2);
   }
+
+  /* ---- Progress: pair the cards 2-up on desktop ------------------------ */
+  /* Student/parent Progress only (rProgress emits .prog-pair on that path).
+     align-items:start keeps the shorter card from stretching to match the
+     taller one. Intentionally has NO rule below 900px: an unstyled div is a
+     block, so the two cards stack in source order on mobile. */
+  .prog-pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
 }
 </style>
 </head>
@@ -7407,10 +7414,17 @@ function rProgress(){
   var _fbArr=(stu.feedback||[]).slice().sort(function(a,b2){return String(b2.date||'').localeCompare(String(a.date||''));});
   var _latestFb=_fbArr[0]||null;
   var feedbackCard=_latestFb?('<div class="slbl" style="margin-top:16px">From your instructors</div><div class="card"><div class="fbitem"><div class="fbhdr"><div class="fbins">'+_latestFb.ins+'</div><div class="fbdate">'+_latestFb.date+'</div></div><div class="fbtxt">'+_latestFb.text+'</div></div></div>'):'';
-  // MY BELT tab: belt box (meta cols, no total line) -> two-stat row -> YOUR
-  // TRAINING (summary or chart) -> RECENT (3 sessions + View all) -> feedback.
-  var rankTab=_renderRankBox(stu,{kind:'student',metaCols:_metaCols,statStrip:_rStatRow(stu)})+_rTrainingCard(stu)+_rRecentCard(stu,!!_kidActive)+feedbackCard;
-  var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div>${(stu&&stu._dbId)?_rClassHistorySection(stu):''}`;
+  // MY BELT tab: hero (belt box + stat strip) -> YOUR TRAINING -> CLASS HISTORY
+  // -> feedback. JOURNEY tab: timeline -> RECENT. Class history and Recent
+  // swapped tabs here to match the approved mockup; both viewports get the same
+  // grouping. .prog-pair wraps the two cards that sit side by side on desktop
+  // (grid in the >=900px block); with no rule below 900px it stays a plain
+  // block, so mobile keeps the single-column stack. The hero, the journey slbl
+  // and feedbackCard stay outside the pair, full width.
+  var rankTab=_renderRankBox(stu,{kind:'student',metaCols:_metaCols,statStrip:_rStatRow(stu)})
+    +'<div class="prog-pair">'+_rTrainingCard(stu)+((stu&&stu._dbId)?_rClassHistorySection(stu):'')+'</div>'
+    +feedbackCard;
+  var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="prog-pair"><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div>${_rRecentCard(stu,!!_kidActive)}</div>`;
   // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
   // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
   // 'feedback' is still a LIVE tab in the coach branch above, which must stay
