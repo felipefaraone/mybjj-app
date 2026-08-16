@@ -7421,10 +7421,15 @@ function rProgress(){
   // (grid in the >=900px block); with no rule below 900px it stays a plain
   // block, so mobile keeps the single-column stack. The hero, the journey slbl
   // and feedbackCard stay outside the pair, full width.
+  // Each side gets its OWN cell <div>: the card helpers return a .slbl label
+  // and the card as TWO top-level siblings, so handing them to the grid raw
+  // made it place the label and the card in different columns. One wrapper per
+  // side keeps label+card together as a single grid item. .prog-pair therefore
+  // always has exactly two element children.
   var rankTab=_renderRankBox(stu,{kind:'student',metaCols:_metaCols,statStrip:_rStatRow(stu)})
-    +'<div class="prog-pair">'+_rTrainingCard(stu)+((stu&&stu._dbId)?_rClassHistorySection(stu):'')+'</div>'
+    +'<div class="prog-pair"><div>'+_rTrainingCard(stu)+'</div><div>'+((stu&&stu._dbId)?_rClassHistorySection(stu):'')+'</div></div>'
     +feedbackCard;
-  var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="prog-pair"><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div>${_rRecentCard(stu,!!_kidActive)}</div>`;
+  var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="prog-pair"><div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
   // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
   // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
   // 'feedback' is still a LIVE tab in the coach branch above, which must stay
