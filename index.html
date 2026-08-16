@@ -498,6 +498,29 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
     padding-left:var(--shell-pad-l)!important;
     padding-right:var(--shell-gutter)!important;
   }
+
+  /* ---- freeze the rail on scroll -------------------------------------- */
+  /* The floating-pill shrink is not a CSS class — _navApplyScale() writes
+     transform:scale() and opacity straight onto the element's style attribute
+     every animation frame (scale 1 -> .8, opacity 1 -> .94 over 240px of
+     scroll). Inline styles outrank any plain stylesheet rule, so neutralising
+     it on desktop needs !important on exactly the two properties the JS sets.
+     The handler keeps running and keeps writing — it just no longer has a
+     visual effect on a rail that should never move. Mobile is untouched. */
+  .bnav.glass{transform:none!important;opacity:1!important}
+
+  /* ---- centre the pre-login column ------------------------------------ */
+  /* .lw is the login/pending wrapper (rAuth + rPending only) and is mounted as
+     #app's sole child, so it never meets the rail — it centres in the whole
+     viewport. It is already display:flex;flex-direction:column, so the default
+     align-items:stretch makes .lhero and .lbody fill the constrained width:
+     the hero banner caps at the column instead of going full-bleed, and the
+     Google button / email field / Continue button inherit the width from their
+     container. No generic class (.bout/.lf/.linput/.bmain) is touched.
+     width:100% is load-bearing: .lw is a flex item in #app's column, where the
+     auto side margins override align-items:stretch and would otherwise let it
+     shrink-to-fit its content (~252px) instead of filling the 440px cap. */
+  .lw{width:100%;max-width:440px;margin-left:auto;margin-right:auto}
 }
 </style>
 </head>
