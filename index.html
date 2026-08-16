@@ -432,6 +432,73 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .adiv:before,.adiv:after{content:'';flex:1;height:1px;background:var(--border)}
 .amsg{font-size:13px;color:var(--text2);padding:9px 12px;background:var(--blue-tint);border-radius:8px;line-height:1.5;margin:6px 0 0}
 .cav{font-size:12px;color:var(--text3);text-align:center;margin:4px 0 18px;line-height:1.5}
+/* ── Batch B — DESKTOP LAYOUT (>=900px). CSS ONLY. ─────────────────────────────
+   Everything below lives inside one @media block, so at <900px not a single
+   declaration applies and the mobile shell is untouched.
+
+   FIXED RAIL, not sibling-flow. rApp() emits ~40 modal/sheet siblings plus two
+   banner strips BEFORE .header, all direct children of #app. Turning #app into
+   a grid/row would make every one of them a layout item, and there is no
+   wrapper to add without a DOM change. A fixed rail is independent of sibling
+   count and order, so the nav can move without the shell knowing.
+
+   The rail is out of flow, so .header / the kid switcher / .content each clear
+   it with padding-left. The same expression also centres a 1000px column in the
+   space left over, which auto-margins cannot do on a full-width flex child. */
+@media (min-width:900px){
+  :root{
+    --rail-w:232px;
+    /* gutter that centres a --shell-max column in the space beside the rail */
+    --shell-gutter:max(24px,(100vw - var(--rail-w) - 1000px)/2);
+    --shell-pad-l:calc(var(--rail-w) + var(--shell-gutter));
+  }
+  /* the phone frame becomes the full viewport; .cov (absolute inset:0 against
+     #app) therefore still covers the whole screen, not just the content column */
+  #app{max-width:none}
+
+  /* ---- glass pill -> left rail ---------------------------------------- */
+  .bnav.glass{
+    position:fixed;top:0;right:auto;bottom:0;left:0;
+    width:var(--rail-w);
+    flex-direction:column;justify-content:flex-start;align-items:stretch;gap:4px;
+    padding:20px 14px;
+    border:none;border-right:1px solid var(--border);border-radius:0;
+    background:var(--surface);
+    -webkit-backdrop-filter:none;backdrop-filter:none;
+    box-shadow:none;
+    /* below .sub(202) and .cov(300) so drawers and sheets cover the rail */
+    z-index:100;
+  }
+  .bnav.glass .nbtn{
+    flex:0 0 auto;width:100%;
+    flex-direction:row;justify-content:flex-start;align-items:center;gap:12px;
+    padding:11px 12px;border-radius:12px;
+    color:var(--text2);
+  }
+  .bnav.glass .nbtn svg{width:21px;height:21px}
+  /* labels come back on desktop */
+  .bnav.glass .nlbl{display:inline;font-size:13px;letter-spacing:.6px;text-align:left}
+  .bnav.glass .nbtn.active{background:var(--blue-tint);color:var(--blue)}
+  /* the JS-positioned horizontal indicator is meaningless in a vertical rail;
+     .active's pill + colour marks the tab instead */
+  .bnav.glass .ntick,.bnav.glass .ntick-slide{display:none}
+
+  /* ---- clear the rail + centre the content column ---------------------- */
+  .header{padding-left:var(--shell-pad-l);padding-right:var(--shell-gutter)}
+  .content{padding-left:var(--shell-pad-l);padding-right:var(--shell-gutter)}
+  /* floating-nav bottom inset is not needed once the nav is a side rail */
+  .content.glass-pad{padding-bottom:24px}
+  /* parent kid switcher: an unclassed inline-styled div emitted between
+     .header and .content, so it is reached structurally. :not(.content) keeps
+     this off .content for parents who have no switcher to render. !important is
+     required — the element carries an inline `padding:8px 0`, which no plain
+     stylesheet rule can outrank; without it the first kid chip sits under the
+     rail. Scoped to this media block, so mobile never sees it. */
+  #app > .header + div:not(.content){
+    padding-left:var(--shell-pad-l)!important;
+    padding-right:var(--shell-gutter)!important;
+  }
+}
 </style>
 </head>
 <body>
