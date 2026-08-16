@@ -551,6 +551,18 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
   .prog-pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
   .prog-pair > div{display:flex;flex-direction:column}
   .prog-pair > div > .card{flex:1}
+  /* Left cell only: when its card is the shorter of the pair, flex:1 leaves
+     dead space at the bottom, so centre the content instead of letting it stick
+     to the top. Scoped to :first-child deliberately — the RIGHT cell (Class
+     history, Recent) is a list that must stay top-aligned, and a taller left
+     card has no free space so this is a no-op for it. Making the card a flex
+     column does not disturb its internals: child offsets and heights measure
+     identical to the block layout at natural height. */
+  .prog-pair > div:first-child > .card{display:flex;flex-direction:column;justify-content:center}
+  /* Match the inline margin-top:16px that the right cell's label carries, so
+     the two column labels line up. Desktop-only: adding it in the markup would
+     shift the whole mobile Journey tab down by 16px. */
+  .prog-pair > div:first-child > .slbl{margin-top:16px}
 }
 </style>
 </head>
@@ -7434,7 +7446,15 @@ function rProgress(){
   var rankTab=_renderRankBox(stu,{kind:'student',metaCols:_metaCols,statStrip:_rStatRow(stu)})
     +'<div class="prog-pair"><div>'+_rTrainingCard(stu)+'</div><div>'+((stu&&stu._dbId)?_rClassHistorySection(stu):'')+'</div></div>'
     +feedbackCard;
-  var journeyTab=`<div class="slbl">Your BJJ journey</div><div class="prog-pair"><div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
+  // The "Your BJJ journey" label lives INSIDE the left cell, mirroring the
+  // "Recent" label that _rRecentCard emits inside the right one, so both column
+  // labels sit at the same Y on desktop and both cards start at the same Y.
+  // The label deliberately carries NO inline margin-top: Recent's label has an
+  // inline 16px, and matching it here would push the whole mobile Journey tab
+  // down by 16px. The 16px is added desktop-side instead, in the @media block,
+  // so mobile renders exactly as before. On mobile the cells stack, so it still
+  // reads label, card, label, card.
+  var journeyTab=`<div class="prog-pair"><div><div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
   // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
   // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
   // 'feedback' is still a LIVE tab in the coach branch above, which must stay
