@@ -11073,10 +11073,33 @@ async function _drawShareCard(opts){
   const COND='"Barlow Condensed","Arial Narrow",Impact,sans-serif';
   const BODY='"Barlow",Helvetica,Arial,sans-serif';
   ctx.textAlign='left';ctx.textBaseline='alphabetic';
-  // Wordmark + unit, top-left. Text only — no logo fetch, so no extra CORS surface.
+  // Logo + wordmark + unit, top-left. The logo is same-origin (/logo.png) so
+  // crossOrigin is a formality, but it uses the SAME guarded load as the avatar:
+  // any error / taint / timeout leaves logoOk false and the header falls back to
+  // the original text-only position. The logo must never break the card.
+  let logoOk=false;
+  const LG=84,lgX=84,lgY=88;
+  try{
+    const lg=new Image();
+    lg.crossOrigin='anonymous';
+    lg.src='/logo.png';
+    await new Promise((res,rej)=>{lg.onload=res;lg.onerror=rej;setTimeout(rej,4000);});
+    try{ if(lg.decode)await lg.decode(); }catch(_){}
+    ctx.save();
+    ctx.beginPath();ctx.arc(lgX+LG/2,lgY+LG/2,LG/2,0,Math.PI*2);ctx.clip();
+    const lsc=Math.max(LG/lg.width,LG/lg.height);
+    const ldw=lg.width*lsc,ldh=lg.height*lsc;
+    ctx.drawImage(lg,lgX+LG/2-ldw/2,lgY+LG/2-ldh/2,ldw,ldh);
+    ctx.restore();
+    ctx.beginPath();ctx.arc(lgX+LG/2,lgY+LG/2,LG/2,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=3;ctx.stroke();
+    logoOk=true;
+  }catch(_){ logoOk=false; }
+  // Wordmark sits right of the logo when it loaded, otherwise at its original x.
+  const hx=logoOk?(lgX+LG+22):84;
   ctx.fillStyle='#fff';ctx.font='700 76px '+COND;
-  ctx.fillText('MyBJJ',84,150);
-  if(opts.unit){ctx.fillStyle='rgba(255,255,255,.78)';ctx.font='500 38px '+BODY;ctx.fillText(opts.unit,86,206);}
+  ctx.fillText('MyBJJ',hx,150);
+  if(opts.unit){ctx.fillStyle='rgba(255,255,255,.78)';ctx.font='500 38px '+BODY;ctx.fillText(opts.unit,hx+2,206);}
   // Avatar — circle, photo when we have one, initials otherwise.
   const cx=W/2,cy=740,r=200;
   let drew=false;
@@ -11112,18 +11135,37 @@ async function _drawShareCard(opts){
   const nameLines=_shareWrap(ctx,opts.name||'',W-200,2);
   let y=cy+r+206;
   nameLines.forEach(l=>{ctx.fillText(l,cx,y);y+=92;});
-  // Simplified belt bar: belt colour with a dark band carrying `deg` stripes.
-  const bw=520,bh=62,bx=cx-bw/2,by=y+14;
-  ctx.fillStyle=base;ctx.fillRect(bx,by,bw,bh);
-  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=3;ctx.strokeRect(bx,by,bw,bh);
-  const band=Math.round(bw*0.26);
-  ctx.fillStyle=(belt==='black')?'#3f3f46':'#111827';
-  ctx.fillRect(bx+bw-band-40,by,band,bh);
+  // Belt: long, thick body in the belt colour with the black tip bar at the
+  // right carrying the degree stripes. Black belts invert to the real thing —
+  // black body, RED bar, white stripes — which is the simplest rule that stays
+  // correct; no per-rank geometry.
+  const bw=640,bh=118,bx=cx-bw/2,by=y+14;
+  const rr=(x0,y0,w0,h0,rad)=>{
+    ctx.beginPath();
+    if(ctx.roundRect)ctx.roundRect(x0,y0,w0,h0,rad);
+    else ctx.rect(x0,y0,w0,h0);
+    ctx.closePath();
+  };
+  const isBlackBelt=(belt==='black');
+  // Body.
+  ctx.fillStyle=base;rr(bx,by,bw,bh,14);ctx.fill();
+  // Stitch line, just enough to read as woven fabric rather than a plain block.
+  ctx.strokeStyle='rgba(0,0,0,.22)';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(bx+16,by+bh-22);ctx.lineTo(bx+bw-16,by+bh-22);ctx.stroke();
+  // Tip bar.
+  const tipW=200,tipX=bx+bw-tipW-26;
+  ctx.fillStyle=isBlackBelt?'#b91c1c':'#111827';
+  rr(tipX,by,tipW,bh,10);ctx.fill();
+  // Degree stripes on the tip, centred within it.
   const deg=Math.max(0,Math.min(6,opts.deg|0));
-  for(let i=0;i<deg;i++){
+  if(deg>0){
+    const sw2=16,gap=12,total=deg*sw2+(deg-1)*gap;
+    let sx2=tipX+(tipW-total)/2;
     ctx.fillStyle='#fff';
-    ctx.fillRect(bx+bw-band-40+18+i*30,by+10,14,bh-20);
+    for(let i=0;i<deg;i++){ctx.fillRect(sx2,by+16,sw2,bh-32);sx2+=sw2+gap;}
   }
+  // Outline last so it sits above body + tip.
+  ctx.strokeStyle='rgba(0,0,0,.38)';ctx.lineWidth=3;rr(bx,by,bw,bh,14);ctx.stroke();
   y=by+bh+72;
   // Congratulations line, wrapped.
   if(opts.congrats){
