@@ -691,6 +691,10 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
   .rail-me-nm{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .rail-me-rl{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .rail-me-chev{width:16px;height:16px;flex-shrink:0;color:var(--text3)}
+
+  /* Wall feed spans the content column on desktop; mobile keeps the 620px cap
+     from the base rule. .feed has no other styling, so widening is safe. */
+  .feed{max-width:none}
 }
 </style>
 </head>
@@ -6642,6 +6646,45 @@ function _promoWhen(iso){
   if(days<30)return Math.floor(days/7)+'w ago';
   return d.toLocaleDateString('en-AU',{month:'short',day:'numeric'});
 }
+// ── Wall congratulations copy — SINGLE EDITABLE SOURCE ──────────────────────
+// DRAFT copy, owner-editable. One object so every line lives in one place;
+// _wallCongrats below is the only reader. Adult belts only: a kids belt has no
+// entry, so the lookup returns '' and the card renders no line rather than
+// inventing one. Stripe arrays are indexed 0-3 (stripes 1-4); degree is indexed
+// 0-5 (1st-6th) and is shared by black-belt stripe and belt cards.
+const WALL_COPY={
+  stripe:{
+    white:['First stripe on white. It begins. Oss!','Two stripes on white. Building the base.','Three stripes on white. Blue belt on the horizon.','Four stripes on white. Blue is one grading away. Oss!'],
+    blue:['First stripe on blue. The grind continues.','Two stripes on blue. Sharper every round.','Three stripes on blue. Purple is calling.','Four stripes on blue. Purple is close now. Oss!'],
+    purple:['First stripe on purple. Depth over flash.','Two stripes on purple. The game is maturing.','Three stripes on purple. Brown is in sight.','Four stripes on purple. Brown is close now. Oss!'],
+    brown:['First stripe on brown. Refinement mode.','Two stripes on brown. Sharp and heavy.','Three stripes on brown. Black is on the horizon.','Four stripes on brown. Black is close now. Oss!']
+  },
+  degree:['First degree black belt. The journey never stopped.','Second degree black belt. Mastery deepens.','Third degree black belt. Still on the mat.','Fourth degree black belt. A life in jiu jitsu.','Fifth degree black belt. Living history.','Sixth degree black belt. Respect earned over decades.'],
+  belt:{
+    blue:'Blue belt. The first real milestone in jiu jitsu. Earned.',
+    purple:'Purple belt. The game gets deep now. Respect.',
+    brown:'Brown belt. Refined, dangerous, almost there.',
+    black:'Black belt. A decade of the grind, right here. Oss!'
+  },
+  welcome:'Just joined the mats. Welcome to the family!'
+};
+// Resolves the congratulations line for any Wall card. Returns '' when there is
+// no copy for that belt (e.g. every kids belt), and callers only emit the
+// wrapper when the result is non-empty.
+function _wallCongrats(kind,belt,deg){
+  if(kind==='welcome')return WALL_COPY.welcome;
+  // Black is split by KIND: a promotion TO black is a belt milestone and gets
+  // WALL_COPY.belt.black; only a stripe on an existing black belt maps to the
+  // degree[] ladder below. Routing both through degree[] made belt.black dead.
+  if(kind==='belt')return WALL_COPY.belt[belt]||'';
+  if(kind==='stripe'){
+    if(belt==='black'){const i=Math.max(0,(deg||1)-1);return WALL_COPY.degree[i]||WALL_COPY.degree[WALL_COPY.degree.length-1];}
+    const arr=WALL_COPY.stripe[belt];if(!arr)return '';const i=Math.max(0,Math.min(3,(deg||1)-1));return arr[i]||'';
+  }
+  return '';
+}
+// Shared style for the congratulations line in all three card kinds.
+const _WALL_CONGRATS_STYLE='font-size:13px;color:var(--text2);margin-top:5px;line-height:1.4';
 function rCommunityWall(){
   const curU=UNITS.find(u=>u.name===S.unit);
   const curUnit=curU?curU.id:null;
@@ -6721,6 +6764,7 @@ function rCommunityWall(){
         +'<div style="flex:1;min-width:0">'
           +'<div style="'+wEyebrow+'">New member</div>'
           +'<div style="'+wName+'">'+s.name+'</div>'
+          +(_wallCongrats('welcome')?('<div style="'+_WALL_CONGRATS_STYLE+'">'+_wallCongrats('welcome')+'</div>'):'')
           +'<div style="'+wDate+'">'+wWhen+'</div>'
         +'</div>'
         +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+bb('white',0,'adult',undefined,true)+'</div>'
@@ -6754,26 +6798,27 @@ function rCommunityWall(){
         +bb(p.toBelt,0,'adult',undefined,true)
       +'</div>';
     }else{
-      // Stripe — eyebrow "NEW STRIPE" (or "NEW DEGREE" on black);
-      // right column = beltSVG with deg markings + custom ordinal
-      // caption ("2ND STRIPE") so the label reads as a stripe
-      // milestone instead of bb()'s default "{Belt} · N stripes".
+      // Stripe — eyebrow "NEW STRIPE" (or "NEW DEGREE" on black); right column
+      // is the bare beltSVG with deg markings. The ordinal caption ("2ND
+      // STRIPE") that used to sit under it is gone: the eyebrow already names
+      // the milestone and the congratulations line now carries the detail.
       const _prog=s.prog||'adult';
       const _isBlack=p.toBelt==='black';
-      const _unit=_isBlack?'DEGREE':'STRIPE';
       _eyebrow=_isBlack?'New degree':'New stripe';
-      const _ordCap=deg+_ordSuffix(deg).toUpperCase()+' '+_unit;
-      const _stripeCaption='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);text-align:center;margin-top:2px">'+_ordCap+'</div>';
       _trail='<div style="display:inline-flex;flex-direction:column;gap:0;align-items:center;flex-shrink:0">'
         +beltSVG(p.toBelt,deg,_prog,110)
-        +_stripeCaption
       +'</div>';
     }
+    // Belt and stripe share one text column below, so the line is resolved per
+    // branch here and rendered once. Empty (no copy for this belt) → no div.
+    const _congrats=isBelt?_wallCongrats('belt',p.toBelt,p.toDeg||0):_wallCongrats('stripe',p.toBelt,deg);
+    const _congratsHtml=_congrats?('<div style="'+_WALL_CONGRATS_STYLE+'">'+_congrats+'</div>'):'';
     return '<div class="card" style="margin-bottom:8px;position:relative">'+_hideKebab('hidePromoConfirm(\''+p._dbId+'\')')+'<div '+tap+'>'
       +avStu(s,40)
       +'<div style="flex:1;min-width:0">'
         +'<div style="'+_eyebrowStyle+'">'+_eyebrow+'</div>'
         +'<div style="'+_nameStyle+'">'+s.name+'</div>'
+        +_congratsHtml
         +'<div style="'+_dateStyle+'">'+when+'</div>'
       +'</div>'
       +_trail
