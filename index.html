@@ -7612,6 +7612,13 @@ function rProgress(){
   // tab the new render doesn't recognise.
   if(S.ptab==='techniques'||S.ptab==='wall')S.ptab='rank';
   var s=S.me;
+  // CHILD SAFETY / precedence — a kid selected in the parent switcher outranks
+  // the viewer's own staff identity. Without this, a staff user who is ALSO a
+  // parent (owner/instructor with linked kids) fell into the staff-self branch
+  // below, which returns before the kid-resolution block ever runs, so they saw
+  // their OWN rank/journey while a kid was selected. Same precedence the rest of
+  // the app already uses (myStudentRow, rMembers): kid first, then role.
+  var _kidActiveTop=(typeof activeProfileIsSelf==='function'&&!activeProfileIsSelf()&&typeof parentSelectedChild==='function')?parentSelectedChild():null;
   // The signed-in user's linked students row, if any. Owners and
   // professors often train as students in their own academy, in which
   // case this is the row that carries their personal training /
@@ -7619,7 +7626,7 @@ function rProgress(){
   // instructor career timeline, not personal training) whenever it
   // exists.
   var myStu=(S.profile&&STUDENTS.find(function(x){return x._userId===S.profile.id;}))||null;
-  if(isStaffOrOwner()){
+  if(isStaffOrOwner()&&!_kidActiveTop){
     var staff=STAFF.find(function(x){return x._userId&&S.profile&&x._userId===S.profile.id;})
              ||STAFF.find(function(x){return x.name===s.name;})
              ||null;
