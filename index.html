@@ -6858,7 +6858,13 @@ function rCommunityWall(){
         +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+bb(s.belt,s.deg||0,s.prog||'adult',undefined,true)+'</div>'
       +'</div>'
       +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
-      +_ossControlHtml(s._dbId)
+      // Oss control left, Share right. Wrapped at the CALL SITE so
+      // _ossControlHtml (which owns its own inline-flex + padding) is untouched.
+      // shareWelcome keys on the STUDENTS legacy id, matching its own lookup.
+      +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'
+        +_ossControlHtml(s._dbId)
+        +shareBtnHtml('event.stopPropagation();shareWelcome(\''+s.id+'\')')
+      +'</div>'
     +'</div>';
     }
     const {p,s}=item;
@@ -6912,7 +6918,13 @@ function rCommunityWall(){
       +_trail
       +'</div>'
       +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
-      +ossHtml
+      // Same wrapper for belt + stripe (they share this return). sharePromo
+      // looks promotions up by legacy id (PROMOTION_LOG.find(x=>x.id===...)),
+      // so p.id is the correct key here — not p._dbId.
+      +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'
+        +ossHtml
+        +shareBtnHtml('event.stopPropagation();sharePromo(\''+p.id+'\')')
+      +'</div>'
     +'</div>';
   }).join('');
   const _loadMore=(feed.length>_wallShown)
@@ -10962,6 +10974,10 @@ function canUploadPhotoFor(s){
 
 const SHARE_APP_URL='https://mybjj-app.com';
 function appShareUrl(){return (location.hostname==='mybjj-app.com'||location.hostname==='www.mybjj-app.com')?location.origin:SHARE_APP_URL;}
+// Trial-focused variant for Wall shares: a promotion or welcome posted to
+// social is seen by non-members, so the link points at the trial signup rather
+// than the app root. Other share surfaces (events, programme) keep appShareUrl.
+function appTrialUrl(){return appShareUrl()+'/trial';}
 function shareWhatsApp(text){window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener');}
 const SHARE_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
 const LINK_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
@@ -10973,13 +10989,32 @@ function sharePromoText(p,s){
   const beltLbl=(beltDef(p.toBelt,prog).label||'').toLowerCase();
   const unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
   // Batch share-content — emoji prefixes removed (no emoji in copy).
-  if(p.isNewBelt) return 'Congratulations to '+p.studentName+' who just received their '+beltLbl+' belt at MyBJJ '+unit+'! Hard work pays off.\n\n'+appShareUrl();
-  return p.studentName+' just earned a new stripe on their '+beltLbl+' belt at MyBJJ '+unit+'!\n\n'+appShareUrl();
+  if(p.isNewBelt) return 'Congratulations to '+p.studentName+' who just received their '+beltLbl+' belt at MyBJJ '+unit+'! Hard work pays off.\n\n'+appTrialUrl();
+  return p.studentName+' just earned a new stripe on their '+beltLbl+' belt at MyBJJ '+unit+'!\n\n'+appTrialUrl();
 }
 function sharePromo(legacyId){
   const p=PROMOTION_LOG.find(x=>x.id===legacyId);if(!p)return;
   const s=STUDENTS.find(x=>x.id===p.studentId);
   shareNative(sharePromoText(p,s),'MyBJJ promotion');
+}
+// Welcome-card share, mirroring sharePromo. Unit is resolved the same way
+// sharePromoText does it — STUDENTS rows carry the unit LEGACY id in s.unit
+// (mapper: unit:uMap[r.unit_id]), which is what UNITS.id holds; there is no
+// s.unitId field. Graded arrivals name the belt they walked in with.
+function shareWelcomeText(s){
+  const prog=(s&&s.prog)||'adult';
+  const beltLbl=(beltDef(s.belt,prog).label||'').toLowerCase();
+  const unit=(UNITS.find(u=>u.id===s.unit)||{name:''}).name;
+  const graded=!(s.belt==='white'&&(s.deg|0)===0);
+  const who=s.name;
+  const line=graded
+    ? who+' just joined MyBJJ'+(unit?(' '+unit):'')+' as a '+beltLbl+' belt! Welcome to the mats.'
+    : who+' just joined MyBJJ'+(unit?(' '+unit):'')+'! Welcome to the mats.';
+  return line+'\n\n'+appTrialUrl();
+}
+function shareWelcome(legacyId){
+  const s=STUDENTS.find(x=>x.id===legacyId);if(!s)return;
+  shareNative(shareWelcomeText(s),'MyBJJ welcome');
 }
 // G17.2b — shareJourneyEntry removed (per-milestone Share button
 // dropped across all journey timelines). The Promote-on-completion
