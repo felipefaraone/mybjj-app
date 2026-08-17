@@ -6771,8 +6771,35 @@ function rCommunityWall(){
     .filter(s=>s&&s.prog==='adult'&&(!curUnit||s.unit===curUnit)&&s._createdAt&&!s._welcomeHidden&&!String(s.id||'').startsWith('imp_'))
     .filter(s=>{const d=new Date(s._createdAt);return !isNaN(d)&&d>=_welcomeCutoff;})
     .map(s=>({kind:'welcome',s,date:s._createdAt}));
+  // Dedupe — welcome wins, but only for the JOIN itself. Since v448 opened the
+  // welcome card to members who join already graded, someone created in the
+  // last 30 days who also carried a promotion row showed twice (one welcome +
+  // one promo) for the same event: the rank they walked in with. Those rows are
+  // registration artifacts (a transfer miscadastered then corrected) and are
+  // dated at or before the join, so they are suppressed — the welcome already
+  // names that belt. A promotion dated AFTER the join is a real milestone the
+  // member earned here (a beginner's first stripe inside 30 days) and must
+  // still show alongside their welcome.
+  // Keyed on the STUDENTS legacy id both lists carry (welcomes: w.s.id, promos:
+  // e.s.id via the STUDENTS resolve above), built from the SAME `welcomes`
+  // array that renders. Members without an active welcome are unaffected.
+  const _welcomeJoinById={};
+  welcomes.forEach(w=>{ if(w.s&&w.s.id)_welcomeJoinById[w.s.id]=w.s._createdAt; });
   // Interleave promotions + welcomes into one feed, newest first.
-  const feed=eligible.map(e=>({kind:'promo',p:e.p,s:e.s,date:e.p.date}))
+  const feed=eligible
+    .filter(e=>{
+      if(!e.s)return true;
+      const j=_welcomeJoinById[e.s.id];
+      if(!j)return true;                              // no active welcome → keep
+      // Compare CALENDAR DAYS, not instants: _createdAt is a timestamp while
+      // p.date is date-only (parses to 00:00), so a same-day promotion would
+      // otherwise read as "before the join" and be wrongly suppressed. Sliced
+      // ISO dates sort lexicographically, so a plain string compare is correct.
+      const pd=String(e.p.date||'').slice(0,10);
+      const jd=String(j).slice(0,10);
+      return pd > jd;                                 // keep only promos dated a LATER day
+    })
+    .map(e=>({kind:'promo',p:e.p,s:e.s,date:e.p.date}))
     .concat(welcomes)
     .sort((a,b)=>new Date(b.date)-new Date(a.date));
   const _wallShown=S.wallShown||5;
@@ -6828,7 +6855,7 @@ function rCommunityWall(){
           +_wCongratsHtml
           +'<div style="'+wDate+'">'+wWhen+'</div>'
         +'</div>'
-        +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+bb('white',0,'adult',undefined,true)+'</div>'
+        +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'+bb(s.belt,s.deg||0,s.prog||'adult',undefined,true)+'</div>'
       +'</div>'
       +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
       +_ossControlHtml(s._dbId)
