@@ -6863,7 +6863,7 @@ function rCommunityWall(){
       // shareWelcome keys on the STUDENTS legacy id, matching its own lookup.
       +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'
         +_ossControlHtml(s._dbId)
-        +shareBtnHtml('event.stopPropagation();shareWelcome(\''+s.id+'\')')
+        +(canShareCard(s)?shareBtnHtml('event.stopPropagation();_shareCard(\'welcome\',\''+s.id+'\')'):'')
       +'</div>'
     +'</div>';
     }
@@ -6923,7 +6923,7 @@ function rCommunityWall(){
       // so p.id is the correct key here — not p._dbId.
       +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'
         +ossHtml
-        +shareBtnHtml('event.stopPropagation();sharePromo(\''+p.id+'\')')
+        +(canShareCard(s)?shareBtnHtml('event.stopPropagation();_shareCard(\'promo\',\''+p.id+'\')'):'')
       +'</div>'
     +'</div>';
   }).join('');
@@ -11015,6 +11015,167 @@ function shareWelcomeText(s){
 function shareWelcome(legacyId){
   const s=STUDENTS.find(x=>x.id===legacyId);if(!s)return;
   shareNative(shareWelcomeText(s),'MyBJJ welcome');
+}
+// ── Wall achievement-card share ─────────────────────────────────────────────
+// Who may share a card: staff/owner can share anyone's, a member can only share
+// their own. Used to decide whether the button is EMITTED at all (not merely
+// hidden), and re-checked inside _shareCard as defence in depth.
+function canShareCard(s){
+  return !!(s&&((typeof isStaffOrOwner==='function'&&isStaffOrOwner())||(s._userId&&S.profile&&s._userId===S.profile.id)));
+}
+// Relative luminance of a #rrggbb, used to pick how hard to darken the belt
+// colour so white text stays readable on white/yellow belts as well as black.
+function _shareLum(hex){
+  const m=/^#?([0-9a-f]{6})$/i.exec(String(hex||''));
+  if(!m)return 0.2;
+  const n=parseInt(m[1],16);
+  return (0.2126*((n>>16)&255)+0.7152*((n>>8)&255)+0.0722*(n&255))/255;
+}
+function _shareWrap(ctx,text,maxW,maxLines){
+  const words=String(text||'').split(/\s+/).filter(Boolean);
+  const lines=[];let cur='';
+  for(const w of words){
+    const t=cur?cur+' '+w:w;
+    if(ctx.measureText(t).width>maxW&&cur){lines.push(cur);cur=w;if(lines.length>=maxLines)break;}
+    else cur=t;
+  }
+  if(cur&&lines.length<maxLines)lines.push(cur);
+  return lines;
+}
+// Draws the 9:16 share card off-screen and resolves the canvas. EVERY external
+// image path is guarded: photoSrc returns '' until the signed URL is cached, a
+// cross-origin load can fail, and a tainted canvas would throw on toBlob — all
+// three fall through to the initials circle so a card is always produced.
+async function _drawShareCard(opts){
+  opts=opts||{};
+  const W=1080,H=1920;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');
+  const belt=opts.belt||'white';
+  const base=BELT_COLORS[belt]||'#111827';
+  // Belt colour, then an adaptive dark wash: light belts need a heavier veil to
+  // carry white text, black already sits dark enough.
+  ctx.fillStyle=base;ctx.fillRect(0,0,W,H);
+  const a=Math.max(0.32,Math.min(0.82,1-0.17/Math.max(0.05,_shareLum(base))));
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'rgba(0,0,0,'+(a*0.82).toFixed(3)+')');
+  g.addColorStop(1,'rgba(0,0,0,'+Math.min(0.92,a+0.12).toFixed(3)+')');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // Page webfonts are available to canvas once loaded; harmless if unsupported.
+  try{ if(document.fonts&&document.fonts.ready)await document.fonts.ready; }catch(_){}
+  const COND='"Barlow Condensed","Arial Narrow",Impact,sans-serif';
+  const BODY='"Barlow",Helvetica,Arial,sans-serif';
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  // Wordmark + unit, top-left. Text only — no logo fetch, so no extra CORS surface.
+  ctx.fillStyle='#fff';ctx.font='700 76px '+COND;
+  ctx.fillText('MyBJJ',84,150);
+  if(opts.unit){ctx.fillStyle='rgba(255,255,255,.78)';ctx.font='500 38px '+BODY;ctx.fillText(opts.unit,86,206);}
+  // Avatar — circle, photo when we have one, initials otherwise.
+  const cx=W/2,cy=740,r=200;
+  let drew=false;
+  const url=opts.photoUrl?photoSrc(opts.photoUrl):'';
+  if(url){
+    try{
+      const img=new Image();
+      img.crossOrigin='anonymous';
+      img.src=url;
+      await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;setTimeout(rej,6000);});
+      try{ if(img.decode)await img.decode(); }catch(_){}
+      ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.clip();
+      const sc=Math.max((r*2)/img.width,(r*2)/img.height);
+      const dw=img.width*sc,dh=img.height*sc;
+      ctx.drawImage(img,cx-dw/2,cy-dh/2,dw,dh);
+      ctx.restore();
+      drew=true;
+    }catch(_){ drew=false; }
+  }
+  if(!drew){
+    ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.closePath();
+    ctx.fillStyle='rgba(255,255,255,.14)';ctx.fill();ctx.restore();
+    ctx.fillStyle='#fff';ctx.font='700 150px '+COND;ctx.textAlign='center';
+    ctx.fillText(String(opts.initials||'?').toUpperCase(),cx,cy+52);
+    ctx.textAlign='left';
+  }
+  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=8;ctx.stroke();
+  ctx.textAlign='center';
+  // Eyebrow / name.
+  if(opts.eyebrow){ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='700 42px '+COND;ctx.fillText(String(opts.eyebrow).toUpperCase(),cx,cy+r+112);}
+  ctx.fillStyle='#fff';ctx.font='700 88px '+COND;
+  const nameLines=_shareWrap(ctx,opts.name||'',W-200,2);
+  let y=cy+r+206;
+  nameLines.forEach(l=>{ctx.fillText(l,cx,y);y+=92;});
+  // Simplified belt bar: belt colour with a dark band carrying `deg` stripes.
+  const bw=520,bh=62,bx=cx-bw/2,by=y+14;
+  ctx.fillStyle=base;ctx.fillRect(bx,by,bw,bh);
+  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=3;ctx.strokeRect(bx,by,bw,bh);
+  const band=Math.round(bw*0.26);
+  ctx.fillStyle=(belt==='black')?'#3f3f46':'#111827';
+  ctx.fillRect(bx+bw-band-40,by,band,bh);
+  const deg=Math.max(0,Math.min(6,opts.deg|0));
+  for(let i=0;i<deg;i++){
+    ctx.fillStyle='#fff';
+    ctx.fillRect(bx+bw-band-40+18+i*30,by+10,14,bh-20);
+  }
+  y=by+bh+72;
+  // Congratulations line, wrapped.
+  if(opts.congrats){
+    ctx.fillStyle='rgba(255,255,255,.93)';ctx.font='500 42px '+BODY;
+    _shareWrap(ctx,opts.congrats,W-220,3).forEach(l=>{ctx.fillText(l,cx,y);y+=58;});
+  }
+  // Footer — the link is BAKED IN so it survives even if the OS drops the text.
+  ctx.fillStyle='#fff';ctx.font='700 50px '+COND;
+  ctx.fillText('Book a free trial',cx,H-190);
+  ctx.fillStyle='rgba(255,255,255,.82)';ctx.font='500 40px '+BODY;
+  ctx.fillText('mybjj.com.au',cx,H-128);
+  return cv;
+}
+// Orchestrates an image share, falling back to the existing text-only path so
+// there is ALWAYS a working share: no canShare({files}) support, a tainted
+// canvas, a File constructor failure or any draw error all land on shareNative.
+async function _shareCard(kind,legacyId){
+  try{
+    let s=null,p=null,text='',eyebrow='',congrats='',belt='white',deg=0,unit='';
+    if(kind==='welcome'){
+      s=STUDENTS.find(x=>x.id===legacyId);if(!s)return;
+      if(!canShareCard(s))return;
+      belt=s.belt||'white';deg=s.deg|0;
+      eyebrow='New member';
+      const graded=!(s.belt==='white'&&(s.deg|0)===0);
+      congrats=_wallCongrats('welcome',s.belt,s.deg,s._dbId,graded?_gradedLabel(s):'');
+      unit=(UNITS.find(u=>u.id===s.unit)||{name:''}).name;
+      text=shareWelcomeText(s);
+    }else{
+      p=PROMOTION_LOG.find(x=>x.id===legacyId);if(!p)return;
+      s=STUDENTS.find(x=>x.id===p.studentId);if(!s)return;
+      if(!canShareCard(s))return;
+      const isBelt=!!p.isNewBelt||p.type==='belt';
+      belt=p.toBelt||'white';deg=p.toDeg|0;
+      eyebrow=isBelt?'New promotion':(belt==='black'?'New degree':'New stripe');
+      congrats=isBelt?_wallCongrats('belt',p.toBelt,p.toDeg||0,p._dbId):_wallCongrats('stripe',p.toBelt,deg,p._dbId);
+      unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
+      text=sharePromoText(p,s);
+    }
+    const cv=await _drawShareCard({belt,deg,prog:s.prog||'adult',name:s.name,initials:s.initials,photoUrl:s.photoUrl,eyebrow,congrats,unit});
+    cv.toBlob(async blob=>{
+      if(!blob){shareNative(text,'MyBJJ');return;}
+      try{
+        const file=new File([blob],'mybjj.jpg',{type:'image/jpeg'});
+        if(navigator.canShare&&navigator.canShare({files:[file]})){
+          try{ await navigator.share({files:[file],text,title:'MyBJJ'}); return; }
+          catch(e){ if(e&&e.name==='AbortError')return; }
+        }
+      }catch(_){}
+      shareNative(text,'MyBJJ');
+    },'image/jpeg',0.9);
+  }catch(e){
+    console.warn('[mybjj] share card:',e);
+    // Last resort — never leave the button dead.
+    try{
+      if(kind==='welcome'){const s2=STUDENTS.find(x=>x.id===legacyId);if(s2)shareNative(shareWelcomeText(s2),'MyBJJ');}
+      else{const p2=PROMOTION_LOG.find(x=>x.id===legacyId);if(p2){const s2=STUDENTS.find(x=>x.id===p2.studentId);shareNative(sharePromoText(p2,s2),'MyBJJ');}}
+    }catch(_){}
+  }
 }
 // G17.2b — shareJourneyEntry removed (per-milestone Share button
 // dropped across all journey timelines). The Promote-on-completion
