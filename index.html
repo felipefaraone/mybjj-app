@@ -336,7 +336,11 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .steparrow:disabled{opacity:.4;cursor:not-allowed}
 .stepinfo{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;letter-spacing:.5px;color:var(--text);line-height:1.1}
 .stepinfo small{display:block;font-family:'Barlow',sans-serif;font-weight:500;font-size:11px;letter-spacing:0;color:var(--text3);margin-top:2px}
-.wjump{margin-left:auto;height:var(--ctrl-h);border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text2);font-family:'Barlow',sans-serif;font-weight:500;font-size:13px;padding:0 12px;cursor:pointer;flex-shrink:0}
+/* Fused week control: .stepjump holds the visible label and stretches the
+   native select invisibly over it, so one tap target does both jobs. */
+.stepjump{position:relative;flex:1;min-width:0;cursor:pointer}
+.stepcaret{color:var(--text3);font-size:13px;margin-left:6px;font-weight:700}
+.wjump{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;-webkit-appearance:none;appearance:none;border:none;background:none;padding:0;margin:0}
 .wseg-add{flex:0 0 auto;min-width:0;height:36px;padding:0 12px;border-radius:8px;border:1.5px dashed var(--border2);background:transparent;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px}
 .bblue{width:100%;background:#1A5DAD;color:#fff;border:none;border-radius:10px;padding:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
 .admin-action-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px;border:1px solid var(--border);background:var(--card);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--blue);cursor:pointer;transition:background .15s ease,border-color .15s ease}
@@ -7995,9 +7999,15 @@ function rSchedule(){
     }
     weekStepHtml='<div class="stepper">'
       +_arrow(_prevW,'‹','Previous week')
-      +'<div class="stepinfo">'+_stepTitle+'<small>'+_stepSub+'</small></div>'
+      // Label + jump fused into ONE control: the native <select> is stretched
+      // transparently over the visible label, so tapping "WEEK N · MONTH ▾"
+      // opens the week list. Same overlay idiom the app already uses for
+      // native controls. Options, _wjump and the arrows are untouched.
+      +'<div class="stepjump">'
+        +'<div class="stepinfo">'+_stepTitle+'<span class="stepcaret">▾</span><small>'+_stepSub+'</small></div>'
+        +'<select class="wjump" onchange="_wjump(this.value)" aria-label="Jump to week">'+_jumpOpts.join('')+'</select>'
+      +'</div>'
       +_arrow(_nextW,'›','Next week')
-      +'<select class="wjump" onchange="_wjump(this.value)" aria-label="Jump to week">'+_jumpOpts.join('')+'</select>'
     +'</div>';
   }
   // Cycle on → small muted caption above the selector telling everyone
