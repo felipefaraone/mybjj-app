@@ -10060,6 +10060,24 @@ async function onAuthed(){
       // showed their kid's belt as the headline, which is less useful
       // than "what's the kid's next class".
       if(S.me.role==='parent')S.tab='class';
+      // Web reload — return the user to the tab they were on. sessionStorage
+      // (per-tab, cleared when the tab closes), NOT the URL hash: the hash is
+      // reserved for Supabase auth tokens/errors and writing here would collide
+      // with that flow. Guards, in order: only a known TABS id is honoured; the
+      // parent -> class rule above always wins; and 'admin' is only restored for
+      // staff/owner so a stale value can't flash the Manage tab. rApp's
+      // !_showAdmin guard is the second line of defence at render time.
+      try{
+        const _savedTab=sessionStorage.getItem('mybjj_tab');
+        const _validTabs=(typeof TABS!=='undefined'&&TABS&&TABS.map)?TABS.map(function(t){return t&&t.id;}):['class','progress','community','schedule','admin'];
+        if(_savedTab&&_validTabs.indexOf(_savedTab)>=0&&S.me.role!=='parent'){
+          if(_savedTab==='admin'){
+            if(typeof isStaffOrOwner==='function'&&isStaffOrOwner())S.tab=_savedTab;
+          }else{
+            S.tab=_savedTab;
+          }
+        }
+      }catch(_){}
       // If the user arrived via a reset-password link, jump straight
       // into the Set Password sub-panel so they finish the recovery
       // before doing anything else.
@@ -13283,7 +13301,7 @@ function rPending(){
     : `Hi <strong>${email}</strong>.<br/>Your account isn’t on the access list yet. Once an admin approves you, you’ll be able to sign in here.`;
   return `<div class="lw">${authHero()}<div class="lbody"><div class="fg" style="padding:24px"><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);letter-spacing:.5px;margin-bottom:10px">${title}</div><div style="color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:18px">${body}</div><button class="bout" onclick="logout()">Sign out</button></div></div></div>`;
 }
-function setTab(t){S.tab=t;S.classAdd=null;S.profilePrev=null;render();}
+function setTab(t){S.tab=t;try{sessionStorage.setItem('mybjj_tab',t);}catch(_){}S.classAdd=null;S.profilePrev=null;render();}
 // Glass-nav sliding pill. render() rebuilds .bnav every time, so the pill
 // is re-created at its LAST X (window._navPillX, inlined in the markup);
 // this runs post-layout and sets the pill's transform to the active tab's
