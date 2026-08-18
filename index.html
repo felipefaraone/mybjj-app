@@ -692,6 +692,18 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
   .rail-me-rl{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .rail-me-chev{width:16px;height:16px;flex-shrink:0;color:var(--text3)}
 
+  /* Parent kid switcher: on mobile it is a full-width strip framed like a
+     header (surface bg + bottom border). On desktop the rail already owns that
+     role, so the framing reads as a stray second header — drop it and let the
+     chips sit loose at the top of the content. !important because the framing
+     is inline on the element. Horizontal alignment with the content column is
+     already handled by the #app > .header + div:not(.content) rule above. */
+  .pk-switch{background:transparent!important;border-bottom:none!important}
+  /* the outer wrapper already carries the shell's horizontal padding (rule
+     above), so the inner row's own inline 16px would double-count and push
+     the chips 16px right of the content column. Zero it on desktop only. */
+  .pk-switch > div{padding-left:0!important;padding-right:0!important}
+
   /* Wall feed spans the content column on desktop; mobile keeps the 620px cap
      from the base rule. .feed has no other styling, so widening is safe. */
   .feed{max-width:none}
@@ -5480,7 +5492,7 @@ function rParentKidSwitcher(){
   // strip reads: [kid1, kid2, …] [+ Add child] (or just [+ Add child]
   // when they have zero kids linked).
   const leadingChip=nonTrainingParent?'':selfChip;
-  return '<div style="background:var(--surface);border-bottom:1px solid var(--border);padding:8px 0"><div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px;scrollbar-width:none">'+leadingChip+kidChips+addChip+'</div></div>';
+  return '<div class="pk-switch" style="background:var(--surface);border-bottom:1px solid var(--border);padding:8px 0"><div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px;scrollbar-width:none">'+leadingChip+kidChips+addChip+'</div></div>';
 }
 // B1 — Parent profile area. Identity surface separate from the
 // drawer (settings) and from the Progress tab (activity). Tapping the
@@ -9878,7 +9890,7 @@ function render(){
 // Etapa 3 — doLogin demo helper deleted. Real auth lives entirely in
 // signInGoogle / signInMagic / signInWithEmail and the email-step
 // flow in rAuth.
-function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.classAdd=null;if(sb)sb.auth.signOut();render();}
+function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.classAdd=null;/* drop the persisted tab so the NEXT login starts on Classes; an in-session reload still restores it */try{sessionStorage.removeItem('mybjj_tab');}catch(_){}if(sb)sb.auth.signOut();render();}
 
 function friendlyAuthError(err){
   if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
