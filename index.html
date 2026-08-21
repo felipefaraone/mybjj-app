@@ -13338,7 +13338,7 @@ function rPending(){
     : `Hi <strong>${email}</strong>.<br/>Your account isn’t on the access list yet. Once an admin approves you, you’ll be able to sign in here.`;
   return `<div class="lw">${authHero()}<div class="lbody"><div class="fg" style="padding:24px"><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);letter-spacing:.5px;margin-bottom:10px">${title}</div><div style="color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:18px">${body}</div><button class="bout" onclick="logout()">Sign out</button></div></div></div>`;
 }
-function setTab(t){S.tab=t;try{sessionStorage.setItem('mybjj_tab',t);}catch(_){}S.classAdd=null;S.profilePrev=null;render();}
+function setTab(t){S.tab=t;try{sessionStorage.setItem('mybjj_tab',t);}catch(_){}S.classAdd=null;S.profilePrev=null;render();/* natural break — take any pending SW update now (no-op unless one is waiting AND nothing is open) */try{if(typeof _swTryAutoUpdate==='function')_swTryAutoUpdate();}catch(_){}}
 // Glass-nav sliding pill. render() rebuilds .bnav every time, so the pill
 // is re-created at its LAST X (window._navPillX, inlined in the markup);
 // this runs post-layout and sets the pill's transform to the active tab's
@@ -17364,16 +17364,93 @@ window.addEventListener('load',()=>{
   drainAttendanceQueue();
 });
 // ---------------------------------------------------------------------------
-// SW update detection. When a new sw.js ships, surface a one-tap
-// "Update available — Refresh" banner. The user is in control: no
-// auto skipWaiting, no auto reload outside the controllerchange
-// listener. updateViaCache:'none' is REQUIRED — without it, GitHub
-// Pages can cache sw.js for 10+ minutes and new versions go
-// undetected (the exact failure mode that prompted this batch).
+// SW update: SILENT auto-update, applied at the next safe moment.
+//
+// Flow: a new sw.js is detected -> we only RECORD it (_swUpdatePending +
+// _swWaitingReg). SKIP_WAITING is deliberately NOT posted here. It is posted
+// later, from applySwUpdate(), once _swSafeToReload() says the user is at a
+// natural break — on a tab switch, or after a spell of inactivity. That message
+// makes the new SW activate and clients.claim(), which fires controllerchange,
+// and THAT listener (unchanged, below) performs the single reload.
+//
+// Deferring the message is what makes this safe. If we posted SKIP_WAITING at
+// detection, clients.claim() (sw.js) would fire controllerchange immediately and
+// the page would reload mid-modal / mid-typing, defeating the gate entirely; it
+// would also leave the NEW worker serving the OLD page for any gated wait.
+// Holding the message keeps the old SW in control until the moment we reload.
+//
+// updateViaCache:'none' is REQUIRED — without it, GitHub Pages can cache sw.js
+// for 10+ minutes and new versions go undetected.
 // ---------------------------------------------------------------------------
 let _swUpdateBannerShown=false;
 let _swWaitingReg=null;
 let _swReloading=false;
+let _swUpdatePending=false;       // a new SW is installed and waiting for a safe moment
+let _swPendingSince=0;            // epoch ms it started waiting (drives the banner fallback)
+let _swIdleTimer=null;            // 30s poll, only runs while an update is pending
+let _swLastInteract=Date.now();   // last mousemove/keydown/touchstart/click
+const _SW_IDLE_MS=10000;          // user must be quiet this long for the idle path
+const _SW_POLL_MS=30000;          // how often the idle path re-checks
+const _SW_BANNER_MS=300000;       // 5 min stuck (modal open / typing) -> show the banner
+
+// True only when a reload would interrupt nothing. Flags are read off a
+// possibly-undefined S and the whole body is try/caught, so a renamed or removed
+// flag yields undefined (falsy) rather than throwing — a broken gate must never
+// break the app, and an unknown state is treated as UNSAFE.
+function _swSafeToReload(){
+  try{
+    if(typeof S==='undefined'||!S)return false;
+    // Any open modal / sheet / sub-panel / in-flight action blocks the reload.
+    if(S.editCls!=null)return false;
+    if(S.addCls||S.cdel||S.markP||S.closeDay||S.oneoff||S.editJny)return false;
+    if(S.contactLogFor||S.qrFor||S.waiverDoc||S.panelOpen||S.sub||S.inboxOpen)return false;
+    if(S.cardEx||S.promoteFor||S.fbModalFor||S.staffNoteModalFor||S.classAdd)return false;
+    if(S.cropOpen||S.addStaff||S.removeStaffConfirm||S.emailEdit||S.changeEmail)return false;
+    if(S.bugReport||S.cycleSetup||S.socialEdit||S.socialMore||S.addKidModal)return false;
+    if(S.convertKid||S.rescheduleTrial||S.waiverSheet||S.editMe)return false;
+    if(S.photoMenu||S.photoLightbox||S.parentPicker)return false;
+    // Mid-typing: never yank the page out from under an unsaved field.
+    const ae=document.activeElement;
+    if(ae){
+      const tag=(ae.tagName||'').toUpperCase();
+      if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return false;
+      if(ae.isContentEditable)return false;
+    }
+    // Unsent attendance writes: drain before reloading.
+    if(typeof queueCount==='function'&&queueCount()!==0)return false;
+    return true;
+  }catch(_){ return false; }
+}
+// The safe-moment trigger. applySwUpdate() is the ONLY place SKIP_WAITING is
+// posted, so the automatic paths and the banner click are byte-identical.
+function _swTryAutoUpdate(){
+  if(!_swUpdatePending||_swReloading)return;
+  if(!_swSafeToReload())return;
+  try{applySwUpdate();}catch(_){}
+}
+function _swMarkInteraction(){ _swLastInteract=Date.now(); }
+// Starts the idle watcher + banner clock the first time an update lands.
+// Idempotent: later calls only refresh the registration handle.
+function _swBeginPendingUpdate(reg){
+  _swWaitingReg=reg;
+  if(_swUpdatePending)return;
+  _swUpdatePending=true;
+  _swPendingSince=Date.now();
+  try{
+    ['mousemove','keydown','touchstart','click'].forEach(function(ev){
+      document.addEventListener(ev,_swMarkInteraction,{passive:true});
+    });
+  }catch(_){}
+  if(_swIdleTimer)return;
+  _swIdleTimer=setInterval(function(){
+    if(!_swUpdatePending||_swReloading){clearInterval(_swIdleTimer);_swIdleTimer=null;return;}
+    // Quiet long enough AND nothing open -> take the update now.
+    if((Date.now()-_swLastInteract)>=_SW_IDLE_MS&&_swSafeToReload()){_swTryAutoUpdate();return;}
+    // Stuck 5 min (modal open throughout, or still typing) -> banner fallback so
+    // nobody is ever silently pinned to a stale build.
+    if((Date.now()-_swPendingSince)>=_SW_BANNER_MS&&_swWaitingReg)_showUpdateBanner(_swWaitingReg);
+  },_SW_POLL_MS);
+}
 
 function _showUpdateBanner(reg){
   if(_swUpdateBannerShown)return;
@@ -17394,7 +17471,7 @@ if('serviceWorker' in navigator){
       console.log('[mybjj] SW registered');
       // Already-waiting SW from a previous session: banner immediately.
       if(reg.waiting&&navigator.serviceWorker.controller){
-        _showUpdateBanner(reg);
+        _swBeginPendingUpdate(reg);   // silent — banner only after the 5-min fallback
       }
       // New SW found during this session.
       reg.addEventListener('updatefound',()=>{
@@ -17402,7 +17479,7 @@ if('serviceWorker' in navigator){
         if(!nw)return;
         nw.addEventListener('statechange',()=>{
           if(nw.state==='installed'&&navigator.serviceWorker.controller){
-            _showUpdateBanner(reg);
+            _swBeginPendingUpdate(reg);   // silent — applied at the next safe moment
           }
         });
       });
