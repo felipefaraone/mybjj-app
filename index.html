@@ -323,16 +323,19 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
    full-width invite/waiver row. Mobile keeps the shape the card has always had:
    identity left with the belt beside it, progress underneath, invite last.
    Desktop re-lays the SAME markup into three columns via grid-template-areas. */
-.rcard{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'rid rbelt' 'rprog rprog' 'rinv rinv';column-gap:12px}
+/* Mobile: one column, three stacked sections separated by rules. The vertical
+   divider is a desktop-only element. */
+.rcard{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:'rid' 'rprog' 'rinv'}
 /* flex-start, not center: the identity block is taller than the 34px avatar
    whenever the name wraps (long names + a membership badge on mobile), and
    centring left the avatar floating beside the middle of a two-line block.
    Anchoring it to the top keeps it beside the name's FIRST line. No margin
    offset — measured cap alignment is already correct at 0. */
 .rc-id{grid-area:rid;display:flex;align-items:flex-start;gap:10px;min-width:0}
-.rc-belt{grid-area:rbelt;justify-self:end;align-self:start}
-.rc-prog{grid-area:rprog;min-width:0}
-.rc-inv{grid-area:rinv;min-width:0}
+.rc-flags{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px}
+.rc-div{display:none}
+.rc-prog{grid-area:rprog;min-width:0;border-top:1px solid var(--border);margin-top:10px;padding-top:10px}
+.rc-inv{grid-area:rinv;min-width:0;border-top:1px solid var(--border);margin-top:10px;padding-top:10px}
 /* Roster progress bars (phase 2), rendered inside .rc-prog. Three-part row:
    fixed label | flexible track | value. No --track token exists, so the track
    uses var(--border), which is the muted rule colour in both themes. */
@@ -572,8 +575,16 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
   /* identity keeps a 180px floor so it never collapses at the 900px breakpoint,
      where the rail + gutters leave the content column narrow; the middle zone
      yields first (minmax) and tops out at 330px on wide screens. */
-  .rcard{grid-template-columns:minmax(180px,1fr) minmax(0,330px) auto;grid-template-areas:'rid rprog rbelt' 'rinv rprog rbelt';column-gap:26px;align-items:center}
-  .rc-belt{align-self:center}
+  /* Variation 3: identity | 1px divider | progress | send. Identity is capped at
+     330px but yields to 200px at the breakpoint so the bars keep room; progress
+     takes the remainder (widest column) and the send button hugs its own column,
+     so a button can never sit on top of a bar. */
+  .rcard{grid-template-columns:minmax(180px,330px) 1px minmax(170px,1fr) max-content;grid-template-areas:'rid rdiv rprog rinv';column-gap:22px;align-items:center}
+  .rc-div{display:block;grid-area:rdiv;align-self:stretch;background:var(--border)}
+  /* the vertical rule replaces the mobile horizontal ones */
+  .rc-prog,.rc-inv{border-top:none;margin-top:0;padding-top:0}
+  /* keep the button on one line so the auto column cannot squeeze it to min-content */
+  .rc-inv{white-space:nowrap}
   .card.rcard:hover{border-color:var(--border2);box-shadow:var(--sh-md)}
   /* parent kid switcher: an unclassed inline-styled div emitted between
      .header and .content, so it is reached structurally. :not(.content) keeps
@@ -8729,19 +8740,25 @@ function rARosterListInner(){
     } else if(eg&&eg.status==='pending'){
       eligHint='<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:4px">'+eg.message+'</div>';
     }
-    const inviteRow=inviteStatusRow(s,s.prog==='kids'?'kidParent':'student',waiverChip(s));
+    // Variation 3 splits these: dots go under the identity block, the button gets
+    // its own column on the far right so it can never overlap the progress bars.
+    const _ip=_inviteParts(s,s.prog==='kids'?'kidParent':'student');
+    const _flagsHtml=_ip.flag+(waiverChip(s)||'');
+    const _sendHtml=_ip.action;
     // Wrapper, onclick and data-sid are unchanged — the whole card still opens
     // the profile. hideCaption=true on bb(): the belt band alone carries the
     // rank here, matching the People and Wall cards.
     return '<div class="card rcard" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="rc-id">'+avStu(s,34)
-      +'<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+s.name+onHoldBadge+'</div>'
+      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+s.name+onHoldBadge
+      +'<span style="margin-left:auto;flex-shrink:0;display:inline-flex">'+bb(s.belt,s.deg||0,s.prog,'left',true)+'</span></div>'
       +(_showCtx?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div>':'')
       +statLine
+      +(_flagsHtml?'<div class="rc-flags">'+_flagsHtml+'</div>':'')
       +'</div></div>'
-      +'<div class="rc-belt">'+bb(s.belt,s.deg||0,s.prog,'left',true)+'</div>'
+      +'<div class="rc-div"></div>'
       +'<div class="rc-prog">'+eligHint+'</div>'
-      +'<div class="rc-inv">'+inviteRow+'</div>'
+      +(_sendHtml?'<div class="rc-inv">'+_sendHtml+'</div>':'')
       +'</div>';
   }).join('');
   const emptyMsg=list.length===0
@@ -10645,7 +10662,13 @@ function waiverChip(s){
   return '<span '+tap+' class="fl tap warn"><i></i>No waiver</span>';
 }
 
-function inviteStatusRow(target,kind,extraChip){
+// Single source for the sign-in state: WHICH flag to show and WHICH action button
+// belongs with it. The roster card places the two halves in different grid zones
+// (flags in the identity panel, button in its own right-hand column), while the
+// Staff tab keeps them together via inviteStatusRow below. Behaviour — labels,
+// onclick, stopPropagation, the canAct gate, the joined -> empty case — is
+// unchanged; only the packaging moved.
+function _inviteParts(target,kind){
   const isParent=kind==='kidParent';
   const isStaff=kind==='staff';
   const email=isParent?target.parentEmail:target.email;
@@ -10679,11 +10702,17 @@ function inviteStatusRow(target,kind,extraChip){
   // Variation 1: status flags cluster on the LEFT (sign-in flag + the waiver dot
   // passed in as extraChip), the action button sits far RIGHT via margin-left:auto.
   // extraChip moves INTO the flag group — no call-site change, it is already a param.
-  const flags=flag+(extraChip||'');
-  if(!flags&&!action)return '';
+  return {flag:flag,action:action};
+}
+// Combined row — the Staff tab has no progress/send columns to split into, so it
+// keeps the Variation 1 layout: flags clustered left, action pushed far right.
+function inviteStatusRow(target,kind,extraChip){
+  const p=_inviteParts(target,kind);
+  const flags=p.flag+(extraChip||'');
+  if(!flags&&!p.action)return '';
   return '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">'
     +(flags?'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0">'+flags+'</div>':'')
-    +action
+    +p.action
     +'</div>';
 }
 
