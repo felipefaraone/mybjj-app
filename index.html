@@ -17446,6 +17446,11 @@ let _swLastInteract=Date.now();   // last mousemove/keydown/touchstart/click
 const _SW_IDLE_MS=10000;          // user must be quiet this long for the idle path
 const _SW_POLL_MS=30000;          // how often the idle path re-checks
 const _SW_BANNER_MS=300000;       // 5 min stuck (modal open / typing) -> show the banner
+let _swReg=null;                  // the ServiceWorkerRegistration, once register() resolves
+let _swLastUpdateCheck=0;         // epoch ms of the last reg.update() we fired
+let _swUpdateTimer=null;          // the periodic "is there a new sw.js?" poll
+const _SW_UPDATE_MS=900000;       // 15 min between proactive update checks
+const _SW_FOCUS_MS=60000;         // min gap between focus/visibility-triggered checks
 
 // True only when a reload would interrupt nothing. Flags are read off a
 // possibly-undefined S and the whole body is try/caught, so a renamed or removed
@@ -17483,6 +17488,23 @@ function _swTryAutoUpdate(){
   try{applySwUpdate();}catch(_){}
 }
 function _swMarkInteraction(){ _swLastInteract=Date.now(); }
+// THE DETECTION TRIGGER. Everything downstream (updatefound -> pending -> idle
+// reload) only runs once the browser NOTICES a new sw.js, and on a single-page
+// PWA the user never reloads, so the browser almost never looks: a client can sit
+// on a stale build indefinitely with `waiting:false`. reg.update() is what makes
+// it look — it re-fetches sw.js (updateViaCache:'none' keeps that fetch off the
+// HTTP cache), and if the bytes differ the browser installs it and fires
+// updatefound. Without this call the entire auto-update chain is dead code.
+// Failures are swallowed: a missed check is a no-op, the next one retries.
+function _swCheckForUpdate(minGapMs){
+  if(!_swReg||_swReloading)return;
+  // A worker is already waiting — the idle path will take it. Nothing left to find.
+  if(_swUpdatePending)return;
+  const now=Date.now();
+  if(minGapMs&&(now-_swLastUpdateCheck)<minGapMs)return;
+  _swLastUpdateCheck=now;
+  try{ const p=_swReg.update(); if(p&&p.catch)p.catch(function(){}); }catch(_){}
+}
 // Starts the idle watcher + banner clock the first time an update lands.
 // Idempotent: later calls only refresh the registration handle.
 function _swBeginPendingUpdate(reg){
@@ -17537,6 +17559,19 @@ if('serviceWorker' in navigator){
           }
         });
       });
+      // Proactive checks — the piece that was missing. register() itself fetches
+      // sw.js once; after that nothing would ever look again without these.
+      _swReg=reg;
+      if(!_swUpdateTimer)_swUpdateTimer=setInterval(function(){_swCheckForUpdate(0);},_SW_UPDATE_MS);
+      // Backgrounded tabs get their timers throttled hard by the browser, so the
+      // visibility handler is what actually catches "user came back after a deploy".
+      // focus and visibilitychange often fire together; the shared throttle collapses them.
+      try{
+        document.addEventListener('visibilitychange',function(){
+          if(document.visibilityState==='visible')_swCheckForUpdate(_SW_FOCUS_MS);
+        });
+        window.addEventListener('focus',function(){_swCheckForUpdate(_SW_FOCUS_MS);});
+      }catch(_){}
     }).catch(err=>console.warn('[mybjj] SW reg failed:',err));
   });
   // Reload exactly once after the user-triggered skipWaiting completes
