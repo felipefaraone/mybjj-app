@@ -699,12 +699,15 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 
   /* ---- Classes agenda: chronological rail + time column + node --------- */
   .agenda{margin-top:6px}
-  /* rail sits at 99px = the 82px time column + half the 36px node column */
-  .agenda::before{content:"";position:absolute;left:99px;top:14px;bottom:14px;width:2px;background:var(--border)}
-  .crow{display:grid;grid-template-columns:82px 36px 1fr;align-items:start;margin-bottom:14px}
+  /* rail sits at 75px = the 64px time column + half the 24px node column, minus
+     half the rail's own 2px width, so the 2px band spans 75..77 centred on 76 —
+     exactly where .cnode's justify-content:center puts the dot. */
+  .agenda::before{content:"";position:absolute;left:75px;top:14px;bottom:14px;width:2px;background:var(--border)}
+  .crow{display:grid;grid-template-columns:64px 24px 1fr;align-items:start;margin-bottom:14px}
   /* the card carries its own stacking margin for mobile; the grid row owns it here */
   .crow > .card{margin-bottom:0}
-  .ctime{display:block;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:24px;line-height:1.05;text-align:right;color:var(--text);padding-top:16px}
+  /* flush left so the time lines up under the "Mon, 24 Aug" day label */
+  .ctime{display:block;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:24px;line-height:1.05;text-align:left;color:var(--text);padding-top:16px}
   .crow.past .ctime{color:var(--text3)}
   .cnode{display:flex;justify-content:center;padding-top:24px}
   .cnode i{width:11px;height:11px;border-radius:50%;background:var(--card);border:3px solid var(--blue);display:block;position:relative;z-index:1}
@@ -2133,7 +2136,7 @@ function _occFor(cid){
 // instructors can navigate to any class they're allowed to mark. TODAY
 // computation uses the Sydney-local date so a late-night class doesn't
 // flip to "yesterday" via UTC drift.
-const SCHEDULE_PAST_DAYS=7;
+const SCHEDULE_PAST_DAYS=6;
 const SCHEDULE_FUTURE_DAYS=6;
 function bdays(){
   const a=[];
@@ -5461,7 +5464,7 @@ function rClass(){
         btn=`<button disabled style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text2);cursor:default;width:100%">Checked in</button>`;
       }
     }
-    else if(isEnded){cc='card ended';btn=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);text-align:center;padding:10px 0;width:100%">Ended</div>`;}
+    else if(isEnded){cc='card ended';btn=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);text-align:right;padding:10px 0;width:100%">Ended</div>`;}
     else if(!isT){
       // G16-new — three-way split now. Past still shows "Class ended".
       // Tomorrow renders the active "I'm going" button (no end-of-day
@@ -5474,7 +5477,7 @@ function rClass(){
       const isTomorrow=skSd===dk(TOMORROW);
       if(isPast){
         cc='card ended';
-        btn=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);text-align:center;padding:10px 0;width:100%">Ended</div>`;
+        btn=`<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text3);text-align:right;padding:10px 0;width:100%">Ended</div>`;
       } else if(isTomorrow){
         btn=onHoldBlock?onHoldPill:`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;
       } else {
@@ -5510,6 +5513,10 @@ function rClass(){
       const _adultsOnly=all.filter(sid=>{const s=STUDENTS.find(x=>x.id===sid);return s&&s.prog!=='kids';});
       attBlock=rAtts(_adultsOnly,c.id);
     }
+    // rAtts / rAttsCountOnly both return '' when nobody is going yet, which left a
+    // silent gap. Say so instead — future tense while the class can still be joined,
+    // past tense once it has ended (same isEnded the check-in column above uses).
+    if(!attBlock)attBlock='<div class="divider" style="margin-top:12px;padding-top:12px"><span style="font-size:12px;color:var(--text3)">'+(isEnded?'No check-ins':'No check-ins yet')+'</span></div>';
     // Phase B2a — cancelled recurring class stays visible, dimmed, with a
     // CANCELLED pill. Reuses .card.ended's opacity (no CSS churn). The B1 fold
     // sets c._cancelled; the check-in column is left untouched (do-not-touch).
