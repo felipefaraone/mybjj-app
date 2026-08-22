@@ -4663,18 +4663,22 @@ async function saveFbModal(sid){
 // Promote modal (Phase 8 v2). Replaces the inline rPromoPanel buttons —
 // the panel was a confusing second action surface alongside the new
 // Admin Actions row at the top of the profile.
-function openPromoteModal(sid){
+function openPromoteModal(sid, opts){
   if(!canEditClassCounts())return;
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
   S.promoteFor=sid;
   // Form state seeded from the student's current belt/deg. Belt change
   // re-renders so the stripe dropdown's max can react (6 on black, 4
   // elsewhere). Other inputs write through without re-render.
+  // opts.backfill opens the modal in history-only mode (setCurrent:false) so
+  // savePromote takes its Mode 3 path: records a past grading date as a hidden
+  // promotions row + recompute, WITHOUT changing the current belt. Callers that
+  // pass no opts keep the default current-belt promotion mode.
   S.promoteForm={
     belt:s.belt||'white',
     deg:Number.isFinite(s.deg)?s.deg:0,
     date:new Date().toISOString().slice(0,10),
-    setCurrent:true
+    setCurrent:!(opts&&opts.backfill)
   };
   render();
 }
@@ -8590,9 +8594,18 @@ function rARosterListInner(){
       // then dates the clock to the import, fabricating "0/N mo". null is not zero
       // — when the anchor is missing show classes only, plus (staff only) a muted
       // "grading date not set" so the gap is visible instead of a fake 0/N.
+      // A missing anchor is fixable, so offer the fix inline instead of leaving a
+      // dead-end label: opens THIS modal in backfill mode (history-only). Gated on
+      // canEditClassCounts() — the same permission openPromoteModal itself enforces
+      // — so a coach (isStaffOrOwner but not owner/professor) never sees a dead link.
+      // stopPropagation keeps the card's viewStu onclick from firing: it sets
+      // S.promoteFor=null, which would close the modal we just opened.
+      const _setDateLink=canEditClassCounts()
+        ?' · <span onclick="event.stopPropagation();openPromoteModal(\''+s.id+'\',{backfill:true})" style="color:var(--blue);cursor:pointer;font-weight:600">Set date</span>'
+        :'';
       const _moClause=s._lastMarkerDate
         ?' · '+eg.months_done+'/'+eg.months_target+' mo'
-        :(isStaffOrOwner()?' · <span style="font-style:italic">grading date not set</span>':'');
+        :(isStaffOrOwner()?' · <span style="font-style:italic">grading date not set</span>'+_setDateLink:'');
       eligHint='<div style="font-size:12px;color:var(--text);font-weight:600;margin-top:6px">Next: '+eg.label+'</div>'
         +'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+eg.classes_done+'/'+eg.classes_target+' classes'+_moClause+'</div>';
     } else if(eg&&eg.status==='pending'){
