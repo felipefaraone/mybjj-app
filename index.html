@@ -8674,7 +8674,11 @@ function rARosterListInner(){
     // G13 — "No-Gi only" suffix removed; has_gi flag is gone.
     // Was two stacked lines; now one sub-line under the name. Same wording and
     // same values — only the two divs are folded into one.
-    const statLine='<div style="font-size:11px;color:var(--text3);margin-top:1px">'+formatStat(s.total||0)+' total'+(_showSplit?' · Gi: '+formatStat(_lifeGi)+' · No-Gi: '+formatStat(_lifeNogi):'')+'</div>';
+    // Membership moved off the name row (was a bordered pill) and onto this line as
+    // plain muted text. membershipDef().label is null for no/unknown level, so the
+    // clause simply drops out. The PROFILE detail row keeps the badge form.
+    const _memLbl=membershipDef(s.membershipLevel).label;
+    const statLine='<div style="font-size:11px;color:var(--text3);margin-top:1px">'+formatStat(s.total||0)+' total'+(_showSplit?' · Gi: '+formatStat(_lifeGi)+' · No-Gi: '+formatStat(_lifeNogi):'')+(_memLbl?' · '+_memLbl:'')+'</div>';
     // G9 Phase 1 — eligibility hint driven by PROMO_CRITERIA. Adults
     // only; kids show a "criteria pending" placeholder until Phase 2.
     // Black belts and any null result render nothing.
@@ -8731,7 +8735,7 @@ function rARosterListInner(){
     // rank here, matching the People and Wall cards.
     return '<div class="card rcard" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="rc-id">'+avStu(s,34)
-      +'<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+s.name+onHoldBadge+membershipBadge(s)+'</div>'
+      +'<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+s.name+onHoldBadge+'</div>'
       +(_showCtx?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div>':'')
       +statLine
       +'</div></div>'
@@ -10648,7 +10652,13 @@ function inviteStatusRow(target,kind,extraChip){
   const userId=isParent?target._parentUserId:target._userId;
   const canAct=isStaffOrOwner();
   let flag='',action='';
-  const btnStyle='background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;color:var(--blue);cursor:pointer';
+  // inline-flex + gap so the send icon sits inside the button beside its label;
+  // margin-left:auto is what pushes the action to the far right of the row.
+  const btnStyle='display:inline-flex;align-items:center;gap:5px;margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;color:var(--blue);cursor:pointer';
+  const sendIcon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+  // "Add email" opens the editor, it does not send — a paper plane there reads as
+  // "this emails them now". Plus icon instead; the plane stays on Send invite.
+  const plusIcon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
   const fnSuffix=isStaff?'StaffInvite':isParent?'ParentInvite':'StudentInvite';
   if(userId){
     // Joined / Parent joined is the NORMAL state: flag the exception, not the OK
@@ -10658,17 +10668,23 @@ function inviteStatusRow(target,kind,extraChip){
     // Batch 8b — explicit "sign-in" copy (was just "Awaiting").
     flag='<span class="fl"><i></i>'+(isParent?'Parent awaiting sign-in':'Awaiting sign-in')+'</span>';
     if(canAct){
-      action='<button onclick="event.stopPropagation();resend'+fnSuffix+'(\''+target.id+'\')" style="'+btnStyle+'">Send invite</button>';
+      action='<button onclick="event.stopPropagation();resend'+fnSuffix+'(\''+target.id+'\')" style="'+btnStyle+'">'+sendIcon+'Send invite</button>';
     }
   } else {
     flag='<span class="fl bad"><i></i>'+(isParent?'No parent email':'No email')+'</span>';
     if(canAct){
-      action='<button onclick="event.stopPropagation();openEmailEditor(\''+target.id+'\',\''+kind+'\')" style="'+btnStyle+'">Add email</button>';
+      action='<button onclick="event.stopPropagation();openEmailEditor(\''+target.id+'\',\''+kind+'\')" style="'+btnStyle+'">'+plusIcon+'Add email</button>';
     }
   }
-  const inner=flag+action+(extraChip||'');
-  if(!inner)return '';
-  return '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">'+inner+'</div>';
+  // Variation 1: status flags cluster on the LEFT (sign-in flag + the waiver dot
+  // passed in as extraChip), the action button sits far RIGHT via margin-left:auto.
+  // extraChip moves INTO the flag group — no call-site change, it is already a param.
+  const flags=flag+(extraChip||'');
+  if(!flags&&!action)return '';
+  return '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">'
+    +(flags?'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0">'+flags+'</div>':'')
+    +action
+    +'</div>';
 }
 
 async function confirmAndDispatchInvite(email){
