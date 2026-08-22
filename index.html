@@ -4828,6 +4828,16 @@ async function savePromote(skipDuplicateBeltConfirm){
   if(!setCurrent){
     if(!s.journey)s.journey=[];
     s.journey.push({belt:targetBelt,label:beltLabel(targetBelt)+' belt',date,classes:null,done:true,current:false,auto:true});
+    // Mirror recompute_student_stats' last_marker_date into memory so the
+    // eligibility hint shows the months clock immediately instead of "date not
+    // recorded" (it reads s._lastMarkerDate, and a full rehydrate is the only
+    // other thing that refreshes it). recompute takes MAX(date) across the
+    // student's promotions, so mirror that: never move the anchor BACKWARDS,
+    // or a back-dated backfill would clobber a more recent marker.
+    try{
+      const _newMarker=(!s._lastMarkerDate||String(date)>String(s._lastMarkerDate))?date:s._lastMarkerDate;
+      s._lastMarkerDate=_newMarker;
+    }catch(_){}
     // Optional "classes done before this promotion" — form state canonical, DOM
     // #pm-classes as fallback. Empty → null (never 0).
     const _domClasses=(root.querySelector('#pm-classes')||{}).value;
@@ -4877,6 +4887,16 @@ async function savePromote(skipDuplicateBeltConfirm){
     // count without a (misleading) Gi/No-Gi bar.
     const _periodFullSplit=(_periodClasses>0&&(_periodGi+_periodNogi)===_periodClasses);
     s.belt=targetBelt;s.deg=targetDeg;s.grade=0;s.giGrade=0;
+    // Mirror recompute_student_stats' last_marker_date into memory so the
+    // eligibility hint shows the months clock immediately instead of "date not
+    // recorded" (it reads s._lastMarkerDate, and a full rehydrate is the only
+    // other thing that refreshes it). recompute takes MAX(date) across the
+    // student's promotions, so mirror that: never move the anchor BACKWARDS,
+    // or a back-dated promotion would clobber a more recent marker.
+    try{
+      const _newMarker=(!s._lastMarkerDate||String(date)>String(s._lastMarkerDate))?date:s._lastMarkerDate;
+      s._lastMarkerDate=_newMarker;
+    }catch(_){}
     if(!s.journey)s.journey=[];
     s.journey.forEach(j=>{if(j.current)j.current=false;});
     const label=isBeltChange
@@ -4975,6 +4995,16 @@ async function savePromote(skipDuplicateBeltConfirm){
   // target. After a reload they're hydrated with type='correction'
   // and the same filter at rPromoteModal/revertPromo skips them.
   const correctionDate=new Date().toISOString().slice(0,10);
+  // Mirror recompute_student_stats' last_marker_date into memory so the
+  // eligibility hint shows the months clock immediately instead of "date not
+  // recorded" (it reads s._lastMarkerDate, and a full rehydrate is the only
+  // other thing that refreshes it). recompute takes MAX(date) across the
+  // student's promotions, so mirror that: never move the anchor BACKWARDS,
+  // or a back-dated correction would clobber a more recent marker.
+  try{
+    const _newMarker=(!s._lastMarkerDate||String(correctionDate)>String(s._lastMarkerDate))?correctionDate:s._lastMarkerDate;
+    s._lastMarkerDate=_newMarker;
+  }catch(_){}
   const legacyId='pl'+Date.now();
   closePromoteModal();
   if(s._dbId&&cli){
