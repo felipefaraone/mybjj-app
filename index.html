@@ -2662,19 +2662,22 @@ function trialsForClass(cid){
   const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const classId=t.classId||null;
   if(!classId)return [];  // no class identity → never match (fallback trials carry classId null)
-  // Phase B — a trial is "going" to this occurrence if ANY of its sessions matches
-  // (class + date), OR (defensive fallback) the legacy single class field matches.
-  // Only the matching predicate widened — the displayed rows/behaviour are unchanged.
+  // Phase B — trial_sessions is the SOURCE OF TRUTH for where a trial is expected.
+  // The trial-level class/date scalar is a fallback for trials that predate sessions.
   return TRIALS.filter(tr=>{
     // A converted trial is a member now — never on the mat.
     if(tr.status==='converted')return false;
     const sess=Array.isArray(tr.sessions)?tr.sessions:null;
-    // A booked SESSION for THIS exact occurrence (class + date) means the person is
-    // expected HERE, regardless of the trial-level scalar. trial_status reflects a
-    // PAST class, so a no_show/lapse must not hide a freshly re-added class.
-    if(sess&&sess.some(s=>s&&s.classId===classId&&s.classDate===c.date))return true;
-    // Legacy single-field path (trials with NO sessions) keeps the original gate:
-    // a pure no_show/lapse with only the legacy class field stays off the mat.
+    // Has sessions -> they decide this occurrence OUTRIGHT, with no fallthrough.
+    // Rescheduling writes a new session but never clears trial_bookings.class_date,
+    // so falling through on a non-match matched the STALE scalar and rendered the
+    // person on their original day as well as the new one (7 such rows in prod).
+    // trial_status reflects a PAST class, so a no_show/lapse must not hide a
+    // freshly re-added class — the session match alone decides.
+    if(sess&&sess.length)return sess.some(s=>s&&s.classId===classId&&s.classDate===c.date);
+    // Legacy single-field path — reachable ONLY when the trial has no sessions at
+    // all. Original gate kept: a pure no_show/lapse with only the legacy class
+    // field stays off the mat.
     if(tr.status!=='booked'&&tr.status!=='attended')return false;
     return tr.classId===classId&&tr.classDate===c.date;
   });
