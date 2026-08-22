@@ -350,6 +350,14 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .pgready-t{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.4px;color:var(--green-text)}
 .pgready-s{font-size:11px;color:var(--green-text);opacity:.75;margin-top:1px}
 .pgready-b{flex:0 0 auto;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--green-text);background:transparent;border:1px solid var(--green-border);border-radius:8px;padding:5px 10px;cursor:pointer}
+/* Status flags: a quiet dot + label, replacing the filled uppercase pills.
+   Only EXCEPTIONS are flagged — the OK states (joined, waiver signed) render
+   nothing at all, so a healthy card carries no status row. */
+.fl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);line-height:1.2}
+.fl>i{width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0}
+.fl.warn>i{background:var(--amber-text)}
+.fl.bad>i{background:var(--red-text)}
+.fl.tap{cursor:pointer}
 .card.stp{border-color:var(--blue-mid);background:var(--blue-tint)}.card.stc{border-color:var(--green-border);background:var(--green-bg)}
 .card.ended{opacity:.55}
 .slbl{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:12px}
@@ -10624,14 +10632,13 @@ function waiverChip(s){
   if(!isStaffOrOwner())return '';
   const _ws=waiverStatus(s);
   if(_ws==='signed')return '';   // signed → clean card, no chip
-  const base='padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer';
   const tap='onclick="event.stopPropagation();openWaiverSheet(\''+s.id+'\')"';
   if(_ws==='sent'){
     // sent but not signed → muted, still tappable to resend
-    return '<span '+tap+' style="background:none;color:var(--text3);border:1px solid var(--border);'+base+'">Waiver sent</span>';
+    return '<span '+tap+' class="fl tap"><i></i>Waiver sent</span>';
   }
   // 'none' → amber "No waiver"
-  return '<span '+tap+' style="background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);'+base+'">No waiver</span>';
+  return '<span '+tap+' class="fl tap warn"><i></i>No waiver</span>';
 }
 
 function inviteStatusRow(target,kind,extraChip){
@@ -10640,32 +10647,28 @@ function inviteStatusRow(target,kind,extraChip){
   const email=isParent?target.parentEmail:target.email;
   const userId=isParent?target._parentUserId:target._userId;
   const canAct=isStaffOrOwner();
-  let label,bg,fg,action='';
-  const chipStyle='padding:2px 8px;border-radius:4px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase';
+  let flag='',action='';
   const btnStyle='background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;color:var(--blue);cursor:pointer';
   const fnSuffix=isStaff?'StaffInvite':isParent?'ParentInvite':'StudentInvite';
   if(userId){
-    label=isParent?'Parent joined':'Joined';
-    bg='var(--green-bg)';fg='var(--green-text)';
+    // Joined / Parent joined is the NORMAL state: flag the exception, not the OK
+    // state. No dot, no label — a joined member with a signed waiver produces an
+    // empty row, which is dropped entirely below so it costs no margin.
   } else if(email){
     // Batch 8b — explicit "sign-in" copy (was just "Awaiting").
-    label=isParent?'Parent awaiting sign-in':'Awaiting sign-in';
-    bg='var(--input-bg)';fg='var(--text2)';
+    flag='<span class="fl"><i></i>'+(isParent?'Parent awaiting sign-in':'Awaiting sign-in')+'</span>';
     if(canAct){
       action='<button onclick="event.stopPropagation();resend'+fnSuffix+'(\''+target.id+'\')" style="'+btnStyle+'">Send invite</button>';
     }
   } else {
-    label=isParent?'No parent email':'No email';
-    bg='var(--red-bg)';fg='var(--red-text)';
+    flag='<span class="fl bad"><i></i>'+(isParent?'No parent email':'No email')+'</span>';
     if(canAct){
       action='<button onclick="event.stopPropagation();openEmailEditor(\''+target.id+'\',\''+kind+'\')" style="'+btnStyle+'">Add email</button>';
     }
   }
-  return '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">'
-    +'<span style="background:'+bg+';color:'+fg+';'+chipStyle+'">'+label+'</span>'
-    +action
-    +(extraChip||'')
-    +'</div>';
+  const inner=flag+action+(extraChip||'');
+  if(!inner)return '';
+  return '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">'+inner+'</div>';
 }
 
 async function confirmAndDispatchInvite(email){
