@@ -259,13 +259,14 @@ html,body{overscroll-behavior-y:none}
 .ef{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px}
 .erow{padding:13px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}.erow:last-child{border-bottom:none}
 .elbl{font-size:12px;color:var(--text3);min-width:80px;font-family:'Barlow Condensed',sans-serif;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
-.einput,.esel{flex:1;background:none;border:none;outline:none;font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);text-align:right;caret-color:var(--blue)}.esel{cursor:pointer}
-/* iOS/WebKit ignores text-align on a <select>'s collapsed value, so every .esel
-   centred on iPhone while the sibling .einput fields right-aligned. direction:rtl
-   IS honoured; the options are put back to ltr so the dropdown list reads normally.
-   text-align:right above stays as the desktop path. */
-.esel{direction:rtl}
-.esel option{direction:ltr;text-align:left}.einput::placeholder{color:var(--text3)}
+/* text-align-last is what WebKit honours for a <select>'s COLLAPSED value; plain
+   text-align is ignored there, which left every .esel centred on iPhone while the
+   sibling .einput fields right-aligned. It does not touch `direction`, so the
+   control stays LTR: the native arrow keeps its place on the right and the open
+   dropdown reads normally. (An earlier attempt used direction:rtl — that DID
+   right-align the value but flipped the whole control, moving the arrow to the
+   left on every engine. Do not reintroduce it.) */
+.einput,.esel{flex:1;background:none;border:none;outline:none;font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);text-align:right;caret-color:var(--blue)}.esel{cursor:pointer;text-align-last:right}.einput::placeholder{color:var(--text3)}
 /* iOS Safari renders input[type=date] with a default intrinsic width,
  * extra inner padding, and a calendar-picker indicator that drifts
  * the visible value away from the row's right edge — making the DOB
@@ -8529,7 +8530,7 @@ function rEEdit(){
     +'<div class="sbody"><div class="ef">'
     +'<div class="erow"><div class="elbl">Title</div><input class="einput" id="ev-title" value="'+e.title+'" placeholder="Event name"/></div>'
     +'<div class="erow"><div class="elbl">Date</div><input id="ev-date" type="date" value="'+dateVal+'" aria-label="Event date" style="flex:1;width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);text-align:right;direction:rtl;unicode-bidi:plaintext;min-height:28px;-webkit-appearance:none;appearance:none"/></div>'
-    +'<div class="erow"><div class="elbl">Type</div><select class="esel" id="ev-type" style="direction:rtl;unicode-bidi:plaintext">'+typeOpts+'</select></div>'
+    +'<div class="erow"><div class="elbl">Type</div><select class="esel" id="ev-type">'+typeOpts+'</select></div>'
     +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" dir="ltr" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4;text-align:left;direction:ltr">'+e.desc+'</textarea></div>'
     +'<div class="erow"><div class="elbl">Link</div><input class="einput" id="ev-link" value="'+(e.link||'')+'" placeholder="https://... (optional)"/></div>'
     +'</div>'
