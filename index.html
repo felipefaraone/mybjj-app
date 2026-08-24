@@ -2010,7 +2010,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -8925,7 +8925,7 @@ function rTrialsBlock(){
         actBtns.push('<button class="admin-action-btn primary" onclick="convertTrialToMember(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
       }
     }
-    actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Add class</button>');
+    actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Move class</button>');
     actBtns.push('<button class="admin-action-btn" onclick="lapseTrial(\''+t._dbId+'\')" style="color:var(--red-text)">'+iLapse+'Lapse</button>');
     const actionsRow='<div style="display:flex;gap:8px;margin-top:12px">'+actBtns.join('')+'</div>';
     // #5 (John's trial list) — running contact-attempt log so Patricia/Evelin
@@ -9060,11 +9060,17 @@ async function lapseTrialAction(trialDbId){
 // booking stayed put while the staff member believed they'd moved it.
 function rescheduleTrial(trialDbId){
   const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
+  // Fresh modal every time: always opens in MOVE mode, week auto-picked below.
+  S.reschedWeek=0;S.reschedAddMode=false;
   S.rescheduleTrial=trialDbId;render();
 }
-function closeRescheduleTrial(){S.rescheduleTrial=null;render();}
-// Project the trial's unit's trial-bookable classes onto the last 2 days + next 7
-// days in Australia/Sydney. Class-eligibility rules are IDENTICAL to trial.html's
+function closeRescheduleTrial(){S.rescheduleTrial=null;S.reschedWeek=0;S.reschedAddMode=false;render();}
+function setReschedWeek(n){S.reschedWeek=Number(n)||0;render();}
+function setReschedMode(add){S.reschedAddMode=!!add;render();}
+// Project the trial's unit's trial-bookable classes onto the last 2 days + the next
+// 21 days in Australia/Sydney (the range the PUBLIC trial booking form offers, so
+// staff can reach every day a member of the public could have picked).
+// Each group carries weekIndex (0/1/2) so the modal can tab by week. Class-eligibility rules are IDENTICAL to trial.html's
 // public picker (do not soften them): only trial-bookable type_codes (adv / omat
 // are not entry points), only the trial's OWN audience (a kid is never offered an
 // adult class, and vice-versa). #4 (John): the range now REACHES BACK 2 days so
@@ -9087,7 +9093,7 @@ function _trialSlotGroups(t){
   const nowMin=(parseInt(o.hour==='24'?'00':o.hour,10)||0)*60+(parseInt(o.minute,10)||0);
   const matches=(CLASSES||[]).filter(cl=>cl&&cl.active===true&&cl.unit_id===t._unitId&&TRIAL_TYPES[cl.type]&&cl.audience===aud);
   const groups=[];
-  for(let i=-2;i<7;i++){
+  for(let i=-2;i<=20;i++){
     const d=new Date(nowDate+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+i);
     const dateStr=d.toISOString().slice(0,10);const dow=d.getUTCDay();
     // ≥2h lead time applies ONLY to days AFTER today (i>0). Past days and today
@@ -9096,7 +9102,12 @@ function _trialSlotGroups(t){
     let day=matches.filter(cl=>cl.day_of_week===dow&&(i<=0||(i*1440+hhmmToMin(cl.time))>=nowMin+LEAD_MIN));
     if(!day.length)continue;
     day.sort((a,b)=>hhmmToMin(a.time)-hhmmToMin(b.time));
-    groups.push({label:DOW[dow]+' '+d.getUTCDate()+' '+MON[d.getUTCMonth()],dateStr,past:dateStr<nowDate,slots:day.map(cl=>({classId:cl.id,time:String(cl.time||'').slice(0,5),timeLabel:fmtT12(cl.time)}))});
+    // Rolling 7-day buckets for the modal's week tabs: retro days and the next 6
+    // sit in week 0, then 7-13, then 14-20. i tops out at 20, so exactly 3 buckets.
+    const weekIndex=i<0?0:Math.floor(i/7);
+    // clsLabel via the SAME helper the trial card already uses for a session
+    // (index.html:8892 — CLASSES row -> _clsLabel), so wording can't drift.
+    groups.push({label:DOW[dow]+' '+d.getUTCDate()+' '+MON[d.getUTCMonth()],dateStr,past:dateStr<nowDate,weekIndex:weekIndex,slots:day.map(cl=>({classId:cl.id,time:String(cl.time||'').slice(0,5),timeLabel:fmtT12(cl.time),clsLabel:_clsLabel(cl)}))});
   }
   return groups;
 }
@@ -9106,34 +9117,74 @@ function rRescheduleModal(){
   const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
   const who=(t.isKid&&t.kidName)?t.kidName:(t.name||'this trial');
   const groups=_trialSlotGroups(t);
-  const pastGroups=groups.filter(g=>g.past);
-  const upGroups=groups.filter(g=>!g.past);
+  // MOVE is the default action; add is one tap away via the link at the bottom.
+  const addMode=!!S.reschedAddMode;
+  const fn=addMode?'_doAddTrialSession':'_doMoveTrialSession';
+  // "Currently" — the day being moved FROM. Sessions are the source of truth;
+  // the legacy scalar is only a fallback for trials that predate them.
+  const _sess=Array.isArray(t.sessions)?t.sessions:[];
+  const _cur=_sess.length?_sess[0]:(t.classDate?{classDate:t.classDate,classTime:t.classTime}:null);
+  const curChip=_cur?'<div style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:999px;padding:4px 11px;margin-bottom:14px;font-size:11.5px;color:var(--text2)"><span style="font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;font-size:10px;color:var(--blue)">Currently</span>'+_fmtAttWhen(_cur.classDate,_cur.classTime)+(_sess.length>1?' <span style="color:var(--text3)">+'+(_sess.length-1)+' more</span>':'')+'</div>':'';
   let body;
   if(!groups.length){
     // No confirm button when there's nothing to pick — never an empty list.
-    body='<div style="font-size:13px;color:var(--text2);text-align:center;padding:22px 8px;line-height:1.5">No slots in the last few days or the week ahead.</div>';
+    body='<div style="font-size:13px;color:var(--text2);text-align:center;padding:22px 8px;line-height:1.5">No slots in the last few days or the weeks ahead.</div>';
   }else{
-    // #4 — one group renderer, reused for both sections. Past-day buttons are
-    // slightly muted (opacity) so staff can tell they're logging a class that
-    // already happened, not booking a future one. Button markup + write call
-    // are otherwise UNCHANGED.
+    // Week tabs — 21 days is too many buttons for one wall. Rolling 7-day buckets
+    // (weekIndex from _trialSlotGroups); retro days live in week 0.
+    const byWeek=[[],[],[]];
+    groups.forEach(function(g){const w=Math.max(0,Math.min(2,g.weekIndex|0));byWeek[w].push(g);});
+    const nSlots=w=>byWeek[w].reduce(function(n,g){return n+g.slots.length;},0);
+    const firstWith=[0,1,2].find(w=>byWeek[w].length);
+    let wk=Number(S.reschedWeek)||0;if(wk<0||wk>2)wk=0;
+    if(!byWeek[wk].length)wk=(firstWith==null?0:firstWith);   // default: earliest week that HAS slots
+    const WLBL=['This week','Next week','In 2 wks'];
+    const tabs='<div class="rsw" style="margin-bottom:14px">'+[0,1,2].map(function(w){
+      const has=byWeek[w].length>0;
+      return '<div class="rseg '+(wk===w?'active':'')+'"'+(has?' onclick="setReschedWeek('+w+')"':' style="opacity:.45;cursor:default"')+'>'+WLBL[w]+(has?' <span style="opacity:.7;font-size:11px">'+nSlots(w)+'</span>':'')+'</div>';
+    }).join('')+'</div>';
+    // One group renderer for both sections. Past days are amber — staff are logging
+    // a class that already ran, not booking a future one.
     const renderGroup=(g,isPast)=>{
-      const slots=g.slots.map(s=>'<button class="bsm" style="padding:8px 13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px'+(isPast?';opacity:.9':'')+'" onclick="_doAddTrialSession(\''+t._dbId+'\',\''+esc(s.classId)+'\',\''+esc(g.dateStr)+'\',\''+esc(s.time)+'\')">'+s.timeLabel+'</button>').join('');
+      const slots=g.slots.map(function(s){
+        const st=isPast
+          ?'background:var(--amber-bg);border-color:var(--amber-border);color:var(--amber-text)'
+          :'';
+        return '<button class="bsm" style="padding:6px 11px;display:flex;flex-direction:column;align-items:flex-start;gap:1px;line-height:1.15'+(st?';'+st:'')+'" onclick="'+fn+'(\''+t._dbId+'\',\''+esc(s.classId)+'\',\''+esc(g.dateStr)+'\',\''+esc(s.time)+'\')">'
+          +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px">'+s.timeLabel+'</span>'
+          +(s.clsLabel?'<span style="font-size:10px;opacity:.75;font-weight:400">'+escHtml(s.clsLabel)+'</span>':'')
+          +'</button>';
+      }).join('');
       return '<div style="margin-bottom:14px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:7px">'+esc(g.label)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+slots+'</div></div>';
     };
     const secHdr=(txt)=>'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:10px">'+txt+'</div>';
-    // Past FIRST so the retro option is the thing staff notice; upcoming after.
-    // The "Upcoming" header only appears when a past section precedes it (to
-    // separate them); with no past days, upcoming stands alone unlabelled as before.
+    const shown=byWeek[wk];
+    const pastGroups=shown.filter(g=>g.past);
+    const upGroups=shown.filter(g=>!g.past);
     const pastSection=pastGroups.length?secHdr('Earlier this week')+pastGroups.map(g=>renderGroup(g,true)).join(''):'';
     const upSection=upGroups.length?((pastGroups.length?secHdr('Upcoming'):'')+upGroups.map(g=>renderGroup(g,false)).join('')):'';
-    body=pastSection+upSection;
+    body=tabs+(pastSection+upSection||'<div style="font-size:13px;color:var(--text3);text-align:center;padding:18px 8px">No classes this week.</div>');
   }
+  // Secondary path — keep the current day and add a SECOND class instead.
+  const modeLink=addMode
+    ?'<div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px"><span onclick="setReschedMode(false)" style="color:var(--blue);cursor:pointer;font-size:12.5px;font-weight:600">&larr; Move instead</span><div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4">Replace their current trial day with the one you pick.</div></div>'
+    :'<div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px"><span onclick="setReschedMode(true)" style="color:var(--blue);cursor:pointer;font-size:12.5px;font-weight:600">+ Add another class instead</span><div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4">Keep the current day and add a second trial class.</div></div>';
+  const title=addMode?'Add another class':'Move to another class';
+  // Both halves key off _cur — the SAME value the "Currently" chip above uses — so
+  // the sentence can never claim a day the chip isn't showing. With no day on file
+  // there is nothing to replace (or to keep), so neither phrasing applies.
+  const _lead=_cur?(addMode?'Pick an extra class for ':'Pick a new class for '):'Pick a class for ';
+  const _tail=_cur
+    ?(addMode?'This keeps their current day and adds a second one.':'This replaces their current trial day.')
+    :'They have no trial day set yet.';
+  const sub=_lead+'<b style="color:var(--text2)">'+esc(who)+'</b> — '+(t.isKid?'kids':'adult')+' classes. '+_tail;
   return `<div class="cov" onclick="closeRescheduleTrial()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:400px;width:100%;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
 <button onclick="closeRescheduleTrial()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">Add a class</div>
-<div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.4">Pick a class for <b style="color:var(--text2)">${esc(who)}</b> — ${t.isKid?'kids':'adult'} classes, the last few days or upcoming. They can do as many trial classes as you like.</div>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">${title}</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.4">${sub}</div>
+${curChip}
 ${body}
+${modeLink}
 </div></div>`;
 }
 // Write the REAL slot (class_id/date/time) and NULL the retired preferred_day so
@@ -9160,7 +9211,7 @@ async function _doRescheduleTrial(trialDbId,classId,dateStr,timeHHMM){
 // sessions. _doRescheduleTrial is left defined (no live caller) in case a future
 // path wants a single-class move; the modal now calls _doAddTrialSession.
 // ── Add a trial session (unlimited trial classes per person) ──
-async function _doAddTrialSession(trialDbId,classId,dateStr,timeHHMM){
+async function _doAddTrialSession(trialDbId,classId,dateStr,timeHHMM,okMsg){
   if(!isStaffOrOwner())return;
   const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t){showSaveToast2('Trial not found','error');return;}
   const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
@@ -9190,7 +9241,66 @@ async function _doAddTrialSession(trialDbId,classId,dateStr,timeHHMM){
   t.sessions.push({_dbId:newId||('local-'+Date.now()),classId:classId,classDate:dateStr,classTime:timeHHMM,attended:false});
   t.sessions.sort((a,b)=>String(a.classDate||'').localeCompare(String(b.classDate||'')));
   S.rescheduleTrial=null;
-  render();showSaveToast2('Class added.');
+  render();showSaveToast2(okMsg||'Class added.');
+}
+// ── MOVE a trial to a different class (Aug 2026, John) ───────────────────────
+// The card's default action is now MOVE, not add: "delete the trial and change to
+// a different day". Operates on trial_sessions ONLY — the legacy trio
+// (trial_bookings.class_id/date/time) was retired 23 Aug and is NEVER written back
+// as a positive value here, only NULLed, so a move can't leave the ghost day that
+// v475 had to filter around.
+//
+// Ordering is INSERT -> verify -> DELETE, deliberately. Delete-first would, on a
+// failed insert, leave the trial with no class at all; this way the worst case is
+// a visible duplicate the staff can remove with the existing ×.
+//
+// 2+ sessions: those extra classes are added by hand and there is no way to know
+// WHICH one "move" means, so nothing is deleted — it falls back to add and says so.
+async function _doMoveTrialSession(trialDbId,classId,dateStr,timeHHMM){
+  if(!isStaffOrOwner())return;
+  const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t){showSaveToast2('Trial not found','error');return;}
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
+  if(!Array.isArray(t.sessions))t.sessions=[];
+  // Duplicate guard — same class + date already on their list.
+  if(t.sessions.some(s=>s&&s.classId===classId&&s.classDate===dateStr)){showSaveToast2('That class is already on their list.','error');return;}
+  // Ambiguous target -> never delete blindly.
+  if(t.sessions.length>1){
+    await _doAddTrialSession(trialDbId,classId,dateStr,timeHHMM,'Added \u2014 this trial already has several classes, so it was added rather than moved.');
+    return;
+  }
+  const old=(t.sessions.length===1)?t.sessions[0]:null;
+  const ins=await cli.from('trial_sessions').insert({trial_booking_id:trialDbId,class_id:classId,class_date:dateStr,class_time:timeHHMM,attended:false}).select('id').single();
+  if(ins&&ins.error){showSaveToast2(friendlyMutationError(ins.error),'error');return;}
+  const newId=ins&&ins.data&&ins.data.id;
+  // Confirming re-read — Supabase returns success-shaped-empty for an RLS-filtered
+  // no-op, so never trust the insert alone.
+  if(newId){
+    const chk=await cli.from('trial_sessions').select('id').eq('id',newId).single();
+    if((chk&&chk.error)||!chk||!chk.data){showSaveToast2('Could not move the class','error');return;}
+  }
+  // Old session goes only AFTER the new one is confirmed present.
+  let delFailed=false;
+  if(old&&old._dbId&&String(old._dbId).indexOf('local-')!==0){
+    const del=await cli.from('trial_sessions').delete().eq('id',old._dbId);
+    if(del&&del.error){delFailed=true;}
+    else{const ix=t.sessions.indexOf(old);if(ix>=0)t.sessions.splice(ix,1);}
+  }else if(old){
+    const ix=t.sessions.indexOf(old);if(ix>=0)t.sessions.splice(ix,1);
+  }
+  // Legacy trio: NULL only, never a positive write.
+  if(t.classDate||t.classId||t.classTime){
+    const lupd=await cli.from('trial_bookings').update({class_date:null,class_id:null,class_time:null}).eq('id',trialDbId);
+    if(lupd&&lupd.error){showSaveToast2(friendlyMutationError(lupd.error),'error');}
+    else{t.classId=null;t.classDate=null;t.classTime=null;}
+  }
+  t.sessions.push({_dbId:newId||('local-'+Date.now()),classId:classId,classDate:dateStr,classTime:timeHHMM,attended:false});
+  t.sessions.sort((a,b)=>String(a.classDate||'').localeCompare(String(b.classDate||'')));
+  S.rescheduleTrial=null;S.reschedAddMode=false;S.reschedWeek=0;
+  // One toast only: a failed delete leaves BOTH days showing, so say that instead
+  // of claiming a clean move.
+  render();
+  if(delFailed)showSaveToast2('Added the new class, but the old one could not be removed \u2014 remove it with the \u00d7.','error');
+  else showSaveToast2('Trial moved.');
 }
 // Remove a trial session — staff-only, confirm-gated. Zero sessions is a valid
 // state (a trial with no class yet), so there's no minimum.
