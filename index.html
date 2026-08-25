@@ -6730,7 +6730,11 @@ function rCommunityPeople(){
   // Pointer-events disabled so taps go through to the input.
   const searchIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   const searchHtml='<div style="position:relative;margin-bottom:14px">'+searchIcon+'<input type="search" id="members-search" placeholder="Search members…" value="'+qVal+'" oninput="setMemberQuery(this.value)" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/>'+clearBtn+'</div>';
-  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · <span id="members-count">'+list.length+'</span></div>';
+  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · <span id="members-count">'+list.length+'</span></div>'
+    // Staff are visible across academies but students are not, so on another
+    // unit this list is instructors only. Without this line it reads as though
+    // the unit has no members.
+    +(_viewingOtherUnit()?'<div style="font-size:12px;color:var(--text3);margin:-6px 0 12px;line-height:1.5">You are viewing another unit, so only instructors are shown. Switch back to '+escHtml(_homeUnitName()||'your own unit')+' to see all members.</div>':'');
   // Recessed containment block groups the level-2 switch with the
   // level-3 filter chips, subordinating them to the People/Wall pill.
   const filterBlock='<div class="mblock">'+segHtml+typeChips+beltChips+'</div>';
@@ -6997,10 +7001,18 @@ function rCommunityWall(){
   const rows=feed.slice(0,_wallShown);
   // Empty state only when BOTH promotions and welcomes are empty.
   if(!rows.length){
+    // Empty because the viewer is on ANOTHER unit (RLS), not because nothing
+    // has happened there — say which, so the copy stays truthful.
+    const _other=_viewingOtherUnit();
+    const _home=_homeUnitName();
+    const _hd=_other?('Viewing '+escHtml(S.unit)):'No promotions yet';
+    const _bd=_other
+      ?('Community posts are only shown for your own unit'+(_home?(', '+escHtml(_home)):'')+'. Switch back to see them.')
+      :'Belt and stripe promotions will appear here as they happen.';
     return '<div class="feed">'
       +'<div class="card" style="text-align:center;padding:32px 20px">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No promotions yet</div>'
-      +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Belt and stripe promotions will appear here as they happen.</div>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">'+_hd+'</div>'
+      +'<div style="font-size:12px;color:var(--text3);line-height:1.5">'+_bd+'</div>'
       +'</div>'
     +'</div>';
   }
@@ -10746,6 +10758,37 @@ function _tabTitle(){
 }
 function isProfessor(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt==='black');}
 function isCoach(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt!=='black');}
+// ── Cross-unit visibility copy (non-staff) ───────────────────────────────────
+// The students RLS is HOME-UNIT scoped, so a student/parent who points the unit
+// picker at another unit legitimately sees no members and no promotions there.
+// The isolation is deliberate (child safety); these helpers exist ONLY so the
+// empty states can say so instead of implying the unit is empty.
+//
+// Field names verified against the loaders, not assumed:
+//   MY_STUDENT.unit / MY_KIDS[].unit  -> unit LEGACY id (loadMyStudent/loadMyKids
+//                                        map unit_id -> UNITS.id)
+//   UNITS[].id  -> legacy id,  UNITS[].name -> display name,  S.unit -> the
+//                                        ACTIVE unit's display name
+// MY_STUDENT is null for a pure parent (no student row of their own), so the home
+// unit falls back to their first linked kid. Unknown home unit -> returns false,
+// so we never show "you're viewing another unit" on a guess.
+function _homeUnitId(){
+  if(MY_STUDENT&&MY_STUDENT.unit)return MY_STUDENT.unit;
+  const k=(Array.isArray(MY_KIDS)?MY_KIDS:[]).find(x=>x&&x.unit);
+  return k?k.unit:null;
+}
+function _homeUnitName(){
+  const home=_homeUnitId();
+  const u=home?UNITS.find(x=>x&&x.id===home):null;
+  return u?u.name:null;
+}
+function _viewingOtherUnit(){
+  if(isStaffOrOwner())return false;          // staff see every unit for real
+  const home=_homeUnitId();
+  if(!home)return false;
+  const curU=UNITS.find(u=>u&&u.name===S.unit);
+  return !!(curU&&curU.id&&curU.id!==home);
+}
 function canEditClassCounts(){return isOwner()||isProfessor();}
 // G17.2d — author check now uses the stable instructor_id (mapped to
 // f.insStaffId at hydrate) instead of comparing display names. Admin
@@ -15510,9 +15553,12 @@ function rDetailRow(label,value,actions){
   const v=(value!=null&&value!=='')?value:'<span style="color:var(--text3)">Not set</span>';
   // Class-based row so .drow:last-child can strip the trailing divider
   // (a border-bottom on the final row implied a missing item below).
+  // Value is right-aligned to match the Edit Profile rows (.einput/.esel are
+  // text-align:right), so view and edit read as the same column. Label stays
+  // left on its fixed 84px track; `actions` still trail the value on the right.
   return '<div class="drow">'
     +'<div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">'+label+'</div>'
-    +'<div style="flex:1;min-width:0;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis">'+v+'</div>'
+    +'<div style="flex:1;min-width:0;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;text-align:right">'+v+'</div>'
     +(actions||'')
     +'</div>';
 }
