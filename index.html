@@ -6754,11 +6754,7 @@ function rCommunityPeople(){
   // Pointer-events disabled so taps go through to the input.
   const searchIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   const searchHtml='<div style="position:relative;margin-bottom:14px">'+searchIcon+'<input type="search" id="members-search" placeholder="Search members…" value="'+qVal+'" oninput="setMemberQuery(this.value)" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/>'+clearBtn+'</div>';
-  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · <span id="members-count">'+list.length+'</span></div>'
-    // Staff are visible across academies but students are not, so on another
-    // unit this list is instructors only. Without this line it reads as though
-    // the unit has no members.
-    +(_viewingOtherUnit()?'<div style="font-size:12px;color:var(--text3);margin:-6px 0 12px;line-height:1.5">You are viewing another unit, so only instructors are shown. Switch back to '+escHtml(_homeUnitName()||'your own unit')+' to see all members.</div>':'');
+  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · <span id="members-count">'+list.length+'</span></div>';
   // Recessed containment block groups the level-2 switch with the
   // level-3 filter chips, subordinating them to the People/Wall pill.
   const filterBlock='<div class="mblock">'+segHtml+typeChips+beltChips+'</div>';
@@ -7025,14 +7021,13 @@ function rCommunityWall(){
   const rows=feed.slice(0,_wallShown);
   // Empty state only when BOTH promotions and welcomes are empty.
   if(!rows.length){
-    // Empty because the viewer is on ANOTHER unit (RLS), not because nothing
-    // has happened there — say which, so the copy stays truthful.
-    const _other=_viewingOtherUnit();
-    const _home=_homeUnitName();
-    const _hd=_other?('Viewing '+escHtml(S.unit)):'No promotions yet';
-    const _bd=_other
-      ?('Community posts are only shown for your own unit'+(_home?(', '+escHtml(_home)):'')+'. Switch back to see them.')
-      :'Belt and stripe promotions will appear here as they happen.';
+    // is_adult_peer_here no longer requires the viewer to be a student of the
+    // SELECTED unit, so another unit's wall is visible and an empty one simply has
+    // no recent promotions — exactly like an empty wall at home. The heading still
+    // names the unit, which orients someone who has switched the picker; the body
+    // must not claim a restriction that no longer exists.
+    const _hd=_viewingOtherUnit()?('Viewing '+escHtml(S.unit)):'No promotions yet';
+    const _bd='Belt and stripe promotions will appear here as they happen.';
     return '<div class="feed">'
       +'<div class="card" style="text-align:center;padding:32px 20px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">'+_hd+'</div>'
@@ -10854,11 +10849,13 @@ function _tabTitle(){
 }
 function isProfessor(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt==='black');}
 function isCoach(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt!=='black');}
-// ── Cross-unit visibility copy (non-staff) ───────────────────────────────────
-// The students RLS is HOME-UNIT scoped, so a student/parent who points the unit
-// picker at another unit legitimately sees no members and no promotions there.
-// The isolation is deliberate (child safety); these helpers exist ONLY so the
-// empty states can say so instead of implying the unit is empty.
+// ── Is this non-staff viewer looking at a unit other than their own? ─────────
+// is_adult_peer_here() no longer requires the viewer to be a student of the
+// SELECTED unit, so another unit's members and wall ARE visible to them now (the
+// surrounding policies still scope rows by unit, and kids are still excluded by
+// prog='adult'). Nothing here gates content any more: the one remaining job is
+// naming the unit in the empty Wall heading, which orients someone who has
+// switched the picker.
 //
 // Field names verified against the loaders, not assumed:
 //   MY_STUDENT.unit / MY_KIDS[].unit  -> unit LEGACY id (loadMyStudent/loadMyKids
@@ -10867,16 +10864,11 @@ function isCoach(){return !!(S.me&&S.me.role==='instructor'&&S.me.belt!=='black'
 //                                        ACTIVE unit's display name
 // MY_STUDENT is null for a pure parent (no student row of their own), so the home
 // unit falls back to their first linked kid. Unknown home unit -> returns false,
-// so we never show "you're viewing another unit" on a guess.
+// so the heading never claims a unit is "other" on a guess.
 function _homeUnitId(){
   if(MY_STUDENT&&MY_STUDENT.unit)return MY_STUDENT.unit;
   const k=(Array.isArray(MY_KIDS)?MY_KIDS:[]).find(x=>x&&x.unit);
   return k?k.unit:null;
-}
-function _homeUnitName(){
-  const home=_homeUnitId();
-  const u=home?UNITS.find(x=>x&&x.id===home):null;
-  return u?u.name:null;
 }
 function _viewingOtherUnit(){
   if(isStaffOrOwner())return false;          // staff see every unit for real
