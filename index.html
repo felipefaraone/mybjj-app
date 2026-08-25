@@ -1823,6 +1823,18 @@ let STAFF=[];
 // checked too so this guard is safe against any object shape.
 const DEV_ACCOUNT_LEGACY_IDS=['dev_admin'];
 function isDevStaff(s){ return !!s && DEV_ACCOUNT_LEGACY_IDS.indexOf(s.id||s.legacy_id||s._legacyId||'')>=0; }
+// One source for "does this instructor belong to this unit". staff.unit_id holds
+// a SINGLE home unit, so an instructor teaching at two units only ever appeared at
+// one; public.staff_units (N:N) is the real answer and hydrate lands it on _units.
+// _units carries the SAME legacy-id form as st.unit (both resolve through uMap),
+// so the comparison is identical either way. Falls back to st.unit when _units is
+// absent or empty — a failed staff_units fetch degrades to exactly today's
+// behaviour rather than emptying the instructor list. Every surface asks HERE.
+function staffInUnit(st,unitId){
+  if(!st||!unitId)return false;
+  if(Array.isArray(st._units)&&st._units.length)return st._units.indexOf(unitId)>=0;
+  return st.unit===unitId;
+}
 
 // IBJJF Promotion Authority Rules
 // Returns the maximum belt a given instructor belt+degree can promote TO
@@ -6641,7 +6653,7 @@ function rCommunityPeople(){
   // staff teaching the kids program are the same humans, no point
   // double-listing them under Kids).
   const students=STUDENTS.filter(s=>s._active!==false&&s.unit===curUnit&&s.prog===(segment==='kids'?'kids':'adult')).map(s=>({...s,_kind:'student'}));
-  const instructors=segment==='adult'?STAFF.filter(st=>st._active!==false&&st.unit===curUnit&&!isDevStaff(st)&&st.roleTitle!=='Admin').map(st=>({...st,_kind:'instructor'})):[];
+  const instructors=segment==='adult'?STAFF.filter(st=>st._active!==false&&staffInUnit(st,curUnit)&&!isDevStaff(st)&&st.roleTitle!=='Admin').map(st=>({...st,_kind:'instructor'})):[];
   let list=[];
   if(typeFilter==='students')list=students;
   else if(typeFilter==='instructors')list=instructors;
@@ -7486,7 +7498,7 @@ function rParentMembers(){
   const active=parentSelectedChild()||myKids[0]||null;
   const activeUnit=active&&active.unit;
   const myUnits=new Set(activeUnit?[activeUnit]:[]);
-  const instructors=STAFF.filter(st=>st._active!==false&&myUnits.has(st.unit)&&!isDevStaff(st)&&st.roleTitle!=='Admin')
+  const instructors=STAFF.filter(st=>st._active!==false&&Array.from(myUnits).some(u=>staffInUnit(st,u))&&!isDevStaff(st)&&st.roleTitle!=='Admin')
     .slice()
     .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const unitsLabel=Array.from(myUnits).map(u=>(UNITS.find(x=>x.id===u)||{}).name).filter(Boolean).join(', ')||S.unit;
@@ -12635,9 +12647,13 @@ async function refetchUnitScopedData(){
     // onto TRIALS[].sessions below. Legacy single class_id/date/time on the trial
     // stay live (reschedule still uses them this phase).
     c.from('trial_sessions').select('id,trial_booking_id,class_id,class_date,class_time,attended').order('class_date',{ascending:true}).limit(500),
+    // staff_units (N:N) — which units each instructor teaches at. APPENDED LAST so
+    // every existing index in this positional array is untouched. RLS su_select is
+    // `using (true)`, matching staff_select, so students and parents read it too.
+    c.from('staff_units').select('staff_id,unit_id'),
   ]);
   const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
-  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9),ce=get(10),ts=get(11);
+  const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9),ce=get(10),ts=get(11),su=get(12);
   // Rebuild the visitor map each refetch (empty on error / non-staff).
   VISITORS={};
   if(vs&&vs.data){for(const r of vs.data){if(r&&r.id)VISITORS[r.id]={id:r.id,_dbId:r.id,name:r.full_name,belt:r.belt,prog:r.prog,initials:r.initials,unit:uMap[r.unit_id]||null,_visitor:true};}}
@@ -12686,6 +12702,25 @@ async function refetchUnitScopedData(){
       // staff_notes loader. feedback field removed (column unused
       // post-migration 56; notes live in public.staff_notes).
       return{id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_active:r.active!==false,name:cleanName,firstName:r.first_name||null,lastName:r.last_name||null,email:r.email||null,belt:r.belt,deg:r.degree,initials,role:'instructor',roleTitle:r.role_title||'Professor',unit:uMap[r.unit_id]||null,totalClasses:r.total_classes||0,journey:r.journey||[],_notes:null,photoUrl:r.photo_url||null,socialHandles:r.social_handles||{},hasMybjjGi:!!r.has_mybjj_gi,_createdAt:r.created_at||null};
+    });
+    // Attach staff_units membership. unit_id -> legacy id via the SAME uMap the
+    // mapper just used for `unit`, so _units holds identical values and any
+    // comparison against curUnit behaves the same. Keyed on _dbId (the staff
+    // UUID), which is what staff_units.staff_id references.
+    // No rows for a staff member, or a failed/absent fetch -> [st.unit], i.e.
+    // unchanged behaviour. staffInUnit() also falls back on its own.
+    const _suByStaff={};
+    if(su&&su.data){
+      for(const r of su.data){
+        if(!r||!r.staff_id)continue;
+        const _u=uMap[r.unit_id];
+        if(!_u)continue;
+        (_suByStaff[r.staff_id]=_suByStaff[r.staff_id]||[]).push(_u);
+      }
+    }
+    STAFF.forEach(s=>{
+      const _l=_suByStaff[s._dbId];
+      s._units=(_l&&_l.length)?Array.from(new Set(_l)):(s.unit?[s.unit]:[]);
     });
     got=true;
   }else if(sf.error)console.warn('[mybjj] hydrate staff:',sf.error);
