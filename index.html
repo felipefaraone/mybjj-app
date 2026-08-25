@@ -9233,8 +9233,20 @@ function rRescheduleModal(){
   if(_multi&&!S.reschedMoveFrom){
     body='<div style="font-size:12.5px;color:var(--text2);margin-bottom:10px;line-height:1.45">This trial has more than one class. Which one are you moving?</div>'
       +_sess.map(function(s){
+        // Two sessions can share a date AND a time in different classes (Gi and
+        // No-Gi both at 6:30pm), which rendered as identical rows — staff would be
+        // choosing blind which one to delete. Resolve the class the same way the
+        // trial card (index.html:8934) and _trialSlotGroups do: look the row up in
+        // CLASSES by the session's classId, then hand THAT ROW to _clsLabel, which
+        // reads row.uniform / row.level. Unresolvable class or empty label -> the
+        // row renders exactly as before; the separator lives inside the span so it
+        // can never be left dangling. Same treatment as the slot buttons' clsLabel.
+        const _scls=s.classId?CLASSES.find(c=>c.id===s.classId):null;
+        const _slbl=_scls?_clsLabel(_scls):'';
         return '<button class="bsm" style="width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;font-size:13px" onclick="setReschedMoveFrom(\''+esc(s._dbId)+'\')">'
-          +_fmtAttWhen(s.classDate,s.classTime)+'</button>';
+          +_fmtAttWhen(s.classDate,s.classTime)
+          +(_slbl?'<span style="font-size:10px;opacity:.75;font-weight:400"> \u00b7 '+escHtml(_slbl)+'</span>':'')
+          +'</button>';
       }).join('');
   }else if(_multi){
     const _from=_sess.find(function(s){return s&&s._dbId===S.reschedMoveFrom;});
