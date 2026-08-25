@@ -307,6 +307,14 @@ input.err,select.err{border-color:var(--red)}
       <h2>All done</h2>
       <p>You're cleared to train. Walk straight onto the mats when you arrive — no paperwork, no queue.</p>
       <span class="badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>WAIVER COMPLETE</span>
+      <!-- Secondary action, revealed by show() only on the generic path when the
+           submission was FOR A CHILD. A parent with two children must submit once
+           per child; without this the only way back is the browser Back button,
+           which leaves the first child's details in the form. -->
+      <div id="againwrap" style="display:none;margin-top:24px">
+        <button type="button" class="btn" style="background:none;border:1.5px solid var(--blue);color:var(--blue)" onclick="addAnotherChild()">Add another child</button>
+        <p>Signing for a sibling? Your details stay, your child's are cleared, so nothing carries over.</p>
+      </div>
     </div>
   </section>
 
@@ -341,6 +349,14 @@ function show(id){
   document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("on"); });
   $(id).classList.add("on");
   window.scrollTo({top:0,behavior:"smooth"});
+  // "Add another child" belongs to the generic path only, and only when this
+  // submission was for a child. A tokened link is bound to one named person, and
+  // an adult signing for themselves has no second participant. Decided here rather
+  // than in the submit handler so that handler stays untouched.
+  if(id === "done"){
+    var aw = $("againwrap");
+    if(aw) aw.style.display = (GENERIC && st.minor) ? "" : "none";
+  }
 }
 function setSteps(n){
   [1,2,3,4].forEach(function(i){
@@ -624,6 +640,71 @@ window.gidKidToggle = function(cb){
 };
 // Live-refresh the whobox banner with the child's name as it's typed.
 window.gidKidName = function(){ if(st.minor) applyMinorUI(val("gid_kidname")); };
+
+// ---- Add another child ------------------------------------------------------
+// A parent with more than one child must submit once PER CHILD: the backend keys
+// each waiver to the individual child. Before this existed the only way back was
+// the browser Back button, which leaves every field populated — so the FIRST
+// child's date of birth, gender and health answers stayed attached while only the
+// name was edited. Production hit both failure modes: a mangled name, and one
+// child's medical history submitted under another child's name with nothing to
+// signal it.
+//
+// The rule: KEEP what describes the SIGNER, CLEAR what describes the PARTICIPANT.
+// Anything ambiguous is CLEARED — re-entering a field costs a moment; a stale
+// value on a medical form is a real risk. Address, occupation and the emergency
+// contact all sit in the participant block ("Relationship to you"), so they are
+// cleared even though a sibling usually shares them.
+window.addAnotherChild = function(){
+  // CLEAR — participant identity and contact (the whole step-1 block below whobox)
+  ["gid_kidname","dob","gender","participant_phone","address","occupation",
+   "em_name","em_phone","em_rel"].forEach(function(id){ var el=$(id); if(el) el.value=""; });
+
+  // CLEAR — step 2: goals + martial-arts history
+  document.querySelectorAll("#goals .chip.on").forEach(function(c){ c.classList.remove("on"); });
+  st.goals = [];
+  ["ma_style","ma_rank","ma_gym","ma_years"].forEach(function(id){ var el=$(id); if(el) el.value=""; });
+
+  // CLEAR — every health answer, its yes/no state and its revealed detail input.
+  // One sweep over .ynrow covers step 3's #med rows AND step 2's trained_before:
+  // both run on the same st.yn machinery, so neither can be missed.
+  st.yn = {};
+  document.querySelectorAll(".ynrow").forEach(function(row){
+    row.querySelectorAll(".ynbtns button").forEach(function(b){ b.classList.remove("on"); });
+    var d = row.querySelector(".detail");
+    if(d) d.classList.remove("open");
+    row.querySelectorAll("input").forEach(function(i){ i.value = ""; });
+    row.style.borderColor = "";
+  });
+  resetAllNo();
+
+  // CLEAR — the legal act: agreement, signature, typed name. A new participant
+  // needs a new signature; re-using the previous one must be impossible.
+  var ag = $("agree"); if(ag) ag.checked = false;
+  var sb = $("signed_by"); if(sb) sb.value = "";
+  if(window.clearSig) window.clearSig();
+
+  // CLEAR — validation marks and the error banner
+  document.querySelectorAll(".err").forEach(function(el){ el.classList.remove("err"); });
+  $("formerr").style.display = "none";
+
+  // Fresh Turnstile token — same reset the submit error paths use.
+  if(window.turnstile){ window.turnstile.reset("#cf"); st.cfToken = ""; }
+
+  // KEEP — gid_first, gid_last, gid_email, gid_unit, and gid_iskid (still on, so
+  // st.minor stays true). The whobox banner echoes the child's name, so re-apply
+  // the minor wording now that the name is blank.
+  applyMinorUI("");
+
+  // The success path left the submit button disabled — re-arm it.
+  var btn = $("submitBtn");
+  if(btn){ btn.disabled = false; btn.textContent = "Sign and finish"; }
+
+  $("steps").style.display = "";
+  setSteps(1);
+  show("s1");
+  var kn = $("gid_kidname"); if(kn) kn.focus();
+};
 
 // ---- boot ----
 $("dob").max = new Date().toISOString().split("T")[0];
