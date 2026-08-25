@@ -9154,6 +9154,14 @@ function _trialSlotGroups(t){
   const nowDate=o.year+'-'+o.month+'-'+o.day;
   const nowMin=(parseInt(o.hour==='24'?'00':o.hour,10)||0)*60+(parseInt(o.minute,10)||0);
   const matches=(CLASSES||[]).filter(cl=>cl&&cl.active===true&&cl.unit_id===t._unitId&&TRIAL_TYPES[cl.type]&&cl.audience===aud);
+  // Monday-based calendar-week start for a UTC date (AU convention: Monday first,
+  // Sunday LAST). Sunday is getUTCDay()===0, so it steps BACK 6 days, not forward 1.
+  // Works on a copy — the caller's `d` is still needed for the day/month label.
+  const mondayOf=(dt)=>{const m=new Date(dt.getTime());m.setUTCDate(m.getUTCDate()-((m.getUTCDay()+6)%7));return m;};
+  // The Monday of the calendar week containing TODAY. Derived from nowDate, which
+  // stays the single source of "today" — no second clock read, no second timezone
+  // conversion.
+  const nowMonday=mondayOf(new Date(nowDate+'T00:00:00Z'));
   const groups=[];
   for(let i=-2;i<=20;i++){
     const d=new Date(nowDate+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+i);
@@ -9164,9 +9172,14 @@ function _trialSlotGroups(t){
     let day=matches.filter(cl=>cl.day_of_week===dow&&(i<=0||(i*1440+hhmmToMin(cl.time))>=nowMin+LEAD_MIN));
     if(!day.length)continue;
     day.sort((a,b)=>hhmmToMin(a.time)-hhmmToMin(b.time));
-    // Rolling 7-day buckets for the modal's week tabs: retro days and the next 6
-    // sit in week 0, then 7-13, then 14-20. i tops out at 20, so exactly 3 buckets.
-    const weekIndex=i<0?0:Math.floor(i/7);
+    // CALENDAR weeks, Monday-based — not rolling 7-day windows anchored on today.
+    // The rolling version made the labels lie: with today Wednesday 26 Aug it put
+    // Mon 31 Aug in "This week", so staff looking under "Next week" could not find
+    // it, and "This week" spanned nine days into September.
+    // Retro days can fall in the PREVIOUS calendar week (today Monday -> i=-2 is
+    // Saturday), so clamp at 0: a past day always belongs under "This week", where
+    // the Earlier section renders it. Beyond week 2 clamps up in the caller.
+    const weekIndex=Math.max(0,Math.round((mondayOf(d)-nowMonday)/604800000));
     // clsLabel via the SAME helper the trial card already uses for a session
     // (index.html:8892 — CLASSES row -> _clsLabel), so wording can't drift.
     groups.push({label:DOW[dow]+' '+d.getUTCDate()+' '+MON[d.getUTCMonth()],dateStr,past:dateStr<nowDate,weekIndex:weekIndex,slots:day.map(cl=>({classId:cl.id,time:String(cl.time||'').slice(0,5),timeLabel:fmtT12(cl.time),clsLabel:_clsLabel(cl)}))});
@@ -9212,18 +9225,20 @@ function rRescheduleModal(){
     // No confirm button when there's nothing to pick — never an empty list.
     body='<div style="font-size:13px;color:var(--text2);text-align:center;padding:22px 8px;line-height:1.5">No slots in the last few days or the weeks ahead.</div>';
   }else{
-    // Week tabs — 21 days is too many buttons for one wall. Rolling 7-day buckets
-    // (weekIndex from _trialSlotGroups); retro days live in week 0.
+    // Week tabs — 21 days is too many buttons for one wall. CALENDAR weeks,
+    // Monday-based (weekIndex from _trialSlotGroups); retro days live in week 0.
     const byWeek=[[],[],[]];
     groups.forEach(function(g){const w=Math.max(0,Math.min(2,g.weekIndex|0));byWeek[w].push(g);});
-    const nSlots=w=>byWeek[w].reduce(function(n,g){return n+g.slots.length;},0);
     const firstWith=[0,1,2].find(w=>byWeek[w].length);
     let wk=Number(S.reschedWeek)||0;if(wk<0||wk>2)wk=0;
     if(!byWeek[wk].length)wk=(firstWith==null?0:firstWith);   // default: earliest week that HAS slots
-    const WLBL=['This week','Next week','In 2 wks'];
+    const WLBL=['This week','Next week','Week after'];
     const tabs='<div class="rsw" style="margin-bottom:14px">'+[0,1,2].map(function(w){
       const has=byWeek[w].length>0;
-      return '<div class="rseg '+(wk===w?'active':'')+'"'+(has?' onclick="setReschedWeek('+w+')"':' style="opacity:.45;cursor:default"')+'>'+WLBL[w]+(has?' <span style="opacity:.7;font-size:11px">'+nSlots(w)+'</span>':'')+'</div>';
+      // No slot count: it never helped anyone choose a week and read as part of the
+      // label ("This week38"). An empty week is already signalled by the dimming
+      // and the missing onclick, which is the only thing the number conveyed.
+      return '<div class="rseg '+(wk===w?'active':'')+'"'+(has?' onclick="setReschedWeek('+w+')"':' style="opacity:.45;cursor:default"')+'>'+WLBL[w]+'</div>';
     }).join('')+'</div>';
     // One group renderer for both sections. Past days are amber — staff are logging
     // a class that already ran, not booking a future one.
