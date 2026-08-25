@@ -2026,7 +2026,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -8968,7 +8968,7 @@ function rTrialsBlock(){
         actBtns.push('<button class="admin-action-btn primary" onclick="convertTrialToMember(\''+t._dbId+'\')">'+iConvert+'Convert</button>');
       }
     }
-    actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Move class</button>');
+    actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Reschedule</button>');
     actBtns.push('<button class="admin-action-btn" onclick="lapseTrial(\''+t._dbId+'\')" style="color:var(--red-text)">'+iLapse+'Lapse</button>');
     const actionsRow='<div style="display:flex;gap:8px;margin-top:12px">'+actBtns.join('')+'</div>';
     // #5 (John's trial list) — running contact-attempt log so Patricia/Evelin
@@ -9104,12 +9104,15 @@ async function lapseTrialAction(trialDbId){
 function rescheduleTrial(trialDbId){
   const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
   // Fresh modal every time: always opens in MOVE mode, week auto-picked below.
-  S.reschedWeek=0;S.reschedAddMode=false;
+  S.reschedWeek=0;S.reschedAddMode=false;S.reschedMoveFrom=null;
   S.rescheduleTrial=trialDbId;render();
 }
-function closeRescheduleTrial(){S.rescheduleTrial=null;S.reschedWeek=0;S.reschedAddMode=false;render();}
+function closeRescheduleTrial(){S.rescheduleTrial=null;S.reschedWeek=0;S.reschedAddMode=false;S.reschedMoveFrom=null;render();}
 function setReschedWeek(n){S.reschedWeek=Number(n)||0;render();}
 function setReschedMode(add){S.reschedAddMode=!!add;render();}
+// Which session a MOVE starts from. Only meaningful with 2+ sessions, where the
+// modal asks first; null means "not chosen yet" (or nothing to choose).
+function setReschedMoveFrom(id){S.reschedMoveFrom=id||null;render();}
 // Project the trial's unit's trial-bookable classes onto the last 2 days + the next
 // 21 days in Australia/Sydney (the range the PUBLIC trial booking form offers, so
 // staff can reach every day a member of the public could have picked).
@@ -9168,6 +9171,21 @@ function rRescheduleModal(){
   const _sess=Array.isArray(t.sessions)?t.sessions:[];
   const _cur=_sess.length?_sess[0]:(t.classDate?{classDate:t.classDate,classTime:t.classTime}:null);
   const curChip=_cur?'<div style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:999px;padding:4px 11px;margin-bottom:14px;font-size:11.5px;color:var(--text2)"><span style="font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;font-size:10px;color:var(--blue)">Currently</span>'+_fmtAttWhen(_cur.classDate,_cur.classTime)+(_sess.length>1?' <span style="color:var(--text3)">+'+(_sess.length-1)+' more</span>':'')+'</div>':'';
+  // Move and Add are BOTH primary now — a segmented control at the top, not a link
+  // buried under the slot list. Reuses the .rsw/.rseg/.rseg.active classes the week
+  // tabs below already use; no new CSS, no colours declared here.
+  const modeSeg='<div class="rsw" style="margin-bottom:6px">'
+    +'<div class="rseg '+(addMode?'':'active')+'" onclick="setReschedMode(false)">Move</div>'
+    +'<div class="rseg '+(addMode?'active':'')+'" onclick="setReschedMode(true)">Add another</div>'
+  +'</div>';
+  // One line, keyed off _cur exactly like `sub`, so it can never describe a day the
+  // "Currently" chip is not showing.
+  const modeHint='<div style="font-size:11.5px;color:var(--text3);margin:0 2px 14px;line-height:1.4">'
+    +(!_cur
+      ?'They have no trial day set yet.'
+      :(addMode?'Keeps their current day and adds a second class.'
+               :'Replaces their current trial day with the one you pick.'))
+  +'</div>';
   let body;
   if(!groups.length){
     // No confirm button when there's nothing to pick — never an empty list.
@@ -9208,10 +9226,23 @@ function rRescheduleModal(){
     const upSection=upGroups.length?((pastGroups.length?secHdr('Upcoming'):'')+upGroups.map(g=>renderGroup(g,false)).join('')):'';
     body=tabs+(pastSection+upSection||'<div style="font-size:13px;color:var(--text3);text-align:center;padding:18px 8px">No classes this week.</div>');
   }
-  // Secondary path — keep the current day and add a SECOND class instead.
-  const modeLink=addMode
-    ?'<div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px"><span onclick="setReschedMode(false)" style="color:var(--blue);cursor:pointer;font-size:12.5px;font-weight:600">&larr; Move instead</span><div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4">Replace their current trial day with the one you pick.</div></div>'
-    :'<div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px"><span onclick="setReschedMode(true)" style="color:var(--blue);cursor:pointer;font-size:12.5px;font-weight:600">+ Add another class instead</span><div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4">Keep the current day and add a second trial class.</div></div>';
+  // MOVE with several sessions used to silently become an ADD, because the code
+  // could not know which session was meant. Now that Move is a deliberate choice,
+  // ask: list the sessions and let staff pick the one to move FROM.
+  const _multi=!addMode&&_sess.length>1;
+  if(_multi&&!S.reschedMoveFrom){
+    body='<div style="font-size:12.5px;color:var(--text2);margin-bottom:10px;line-height:1.45">This trial has more than one class. Which one are you moving?</div>'
+      +_sess.map(function(s){
+        return '<button class="bsm" style="width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;font-size:13px" onclick="setReschedMoveFrom(\''+esc(s._dbId)+'\')">'
+          +_fmtAttWhen(s.classDate,s.classTime)+'</button>';
+      }).join('');
+  }else if(_multi){
+    const _from=_sess.find(function(s){return s&&s._dbId===S.reschedMoveFrom;});
+    body='<div style="margin-bottom:12px;line-height:1.45">'
+      +'<span onclick="setReschedMoveFrom(null)" style="color:var(--blue);cursor:pointer;font-size:12px;font-weight:600">&larr; Choose a different class</span>'
+      +(_from?'<div style="font-size:11.5px;color:var(--text3);margin-top:3px">Moving '+_fmtAttWhen(_from.classDate,_from.classTime)+'</div>':'')
+    +'</div>'+body;
+  }
   const title=addMode?'Add another class':'Move to another class';
   // Both halves key off _cur — the SAME value the "Currently" chip above uses — so
   // the sentence can never claim a day the chip isn't showing. With no day on file
@@ -9226,8 +9257,9 @@ function rRescheduleModal(){
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">${title}</div>
 <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.4">${sub}</div>
 ${curChip}
+${modeSeg}
+${modeHint}
 ${body}
-${modeLink}
 </div></div>`;
 }
 // Write the REAL slot (class_id/date/time) and NULL the retired preferred_day so
@@ -9283,7 +9315,7 @@ async function _doAddTrialSession(trialDbId,classId,dateStr,timeHHMM,okMsg){
   }
   t.sessions.push({_dbId:newId||('local-'+Date.now()),classId:classId,classDate:dateStr,classTime:timeHHMM,attended:false});
   t.sessions.sort((a,b)=>String(a.classDate||'').localeCompare(String(b.classDate||'')));
-  S.rescheduleTrial=null;
+  S.rescheduleTrial=null;S.reschedMoveFrom=null;
   render();showSaveToast2(okMsg||'Class added.');
 }
 // ── MOVE a trial to a different class (Aug 2026, John) ───────────────────────
@@ -9306,12 +9338,16 @@ async function _doMoveTrialSession(trialDbId,classId,dateStr,timeHHMM){
   if(!Array.isArray(t.sessions))t.sessions=[];
   // Duplicate guard — same class + date already on their list.
   if(t.sessions.some(s=>s&&s.classId===classId&&s.classDate===dateStr)){showSaveToast2('That class is already on their list.','error');return;}
-  // Ambiguous target -> never delete blindly.
-  if(t.sessions.length>1){
-    await _doAddTrialSession(trialDbId,classId,dateStr,timeHHMM,'Added \u2014 this trial already has several classes, so it was added rather than moved.');
-    return;
-  }
-  const old=(t.sessions.length===1)?t.sessions[0]:null;
+  // WHICH session are we moving FROM? With 2+ sessions the modal asks first and
+  // stores the choice in S.reschedMoveFrom; with 0 or 1 there is nothing to choose
+  // and behaviour is unchanged. This replaces the old silent fallback-to-add, which
+  // quietly did a different thing than the button said.
+  let old=null;
+  if(S.reschedMoveFrom)old=t.sessions.find(s=>s&&s._dbId===S.reschedMoveFrom)||null;
+  else if(t.sessions.length===1)old=t.sessions[0];
+  // 2+ sessions with no valid selection would insert without deleting, i.e. silently
+  // become an add again. The chooser prevents it; refuse rather than guess.
+  if(!old&&t.sessions.length>1){showSaveToast2('Pick which class to move first.','error');return;}
   const ins=await cli.from('trial_sessions').insert({trial_booking_id:trialDbId,class_id:classId,class_date:dateStr,class_time:timeHHMM,attended:false}).select('id').single();
   if(ins&&ins.error){showSaveToast2(friendlyMutationError(ins.error),'error');return;}
   const newId=ins&&ins.data&&ins.data.id;
@@ -9338,7 +9374,7 @@ async function _doMoveTrialSession(trialDbId,classId,dateStr,timeHHMM){
   }
   t.sessions.push({_dbId:newId||('local-'+Date.now()),classId:classId,classDate:dateStr,classTime:timeHHMM,attended:false});
   t.sessions.sort((a,b)=>String(a.classDate||'').localeCompare(String(b.classDate||'')));
-  S.rescheduleTrial=null;S.reschedAddMode=false;S.reschedWeek=0;
+  S.rescheduleTrial=null;S.reschedAddMode=false;S.reschedWeek=0;S.reschedMoveFrom=null;
   // One toast only: a failed delete leaves BOTH days showing, so say that instead
   // of claiming a clean move.
   render();
