@@ -581,6 +581,10 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
   .content.glass-pad{padding-bottom:24px}
   /* rows 4-8 of the Recent card appear only here, filling the column beside Journey */
   .rec-more{display:flex!important}
+  /* Class history: an advanced student has 6-8 belt rows, which pushed the page.
+     Cap the ROWS (not the header) at ~4-5 rows and scroll inside the card. Mobile
+     has no cap at all — the list just stacks. */
+  .chist-scroll{max-height:340px;overflow-y:auto}
   /* identity | progress | belt. progress/belt span both rows so they stay
      vertically centred against identity + its invite row; the belt SVG is a
      fixed 110px, so `auto` hugs it exactly. */
@@ -4036,6 +4040,15 @@ function _rClassHistorySection(s){
       +'<div class="card" style="padding:14px 16px;font-size:12px;color:var(--text3)">No class history yet.</div>';
   }
   const beltLbl=(k)=>(BA[k]||BK[k]||{label:k}).label;
+  // Current belt, derived exactly as _consolidateClassHistory derives it (is_current
+  // row's belt, else the last row's belt) so the two can't disagree. Consolidation
+  // keeps EVERY current-belt period as its own row but merges each past belt into a
+  // single row whose deg is that belt's HIGHEST stripe — so the stripe label is
+  // keyed off the belt, not off is_current: every current-belt period gets labelled
+  // ("Blue", "Blue · 1st stripe", "Blue · 2nd stripe"), and a past belt stays a bare
+  // name ("White", never "White · 4th stripe" — that 4 is a merge artefact).
+  const _curRow=rows.find(r=>r&&r.is_current===true);
+  const curBelt=_curRow?_curRow.belt:(rows[rows.length-1]&&rows[rows.length-1].belt);
   const totalAll=rows.reduce((a,r)=>a+Number(r.classes||0),0);
   let earliest=null;
   for(const r of rows){if(r&&r.from_date&&(!earliest||r.from_date<earliest))earliest=r.from_date;}
@@ -4047,8 +4060,8 @@ function _rClassHistorySection(s){
   const rowsHtml=rows.map(r=>{
     const isCur=r.is_current===true;
     const col=BELT_COLORS[r.belt]||'#9ca3af';
-    // Current belt: "Belt · Nth stripe/degree". Past belt: just the belt name.
-    const stripeTxt=(isCur&&Number(r.deg)>0)?(' · '+r.deg+_ordSuffix(r.deg)+(r.belt==='black'?' degree':' stripe')):'';
+    // Current belt (any of its periods): "Belt · Nth stripe/degree". Past belt: name only.
+    const stripeTxt=(r.belt===curBelt&&Number(r.deg)>0)?(' · '+r.deg+_ordSuffix(r.deg)+(r.belt==='black'?' degree':' stripe')):'';
     const label=beltLbl(r.belt)+stripeTxt;
     const dateTxt=r.from_date?_fmtJnyDate(r.from_date):null;
     const swatch='<div style="width:26px;height:26px;border-radius:6px;flex-shrink:0;background:'+col+';border:1px solid var(--border)"></div>';
@@ -4069,8 +4082,11 @@ function _rClassHistorySection(s){
     }
     return '<div style="padding:10px 0;border-top:1px solid var(--border)">'+topRow+(splitHtml?'<div style="margin-left:36px">'+splitHtml+'</div>':'')+'</div>';
   }).join('');
+  // Header stays OUTSIDE the scroller so the total + "since" line is always visible;
+  // only the belt rows scroll. Desktop-only cap (see .chist-scroll) — on mobile the
+  // list stacks naturally inside the page's own scroll.
   return '<div class="slbl" style="margin-top:16px">Class history</div>'
-    +'<div class="card" style="padding:14px 16px">'+header+rowsHtml+'</div>';
+    +'<div class="card" style="padding:14px 16px">'+header+'<div class="chist-scroll">'+rowsHtml+'</div></div>';
 }
 function rJnySection(s,sidKey){
   sidKey=sidKey||s.id;
@@ -7575,7 +7591,7 @@ function _rTrainingChart(stu){
   let yy=Number(firstKey.split('-')[0]),mm=Number(firstKey.split('-')[1]);
   const ny=Number(nowKey.split('-')[0]),nm=Number(nowKey.split('-')[1]);
   while((yy<ny||(yy===ny&&mm<=nm))&&seq.length<=240){seq.push(yy+'-'+String(mm).padStart(2,'0'));mm++;if(mm>12){mm=1;yy++;}}
-  const shown=seq.slice(-6);
+  const shown=seq.slice(-12);   // 12-month window (was 6)
   const counts=shown.map(function(k){return byMonth[k]||0;});
   const maxCount=Math.max(1,Math.max.apply(null,counts));
   let bestIdx=-1,bestCount=-1;
@@ -7606,7 +7622,10 @@ function _rTrainingChart(stu){
   }else if(shown.length===1){
     footer='<div style="font-size:12px;color:var(--text3);margin-top:10px;text-align:center">Your months will build up here.</div>';
   }
-  return LABEL+'<div class="card" style="padding:14px 12px"><div style="display:flex;align-items:flex-end;gap:6px">'+bars+'</div>'+footer+'</div>';
+  // gap 6px -> 3px: with 12 bars instead of 6 the columns are half as wide, and at
+  // 320px the 6px gaps pushed the row into horizontal overflow. 3px clears it and
+  // simply gives the bars a little more room at every other width.
+  return LABEL+'<div class="card" style="padding:14px 12px"><div style="display:flex;align-items:flex-end;gap:3px">'+bars+'</div>'+footer+'</div>';
 }
 // ── Belt-box meta + two-stat helpers (student Progress only) ─────────────────
 // Award date of the CURRENT belt: the earliest dated journey entry AT this belt
