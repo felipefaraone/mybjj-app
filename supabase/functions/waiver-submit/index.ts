@@ -275,49 +275,6 @@ Deno.serve(async (req) => {
   // waiver payload above — has already passed, so this is the last gate before
   // there's a real subject to attach the waiver to.
   if (isGeneric && genericLead && subject) {
-    // ---- SHORT-WINDOW IDEMPOTENCY (repeat of the SAME submit) ----------------
-    // Separate from, and prior to, the 60-day de-dupe below. That one answers a
-    // different question — "did this person already book a trial they have not
-    // signed for?" — and filters on `waiver_signed_at IS NULL`, so by design it
-    // cannot see a lead that was signed seconds ago. That is exactly how one
-    // person produced two leads and two health_waivers rows 87 seconds apart in
-    // production: on the second submit the first lead was already signed, so the
-    // de-dupe found no candidate and created a fresh lead with its own token.
-    //
-    // The window is deliberately SHORT. It absorbs a double-click, a network
-    // retry, and an unsure user pressing submit again. It is NOT a business rule
-    // about when renewed interest counts as a new prospect — that judgement
-    // belongs to the staff working the prospect list, not to this function. Do
-    // not widen it into one.
-    //
-    // Runs before any write: nothing has been inserted, uploaded or stamped at
-    // this point in the handler.
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60_000).toISOString();
-    // Same escaping as the de-dupe below: ILIKE with SQL-LIKE metachars escaped so
-    // a literal "_"/"%" in an email matches literally rather than as a wildcard.
-    const emailPatRecent = genericLead.email.replace(/[\\%_*]/g, "\\$&");
-    // A NULL waiver_signed_at fails `gte`, so unsigned leads are excluded here and
-    // stay the business of the 60-day de-dupe below.
-    const { data: recentSigned, error: recentErr } = await supabase
-      .from("trial_bookings")
-      .select("id")
-      .ilike("email", emailPatRecent)
-      .gte("waiver_signed_at", tenMinutesAgo)
-      .order("waiver_signed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (recentErr) {
-      // Same posture as the de-dupe below — a lookup hiccup must never block a
-      // genuine signup. Fall through to the existing behaviour.
-      console.error("[waiver-submit] generic idempotency lookup:", recentErr.message);
-    } else if (recentSigned) {
-      // Repeat submit: no lead, no health_waivers row, no signature upload, no
-      // stamp. Return the SAME body a completed submit returns, so the caller
-      // cannot tell a repeat from the original.
-      console.log("[waiver-submit] generic repeat submit within 10m, ignored (lead", recentSigned.id, ")");
-      return json({ ok: true }, 200, origin);
-    }
-
     // De-dupe: a person who already booked (has a trial_bookings row) but fills the
     // GENERIC waiver instead of their personal link must NOT get a second trial.
     // Look for a reuse candidate FIRST — same email, waiver NOT yet signed, booked
