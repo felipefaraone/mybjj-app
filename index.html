@@ -2688,29 +2688,41 @@ function rAtts(all,cid){
 // same unit. Only 'booked' trials appear on the mat; attended / no_show /
 // converted / lapsed have been dealt with and must not clutter it. cid is the
 // synthetic composite; the DB class_id lives on the TT slot's .classId.
+// One source for "which class occurrences is this trial booked into". Sessions
+// (public.trial_sessions) are the source of truth; the trial-level scalar trio
+// (trial_bookings.class_id/date/time) is a LEGACY fallback for trials that predate
+// sessions, consulted ONLY when there are no sessions at all — never as a
+// fallthrough, which is what put rescheduled people on a ghost second day (v475).
+// Elements match the t.sessions element shape ({_dbId,classId,classDate,classTime,
+// attended}) so callers need no translation. The legacy occurrence carries
+// _dbId:null — that is how the card knows there is no session row to remove, and
+// how any caller can tell a real session from the mirror.
+// Empty array when the trial has neither.
+function trialClasses(t){
+  if(!t)return [];
+  const sess=Array.isArray(t.sessions)?t.sessions:[];
+  if(sess.length)return sess;
+  if(t.classDate)return [{_dbId:null,classId:t.classId||null,classDate:t.classDate,classTime:t.classTime||null,attended:t.status==='attended'}];
+  return [];
+}
 function trialsForClass(cid){
   const c=_parseCID(cid);if(!c)return [];
   const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const classId=t.classId||null;
   if(!classId)return [];  // no class identity → never match (fallback trials carry classId null)
-  // Phase B — trial_sessions is the SOURCE OF TRUTH for where a trial is expected.
-  // The trial-level class/date scalar is a fallback for trials that predate sessions.
+  // Occurrences come from trialClasses() so this surface and the trial card can
+  // never disagree again. The gates below are unchanged.
   return TRIALS.filter(tr=>{
     // A converted trial is a member now — never on the mat.
     if(tr.status==='converted')return false;
-    const sess=Array.isArray(tr.sessions)?tr.sessions:null;
-    // Has sessions -> they decide this occurrence OUTRIGHT, with no fallthrough.
-    // Rescheduling writes a new session but never clears trial_bookings.class_date,
-    // so falling through on a non-match matched the STALE scalar and rendered the
-    // person on their original day as well as the new one (7 such rows in prod).
-    // trial_status reflects a PAST class, so a no_show/lapse must not hide a
-    // freshly re-added class — the session match alone decides.
-    if(sess&&sess.length)return sess.some(s=>s&&s.classId===classId&&s.classDate===c.date);
-    // Legacy single-field path — reachable ONLY when the trial has no sessions at
-    // all. Original gate kept: a pure no_show/lapse with only the legacy class
-    // field stays off the mat.
-    if(tr.status!=='booked'&&tr.status!=='attended')return false;
-    return tr.classId===classId&&tr.classDate===c.date;
+    const occ=trialClasses(tr);
+    if(!occ.length)return false;
+    // The no_show/lapse gate applies ONLY on the legacy path. Sessions are never
+    // gated by trial_status: that status reflects a PAST class and must not hide a
+    // freshly re-added one — the session match alone decides.
+    const _hasSess=Array.isArray(tr.sessions)&&tr.sessions.length>0;
+    if(!_hasSess&&tr.status!=='booked'&&tr.status!=='attended')return false;
+    return occ.some(o=>o&&o.classId===classId&&o.classDate===c.date);
   });
 }
 // One trial row inside the trials block. The "TRIAL · N" section label (below)
@@ -8924,7 +8936,6 @@ function rTrialsBlock(){
     // sessions + preferredDay → the prefer line. Defensive: if t.sessions is
     // missing (older cached state), fall back to the legacy single class_date line.
     let slotLine='';
-    const _sessArr=Array.isArray(t.sessions)?t.sessions:null;
     const _prefLine=t.preferredDay?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Prefers '+escHtml(t.preferredDay)+' <span style="opacity:.75">· time to confirm</span></div>':'';
     // Phase C — a real session row (sessDbId) gets a staff-only × to remove it.
     // The defensive legacy-fallback line has no session row → no × (nothing to
@@ -8937,10 +8948,15 @@ function rTrialsBlock(){
       const _rm=(_canEditSess&&sessDbId)?'<button onclick="_removeTrialSession(\''+t._dbId+'\',\''+escAttr(sessDbId)+'\')" aria-label="Remove class" title="Remove class" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 2px;margin-left:6px;font-size:14px;line-height:1;flex-shrink:0">×</button>':'';
       return '<div style="font-size:11.5px;color:var(--text2);font-weight:500;margin-top:6px;word-break:break-word;display:flex;align-items:center;gap:2px"><span style="flex:1;min-width:0">'+_fmtAttWhen(dateStr,timeStr)+(_clsL?' · '+escHtml(_clsL):'')+_done+'</span>'+_rm+'</div>';
     };
-    if(_sessArr&&_sessArr.length){
-      slotLine=_sessArr.map(s=>_sessLine(s.classDate,s.classTime,s.classId,s.attended,s._dbId)).join('');
-    }else if(_sessArr===null&&t.classDate){
-      slotLine=_sessLine(t.classDate,t.classTime,t.classId,t.status==='attended',null);   // defensive legacy fallback (no × — no session row)
+    // trialClasses() answers this — the old `_sessArr===null` legacy branch was
+    // unreachable, because hydrate always assigns an array ([] when empty), so a
+    // trial with zero sessions and a legacy class showed NO class line at all while
+    // trialsForClass still placed them in that class. × only where a session row
+    // exists; _sessLine already keys the button off sessDbId, and the legacy
+    // occurrence carries _dbId:null.
+    const _occ=trialClasses(t);
+    if(_occ.length){
+      slotLine=_occ.map(s=>_sessLine(s.classDate,s.classTime,s.classId,s.attended,s._dbId)).join('');
     }else if(t.preferredDay){
       slotLine=_prefLine;
     }
@@ -9168,8 +9184,13 @@ function rRescheduleModal(){
   const fn=addMode?'_doAddTrialSession':'_doMoveTrialSession';
   // "Currently" — the day being moved FROM. Sessions are the source of truth;
   // the legacy scalar is only a fallback for trials that predate them.
+  // _sess is REAL sessions only — the chooser below can only move a row that
+  // actually exists, so it must never see the legacy mirror.
   const _sess=Array.isArray(t.sessions)?t.sessions:[];
-  const _cur=_sess.length?_sess[0]:(t.classDate?{classDate:t.classDate,classTime:t.classTime}:null);
+  // The chip asks the same question as the card and the Classes tab, so it reads
+  // the same source. Equivalent to what it did before (sessions[0], else legacy),
+  // but now there is one rule instead of three copies of it.
+  const _cur=trialClasses(t)[0]||null;
   const curChip=_cur?'<div style="display:inline-flex;align-items:center;gap:6px;background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:999px;padding:4px 11px;margin-bottom:14px;font-size:11.5px;color:var(--text2)"><span style="font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;font-size:10px;color:var(--blue)">Currently</span>'+_fmtAttWhen(_cur.classDate,_cur.classTime)+(_sess.length>1?' <span style="color:var(--text3)">+'+(_sess.length-1)+' more</span>':'')+'</div>':'';
   // Move and Add are BOTH primary now — a segmented control at the top, not a link
   // buried under the slot list. Reuses the .rsw/.rseg/.rseg.active classes the week
