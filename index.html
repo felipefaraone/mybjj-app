@@ -12568,15 +12568,40 @@ async function _fetchAllAttendance(c, fromDate, toDate){
   }
   return { data: all, error: null };
 }
+// Same hardening for students. PostgREST silently caps an unbounded select at
+// 1000 rows and, with NO ORDER BY, the slice it returns is arbitrary — in
+// practice the newest rows are the ones dropped. An admin is RLS-visible across
+// every unit so they hit the cap first (~407 rows today, so not armed yet; this
+// is preventive). created_at ascending + id as tiebreaker makes paging stable
+// (no dupes, no skips). Column list is copied verbatim from the query this
+// replaces, embedded parent_user join included. Returns the same {data,error}
+// shape as _fetchAllAttendance because the caller reads results positionally.
+async function _fetchAllStudents(c){
+  const PAGE = 1000;
+  const COLS = 'id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,nogi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_student_id,parent2_student_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,membership_level,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)';
+  let all = [], from = 0;
+  for (let page = 0; page < 10; page++) {          // safety cap: 10 pages / 10k rows
+    const r = await c.from('students').select(COLS)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (r && r.error) return { data: null, error: r.error };
+    const rows = (r && r.data) || [];
+    all = all.concat(rows);
+    if (rows.length < PAGE) break;
+    from += PAGE;
+  }
+  return { data: all, error: null };
+}
 async function refetchUnitScopedData(){
   const c=initSupabase(); if(!c) return false;
   const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
   const res=await Promise.allSettled([
-    c.from('students').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,nogi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_student_id,parent2_student_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,membership_level,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)'),
+    _fetchAllStudents(c),
     // RLS-2 — staff.feedback dropped from the select; Head Instructor
     // Notes now live in public.staff_notes and are fetched lazily per
     // STAFF row by _fetchStaffNotes when the owner opens the profile.
-    c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi,created_at'),
+    c.from('staff').select('id,legacy_id,full_name,first_name,last_name,email,belt,degree,role_title,initials,total_classes,journey,unit_id,user_id,active,photo_url,social_handles,has_mybjj_gi,created_at').order('created_at',{ascending:true}),
     // Etapa 1 — schedule lives in public.classes. Join staff so we
     // can render the instructor's clean display name without a
     // second lookup. Order so rebuildTT sees a stable shape.
