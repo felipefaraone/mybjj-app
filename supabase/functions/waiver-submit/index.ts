@@ -275,6 +275,71 @@ Deno.serve(async (req) => {
   // waiver payload above — has already passed, so this is the last gate before
   // there's a real subject to attach the waiver to.
   if (isGeneric && genericLead && subject) {
+    // ---- SHORT-WINDOW IDEMPOTENCY (a repeat of the SAME submit) --------------
+    // Separate from, and prior to, the 60-day de-dupe below. That one answers a
+    // different question — "did this person already book a trial they have not
+    // signed for?" — and filters on `waiver_signed_at IS NULL`, so by design it
+    // cannot see a lead that was signed seconds ago.
+    //
+    // KEYED ON THE PARTICIPANT, NOT THE EMAIL. For an adult the participant IS
+    // the signer, so the email identifies them. For a child it does NOT: on the
+    // public form a parent signs SEPARATELY for each of their children from the
+    // same address, so the key must include the child. Production has exactly
+    // that — one parent, one email, two submits 87 seconds apart for "Ari
+    // Deutsch" and "Asha Deutsch". Two different children, two legitimate
+    // waivers. An email-only rule silently discards the second child while
+    // returning success to the parent, which is why the earlier attempt at this
+    // fix was reverted. A parent signing for a second child MUST get a second
+    // lead.
+    //
+    // kid_name is compared case-insensitively: the form only trims (val() in
+    // waiver.html) and never normalises case, unlike email which is lowercased
+    // on the way in at line 165.
+    //
+    // The window is deliberately SHORT. It absorbs a double-click, a network
+    // retry, and an unsure user pressing submit again. It is NOT a business rule
+    // about when renewed interest counts as a new prospect — that judgement
+    // belongs to the staff working the prospect list. Do not widen it into one.
+    //
+    // Runs before any write: nothing has been inserted, uploaded or stamped at
+    // this point in the handler.
+    const idemKidName = genericLead.is_kid ? (genericLead.kid_name || "") : "";
+    // A kid submit with no name gives us nothing to identify the participant by,
+    // so skip rather than risk discarding a second child — the exact mistake the
+    // revert was about.
+    if (!genericLead.is_kid || idemKidName) {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+      // Same escaping as the de-dupe below: ILIKE with SQL-LIKE metachars escaped
+      // so a literal "_"/"%" matches literally rather than as a wildcard.
+      const emailPatRecent = genericLead.email.replace(/[\\%_*]/g, "\\$&");
+      let idemQ = supabase
+        .from("trial_bookings")
+        .select("id")
+        .ilike("email", emailPatRecent)
+        .eq("is_kid", genericLead.is_kid)
+        // A NULL waiver_signed_at fails `gte`, so unsigned leads are excluded here
+        // and stay the business of the 60-day de-dupe below.
+        .gte("waiver_signed_at", tenMinutesAgo);
+      if (genericLead.is_kid) {
+        idemQ = idemQ.ilike("kid_name", idemKidName.replace(/[\\%_*]/g, "\\$&"));
+      }
+      const { data: recentSigned, error: recentErr } = await idemQ
+        .order("waiver_signed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (recentErr) {
+        // Same posture as the de-dupe below — a lookup hiccup must never block a
+        // genuine signup. Fall through to the existing behaviour.
+        console.error("[waiver-submit] generic idempotency lookup:", recentErr.message);
+      } else if (recentSigned) {
+        // Repeat submit for the SAME participant: no lead, no health_waivers row,
+        // no signature upload, no stamp. Return the SAME body a completed submit
+        // returns, so the caller cannot tell a repeat from the original.
+        console.log("[waiver-submit] generic repeat submit within 10m, ignored (lead", recentSigned.id, ")");
+        return json({ ok: true }, 200, origin);
+      }
+    }
+
     // De-dupe: a person who already booked (has a trial_bookings row) but fills the
     // GENERIC waiver instead of their personal link must NOT get a second trial.
     // Look for a reuse candidate FIRST — same email, waiver NOT yet signed, booked
