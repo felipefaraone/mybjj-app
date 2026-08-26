@@ -945,8 +945,16 @@ function _membershipOptions(selected){
 // when it does not apply means no element and therefore no stray margin.
 // max-width:100% keeps a long note wrapping inside the row instead of overflowing
 // it on a narrow phone.
+// The PREDICATE behind the badge, split out so a count can ask the same question.
+// The per-row badge and the class tally must never disagree, so both call this —
+// one renders it, the other counts it. standing is 'on_hold', never 'hold' (see
+// the note at index.html:914); s&& guards VISITORS rows, which carry no standing;
+// isStaffOrOwner() keeps it off every student and parent surface.
+function isOnHoldVisible(s){
+  return !!(s&&s.standing==='on_hold'&&isStaffOrOwner());
+}
 function holdBadge(s){
-  if(!(s&&s.standing==='on_hold'&&isStaffOrOwner()))return '';
+  if(!isOnHoldVisible(s))return '';
   const note=(s.holdNote&&String(s.holdNote).trim())||'';
   return '<span style="display:inline-flex;align-items:center;max-width:100%;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;margin-left:6px;text-transform:uppercase">On hold'+(note?' · '+escHtml(note):'')+'</span>';
 }
@@ -2843,6 +2851,21 @@ function rAttsStaff(rows,cid){
   // always reachable — even an all-absent class. ("N going" counts every
   // non-absent row, i.e. attending, unchanged from before.)
   const goingRows=visible.filter(r=>r.status!=='absent');
+  // ON HOLD tally. Scanning twenty rows for amber, and usually finding nothing, is
+  // the actual complaint — count it once at the top so staff only go looking when
+  // it is non-zero. Built from the SAME `visible` set, the SAME student resolution
+  // (STUDENTS then VISITORS) and the SAME predicate the per-row badge uses, so the
+  // number can never disagree with the badges below it.
+  const onHoldCount=visible.reduce(function(n,r){
+    const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];
+    return n+(isOnHoldVisible(s)?1:0);
+  },0);
+  // Mark the exception, not the OK state: zero renders nothing at all — no chip,
+  // no "0 on hold". Same type grammar as the "N GOING" label beside it, in amber
+  // to match the badge.
+  const onHoldTally=onHoldCount
+    ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--amber-text)">${onHoldCount} on hold</span>`
+    :'';
   const P=6;
   const restG=goingRows.length-P;
   const chevron=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;transition:transform .15s;transform:rotate(${exp?90:0}deg)"><polyline points="9 18 15 12 9 6"/></svg>`;
@@ -2851,6 +2874,7 @@ function rAttsStaff(rows,cid){
       +(exp
         ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3)">${goingRows.length} going</span>`
         :`<div class="ast">${goingRows.slice(0,P).map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];return s?_stkAv(s,false):'';}).join('')}${restG>0?`<div class="amor">+${restG}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${goingRows.length} going</span>`)
+      +onHoldTally
       +`<span style="margin-left:auto;display:inline-flex;align-items:center">${chevron}</span></div>`
     :'';
   if(!visible.length){
