@@ -928,6 +928,28 @@ function _membershipOptions(selected){
 }
 // Small informational pill for a student's membership level; '' when full member
 // (null). Neutral tokens (not amber — it's a label, not a warning).
+// ON HOLD badge — the single source for "is this student on hold, and may this
+// viewer see it". Previously implemented twice: a closed-over holdPill on the
+// check-in surface and an inline copy on the roster card, with different padding
+// and casing. A third copy for the class picker is exactly the drift the
+// source-function rule exists to stop.
+//
+// standing is 'on_hold' — NOT 'hold'; the hydrate maps standing:r.standing||'ok'
+// and the note at index.html:914 records that 'hold' never occurs.
+// isStaffOrOwner() gates it: a student or parent must NEVER see this badge.
+// s&& guards VISITORS rows, which carry no standing at all.
+// The hold_note is appended inline, escaped, and NOT truncated — the instructor
+// needs the reason to decide whether to let them train.
+// Carries its own margin-left so it can sit in a name row that has no flex gap
+// (the check-in row and the picker row both space chips that way); returning ''
+// when it does not apply means no element and therefore no stray margin.
+// max-width:100% keeps a long note wrapping inside the row instead of overflowing
+// it on a narrow phone.
+function holdBadge(s){
+  if(!(s&&s.standing==='on_hold'&&isStaffOrOwner()))return '';
+  const note=(s.holdNote&&String(s.holdNote).trim())||'';
+  return '<span style="display:inline-flex;align-items:center;max-width:100%;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;margin-left:6px;text-transform:uppercase">On hold'+(note?' · '+escHtml(note):'')+'</span>';
+}
 function membershipBadge(s){
   const m=membershipDef(s&&s.membershipLevel);
   if(!m.label)return '';
@@ -2882,16 +2904,6 @@ function rAttsStaff(rows,cid){
   const safetyPill=s=>(s&&s._safety===true)
     ?'<span aria-label="Has safety flags" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">SAFETY</span>'
     :'';
-  // On-hold indicator for the check-in surface — the instructor needs the REASON
-  // here to decide whether to let them train. Same amber-pill grammar as
-  // safetyPill; staff-only (isStaffOrOwner) so students/parents never see it, and
-  // s&& guards VISITORS that carry no standing. Appends the hold_note inline when
-  // present (escHtml — it's user text rendered as content); no truncation.
-  const holdPill=s=>{
-    if(!(s&&s.standing==='on_hold'&&isStaffOrOwner()))return '';
-    const note=(s.holdNote&&String(s.holdNote).trim())||'';
-    return '<span aria-label="On hold" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">ON HOLD'+(note?' · '+escHtml(note):'')+'</span>';
-  };
   // Expanded: going row (with rotated chevron) + per-student list, then the
   // SAME footer, still last. Only the middle grew — the footer did not move
   // or change. Per-student rows / btnFor / statusPill / cvChip unchanged.
@@ -2910,7 +2922,7 @@ function rAttsStaff(rows,cid){
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
     const _firstRow=!_rowShown;_rowShown=true;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${holdPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${goingRow}${listHtml}${footer}</div>`;
 }
@@ -8738,10 +8750,6 @@ function rARosterListInner(){
     // and the Roster's "Eligible only" filter. The per-card green strip and
     // the green dot before the name (both same-source duplicates of the pill)
     // were removed; _egDisplay/isElig are no longer read here.
-    // ON HOLD badge — staff/admin only (never exposed to student/parent
-    // viewers). Same amber tokens as the PHOTO PENDING pill.
-    const onHoldNote=(s.holdNote&&String(s.holdNote).trim())||'';
-    const onHoldBadge=(s.standing==='on_hold'&&isStaffOrOwner())?'<span style="display:inline-flex;align-items:center;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;text-transform:uppercase">On hold'+(onHoldNote?' · '+escHtml(onHoldNote):'')+'</span>':'';
     const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
     // Same lifetime-scope rule as the profile stats card: only show the Gi/No-Gi
     // split when every counted class carries a modality (gi+nogi === total).
@@ -8829,7 +8837,7 @@ function rARosterListInner(){
     // rank here, matching the People and Wall cards.
     return '<div class="card rcard" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="rc-id">'+avStu(s,34)
-      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+s.name+onHoldBadge
+      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;flex-wrap:wrap">'+s.name+holdBadge(s)
       +'<span style="margin-left:auto;flex-shrink:0;display:inline-flex">'+bb(s.belt,s.deg||0,s.prog,'left',true)+'</span></div>'
       +(_showCtx?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div>':'')
       +statLine
@@ -15016,7 +15024,10 @@ function _classAddListHTML(){
     const unitChip=visitorUnit?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:6px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px">'+String(visitorUnit).toUpperCase()+'</span>':'';
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);'+dim+'" '+onclick+'>'
       +avStu(s,34)
-      +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+s.name+progChip+unitChip+tag+'</div>'
+      // holdBadge sits with the other chips and follows the same grammar (each
+      // chip carries its own margin-left:6px). It informs the instructor; it does
+      // NOT gate the row — an on-hold student is still addable.
+      +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+s.name+progChip+unitChip+holdBadge(s)+tag+'</div>'
       +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt</div></div>'
       +'</div>';
   };
