@@ -12593,25 +12593,55 @@ async function approvePhoto(id){
   // the publish branches call render(), so the new avatar shows immediately
   // instead of blanking to initials until the next hydrate.
   await resolveSignedUrls([row.photo_url]);
+  // Delete the file the subject was using BEFORE this approval. Without this every
+  // approved change left its predecessor in the bucket forever — 18 of 22 objects
+  // in prod were orphans this way, some superseded a month earlier.
+  // Deletes the ONE superseded file and nothing else:
+  //   • never when the subject-row update failed — the old file is still the live
+  //     photo, so it is only called from each branch's `else`
+  //   • never when the path is unchanged (re-approving the same file)
+  //   • never when there was no previous photo
+  // The previous path comes from the in-memory row each branch ALREADY resolves;
+  // photo_approvals does not carry it (loadPhotoQueue's embeds select legacy_id,
+  // full_name, initials, belt — no photo_url) and adding a read would be a new
+  // fetch. No in-memory row -> prev is null -> nothing is deleted, i.e. today's
+  // behaviour.
+  // try/catch-and-ignore, exactly like the remove-photo (12314/12330) and
+  // pending-cleanup (12465/12518) paths: the photo is already published by this
+  // point, so a storage hiccup must never surface an error to the instructor.
+  const dropSuperseded=async(prevPath)=>{
+    const prev=(prevPath&&String(prevPath).trim())||'';
+    if(!prev||prev===row.photo_url)return;
+    try{await cli.storage.from('avatars').remove([prev]);}catch(_){}
+  };
   if(row.student_id){
-    const upd=await cli.from('students').update({photo_url:row.photo_url}).eq('id',row.student_id);
-    if(upd&&upd.error)console.warn('[mybjj] student photo_url update:',upd.error);
+    // Resolved BEFORE the update so photoUrl is still the OUTGOING path.
     const legacy=row.student&&row.student.legacy_id;
     const s=STUDENTS.find(x=>x.id===legacy);
+    const prevPath=s?s.photoUrl:null;
+    const upd=await cli.from('students').update({photo_url:row.photo_url}).eq('id',row.student_id);
+    if(upd&&upd.error)console.warn('[mybjj] student photo_url update:',upd.error);
+    else await dropSuperseded(prevPath);
     if(s){s.photoUrl=row.photo_url;render();}
   } else if(row.staff_id){
+    const s=STAFF.find(x=>x._dbId===row.staff_id);
+    const prevPath=s?s.photoUrl:null;
     const upd=await cli.from('staff').update({photo_url:row.photo_url}).eq('id',row.staff_id);
     if(upd&&upd.error)console.warn('[mybjj] staff photo_url update:',upd.error);
-    const s=STAFF.find(x=>x._dbId===row.staff_id);
+    else await dropSuperseded(prevPath);
     if(s){
       s.photoUrl=row.photo_url;
       if(isStaffSelf(s)){S.me.photoUrl=row.photo_url;if(S.profile)S.profile.photo_url=row.photo_url;}
       render();
     }
   } else {
-    // User-subject path (dev admin / any user without a staff linkage).
+    // User-subject path (dev admin / any user without a staff linkage). The only
+    // in-memory copy of a user's photo_url is S.profile, and only when it is the
+    // caller's own — approving someone else's leaves prev null and deletes nothing.
+    const prevPath=(S.profile&&S.profile.id===row.user_id)?(S.profile.photo_url||null):null;
     const upd=await cli.from('users').update({photo_url:row.photo_url}).eq('id',row.user_id);
     if(upd&&upd.error)console.warn('[mybjj] users photo_url update:',upd.error);
+    else await dropSuperseded(prevPath);
     if(S.profile&&S.profile.id===row.user_id){
       S.profile.photo_url=row.photo_url;S.me.photoUrl=row.photo_url;render();
     }
