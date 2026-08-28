@@ -2057,6 +2057,80 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
 const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+// ---- Tab persistence -------------------------------------------------------
+// sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
+// losing your place is a bug. Opening the app fresh is intentional and should
+// land on the home screen. sessionStorage draws exactly that line by itself:
+// it survives reload and restore-from-background, and dies with the browser
+// tab. No time-based heuristic, no "was that a reload or a cold start?" guess.
+// One rule for all four keys so the behaviour is predictable.
+// editStuTab / editStaffTab are deliberately NOT persisted — they belong to
+// modals that do not survive a reload, so a restored value would point at a
+// screen that isn't open.
+const _TAB_KEYS={
+  tab:{k:'mybjj_tab',ok:function(v){return _validTabIds().indexOf(v)>=0;}},
+  atab:{k:'mybjj_atab',ok:function(v){return ['roster','trials','manage','staff','photos'].indexOf(v)>=0;}},
+  ptab:{k:'mybjj_ptab',ok:function(v){return ['rank','journey','feedback'].indexOf(v)>=0;}},
+  commTab:{k:'mybjj_commTab',ok:function(v){return ['wall','people'].indexOf(v)>=0;}}
+};
+// TABS is declared later in the file; only ever called at restore/persist
+// time, long after top-level init, so there is no TDZ hazard.
+function _validTabIds(){
+  return (typeof TABS!=='undefined'&&TABS&&TABS.map)
+    ?TABS.map(function(t){return t&&t.id;})
+    :['class','progress','community','schedule','admin'];
+}
+// THE single write site for all four keys. Called from render() (after rApp
+// has run its guards, so what gets stored is the CORRECTED value, never a
+// value that would render a broken screen) and from setCommTab, which swaps
+// DOM directly and deliberately skips render(). Every other assignment site
+// re-renders, so this covers them all without touching any of them.
+let _tabPersistLast={};
+function _persistTabs(){
+  // Hold off while the first hydrate is in flight: rApp's guards are running
+  // against half-populated STAFF/UNITS then, and a provisional correction
+  // must not be written back over the user's real tab. The splash covers this
+  // window, so no user-initiated switch can be lost.
+  if(S.hydrating)return;
+  try{
+    for(const prop in _TAB_KEYS){
+      const v=S[prop];
+      if(v===_tabPersistLast[prop])continue;
+      _tabPersistLast[prop]=v;
+      sessionStorage.setItem(_TAB_KEYS[prop].k,String(v==null?'':v));
+    }
+  }catch(_){/* private mode / storage disabled → tabs simply don't persist */}
+}
+// Restore before the first render so there is no flash of the default tab.
+// A stored value that isn't a known id for that tab (an older build's value)
+// is dropped and the default already sitting in S stands.
+function _restoreTabs(){
+  for(const prop in _TAB_KEYS){
+    let v=null;
+    try{v=sessionStorage.getItem(_TAB_KEYS[prop].k);}catch(_){v=null;}
+    if(v&&_TAB_KEYS[prop].ok(v))S[prop]=v;
+  }
+}
+// ---- Last sign-in email ----------------------------------------------------
+// localStorage, not sessionStorage: the whole point is surviving the session
+// loss (iOS clears site data after ~7 days idle), which sessionStorage would
+// not. ONLY the email is ever written — never a token, never a password.
+// It is a pre-fill, not a lock: rAuth binds the input to S.authEmail and the
+// user can overwrite it, or clear it outright via "Not you?" (resetAuthStep).
+const _LAST_EMAIL_KEY='mybjj_last_email';
+// Conservative shape check on both sides. We only ever store a string that
+// already passed the sign-in regex; re-validating on read means a hand-edited
+// or corrupted entry can't reach rAuth's unescaped value="" interpolation.
+function _emailish(v){return typeof v==='string'&&/^[^\s"'<>&]+@[^\s"'<>&]+\.[^\s"'<>&]+$/.test(v);}
+function _rememberEmail(email){
+  if(!_emailish(email))return;
+  try{localStorage.setItem(_LAST_EMAIL_KEY,email);}catch(_){/* no-op */}
+}
+function _rememberedEmail(){
+  let v=null;
+  try{v=localStorage.getItem(_LAST_EMAIL_KEY);}catch(_){return '';}
+  return _emailish(v)?v:'';
+}
 // ATTENDANCE — rows hydrated from public.attendance for today (and any
 // other day the user navigates to via the day strip). Each row has the
 // DB id, the student row's _dbId, the class date/time, and a status of
@@ -6662,6 +6736,9 @@ function rMembers(){
 function setCommTab(t){
   const tab=t==='wall'?'wall':'people';
   S.commTab=tab;
+  // This path swaps display:none directly and skips render() (flicker fix
+  // below), so it is the one assignment site render() cannot cover.
+  _persistTabs();
   const p=document.getElementById('comm-body-people'),w=document.getElementById('comm-body-wall');
   // Parent / kid-aggregate viewers get rParentMembers() instead, so neither
   // body exists — fall back to a full render there rather than no-op.
@@ -10337,6 +10414,9 @@ function render(){
   }
   if(S.loggedIn){
     app.innerHTML=rApp();
+    // Central tab persist — runs AFTER rApp so the guards inside it
+    // (!_showAdmin -> 'class', the ptab reroute) have already corrected S.
+    _persistTabs();
     if(prevScroll!=null){
       const next=document.querySelector('.content');
       if(next)next.scrollTop=prevScroll;
@@ -10386,7 +10466,7 @@ function render(){
 // Etapa 3 — doLogin demo helper deleted. Real auth lives entirely in
 // signInGoogle / signInMagic / signInWithEmail and the email-step
 // flow in rAuth.
-function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.classAdd=null;/* drop the persisted tab so the NEXT login starts on Classes; an in-session reload still restores it */try{sessionStorage.removeItem('mybjj_tab');}catch(_){}if(sb)sb.auth.signOut();render();}
+function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.classAdd=null;/* drop the persisted tab so the NEXT login starts on Classes; an in-session reload still restores it */try{sessionStorage.removeItem('mybjj_tab');}catch(_){}if(sb)sb.auth.signOut();render();}
 
 function friendlyAuthError(err){
   if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
@@ -10436,6 +10516,11 @@ function _detectHashRecovery(){
 }
 
 async function bootAuth(){
+  // Pre-fill the sign-in email from the last successful sign-in on this
+  // device. Done once here rather than at each 'unauthenticated' branch, so
+  // every route to rAuth gets it. Authed users never render rAuth, so this is
+  // inert for them. Editable, and "Not you?" (resetAuthStep) still clears it.
+  if(!S.authEmail)S.authEmail=_rememberedEmail();
   // Batch 9-fix-2 — synchronous URL parse FIRST. Before any listener
   // is attached, before getSession(), before any onAuthed can run.
   // If the URL carries a recovery token we mark S.passwordRecovery
@@ -10493,7 +10578,7 @@ async function bootAuth(){
       if(S.passwordRecovery)return;
       onAuthed();
     }
-    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail='';S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();}
+    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();}
     else if(ev==='USER_UPDATED'){
       // Fired when a self-service email change is confirmed. Reflect the
       // new email immediately (no manual reload): mirror onto S.profile /
@@ -10563,29 +10648,25 @@ async function onAuthed(){
     c.auth.getUser().then(({data:_u})=>{const had=S.hasGoogleIdentity;S.hasGoogleIdentity=!!(_u&&_u.user&&(_u.user.identities||[]).some(i=>i&&i.provider==='google'));if(had!==S.hasGoogleIdentity)render();}).catch(()=>{S.hasGoogleIdentity=false;});
     if(data.status==='approved'){
       S.me=meFromProfile(data);S.loggedIn=true;S.authState='authenticated';
-      // G14 — parent lands on Classes (their primary check-in surface)
-      // rather than Progress; Progress was the legacy default that
-      // showed their kid's belt as the headline, which is less useful
-      // than "what's the kid's next class".
-      if(S.me.role==='parent')S.tab='class';
       // Web reload — return the user to the tab they were on. sessionStorage
       // (per-tab, cleared when the tab closes), NOT the URL hash: the hash is
       // reserved for Supabase auth tokens/errors and writing here would collide
-      // with that flow. Guards, in order: only a known TABS id is honoured; the
-      // parent -> class rule above always wins; and 'admin' is only restored for
-      // staff/owner so a stale value can't flash the Manage tab. rApp's
-      // !_showAdmin guard is the second line of defence at render time.
-      try{
-        const _savedTab=sessionStorage.getItem('mybjj_tab');
-        const _validTabs=(typeof TABS!=='undefined'&&TABS&&TABS.map)?TABS.map(function(t){return t&&t.id;}):['class','progress','community','schedule','admin'];
-        if(_savedTab&&_validTabs.indexOf(_savedTab)>=0&&S.me.role!=='parent'){
-          if(_savedTab==='admin'){
-            if(typeof isStaffOrOwner==='function'&&isStaffOrOwner())S.tab=_savedTab;
-          }else{
-            S.tab=_savedTab;
-          }
-        }
-      }catch(_){}
+      // with that flow. Restored FIRST so the two rules below still get the
+      // last word over anything that came out of storage.
+      _restoreTabs();
+      // G14 — parent lands on Classes (their primary check-in surface)
+      // rather than Progress; Progress was the legacy default that
+      // showed their kid's belt as the headline, which is less useful
+      // than "what's the kid's next class". Outranks a restored main tab;
+      // the sub-tabs are unaffected by it.
+      if(S.me.role==='parent')S.tab='class';
+      // 'admin' is only restored for staff/owner so a stale value can't flash
+      // the Manage tab. isStaffOrOwner() reads S.me.role, set from the profile
+      // at meFromProfile() above, so it is already correct here — it does not
+      // wait on hydrate. rApp's !_showAdmin guard is the second line of
+      // defence at render time, and _persistTabs holds off while S.hydrating
+      // so a provisional correction is never written back.
+      if(S.tab==='admin'&&!(typeof isStaffOrOwner==='function'&&isStaffOrOwner()))S.tab='class';
       // If the user arrived via a reset-password link, jump straight
       // into the Set Password sub-panel so they finish the recovery
       // before doing anything else.
@@ -13403,7 +13484,7 @@ async function signInMagic(){
   try{
     const{error}=await c.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
     if(error){console.warn('[mybjj] magic',error);S.authMsg=friendlyAuthError(error);}
-    else{S.authState='magic-sent';S.authMsg='Check your inbox — we sent you a sign-in link.';}
+    else{_rememberEmail(email);S.authState='magic-sent';S.authMsg='Check your inbox — we sent you a sign-in link.';}
   }catch(e){console.warn('[mybjj] magic',e);S.authMsg=friendlyAuthError(e);}
   S.authBusy=false;render();
 }
@@ -13432,6 +13513,7 @@ async function signInWithEmail(){
       else if(m.includes('rate limit')) S.authMsg='Too many attempts. Try again in a minute.';
       else S.authMsg=friendlyAuthError(error);
     }
+    else _rememberEmail(email);
   }catch(e){console.warn('[mybjj] password',e);S.authMsg=friendlyAuthError(e);}
   S.authBusy=false;render();
 }
@@ -13995,7 +14077,7 @@ function rPending(){
     : `Hi <strong>${email}</strong>.<br/>Your account isn’t on the access list yet. Once an admin approves you, you’ll be able to sign in here.`;
   return `<div class="lw">${authHero()}<div class="lbody"><div class="fg" style="padding:24px"><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);letter-spacing:.5px;margin-bottom:10px">${title}</div><div style="color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:18px">${body}</div><button class="bout" onclick="logout()">Sign out</button></div></div></div>`;
 }
-function setTab(t){S.tab=t;try{sessionStorage.setItem('mybjj_tab',t);}catch(_){}S.classAdd=null;S.profilePrev=null;render();/* natural break — take any pending SW update now (no-op unless one is waiting AND nothing is open) */try{if(typeof _swTryAutoUpdate==='function')_swTryAutoUpdate();}catch(_){}}
+function setTab(t){S.tab=t;S.classAdd=null;S.profilePrev=null;render();/* natural break — take any pending SW update now (no-op unless one is waiting AND nothing is open) */try{if(typeof _swTryAutoUpdate==='function')_swTryAutoUpdate();}catch(_){}}
 // Glass-nav sliding pill. render() rebuilds .bnav every time, so the pill
 // is re-created at its LAST X (window._navPillX, inlined in the markup);
 // this runs post-layout and sets the pill's transform to the active tab's
