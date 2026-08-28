@@ -2067,11 +2067,25 @@ const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',aut
 // editStuTab / editStaffTab are deliberately NOT persisted — they belong to
 // modals that do not survive a reload, so a restored value would point at a
 // screen that isn't open.
+// `d` is the value to fall back to on sign-out. It mirrors the default in the
+// S literal above for every key except membersSegment, which has no entry in S
+// at all — its default is applied at read time by rCommunityPeople
+// (`S.membersSegment||'adult'`), so 'adult' is the effective default here too.
 const _TAB_KEYS={
-  tab:{k:'mybjj_tab',ok:function(v){return _validTabIds().indexOf(v)>=0;}},
-  atab:{k:'mybjj_atab',ok:function(v){return ['roster','trials','manage','staff','photos'].indexOf(v)>=0;}},
-  ptab:{k:'mybjj_ptab',ok:function(v){return ['rank','journey','feedback'].indexOf(v)>=0;}},
-  commTab:{k:'mybjj_commTab',ok:function(v){return ['wall','people'].indexOf(v)>=0;}}
+  tab:{k:'mybjj_tab',d:'class',ok:function(v){return _validTabIds().indexOf(v)>=0;}},
+  atab:{k:'mybjj_atab',d:'roster',ok:function(v){return ['roster','trials','manage','staff','photos'].indexOf(v)>=0;}},
+  ptab:{k:'mybjj_ptab',d:'rank',ok:function(v){return ['rank','journey','feedback'].indexOf(v)>=0;}},
+  commTab:{k:'mybjj_commTab',d:'wall',ok:function(v){return ['wall','people'].indexOf(v)>=0;}},
+  // Manage -> Roster, Adults/Kids. Set by setRseg AND by an inline onclick that
+  // assigns S.rseg directly via String.fromCharCode (see the note there); both
+  // re-render, so both persist through render()'s _persistTabs call.
+  rseg:{k:'mybjj_rseg',d:'adult',ok:function(v){return ['adult','kids'].indexOf(v)>=0;}},
+  // Programme, Curriculum/Events. setSchedMode normalises anything that isn't
+  // 'events' to 'curriculum', so those two are the only reachable values.
+  schedMode:{k:'mybjj_schedMode',d:'curriculum',ok:function(v){return ['curriculum','events'].indexOf(v)>=0;}},
+  // Community -> People, Adults/Kids. Kids is permission-gated by canSeeKids;
+  // a restored 'kids' is neutralised at read time for anyone not allowed it.
+  membersSegment:{k:'mybjj_membersSegment',d:'adult',ok:function(v){return ['adult','kids'].indexOf(v)>=0;}}
 };
 // TABS is declared later in the file; only ever called at restore/persist
 // time, long after top-level init, so there is no TDZ hazard.
@@ -2100,6 +2114,19 @@ function _persistTabs(){
       sessionStorage.setItem(_TAB_KEYS[prop].k,String(v==null?'':v));
     }
   }catch(_){/* private mode / storage disabled → tabs simply don't persist */}
+}
+// Sign-out reset. Clearing sessionStorage alone is NOT enough: _restoreTabs
+// only overwrites S on a VALID stored value, so without resetting S in memory
+// the next user signing in on the same browser tab inherits the previous one's
+// tabs from the still-populated S. Also drops the _persistTabs memo, otherwise
+// the first write for the next user is skipped as "unchanged". Driven from
+// _TAB_KEYS so the list can never drift out of sync with the map.
+function _resetTabs(){
+  for(const prop in _TAB_KEYS){
+    S[prop]=_TAB_KEYS[prop].d;
+    try{sessionStorage.removeItem(_TAB_KEYS[prop].k);}catch(_){/* no-op */}
+  }
+  _tabPersistLast={};
 }
 // Restore before the first render so there is no flash of the default tab.
 // A stored value that isn't a known id for that tab (an older build's value)
@@ -9829,6 +9856,11 @@ function rARoster(){
   // toggle would be misleading (it can't narrow the list). Swap it for a note.
   const seg=rfEligible
     ?'<div class="rsw"><div style="flex:1;font-size:12px;color:var(--text3);font-family:Barlow,sans-serif;padding:0 4px;display:flex;align-items:center;line-height:1.3">Showing everyone eligible — Adults &amp; Kids</div></div>'
+    // String.fromCharCode(97,100,117,108,116)='adult' / (107,105,100,115)='kids'.
+    // Written that way because the value sits in a double-quoted onclick attribute
+    // inside a single-quoted JS string — a literal would need escaping at both
+    // levels. It assigns S.rseg directly rather than calling setRseg, but it does
+    // call render(), so _persistTabs still stores the correct value.
     :'<div class="rsw">'+'<div class="rseg '+(S.rseg==="adult"?"active":"")+'" onclick="S.rseg=String.fromCharCode(97,100,117,108,116);render()">Adults ('+allAdults.length+')</div>'+'<div class="rseg '+(S.rseg==="kids"?"active":"")+'" onclick="S.rseg=String.fromCharCode(107,105,100,115);render()">Kids ('+allKids.length+')</div></div>';
   // Trials moved to their own tab (rAdmin) — the roster is just students now.
   return regLine+seg+filterHtml+'<div id="roster-results">'+rARosterListInner()+'</div>';
@@ -10466,7 +10498,7 @@ function render(){
 // Etapa 3 — doLogin demo helper deleted. Real auth lives entirely in
 // signInGoogle / signInMagic / signInWithEmail and the email-step
 // flow in rAuth.
-function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.classAdd=null;/* drop the persisted tab so the NEXT login starts on Classes; an in-session reload still restores it */try{sessionStorage.removeItem('mybjj_tab');}catch(_){}if(sb)sb.auth.signOut();render();}
+function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.classAdd=null;/* drop the persisted tab state so the NEXT login starts on Classes; an in-session reload still restores it */_resetTabs();if(sb)sb.auth.signOut();render();}
 
 function friendlyAuthError(err){
   if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
