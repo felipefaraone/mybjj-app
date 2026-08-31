@@ -2056,7 +2056,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -3049,7 +3049,13 @@ function rAttsStaff(rows,cid){
     const _firstRow=!_rowShown;_rowShown=true;
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
-  return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${goingRow}${listHtml}${footer}</div>`;
+  // Bulk move — expanded only, so the collapsed card is untouched. Same
+  // staff + isClassLocked gate markAllPresent uses (openAttMove re-checks both;
+  // this only decides whether the affordance renders at all).
+  const moveBtn=(!locked&&isStaffOrOwner())
+    ?`<div style="margin-top:10px"><button class="bsm" onclick="openAttMove('${escAttr(cid)}')" style="width:100%;padding:9px 12px;color:var(--text2)">Move attendees to another class</button></div>`
+    :'';
+  return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${goingRow}${listHtml}${moveBtn}${footer}</div>`;
 }
 // _fmtJnyDate — journey entries store the date in two formats:
 //   - ISO "YYYY-MM-DD" (every entry written from this batch onward,
@@ -10006,7 +10012,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -14981,6 +14987,228 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
   }
   if(!silent)showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
   await refreshStudentStats(s._dbId);render();
+  drainAttendanceQueue();
+}
+// ---- Bulk move: attendance filed against the wrong class card -------------
+// Incident 29 Aug 2026, Camperdown: 23 students were confirmed in the 11:00
+// Beginners card while the class they actually attended was the 11:00 Advanced
+// card. Same time, same unit, same uniform (Gi) — only level and instructor
+// differ, so the two cards read almost identically and staff worked in the
+// wrong one for the whole session (confirmed_at spanning 00:50 to 01:31). It
+// had to be repaired by hand in SQL. This lets staff repair it themselves.
+//
+// SAME DAY ONLY, deliberately. The failure mode is always "right day, wrong
+// card"; offering other dates would let one mis-tap relocate a whole session
+// into a day it never happened.
+//
+// Which columns say what class a row belongs to: class_id is primary, with
+// (class_date, class_time) as the legacy fallback guarded by unit_id — see
+// _attMatchesClass. A same-day move therefore rewrites class_id, class_time,
+// class_legacy_id, class_type and the derived modality/gi, and leaves
+// class_date and unit_id alone.
+//
+// Resolve a synthetic cid to {parsed, occurrence, class row, unit} exactly the
+// way _setAttStatus and markAllPresent do, so a (date,time) shared by two
+// classes still resolves to the right identity.
+function _attClsCtx(cid){
+  const c=_parseCID(cid);if(!c)return null;
+  const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);
+  const cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
+  const unitId=(cls&&cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
+  return {c:c,t:t,cls:cls,unitId:unitId};
+}
+// The movable rows — the SAME set rAttsStaff shows as `visible`, so what staff
+// tick is exactly what they were looking at.
+function _attMoveRows(cid){
+  const x=_attClsCtx(cid);if(!x)return [];
+  return attendanceFor(x.t.classId||null,x.c.date,x.c.time,x.unitId)
+    .filter(r=>r.status==='going'||r.status==='present'||r.status==='absent');
+}
+// Destinations: other occurrences on the SAME DATE, from getDC — which is
+// already scoped to the active unit (rebuildTT filters CLASSES by unit_id) and
+// already folds cancelled / override / one-off exceptions.
+//
+// KIDS PRIVACY — the destination must carry the SAME audience as the source.
+// Non-staff visibility of an attendee is decided by the CLASS's `aud` at
+// rClass (index.html:5694-5709): 'Kids' renders count-only, 'All' filters
+// prog==='kids' out of the roster, 'Adults' renders everyone. So moving a kid
+// from a Kids card into an Adults card would turn a hidden attendee into a
+// named one for every non-staff viewer of that class. Matching audience makes
+// that unreachable: a kid can only ever land somewhere with the same
+// visibility rule they were already under.
+function _attMoveDests(cid){
+  const x=_attClsCtx(cid);if(!x)return [];
+  const srcAud=x.t.aud||'Adults';
+  return getDC(new Date(x.c.date+'T00:00:00'))
+    .filter(o=>o&&o.id!==cid&&!o._cancelled&&(o.aud||'Adults')===srcAud);
+}
+// "11:00am · Gi · Advanced · Mario Yokoyama". Time alone is exactly what caused
+// the incident, so level and instructor are not optional. Uniform+level via
+// _clsLabel (the same helper the trial slot picker hands a class row to);
+// instructor via occurrence.ins, which getDC/_occFor already resolve including
+// an instructor_override substitution.
+function _attMoveDestLabel(o){
+  const parts=[fmtT12(o.time)];
+  const lbl=_clsLabel(o);if(lbl)parts.push(lbl);
+  if(o.ins)parts.push(o.ins);
+  return parts.join(' · ');
+}
+function openAttMove(cid){
+  if(!isStaffOrOwner())return;
+  if(isClassLocked(cid)){showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');return;}
+  const rows=_attMoveRows(cid);
+  if(!rows.length){showSaveToast2('No attendees to move.','error');return;}
+  // ALL TICKED BY DEFAULT. The common case is "I worked in the wrong class all
+  // session, move everyone", which should cost one confirm. The partial case
+  // still works by unticking the few who really were in this class.
+  const sel={};
+  rows.forEach(function(r){sel[r.studentDbId]=true;});
+  S.attMove={cid:cid,sel:sel,dest:null,busy:false};
+  render();
+}
+function closeAttMove(){S.attMove=null;render();}
+function toggleAttMoveStu(dbId){
+  if(!S.attMove)return;
+  S.attMove.sel[dbId]=!S.attMove.sel[dbId];
+  render();
+}
+function setAttMoveDest(destCid){
+  if(!S.attMove)return;
+  S.attMove.dest=(S.attMove.dest===destCid)?null:destCid;
+  render();
+}
+function rAttMoveSheet(){
+  const m=S.attMove;if(!m)return '';
+  const src=_attClsCtx(m.cid);if(!src)return '';
+  const rows=_attMoveRows(m.cid);
+  const dests=_attMoveDests(m.cid);
+  const nSel=rows.filter(r=>m.sel[r.studentDbId]).length;
+  const d=new Date(src.c.date+'T00:00:00');
+  const srcLbl=_attMoveDestLabel(Object.assign({},src.t,{time:src.c.time}));
+  const stuRows=rows.map(function(r){
+    const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];
+    if(!s)return '';
+    const on=!!m.sel[r.studentDbId];
+    const box=on
+      ?'<span style="flex-shrink:0;width:20px;height:20px;border-radius:5px;background:var(--blue);border:1px solid var(--blue);display:inline-flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
+      :'<span style="flex-shrink:0;width:20px;height:20px;border-radius:5px;border:1px solid var(--border);background:var(--card)"></span>';
+    const pill=r.status==='present'?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text)">PRESENT</span>'
+      :r.status==='absent'?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text)">ABSENT</span>'
+      :'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3)">GOING</span>';
+    return '<div onclick="toggleAttMoveStu(\''+escAttr(r.studentDbId)+'\')" style="display:flex;align-items:center;gap:10px;padding:9px 2px;cursor:pointer">'
+      +box
+      +'<span style="flex:1;min-width:0;font-size:13.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(s.name)+'</span>'
+      +pill
+      +'</div>';
+  }).join('');
+  const destRows=dests.length
+    ?dests.map(function(o){
+        const on=m.dest===o.id;
+        return '<button onclick="setAttMoveDest(\''+escAttr(o.id)+'\')" style="display:block;width:100%;text-align:left;padding:11px 12px;margin-bottom:6px;border-radius:9px;cursor:pointer;font-size:13px;'
+          +'background:'+(on?'var(--blue-tint)':'transparent')+';border:1px solid '+(on?'var(--blue)':'var(--border)')+';color:var(--text);font-weight:'+(on?700:500)+'">'
+          +escHtml(_attMoveDestLabel(o))
+          +'</button>';
+      }).join('')
+    :'<div style="font-size:12.5px;color:var(--text3);padding:8px 2px">No other class on this day to move to.</div>';
+  const canGo=nSel>0&&!!m.dest&&!m.busy;
+  const hdr=DL[d.getDay()]+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  return '<div class="cov" onclick="closeAttMove()" style="align-items:flex-end;z-index:290">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">Move attendees</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+escHtml(hdr+' · from '+srcLbl)+'</div>'
+      +'<div style="font-size:11px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-top:16px">Who moves ('+nSel+' of '+rows.length+')</div>'
+      +'<div style="margin-top:4px">'+stuRows+'</div>'
+      +'<div style="font-size:11px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-top:16px;margin-bottom:6px">Move to</div>'
+      +destRows
+      +'<button onclick="confirmAttMove()" '+(canGo?'':'disabled ')+'style="width:100%;margin-top:16px;padding:12px;border-radius:10px;border:none;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;'
+        +(canGo?'background:var(--blue);color:#fff;cursor:pointer':'background:var(--bg);color:var(--text3);cursor:default')+'">Move'+(nSel?' '+nSel:'')+'</button>'
+      +'<button onclick="closeAttMove()" style="width:100%;margin-top:8px;padding:11px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px;cursor:pointer">Cancel</button>'
+    +'</div>'
+  +'</div>';
+}
+function confirmAttMove(){
+  const m=S.attMove;if(!m||!m.dest)return;
+  const rows=_attMoveRows(m.cid).filter(r=>m.sel[r.studentDbId]);
+  if(!rows.length)return;
+  const dst=_attClsCtx(m.dest);if(!dst)return;
+  const dstLbl=_attMoveDestLabel(Object.assign({},dst.t,{time:dst.c.time}));
+  openConfirm({
+    title:'Move attendees',
+    message:'Move '+rows.length+' '+(rows.length===1?'attendee':'attendees')+' to '+dstLbl+'? Their status and class value are kept exactly as they are.',
+    dangerLabel:'Move',
+    onConfirm:_doAttMove
+  });
+}
+// Rewrites which occurrence one attendance row belongs to. status, class_value,
+// confirmed_by and confirmed_at are NEVER in the payload, so they survive
+// untouched — the student did train, only the filing was wrong, and resetting
+// them would silently strip legitimate classes out of the grading counts.
+// Follows _setAttStatus's update path: optimistic mutate, local- rows merge
+// into their pending queue item, offline enqueues, RLS-zero-rowcount rolls back.
+async function _moveAttRow(row,dst,cli){
+  const prev={classId:row.classId,classTime:row.classTime,classType:row.classType};
+  const _mod=(dst.t.uniform?_modalityFromUniform(dst.t.uniform):_modalityFromType(dst.t.type));
+  row.classId=dst.t.classId||null;
+  row.classTime=dst.c.time;
+  row.classType=dst.t.type||null;
+  const payload={class_id:dst.t.classId||null,class_legacy_id:dst.t.id||null,class_time:dst.c.time,class_type:dst.t.type||null,modality:_mod,gi:_mod==='gi'};
+  if(!cli)return 'ok';
+  // Optimistic row whose insert hasn't synced yet: merge into THAT payload so a
+  // single canonical upsert drains, exactly as _setAttStatus does.
+  if(String(row._dbId).startsWith('local-')){
+    const pending=queueFindByLocalId(row._dbId);
+    if(pending)queueUpdate(pending.qid,{payload:Object.assign({},pending.payload||{},payload)});
+    return 'ok';
+  }
+  let r=null,_caught=null;
+  try{
+    r=await cli.from('attendance').update(payload).eq('id',row._dbId).select('id');
+  }catch(e){_caught=e;}
+  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    queueEnqueue({op:'update',table:'attendance',rowId:row._dbId,payload:payload,userId:(S.profile&&S.profile.id)||null});
+    return 'ok';
+  }
+  if(r&&r.error){
+    Object.assign(row,prev);
+    console.warn('[mybjj] attendance move failed:',r.error);
+    return 'fail';
+  }
+  if(!r||!r.data||!r.data.length){
+    Object.assign(row,prev);
+    console.warn('[mybjj] attendance move: 0 rows affected (RLS or stale id)');
+    return 'fail';
+  }
+  return 'ok';
+}
+async function _doAttMove(){
+  const m=S.attMove;if(!m||!m.dest)return;
+  if(!isStaffOrOwner())return;
+  // Re-check BOTH ends at execution time, not just at render time: a locked
+  // class must be neither a source nor a destination.
+  if(isClassLocked(m.cid)||isClassLocked(m.dest)){
+    showSaveToast2('Can’t mark attendance more than '+STAFF_FUTURE_LIMIT_DAYS+' days ahead.','error');
+    S.attMove=null;return;
+  }
+  const dst=_attClsCtx(m.dest);if(!dst)return;
+  const cli=initSupabase();
+  const rows=_attMoveRows(m.cid).filter(r=>m.sel[r.studentDbId]);
+  let moved=0,skipped=0,failed=0;
+  for(const row of rows){
+    // Duplicate guard — the student already has a row in the destination for
+    // this date. Skip rather than create a second one; the DB's
+    // (student_id, class_id, class_date) uniqueness would reject it anyway, and
+    // reporting the skip is more useful than an error.
+    const dup=ATTENDANCE.find(a=>a!==row&&a.studentDbId===row.studentDbId&&_attMatchesClass(a,dst.t.classId||null,dst.c.date,dst.c.time,dst.unitId));
+    if(dup){skipped++;continue;}
+    const res=await _moveAttRow(row,dst,cli);
+    if(res==='ok')moved++;else failed++;
+  }
+  S.attMove=null;
+  render();
+  const bits=[moved+' moved'];
+  if(skipped)bits.push(skipped+' skipped (already in that class)');
+  if(failed)bits.push(failed+' failed');
+  showSaveToast2(bits.join(', '),failed?'error':undefined);
   drainAttendanceQueue();
 }
 // G9.2 — Mark Present now opens the 5-tier picker sheet instead of
