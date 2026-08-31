@@ -15067,11 +15067,75 @@ function openAttMove(cid){
   render();
 }
 function closeAttMove(){S.attMove=null;render();}
+// ---- In-place sheet updates ------------------------------------------------
+// render() rebuilds #app wholesale, which destroys the sheet's scrollTop. On a
+// 23-attendee class that threw the user back to the first name on every tick,
+// making "untick 20 of 23" unusable. Same problem setCommTab solves the same
+// way: mutate the few nodes that actually changed and skip render() entirely.
+// S.attMove.sel stays the ONLY source of truth — these helpers read it and
+// write to the DOM, never the reverse, so confirmAttMove still reads sel.
+const _AMV_TICK='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
+// Shared by the renderer and the in-place syncer so the two can never drift.
+// Both variants carry the same box model / display, so swapping cssText changes
+// only colour — it can't reflow the row.
+function _amvBoxStyle(on){
+  return 'flex-shrink:0;width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;'
+    +(on?'background:var(--blue);border:1px solid var(--blue)':'background:var(--card);border:1px solid var(--border)');
+}
+function _amvGoStyle(canGo){
+  return "width:100%;margin-top:14px;padding:12px;border-radius:10px;border:none;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;"
+    +(canGo?'background:var(--blue);color:#fff;cursor:pointer':'background:var(--bg);color:var(--text3);cursor:default');
+}
+function _amvBulkLabel(nSel,total){return (total>0&&nSel===total)?'Clear all':'Select all';}
+// Repaint every node whose content depends on the selection: the tick boxes,
+// the "WHO MOVES (n OF 23)" header, the bulk toggle's label, the Move button's
+// label + enabled state, and the no-destination hint. Nothing else is touched,
+// so scrollTop, focus and the destination list all survive untouched.
+// Returns false when the sheet isn't mounted, so callers can fall back.
+function _amvSync(){
+  const m=S.attMove;if(!m)return false;
+  const list=document.getElementById('amv-list');
+  const count=document.getElementById('amv-count');
+  const go=document.getElementById('amv-go');
+  const bulk=document.getElementById('amv-bulk');
+  if(!list||!count||!go||!bulk)return false;
+  const rows=_attMoveRows(m.cid);
+  const total=rows.length;
+  const nSel=rows.filter(r=>m.sel[r.studentDbId]).length;
+  list.querySelectorAll('[data-amv-stu]').forEach(function(el){
+    const on=!!m.sel[el.getAttribute('data-amv-stu')];
+    el.style.cssText=_amvBoxStyle(on);
+    el.innerHTML=on?_AMV_TICK:'';
+  });
+  count.textContent='Who moves ('+nSel+' of '+total+')';
+  bulk.textContent=_amvBulkLabel(nSel,total);
+  const canGo=nSel>0&&!!m.dest&&!m.busy;
+  go.disabled=!canGo;
+  go.style.cssText=_amvGoStyle(canGo);
+  go.textContent='Move'+(nSel?' '+nSel:'');
+  const hint=document.getElementById('amv-hint');
+  if(hint)hint.style.display=m.dest?'none':'';
+  return true;
+}
 function toggleAttMoveStu(dbId){
   if(!S.attMove)return;
   S.attMove.sel[dbId]=!S.attMove.sel[dbId];
-  render();
+  if(!_amvSync())render();
 }
+// Header control — clears when everything is ticked, selects all otherwise.
+// All-ticked is the right default for "I worked in the wrong class all
+// session"; this is the escape hatch for "only three of these were wrong",
+// which otherwise costs twenty taps.
+function toggleAttMoveAll(){
+  const m=S.attMove;if(!m)return;
+  const rows=_attMoveRows(m.cid);
+  const all=rows.length>0&&rows.every(r=>m.sel[r.studentDbId]);
+  rows.forEach(function(r){m.sel[r.studentDbId]=!all;});
+  if(!_amvSync())render();
+}
+// Destination picking KEEPS the full render: it restyles every button in the
+// list and flips the hint, the list is short (other classes that day), and it
+// sits above the fold, so there is no scroll position worth preserving.
 function setAttMoveDest(destCid){
   if(!S.attMove)return;
   S.attMove.dest=(S.attMove.dest===destCid)?null:destCid;
@@ -15089,9 +15153,7 @@ function rAttMoveSheet(){
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];
     if(!s)return '';
     const on=!!m.sel[r.studentDbId];
-    const box=on
-      ?'<span style="flex-shrink:0;width:20px;height:20px;border-radius:5px;background:var(--blue);border:1px solid var(--blue);display:inline-flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
-      :'<span style="flex-shrink:0;width:20px;height:20px;border-radius:5px;border:1px solid var(--border);background:var(--card)"></span>';
+    const box='<span data-amv-stu="'+escAttr(r.studentDbId)+'" style="'+_amvBoxStyle(on)+'">'+(on?_AMV_TICK:'')+'</span>';
     const pill=r.status==='present'?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text)">PRESENT</span>'
       :r.status==='absent'?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text)">ABSENT</span>'
       :'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3)">GOING</span>';
@@ -15112,16 +15174,20 @@ function rAttMoveSheet(){
     :'<div style="font-size:12.5px;color:var(--text3);padding:8px 2px">No other class on this day to move to.</div>';
   const canGo=nSel>0&&!!m.dest&&!m.busy;
   const hdr=DL[d.getDay()]+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  const SLBL="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3)";
   return '<div class="cov" onclick="closeAttMove()" style="align-items:flex-end;z-index:290">'
     +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
       +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">Move attendees</div>'
       +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+escHtml(hdr+' · from '+srcLbl)+'</div>'
-      +'<div style="font-size:11px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-top:16px">Who moves ('+nSel+' of '+rows.length+')</div>'
-      +'<div style="margin-top:4px">'+stuRows+'</div>'
-      +'<div style="font-size:11px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-top:16px;margin-bottom:6px">Move to</div>'
+      +'<div style="display:flex;align-items:baseline;gap:10px;margin-top:16px">'
+        +'<span id="amv-count" style="'+SLBL+'">Who moves ('+nSel+' of '+rows.length+')</span>'
+        +'<button id="amv-bulk" onclick="toggleAttMoveAll()" style="margin-left:auto;background:none;border:none;padding:2px 0;font-size:12.5px;color:var(--blue);cursor:pointer">'+_amvBulkLabel(nSel,rows.length)+'</button>'
+      +'</div>'
+      +'<div id="amv-list" style="margin-top:4px">'+stuRows+'</div>'
+      +'<div style="'+SLBL+';margin-top:16px;margin-bottom:6px">Move to</div>'
       +destRows
-      +'<button onclick="confirmAttMove()" '+(canGo?'':'disabled ')+'style="width:100%;margin-top:16px;padding:12px;border-radius:10px;border:none;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;'
-        +(canGo?'background:var(--blue);color:#fff;cursor:pointer':'background:var(--bg);color:var(--text3);cursor:default')+'">Move'+(nSel?' '+nSel:'')+'</button>'
+      +'<div id="amv-hint" style="'+(m.dest?'display:none;':'')+'font-size:12px;color:var(--text3);margin-top:14px;text-align:center">Pick a class above to move them to.</div>'
+      +'<button id="amv-go" onclick="confirmAttMove()" '+(canGo?'':'disabled ')+'style="'+_amvGoStyle(canGo)+'">Move'+(nSel?' '+nSel:'')+'</button>'
       +'<button onclick="closeAttMove()" style="width:100%;margin-top:8px;padding:11px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px;cursor:pointer">Cancel</button>'
     +'</div>'
   +'</div>';
