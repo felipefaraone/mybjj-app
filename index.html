@@ -92,6 +92,20 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--blue:#1A5DAD;--blue-tint:#EBF2FB;--blue-mid:#cde0f7;--green:#16a34a;--green-bg:#f0fdf4;--green-text:#15803d;--green-border:#bbf7d0;--amber:#d97706;--amber-bg:#fffbeb;--amber-text:#92400e;--amber-border:#fde68a;--red:#dc2626;--red-bg:#fef2f2;--red-text:#991b1b;--red-border:#fecaca;--bg:#f5f6f8;--surface:#fff;--card:#fff;--border:#e5e7eb;--border2:#d1d5db;--text:#111827;--text2:#6b7280;--text3:#9ca3af;--nav-bg:#fff;--input-bg:#f9fafb;--sh:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);--sh-md:0 4px 16px rgba(0,0,0,.09);--sh-lg:0 8px 32px rgba(0,0,0,.13);--ctrl-h:36px}
 @media(prefers-color-scheme:dark){:root{--blue:#4d90e0;--blue-tint:#122440;--blue-mid:#284a7a;--green:#16a34a;--green-bg:#052e16;--green-text:#86efac;--green-border:#14532d;--amber:#d97706;--amber-bg:#1c1407;--amber-text:#fde68a;--amber-border:#78350f;--red:#dc2626;--red-bg:#450a0a;--red-text:#fca5a5;--red-border:#7f1d1d;--bg:#0e0f12;--surface:#1a1b20;--card:#1e2026;--border:#34363e;--border2:#43454e;--text:#f1f2f4;--text2:#b2b7c1;--text3:#878d98;--nav-bg:#141519;--input-bg:#141519;--sh:0 1px 3px rgba(0,0,0,.4);--sh-md:0 4px 16px rgba(0,0,0,.5);--sh-lg:0 8px 32px rgba(0,0,0,.6)}}
+/* ── Rank-hero belt tints (Progress > My belt, student/parent only) ─────────
+   One quadruple per adult belt. The tint CLASS re-scopes the SAME tokens the
+   hero's inline cells already read (--text / --text2 / --text3 / --border), so
+   no cell markup changes and no hex ever enters the JS. White is the only DARK
+   tint: the white belt bar is near-white (#e5e7eb) and needs a dark ground to
+   read at all; every other belt sits on a near-white wash. The belt SVG paints
+   from BA/BK literals, never from these vars, so it is unaffected. */
+:root{
+  --tint-blue-bg:#EEF4FB;   --tint-blue-fg:#123C6E;   --tint-blue-muted:rgba(18,60,110,.62);   --tint-blue-line:rgba(18,60,110,.14);
+  --tint-purple-bg:#F6F1FB; --tint-purple-fg:#4A1B76; --tint-purple-muted:rgba(74,27,118,.62); --tint-purple-line:rgba(74,27,118,.14);
+  --tint-brown-bg:#FBF8F4;  --tint-brown-fg:#4E2A12;  --tint-brown-muted:rgba(78,42,18,.62);   --tint-brown-line:rgba(78,42,18,.14);
+  --tint-white-bg:#6F7987;  --tint-white-fg:#FFFFFF;  --tint-white-muted:rgba(255,255,255,.72);--tint-white-line:rgba(255,255,255,.28);
+  --tint-black-bg:#F2F4F7;  --tint-black-fg:#17222E;  --tint-black-muted:rgba(23,34,46,.62);   --tint-black-line:rgba(23,34,46,.13);
+}
 html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}body{display:flex;justify-content:center;font-family:'Barlow',sans-serif;color:var(--text)}
 #app{width:100%;max-width:430px;height:100dvh;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:relative}
 .lw{display:flex;flex-direction:column;height:100dvh;overflow-y:auto}
@@ -326,6 +340,16 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .toginfo{flex:1}.togtitle{font-size:14px;color:var(--text);font-weight:500}.togsub{font-size:12px;color:var(--text3);margin-top:2px}
 .toggle{width:44px;height:24px;border-radius:12px;background:var(--border2);border:none;cursor:pointer;position:relative;flex-shrink:0;transition:background .2s}.toggle.on{background:#1A5DAD}.toggle::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}.toggle.on::after{transform:translateX(20px)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;box-shadow:var(--sh)}
+/* .card.rank-tint-* (0,2,0) outranks .card (0,1,0), so background wins; the
+   re-scoped --border feeds .card's own `border:1px solid var(--border)`. */
+.card.rank-tint-blue{background:var(--tint-blue-bg);--text:var(--tint-blue-fg);--text2:var(--tint-blue-fg);--text3:var(--tint-blue-muted);--border:var(--tint-blue-line)}
+.card.rank-tint-purple{background:var(--tint-purple-bg);--text:var(--tint-purple-fg);--text2:var(--tint-purple-fg);--text3:var(--tint-purple-muted);--border:var(--tint-purple-line)}
+.card.rank-tint-brown{background:var(--tint-brown-bg);--text:var(--tint-brown-fg);--text2:var(--tint-brown-fg);--text3:var(--tint-brown-muted);--border:var(--tint-brown-line)}
+.card.rank-tint-white{background:var(--tint-white-bg);--text:var(--tint-white-fg);--text2:var(--tint-white-fg);--text3:var(--tint-white-muted);--border:var(--tint-white-line)}
+.card.rank-tint-black{background:var(--tint-black-bg);--text:var(--tint-black-fg);--text2:var(--tint-black-fg);--text3:var(--tint-black-muted);--border:var(--tint-black-line)}
+/* A zero month is a fact, not an achievement: it drops to the muted tone
+   instead of the count blue, so the strip never celebrates an empty month. */
+.cls-strip .cls-zero{color:var(--text3)}
 /* Roster card (rARosterListInner) — 3 zones: identity | progress | belt, plus a
    full-width invite/waiver row. Mobile keeps the shape the card has always had:
    identity left with the belt beside it, progress underneath, invite last.
@@ -659,12 +683,17 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
      align-items:stretch (the grid default, stated explicitly) sizes both cells
      to the taller one, so the columns are equal height. Each cell is then a
      flex column: any .slbl label stays at its natural height on top and the
-     .card takes flex:1, so the CARD — not just the wrapper — grows to the
-     bottom of the cell. Intentionally has NO rule below 900px: an unstyled div
+     the cell's LAST .card takes flex:1, so the CARD — not just the wrapper —
+     grows to the bottom of the cell. Intentionally has NO rule below 900px: an unstyled div
      is a block, so on mobile the cards keep their natural heights and stack. */
   .prog-pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
   .prog-pair > div{display:flex;flex-direction:column}
-  .prog-pair > div > .card{flex:1}
+  /* A cell may now hold MORE than one card (the left cell is Classes + Month by
+     month). Only the LAST one absorbs the free height, so the pair still ends at
+     the same Y without the cards splitting the slack between them. A single-card
+     cell is its own :last-child, so every pre-existing cell renders unchanged. */
+  .prog-pair > div > .card:last-child{flex:1}
+  .prog-pair > div > .card:not(:last-child){flex:0 0 auto}
   /* Left cell only: when its card is the shorter of the pair, flex:1 leaves
      dead space at the bottom, so centre the content instead of letting it stick
      to the top. Scoped to :first-child deliberately — the RIGHT cell (Class
@@ -672,7 +701,7 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
      card has no free space so this is a no-op for it. Making the card a flex
      column does not disturb its internals: child offsets and heights measure
      identical to the block layout at natural height. */
-  .prog-pair > div:first-child > .card{display:flex;flex-direction:column;justify-content:center}
+  .prog-pair > div:first-child > .card:last-child{display:flex;flex-direction:column;justify-content:center}
   /* Match the inline margin-top:16px that the right cell's label carries, so
      the two column labels line up. Desktop-only: adding it in the markup would
      shift the whole mobile Journey tab down by 16px. */
@@ -2528,6 +2557,37 @@ function _memberSince(s){
   if(yrMatch)return yrMatch[1]+' ’'+yrMatch[2].slice(2);
   return str;
 }
+// ── FIX 3a — the 3-column strip, ONE source of markup ───────────────────────
+// Rendered by the rank hero (TIME) and by the CLASSES card, so the two cards
+// are the same object twice over and can never drift apart.
+//
+// A 3-ROW grid (labels / values / subs) with columns placed explicitly, so every
+// value sits in the same grid row and the values stay baseline-aligned even when
+// a label wraps to two lines at narrow widths. Separators are 1px grid tracks
+// spanning all three rows.
+// 360px: the value font uses clamp() so it scales down instead of clipping —
+// three columns always fit, never a horizontal scroll and never a collapse to
+// two. Subs are nowrap: "since Jul 2026" breaking after "since" reads as two
+// facts, and the sub row is the one place where a wrap changes the meaning.
+//
+// Cell: {label, value, unit, sub, isCount, muted}. Every colour comes from a
+// token, so a scoped override on the card (.rank-tint-*) retints the whole
+// strip without a single change here.
+function _rStrip3(cells){
+  const _cells=[];
+  (cells||[]).forEach(function(c,i){
+    const gc=(i*2)+1;
+    const valColor=c.isCount?'var(--blue)':(c.muted?'var(--text3)':'var(--text)');
+    const unit=c.unit?'<span style="font-size:.5em;font-weight:700;margin-left:3px">'+c.unit+'</span>':'';
+    if(i>0){
+      _cells.push('<div aria-hidden="true" style="grid-column:'+(gc-1)+';grid-row:1/4;background:var(--border)"></div>');
+    }
+    _cells.push('<div style="grid-column:'+gc+';grid-row:1;min-width:0;font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+c.label+'</div>');
+    _cells.push('<div class="'+(c.valueClass||'')+'" style="grid-column:'+gc+';grid-row:2;min-width:0;margin-top:4px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:clamp(18px,6.2vw,26px);line-height:1.1;color:'+valColor+';overflow-wrap:anywhere">'+c.value+unit+'</div>');
+    _cells.push('<div style="grid-column:'+gc+';grid-row:3;min-width:0;font-size:11px;color:var(--text3);white-space:nowrap">'+(c.sub?'<div style="margin-top:3px">'+c.sub+'</div>':'')+'</div>');
+  });
+  return '<div style="display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr;column-gap:6px">'+_cells.join('')+'</div>';
+}
 function _renderRankBox(s,opts){
   if(!s)return '';
   opts=opts||{};
@@ -2587,24 +2647,25 @@ function _renderRankBox(s,opts){
   // two. The old stacked Awarded/Training-since meta block is gone: Training
   // since is COL 1 and Awarded is COL 3's "since <date>" sub, so nothing dupes.
   if(Array.isArray(opts.statStrip)&&opts.statStrip.length){
-    const _cells=[];
-    opts.statStrip.forEach(function(c,i){
-      const gc=(i*2)+1;
-      const valColor=c.isCount?'var(--blue)':(c.muted?'var(--text3)':'var(--text)');
-      if(i>0){
-        _cells.push('<div aria-hidden="true" style="grid-column:'+(gc-1)+';grid-row:1/4;background:var(--border)"></div>');
-      }
-      _cells.push('<div style="grid-column:'+gc+';grid-row:1;min-width:0;font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+c.label+'</div>');
-      _cells.push('<div style="grid-column:'+gc+';grid-row:2;min-width:0;margin-top:4px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:clamp(18px,6.2vw,26px);line-height:1.1;color:'+valColor+';overflow-wrap:anywhere">'+c.value+'</div>');
-      _cells.push('<div style="grid-column:'+gc+';grid-row:3;min-width:0;font-size:11px;color:var(--text3)">'+(c.sub?'<div style="margin-top:3px">'+c.sub+'</div>':'')+'</div>');
-    });
-    const strip='<div style="display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr;column-gap:6px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">'+_cells.join('')+'</div>';
+    // The award date moved OUT of _metaCols and up under the belt line, where it
+    // reads as part of the rank itself ("Blue belt / since Jul 2026") rather than
+    // as a fourth loose stat. Omitted entirely when there is no dated grading —
+    // never a blank line, never a placeholder.
+    const _aw=_fmtJnyDate(_progAwardDate(s));
+    const _awLine=_aw?'<div style="font-size:12px;color:var(--text3);margin-top:3px">since '+_aw+'</div>':'';
+    const strip='<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">'+_rStrip3(opts.statStrip)+'</div>';
+    // Belt tint: adult students/parents only. Kids belts are compounds with no
+    // token set, and staff/coach never reach this branch at all, so both keep the
+    // plain .card — byte-identical output. The belt SVG paints from BA/BK hex,
+    // so it is untouched by the scoped token override.
+    const _tint=(!isStaff&&prog!=='kids'&&BA[s.belt])?(' rank-tint-'+s.belt):'';
     return '<div class="slbl">Current rank</div>'
-      +'<div class="card">'
+      +'<div class="card'+_tint+'">'
       +'<div style="display:flex;align-items:center;gap:16px">'
         +'<div style="flex-shrink:0">'+beltSVG(s.belt,deg,prog,140)+'</div>'
         +'<div style="min-width:0">'
           +'<div style="font-size:13px;color:var(--text2);font-weight:600">'+beltLine+'</div>'
+          +_awLine
         +'</div>'
       +'</div>'
       +strip
@@ -3072,6 +3133,41 @@ function _fmtJnyDate(d){
   const mo=parseInt(m[2],10);
   if(mo<1||mo>12)return s;
   return months[mo-1]+' '+m[1];
+}
+// ── FIX 1 — duration since a date, as {value, unit} ─────────────────────────
+// THE single source for every duration on the My-belt screen (in jiu-jitsu / at
+// myBJJ / this belt). No caller does its own date math.
+//
+// Counts CALENDAR MONTHS CROSSED — month-number arithmetic only, never a
+// millisecond delta divided by 30 (a month-length average makes "11 months"
+// flip to "1 yr" a fortnight early).
+//
+// The day-of-month is deliberately IGNORED: bjj_start_date arrives from an
+// <input type="month"> as 'YYYY-MM' and has no day at all, so honouring the day
+// where one happens to exist would make two fields on the same strip count by
+// different rules. It also matches how the value reads next to its own sub —
+// "2 mo / since Jul 2026" on 1 Sep is Jul, Aug, Sep.
+//
+//   <1 whole month  -> {value:'<1', unit:'mo'}    (never "0 mo")
+//   1..11           -> {value:'7',  unit:'mo'}
+//   >=12            -> {value:'2',  unit:'yrs'}   ('yr' only for 12..23)
+//
+// Years FLOOR deliberately: a student 23 months in has completed one year, not
+// two. Returns null for null/empty/unparseable input and for a future date —
+// the caller then paints its em dash rather than a negative or a fabricated 0.
+function _sinceLabel(iso){
+  if(iso==null||iso==='')return null;
+  const m=String(iso).match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if(!m)return null;
+  const y=Number(m[1]),mo=Number(m[2]),d=m[3]?Number(m[3]):1;
+  if(mo<1||mo>12||d<1||d>31)return null;
+  const now=new Date();
+  const n=(now.getFullYear()-y)*12+(now.getMonth()+1-mo);
+  // A future date is bad data, not a negative duration — the caller em-dashes it.
+  if(!isFinite(n)||n<0)return null;
+  if(n<1)return {value:'<1',unit:'mo'};
+  if(n<12)return {value:String(n),unit:'mo'};
+  return {value:String(Math.floor(n/12)),unit:n<24?'yr':'yrs'};
 }
 // G17.2b — per-milestone Share button removed. Felipe's call: journey
 // is internal progression, not a social broadcast. shareSid parameter
@@ -4198,12 +4294,12 @@ function _rClassHistorySection(s){
   // loadClassHistory calls render() on completion, and by then the guard matches.
   if(!S.classHistory||S.classHistory.studentId!==s._dbId){
     loadClassHistory(s._dbId);
-    return '<div class="slbl" style="margin-top:16px">Class history</div>'
+    return '<div class="slbl" style="margin-top:16px">Belt by belt</div>'
       +'<div class="card" style="padding:14px 16px">'+skelRows(3)+'</div>';
   }
   const rows=_consolidateClassHistory(S.classHistory.rows||[]);
   if(!rows.length){
-    return '<div class="slbl" style="margin-top:16px">Class history</div>'
+    return '<div class="slbl" style="margin-top:16px">Belt by belt</div>'
       +'<div class="card" style="padding:14px 16px;font-size:12px;color:var(--text3)">No class history yet.</div>';
   }
   const beltLbl=(k)=>(BA[k]||BK[k]||{label:k}).label;
@@ -4252,7 +4348,7 @@ function _rClassHistorySection(s){
   // Header stays OUTSIDE the scroller so the total + "since" line is always visible;
   // only the belt rows scroll. Desktop-only cap (see .chist-scroll) — on mobile the
   // list stacks naturally inside the page's own scroll.
-  return '<div class="slbl" style="margin-top:16px">Class history</div>'
+  return '<div class="slbl" style="margin-top:16px">Belt by belt</div>'
     +'<div class="card" style="padding:14px 16px">'+header+'<div class="chist-scroll">'+rowsHtml+'</div></div>';
 }
 function rJnySection(s,sidKey){
@@ -7750,19 +7846,33 @@ async function _fetchProgressAtt(){
 // dashed (partial); bars are --blue-tint, the single top COMPLETE month --blue.
 // Footer (avg + best month) only with >=3 complete months; the first-month case
 // shows a muted build-up line. Loading → placeholder; fetch error → nothing.
+// ── FIX 5a — attendance rows -> per-calendar-month counts ───────────────────
+// ONE source for "how many classes in month X". The chart reads it for its bars
+// and the CLASSES card reads it for "this month / last month", so the two can
+// never disagree about the same month.
+// Returns {byMonth:{'YYYY-MM':n}, keys:[...sorted ascending]}. Rows with an
+// unusable class_date are skipped, not counted as an unknown month.
+function _progMonthCounts(rows){
+  const byMonth={};
+  (rows||[]).forEach(function(r){
+    const d=String(r&&r.class_date||'');
+    if(d.length>=7){const k=d.slice(0,7);byMonth[k]=(byMonth[k]||0)+1;}
+  });
+  return {byMonth:byMonth,keys:Object.keys(byMonth).sort()};
+}
 function _rTrainingChart(stu){
   if(!stu||!stu._dbId)return '';
   _ensureProgressAtt(stu);
   const slot=S.progressAtt;
-  const LABEL='<div class="slbl" style="margin-top:16px">Your training</div>';
+  const LABEL='<div class="slbl" style="margin-top:16px">Month by month</div>';
   if(!slot||slot.sid!==stu.id||slot.loading){
     return LABEL+'<div class="card" style="padding:14px"><div style="font-size:12.5px;color:var(--text3)">Loading your training…</div></div>';
   }
   if(slot.error)return ''; // fetch failed — chart absent, rest of the tab still renders
   const rows=slot.rows||[];
-  const byMonth={};
-  rows.forEach(function(r){const d=String(r&&r.class_date||'');if(d.length>=7){const k=d.slice(0,7);byMonth[k]=(byMonth[k]||0)+1;}});
-  const dataKeys=Object.keys(byMonth).sort();
+  const _mc=_progMonthCounts(rows);
+  const byMonth=_mc.byMonth;
+  const dataKeys=_mc.keys;
   if(!dataKeys.length)return ''; // no attendance → no chart (the attendance card covers the empty state)
   const now=new Date();
   const nowKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
@@ -7827,15 +7937,76 @@ function _progHasPriorGrading(stu){
 }
 // 4-digit year from an ISO date or a 'Mon YYYY' free-text label; '' if none.
 function _progYearOf(d){const m=String(d==null?'':d).match(/(\d{4})/);return m?m[1]:'';}
-// ── YOUR TRAINING card — graduates by data volume ───────────────────────────
+// ── FIX 5b — CLASSES card ───────────────────────────────────────────────────
+// The counts half of the pair. ONE DIMENSION PER CARD: the rank hero above owns
+// TIME, this owns COUNTS, and neither repeats the other. Plain .card (no belt
+// tint) — the tint marks the rank, and tinting a second card would make the
+// belt look like a theme rather than a fact.
+//
+// `rows` is the loaded attendance array, or NULL while the fetch is in flight or
+// after it failed. Columns 1-2 come straight off the STUDENTS row and therefore
+// render in every state; only column 3 depends on the fetch, and with rows=null
+// it shows the em dash. A zero is only ever printed when a loaded, complete
+// month genuinely contains zero classes.
+function _rClassesCard(stu,rows){
+  const EMDASH='—';
+  const tsFmt=_fmtJnyDate(stu.trainingStartedAt||null);
+
+  // COL 2's Gi/No-gi breakdown is shown ONLY when it reconciles: gi+nogi must
+  // equal the belt's class count. This is the app's existing split-trust rule
+  // (the lifetime `_showSplit` idiom in rStuProf/the roster card), applied to
+  // the CURRENT-BELT counters. baseline_grade — the pre-app historical classes
+  // that carry no modality — is not mapped onto the in-memory student row, so
+  // the reconciliation test IS the trust signal: when a student carries baseline
+  // classes the two sides cannot add up and the sub goes quiet. Never show a
+  // split the reader could add up and find wrong.
+  const _bGrade=Math.max(Number(stu.grade||0),0);
+  const _bGi=Math.max(Number(stu.giGrade||0),0);
+  const _bNogi=Math.max(Number(stu.nogiGrade||0),0);
+  const _showSplit=(_bGrade>0&&(_bGi+_bNogi)===_bGrade);
+
+  // COL 3 — this calendar month, with last month as its sub. Derived from the
+  // same browser-local `now` and the same 'YYYY-MM' string keys the chart uses,
+  // so the number here and the last bar of the chart are the same number.
+  // "last month N" appears only when that month is actually IN the data: an
+  // absent key means the student wasn't training then, not that they did zero.
+  let col3;
+  if(!rows){
+    col3={label:'This month',value:EMDASH,unit:'',sub:'',isCount:false,muted:true};
+  }else{
+    const byMonth=_progMonthCounts(rows).byMonth;
+    const now=new Date();
+    const curKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    const pv=new Date(now.getFullYear(),now.getMonth()-1,1);
+    const prevKey=pv.getFullYear()+'-'+String(pv.getMonth()+1).padStart(2,'0');
+    const cur=byMonth[curKey]||0;
+    col3={label:'This month',value:formatStat(cur),unit:'',
+      sub:(byMonth[prevKey]!=null)?('last month '+formatStat(byMonth[prevKey])):'',
+      isCount:cur>0,muted:false,valueClass:cur>0?'':'cls-zero'};
+  }
+
+  return '<div class="slbl">Classes</div>'
+    +'<div class="card cls-strip">'+_rStrip3([
+      {label:'At myBJJ',value:formatStat(stu.total||0),unit:'',sub:tsFmt?('since '+tsFmt):'',isCount:true,muted:false},
+      {label:'This belt',value:formatStat(stu.grade||0),unit:'',
+       sub:_showSplit?('Gi '+formatStat(_bGi)+' · No-Gi '+formatStat(_bNogi)):'',isCount:true,muted:false},
+      col3
+    ])+'</div>';
+}
+// ── MONTH BY MONTH card — graduates by data volume ──────────────────────────
 // <2 distinct months of attendance → a compact SUMMARY (this month / this week
 // + a Gi-vs-No-gi bar THIS MONTH). >=2 → the v347 monthly bar chart, reused
 // as-is. Loading → placeholder; error → nothing. Reads S.progressAtt only.
-function _rTrainingCard(stu){
+// Each branch emits its OWN label+card pair (hence the LABEL const appearing
+// both here and in _rTrainingChart): the >=2 branch DELEGATES wholesale to
+// _rTrainingChart, so that function has to return a complete, self-contained
+// label+card unit rather than a bare card. Not a duplicate — two renderers, one
+// slot, and the caller never has to know which one answered.
+function _rMonthByMonth(stu){
   if(!stu||!stu._dbId)return '';
   _ensureProgressAtt(stu);
   const slot=S.progressAtt;
-  const LABEL='<div class="slbl" style="margin-top:16px">Your training</div>';
+  const LABEL='<div class="slbl" style="margin-top:16px">Month by month</div>';
   if(!slot||slot.sid!==stu.id||slot.loading){
     return LABEL+'<div class="card" style="padding:14px"><div style="font-size:12.5px;color:var(--text3)">Loading your training…</div></div>';
   }
@@ -7881,6 +8052,21 @@ function _rTrainingCard(stu){
     +barGiNo
   +'</div>';
 }
+// ── FIX 5b — the LEFT .prog-pair cell, in narrative order ───────────────────
+// Current rank (the hero, above) → Classes → Month by month. The Classes card is
+// unconditional: its first two columns are STUDENTS-row facts that owe nothing
+// to the attendance fetch, so a slow or failed fetch costs the reader column 3
+// and nothing else. Both children land in the left cell automatically; on mobile
+// the cell is an ordinary block, so they simply stack.
+function _rTrainingCard(stu){
+  if(!stu||!stu._dbId)return '';
+  _ensureProgressAtt(stu);
+  const slot=S.progressAtt;
+  // Loaded means loaded for THIS student and without error. Anything else hands
+  // _rClassesCard a null and it paints the em dash — an error is not a zero.
+  const loaded=!!(slot&&slot.sid===stu.id&&!slot.loading&&!slot.error);
+  return _rClassesCard(stu,loaded?(slot.rows||[]):null)+_rMonthByMonth(stu);
+}
 // ── RECENT card — most recent 3 present sessions + View-all link ─────────────
 // Reads S.progressAtt only (no fetch). "View all attendance" opens the existing
 // full subview (openStuAttList). Loading/error → nothing (rest of tab renders).
@@ -7922,62 +8108,66 @@ function _rRecentCard(stu,fromParent){
   const viewAll='<div style="margin-top:6px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+stu.id+'\''+openArg+')" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:6px 0 0">View all attendance →</button></div>';
   return '<div class="slbl" style="margin-top:16px">Recent</div><div class="card" style="padding:9px 16px">'+rowsHtml+viewAll+'</div>';
 }
-// ── Hero stat strip (student Progress) — SINGLE SOURCE OF TRUTH ──────────────
+// ── Hero TIME strip (student Progress) — SINGLE SOURCE OF TRUTH ─────────────
 // Reads ONLY the raw STUDENTS row. Deliberately does NOT touch _egDisplay or
-// rProgress's merged `s` overlay: egd.classesDone reduces to student.grade on
-// every branch (getEligibilityStatus sets classesDone=student.grade||0), and the
-// overlay always takes the stu branch for total/grade because the hydrate mapper
-// writes both as Number(...||0). Same numbers, no hidden coupling to
+// rProgress's merged `s` overlay: same numbers, no hidden coupling to
 // membershipLevel/_lastMarkerDate, which the overlay never carries.
 //
-// A.2 — returns DATA, not markup: exactly three column objects
-//   {label, value, sub, isCount, muted}
-// consumed by _renderRankBox's hero branch via opts.statStrip. isCount paints
-// the value var(--blue) (counts); muted paints it var(--text3) (the em-dash
-// placeholder); otherwise var(--text) (dates). ALWAYS three columns so the
-// strip never reflows between students — an absent value shows an em dash, and
-// nothing is ever fabricated as a zero.
+// ONE DIMENSION PER CARD. This card is TIME; the CLASSES card below it owns the
+// counts. Nothing here is a count, so nothing here is painted count-blue.
 //
-//   COL 1  Training since — the academy join date.
-//   COL 2  Classes logged — lifetime total.
-//   COL 3  adaptive: classes since the last grading, labelled by rank; for a
-//          never-graded student that count would just equal the lifetime total,
-//          so the slot shows when they STARTED BJJ (bjj_start_date — a distinct
-//          fact from COL 1's academy join date); with no such date, or one that
-//          would just repeat COL 1, it falls back to the em dash.
+// Returns DATA, not markup: exactly three column objects
+//   {label, value, unit, sub, isCount, muted}
+// consumed by _renderRankBox's hero branch via opts.statStrip -> _rStrip3.
+// `unit` is the small 'mo'/'yr'/'yrs' suffix that trails the value; absent on
+// the em-dash placeholder. isCount:false throughout, so the value paints
+// var(--text) — which the belt tint re-scopes to the belt's own ink.
+// ALWAYS three columns so the strip never reflows between students: an absent
+// value shows an em dash, and nothing is ever fabricated as a zero.
+//
+//   COL 1  In jiu-jitsu — bjj_start_date, the whole life on the mats.
+//   COL 2  At myBJJ     — training_started_at, the academy join date.
+//   COL 3  This belt    — time since the current belt was awarded.
 function _rStatRow(stu){
   var EMDASH='—';
   if(!stu)return [];
-  var deg=Number(stu.deg||0);
-  var hasGrading=_progHasPriorGrading(stu);
-  var allTime=Number(stu.total||0);
-  var sinceCount=Number(stu.grade||0);
-  var awVal=_fmtJnyDate(_progAwardDate(stu));
-  var tsFmt=_fmtJnyDate(stu.trainingStartedAt||null);      // COL 1 — joined myBJJ
-  var startedLife=_fmtJnyDate(stu.bjjStartDate||null);     // COL 3 — started BJJ
-  // Decision tree preserved from A.1 — only the labels shorten (the strip is
-  // narrower than the old two-card row) and the output is data, not markup.
-  //
-  // COL 3's never-graded slot shows the LIFE-HISTORY start (bjj_start_date, the
-  // same field rTL uses for its "Started BJJ" node), not the academy join date —
-  // that one is already COL 1, and sourcing both from trainingStartedAt printed
-  // the same date twice. Compared on the FORMATTED value because that is what
-  // the user sees: two raw dates inside one month both render "Jan 2020", and
-  // showing it twice would still read as a duplicate. No life-history date on
-  // file, or one that collapses onto COL 1, falls back to the em dash.
-  var rightLabel=deg>=1?'This stripe':(hasGrading?'This belt':null);
-  var col3=rightLabel
-    ?{label:rightLabel,value:formatStat(sinceCount),sub:awVal?('since '+awVal):'',isCount:true,muted:false}
-    :((startedLife&&startedLife!==tsFmt)
-      ?{label:'Started',value:startedLife,sub:'on the mats',isCount:false,muted:false}
-      :{label:'This belt',value:EMDASH,sub:'',isCount:false,muted:true});
-  return [
-    tsFmt
-      ?{label:'Training since',value:tsFmt,sub:'at myBJJ',isCount:true,muted:false}
-      :{label:'Training since',value:EMDASH,sub:'',isCount:false,muted:true},
-    {label:'Classes logged',value:formatStat(allTime),sub:'at myBJJ',isCount:true,muted:false},
-    col3
-  ];
+  var ABSENT={value:EMDASH,unit:'',sub:'',isCount:false,muted:true};
+
+  // COL 1 — life history. When bjj_start_date and the academy join date land in
+  // the SAME MONTH the two columns describe one event, so the sub says so
+  // instead of printing the same "Oct 2025" twice. Compared on the FORMATTED
+  // value because that is what the reader sees.
+  var lifeIso=stu.bjjStartDate||null;
+  var lifeFmt=_fmtJnyDate(lifeIso);
+  var tsIso=stu.trainingStartedAt||null;
+  var tsFmt=_fmtJnyDate(tsIso);
+  var lifeDur=_sinceLabel(lifeIso);
+  // bjj_start_date is student-editable (openEditStu > Basic > es-bjjstart), so
+  // the empty sub is a real affordance, not an apology for missing data.
+  var col1=lifeDur
+    ?{label:'In jiu-jitsu',value:lifeDur.value,unit:lifeDur.unit,
+      sub:(lifeFmt&&tsFmt&&lifeFmt===tsFmt)?'here at myBJJ':(lifeFmt?('since '+lifeFmt):''),
+      isCount:false,muted:false}
+    :{label:'In jiu-jitsu',value:EMDASH,unit:'',sub:'Add in your profile',isCount:false,muted:true};
+
+  // COL 2 — academy tenure.
+  var tsDur=_sinceLabel(tsIso);
+  var col2=tsDur
+    ?{label:'At myBJJ',value:tsDur.value,unit:tsDur.unit,sub:tsFmt?('since '+tsFmt):'',isCount:false,muted:false}
+    :Object.assign({label:'At myBJJ'},ABSENT);
+
+  // COL 3 — time at the CURRENT belt. Needs both a real prior grading (a
+  // never-promoted white belt has no belt anniversary to report) and a dated
+  // award; either one missing falls back to the em dash rather than quietly
+  // reusing the join date.
+  var awIso=_progHasPriorGrading(stu)?_progAwardDate(stu):null;
+  var awDur=awIso?_sinceLabel(awIso):null;
+  var awFmt=awIso?_fmtJnyDate(awIso):null;
+  var col3=awDur
+    ?{label:'This belt',value:awDur.value,unit:awDur.unit,sub:awFmt?('since '+awFmt):'',isCount:false,muted:false}
+    :Object.assign({label:'This belt'},ABSENT);
+
+  return [col1,col2,col3];
 }
 function rProgress(){
   // B3b-2 — parent kid Progress now conforms to the student tabbed
@@ -8133,11 +8323,15 @@ function rProgress(){
   // month/year. bjj_start_date is a personal milestone shown in the Journey
   // timeline only, not here. Each column omitted when its date is absent.
   var _tsVal=_fmtJnyDate(stu.trainingStartedAt||null);
-  var _awDate=_progAwardDate(stu);
-  var _awVal=_fmtJnyDate(_awDate);
+  // AWARDED is gone from here: it is now the "since <date>" line directly under
+  // the belt line inside the hero. _metaCols keeps only Training since, and its
+  // job on this path is no longer to render anything — the hero branch returns
+  // before metaHtml is ever built. It stays passed purely to hold the
+  // default-stats suppression gate open: that gate reads `!opts.metaCols`, i.e.
+  // the ARRAY's presence, not its length, so an empty [] still suppresses the
+  // "N total classes" pill for a student with no dates on file.
   var _metaCols=[];
   if(_tsVal)_metaCols.push({label:'Training since',value:_tsVal});
-  if(_awVal)_metaCols.push({label:'Awarded',value:_awVal});
   // B. A.2 — the two-stat row is gone; its numbers now live in the rank card's
   // 3-column hero strip. _rStatRow(stu) still derives them (raw stu only, no
   // _egDisplay / no `s` overlay) but returns DATA, which _renderRankBox renders
