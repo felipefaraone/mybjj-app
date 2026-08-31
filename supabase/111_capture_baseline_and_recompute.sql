@@ -93,5 +93,50 @@ CREATE TRIGGER trg_promotion_reset_grade_baseline
 AFTER INSERT OR DELETE ON public.promotions
 FOR EACH ROW EXECUTE FUNCTION public.promotion_reset_grade_baseline();
 
--- TODO (still live-only): trg_notify_promotion -> public.trg_notify_promotion_fn().
--- Capture with: select pg_get_functiondef('public.trg_notify_promotion_fn'::regproc);
+-- Trigger captured from the live DB (never committed): notifies the student
+-- (or parent) on every promotion INSERT. NOTE: it does not check NEW.hidden —
+-- historical entries made via the Promote->"not current belt" flow also notify.
+CREATE OR REPLACE FUNCTION public.trg_notify_promotion_fn()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+declare
+  v_user_id       uuid;
+  v_student_name  text;
+  v_student_prog  text;
+  v_promoter_name text;
+  v_title         text;
+  v_body          text;
+begin
+  select coalesce(s.user_id, s.parent_user_id), s.full_name, s.prog
+  into v_user_id, v_student_name, v_student_prog
+  from public.students s where s.id = NEW.student_id;
+  if v_user_id is null then return NEW; end if;
+  v_promoter_name := coalesce(NEW.promoted_by_name, 'Your instructor');
+  if NEW.is_new_belt is true then
+    v_title := 'New belt!';
+    if v_student_prog = 'kids' then
+      v_body := coalesce(v_student_name, 'Your child') || ' was promoted to ' || coalesce(NEW.to_belt, 'a new belt') || ' by ' || v_promoter_name || '.';
+    else
+      v_body := 'You were promoted to ' || coalesce(NEW.to_belt, 'a new belt') || ' by ' || v_promoter_name || '.';
+    end if;
+  else
+    v_title := 'New stripe!';
+    if v_student_prog = 'kids' then
+      v_body := coalesce(v_student_name, 'Your child') || ' earned a new stripe from ' || v_promoter_name || '.';
+    else
+      v_body := 'You earned a new stripe from ' || v_promoter_name || '.';
+    end if;
+  end if;
+  perform public.create_notification(
+    p_user_id := v_user_id, p_type := 'promotion', p_title := v_title, p_body := v_body,
+    p_related_entity_type := 'promotion', p_related_entity_id := NEW.id,
+    p_metadata := jsonb_build_object('student_id', NEW.student_id, 'from_belt', NEW.from_belt,
+      'to_belt', NEW.to_belt, 'from_deg', NEW.from_deg, 'to_deg', NEW.to_deg, 'is_new_belt', NEW.is_new_belt),
+    p_check_prefs := true);
+  return NEW;
+end;
+$function$;
+DROP TRIGGER IF EXISTS trg_notify_promotion ON public.promotions;
+CREATE TRIGGER trg_notify_promotion
+AFTER INSERT ON public.promotions
+FOR EACH ROW EXECUTE FUNCTION public.trg_notify_promotion_fn();
