@@ -91,7 +91,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--blue:#1A5DAD;--blue-tint:#EBF2FB;--blue-mid:#cde0f7;--green:#16a34a;--green-bg:#f0fdf4;--green-text:#15803d;--green-border:#bbf7d0;--amber:#d97706;--amber-bg:#fffbeb;--amber-text:#92400e;--amber-border:#fde68a;--red:#dc2626;--red-bg:#fef2f2;--red-text:#991b1b;--red-border:#fecaca;--bg:#f5f6f8;--surface:#fff;--card:#fff;--border:#e5e7eb;--border2:#d1d5db;--text:#111827;--text2:#6b7280;--text3:#9ca3af;--nav-bg:#fff;--input-bg:#f9fafb;--sh:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);--sh-md:0 4px 16px rgba(0,0,0,.09);--sh-lg:0 8px 32px rgba(0,0,0,.13);--ctrl-h:36px}
-@media(prefers-color-scheme:dark){:root{--blue:#4d90e0;--blue-tint:#122440;--blue-mid:#284a7a;--green:#16a34a;--green-bg:#052e16;--green-text:#86efac;--green-border:#14532d;--amber:#d97706;--amber-bg:#1c1407;--amber-text:#fde68a;--amber-border:#78350f;--red:#dc2626;--red-bg:#450a0a;--red-text:#fca5a5;--red-border:#7f1d1d;--bg:#0e0f12;--surface:#1a1b20;--card:#1e2026;--border:#34363e;--border2:#43454e;--text:#f1f2f4;--text2:#b2b7c1;--text3:#878d98;--nav-bg:#141519;--input-bg:#141519;--sh:0 1px 3px rgba(0,0,0,.4);--sh-md:0 4px 16px rgba(0,0,0,.5);--sh-lg:0 8px 32px rgba(0,0,0,.6)}}
+@media(prefers-color-scheme:dark){:root{--blue:#4d90e0;--blue-tint:#122440;--blue-mid:#284a7a;--green:#16a34a;--green-bg:#052e16;--green-text:#86efac;--green-border:#14532d;--amber:#d97706;--amber-bg:#1c1407;--amber-text:#fde68a;--amber-border:#78350f;--red:#dc2626;--red-bg:#450a0a;--red-text:#fca5a5;--red-border:#7f1d1d;--bg:#0e0f12;--surface:#1a1b20;--card:#1e2026;--border:#34363e;--border2:#43454e;--text:#f1f2f4;--text2:#b2b7c1;--text3:#878d98;--nav-bg:#141519;--input-bg:#141519;--sh:0 1px 3px rgba(0,0,0,.4);--sh-md:0 4px 16px rgba(0,0,0,.5);--sh-lg:0 8px 32px rgba(0,0,0,.6);/* Belt tints are a LIGHT-MODE device: they wash a near-white card with the belt's own ink. There is no dark equivalent that stays legible next to the belt bar, so in dark mode every tint collapses BY REFERENCE onto the app's own card tokens — the tinted hero renders as an ordinary dark card and the belt is carried by the SVG alone. No new hex, and the .rank-tint-* classes and cell markup are untouched: they keep reading the same four token names, which now simply point home. */--tint-blue-bg:var(--card);--tint-blue-fg:var(--text);--tint-blue-muted:var(--text3);--tint-blue-line:var(--border);--tint-purple-bg:var(--card);--tint-purple-fg:var(--text);--tint-purple-muted:var(--text3);--tint-purple-line:var(--border);--tint-brown-bg:var(--card);--tint-brown-fg:var(--text);--tint-brown-muted:var(--text3);--tint-brown-line:var(--border);--tint-white-bg:var(--card);--tint-white-fg:var(--text);--tint-white-muted:var(--text3);--tint-white-line:var(--border);--tint-black-bg:var(--card);--tint-black-fg:var(--text);--tint-black-muted:var(--text3);--tint-black-line:var(--border)}}
 /* ── Rank-hero belt tints (Progress > My belt, student/parent only) ─────────
    One quadruple per adult belt. The tint CLASS re-scopes the SAME tokens the
    hero's inline cells already read (--text / --text2 / --text3 / --border), so
@@ -2651,7 +2651,12 @@ function _renderRankBox(s,opts){
     // reads as part of the rank itself ("Blue belt / since Jul 2026") rather than
     // as a fourth loose stat. Omitted entirely when there is no dated grading —
     // never a blank line, never a placeholder.
-    const _aw=_fmtJnyDate(_progAwardDate(s));
+    // Gated on _progHasPriorGrading — the SAME signal COL 3 ("This belt") uses.
+    // Without it a never-promoted white belt read "White belt / since Sep 2024"
+    // (_progAwardDate falls back to the origin marker) while COL 3 showed an em
+    // dash: one card making two claims about one belt. The two now agree by
+    // construction — belt name alone when there is no grading to date from.
+    const _aw=_progHasPriorGrading(s)?_fmtJnyDate(_progAwardDate(s)):null;
     const _awLine=_aw?'<div style="font-size:12px;color:var(--text3);margin-top:3px">since '+_aw+'</div>':'';
     const strip='<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">'+_rStrip3(opts.statStrip)+'</div>';
     // Belt tint: adult students/parents only. Kids belts are compounds with no
@@ -7985,7 +7990,11 @@ function _rClassesCard(stu,rows){
       isCount:cur>0,muted:false,valueClass:cur>0?'':'cls-zero'};
   }
 
-  return '<div class="slbl">Classes</div>'
+  // margin-top:16px matches Month by month and Belt by belt. Desktop already got
+  // it from `.prog-pair > div:first-child > .slbl`; MOBILE has no such rule, so
+  // without it this one label sat 12px under the hero while every sibling label
+  // sat at 28px. Same value inline, so desktop is unchanged.
+  return '<div class="slbl" style="margin-top:16px">Classes</div>'
     +'<div class="card cls-strip">'+_rStrip3([
       {label:'At myBJJ',value:formatStat(stu.total||0),unit:'',sub:tsFmt?('since '+tsFmt):'',isCount:true,muted:false},
       {label:'This belt',value:formatStat(stu.grade||0),unit:'',

@@ -75,3 +75,23 @@ BEGIN
   WHERE id=p_student_id;
 END;
 $function$;
+
+-- Trigger captured from the live DB (never committed): zeroes baseline_grade for
+-- the affected student on promotion INSERT/DELETE, then recomputes.
+CREATE OR REPLACE FUNCTION public.promotion_reset_grade_baseline()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+begin
+  update public.students set baseline_grade = 0
+   where id = coalesce(NEW.student_id, OLD.student_id);
+  perform public.recompute_student_stats(coalesce(NEW.student_id, OLD.student_id));
+  return coalesce(NEW, OLD);
+end;
+$function$;
+DROP TRIGGER IF EXISTS trg_promotion_reset_grade_baseline ON public.promotions;
+CREATE TRIGGER trg_promotion_reset_grade_baseline
+AFTER INSERT OR DELETE ON public.promotions
+FOR EACH ROW EXECUTE FUNCTION public.promotion_reset_grade_baseline();
+
+-- TODO (still live-only): trg_notify_promotion -> public.trg_notify_promotion_fn().
+-- Capture with: select pg_get_functiondef('public.trg_notify_promotion_fn'::regproc);
