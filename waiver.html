@@ -55,6 +55,11 @@ main{padding:30px 0 60px}
 .who{display:flex;gap:10px;background:var(--blue-tint);border-radius:10px;padding:13px 15px;margin-bottom:20px;font-size:14.5px;color:var(--blue-dark);line-height:1.45}
 .who svg{width:18px;height:18px;flex-shrink:0;margin-top:1px}
 .who b{font-weight:700}
+/* The under-18 auto-switch notice. Deliberately the SAME blue-tint family as
+   .who and nothing like .formerr's red: the form has adjusted itself, the person
+   has not made a mistake. The left rule is the only thing separating it from the
+   standing banner it sits under. */
+.dobnote{border-left:3px solid var(--blue)}
 
 /* form */
 .formgrid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
@@ -192,6 +197,9 @@ input.err,select.err{border-color:var(--red)}
       </div>
     </div>
     <div class="who" id="whobox"></div>
+    <!-- Shown only by the under-18 auto-switch below; hidden again if the box is
+         unticked. Not an error banner — see .dobnote. -->
+    <div class="who dobnote" id="dobnote" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span>The date of birth entered is under 18, so a parent or guardian completes and signs this form. We've updated the wording to suit. Please add the child's name above — the health questions are about the child, and the signature at the end is yours.</span></div>
     <div class="formgrid">
       <label class="field"><span class="lab">Date of birth<span class="req"> *</span></span><input type="date" id="dob"/></label>
       <label class="field"><span class="lab">Gender</span>
@@ -428,8 +436,17 @@ function validateStep(n){
       if(age === null || age < 0 || age > 120){
         mark("dob",true); badFormat.push("a real date of birth");
       } else if(!st.minor && age < 18){
+        // BACKSTOP. The date-of-birth handler now switches the form to guardian
+        // mode the moment an under-18 date is entered, so on the generic waiver
+        // this is only reachable by deliberately UNTICKING the box afterwards —
+        // which means the fix is one tick away and the message should say so
+        // rather than sending the person off to the phone. A tokened link has no
+        // such box (the identity block is hidden and the auto-switch is skipped),
+        // so that path keeps the original wording, phone number and all.
         mark("dob",true);
-        err("You're under 18, so a parent or guardian needs to complete and sign this — not you. Ask them to open this link on their phone, or call us on 0406 456 766.");
+        err(GENERIC
+          ? "The date of birth entered is under 18, so this waiver has to be completed and signed by a parent or guardian. Please tick 'This waiver is for my child' above and add the child's name."
+          : "You're under 18, so a parent or guardian needs to complete and sign this — not you. Ask them to open this link on their phone, or call us on 0406 456 766.");
         return false;
       }
     }
@@ -640,6 +657,77 @@ window.gidKidToggle = function(cb){
 };
 // Live-refresh the whobox banner with the child's name as it's typed.
 window.gidKidName = function(){ if(st.minor) applyMinorUI(val("gid_kidname")); };
+
+// ---- Under-18 → guardian mode, at the moment the date is entered ------------
+// The rule (a minor cannot sign this) is unchanged. What changed is WHEN it is
+// enforced and what the person can do about it. It used to fire only on submit,
+// after the whole form was filled, and named no way out — a parent's friend's
+// child hit it in production, could not see that the checkbox six fields up
+// solved it, and abandoned the submission to start again.
+//
+// This switches the form over as soon as an under-18 date of birth lands, by
+// driving the EXISTING path — tick gid_iskid, hand it to gidKidToggle — so the
+// banner, legal paragraph, agree text, name label, signature label, medical
+// lead-in, phone optionality and the child's-name field all update through the
+// one mechanism. Nothing here duplicates applyMinorUI, and st.minor is never
+// assigned directly.
+//
+// EVENT CHOICE: `change`, not `input`, and not `blur`.
+//   - `input` fires per segment in desktop Chrome. Because <input type="date">
+//     reports "" until all three segments are valid, a half-typed date is safe on
+//     its own — but Chrome DOES publish intermediate values while the year is
+//     being typed (year "2" → 0002-…), and reacting to those would move focus out
+//     of the field mid-keystroke. Unusable.
+//   - `blur` is unreliable on iOS Safari, where the picker takes focus, and it
+//     would delay the switch until the person had moved on anyway.
+//   - `change` fires on both platforms once a value is committed: on desktop when
+//     the control's value actually changes, on iOS when the wheels settle.
+// DEBOUNCE: the iOS picker fires `change` repeatedly while a wheel is spun, so
+// scrolling the year from 2026 down to 1990 passes THROUGH under-18 years. Since
+// the switch is deliberately one-way, a false positive there would be sticky and
+// annoying, so the value must hold still briefly before it counts.
+var DOB_ISO = /^\d{4}-\d{2}-\d{2}$/;
+var dobSettle = null;
+function dobNote(on){ var n = $("dobnote"); if(n) n.style.display = on ? "" : "none"; }
+function dobGuardianCheck(){
+  // GENERIC only. A tokened link is bound to one named person, its identity block
+  // (and therefore the checkbox and the child's-name field) is display:none, and
+  // ?k=1 already decided st.minor — so there is nothing here to tick and the
+  // submit-time backstop remains the right behaviour on that path.
+  if(!GENERIC) return;
+  // Already guardian mode → nothing to do. This is also what makes ?k=1 unable to
+  // double-fire, and what keeps a corrected date from reverting anything.
+  if(st.minor) return;
+  var raw = val("dob");
+  if(!DOB_ISO.test(raw)){ dobNote(false); return; }   // empty or partial: never act
+  var age = ageFrom(raw);
+  if(age === null || age < 0 || age > 120) return;    // same window validateStep uses
+  if(age >= 18) return;
+  var cb = $("gid_iskid");
+  if(!cb) return;
+  cb.checked = true;          // the control the person can see must match st.minor
+  window.gidKidToggle(cb);    // the one existing path — st.minor + applyMinorUI + kid field
+  dobNote(true);
+  var kn = $("gid_kidname");
+  // preventScroll then an explicit smooth scroll: focus() alone jumps the page.
+  if(kn){ try{ kn.focus({preventScroll:true}); }catch(e){ kn.focus(); }
+          kn.scrollIntoView({behavior:"smooth", block:"center"}); }
+}
+$("dob").addEventListener("change", function(){
+  clearTimeout(dobSettle);
+  dobSettle = setTimeout(dobGuardianCheck, 500);
+});
+// Unticking the box is always the person's call — st.minor is left entirely to
+// gidKidToggle. Only the explanation is withdrawn, because it would be describing
+// a form that no longer looks like that. Listener, not an edit to the inline
+// onchange, so gidKidToggle keeps running exactly as before.
+var _isKid = $("gid_iskid");
+if(_isKid) _isKid.addEventListener("change", function(){ if(!this.checked) dobNote(false); });
+// "Add another child" blanks the date of birth without firing an event, so the
+// notice would otherwise linger over an empty field. addAnotherChild itself is
+// untouched.
+var _again = document.querySelector("#againwrap button");
+if(_again) _again.addEventListener("click", function(){ dobNote(false); });
 
 // ---- Add another child ------------------------------------------------------
 // A parent with more than one child must submit once PER CHILD: the backend keys
