@@ -4081,7 +4081,16 @@ function rStuProf(){
   const parentEmailVal=!isKids?'':(s.parentEmail
     ?(s.parentEmail+(s._parentUserId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null);
-  const joinedDate=((s.journey||[]).find(m=>m.done)||{}).date||null;
+  // The academy join date has ONE source: training_started_at — the same column
+  // the Progress hero's "At myBJJ" column reads. It used to be derived from the
+  // journey, which answered a different question badly: journeys are stored in
+  // INSERTION order (rTL sorts a copy at render time precisely because the stored
+  // order is arbitrary), promotions append, and the origin backfill prepends an
+  // entry carrying date:null. So .find(m=>m.done) returned whichever graduation
+  // happened to be first in the array — a belt award for some students, null for
+  // any student who got the origin backfill — and never the join date for anyone.
+  // Profile and Progress therefore disagreed about the same fact.
+  const joinedDate=s.trainingStartedAt||null;
   // G16a — Email row no longer carries inline Edit/Resend (those moved
   // into the new tabbed Edit Profile modal's Contact tab). MyBJJ Gi
   // line and Social icons row are new admin/self surfaces.
@@ -6140,7 +6149,16 @@ function _renderProfileIdentity(s,opts){
   const parentEmailVal=isKids?(s.parentEmail
     ?(s.parentEmail+((s._parentUserId&&!selfView)?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null):null;
-  const joinedDate=((s.journey||[]).find(m=>m.done)||{}).date||null;
+  // The academy join date has ONE source: training_started_at — the same column
+  // the Progress hero's "At myBJJ" column reads. It used to be derived from the
+  // journey, which answered a different question badly: journeys are stored in
+  // INSERTION order (rTL sorts a copy at render time precisely because the stored
+  // order is arbitrary), promotions append, and the origin backfill prepends an
+  // entry carrying date:null. So .find(m=>m.done) returned whichever graduation
+  // happened to be first in the array — a belt award for some students, null for
+  // any student who got the origin backfill — and never the join date for anyone.
+  // Profile and Progress therefore disagreed about the same fact.
+  const joinedDate=s.trainingStartedAt||null;
   // B-edit — STATUS row hidden in selfView (admin chrome).
   const statusRow=selfView?'':'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:'+(isActive?'var(--green-text)':'var(--amber-text)')+';font-weight:600">'+(isActive?'Active':'Inactive')+'</div></div>';
   let detailsBody;
