@@ -91,7 +91,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--blue:#1A5DAD;--blue-tint:#EBF2FB;--blue-mid:#cde0f7;--green:#16a34a;--green-bg:#f0fdf4;--green-text:#15803d;--green-border:#bbf7d0;--amber:#d97706;--amber-bg:#fffbeb;--amber-text:#92400e;--amber-border:#fde68a;--red:#dc2626;--red-bg:#fef2f2;--red-text:#991b1b;--red-border:#fecaca;--bg:#f5f6f8;--surface:#fff;--card:#fff;--border:#e5e7eb;--border2:#d1d5db;--text:#111827;--text2:#6b7280;--text3:#9ca3af;--nav-bg:#fff;--input-bg:#f9fafb;--sh:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);--sh-md:0 4px 16px rgba(0,0,0,.09);--sh-lg:0 8px 32px rgba(0,0,0,.13);--ctrl-h:36px}
-@media(prefers-color-scheme:dark){:root{--blue:#4d90e0;--blue-tint:#122440;--blue-mid:#284a7a;--green:#16a34a;--green-bg:#052e16;--green-text:#86efac;--green-border:#14532d;--amber:#d97706;--amber-bg:#1c1407;--amber-text:#fde68a;--amber-border:#78350f;--red:#dc2626;--red-bg:#450a0a;--red-text:#fca5a5;--red-border:#7f1d1d;--bg:#0e0f12;--surface:#1a1b20;--card:#1e2026;--border:#34363e;--border2:#43454e;--text:#f1f2f4;--text2:#b2b7c1;--text3:#878d98;--nav-bg:#141519;--input-bg:#141519;--sh:0 1px 3px rgba(0,0,0,.4);--sh-md:0 4px 16px rgba(0,0,0,.5);--sh-lg:0 8px 32px rgba(0,0,0,.6);/* Belt tints are a LIGHT-MODE device: they wash a near-white card with the belt's own ink. There is no dark equivalent that stays legible next to the belt bar, so in dark mode every tint collapses BY REFERENCE onto the app's own card tokens — the tinted hero renders as an ordinary dark card and the belt is carried by the SVG alone. No new hex, and the .rank-tint-* classes and cell markup are untouched: they keep reading the same four token names, which now simply point home. */--tint-blue-bg:var(--card);--tint-blue-fg:var(--text);--tint-blue-muted:var(--text3);--tint-blue-line:var(--border);--tint-purple-bg:var(--card);--tint-purple-fg:var(--text);--tint-purple-muted:var(--text3);--tint-purple-line:var(--border);--tint-brown-bg:var(--card);--tint-brown-fg:var(--text);--tint-brown-muted:var(--text3);--tint-brown-line:var(--border);--tint-white-bg:var(--card);--tint-white-fg:var(--text);--tint-white-muted:var(--text3);--tint-white-line:var(--border);--tint-black-bg:var(--card);--tint-black-fg:var(--text);--tint-black-muted:var(--text3);--tint-black-line:var(--border)}}
+/* NOTE ON ORDER: this block sits BEFORE the dark @media block below, and it must stay there. Media queries add no specificity, so :root vs :root is decided purely by source order — with the tint tokens declared after it, the dark re-points lost every time and the tints never collapsed in dark mode. */
 /* ── Rank-hero belt tints (Progress > My belt, student/parent only) ─────────
    One quadruple per adult belt. The tint CLASS re-scopes the SAME tokens the
    hero's inline cells already read (--text / --text2 / --text3 / --border), so
@@ -105,7 +105,16 @@
   --tint-brown-bg:#FBF8F4;  --tint-brown-fg:#4E2A12;  --tint-brown-muted:rgba(78,42,18,.62);   --tint-brown-line:rgba(78,42,18,.14);
   --tint-white-bg:#6F7987;  --tint-white-fg:#FFFFFF;  --tint-white-muted:rgba(255,255,255,.72);--tint-white-line:rgba(255,255,255,.28);
   --tint-black-bg:#F2F4F7;  --tint-black-fg:#17222E;  --tint-black-muted:rgba(23,34,46,.62);   --tint-black-line:rgba(23,34,46,.13);
+  /* Kids belts are compounds (grey/white, yellow/black …). The tint keys off the
+     BASE colour only — see _tintClassFor — so four more quadruples cover all
+     twelve kids belts. Kids WHITE reuses the adult white tint above (the same
+     near-white belt bar needs the same dark ground), hence no --tint-white-* here. */
+  --tint-grey-bg:#F1F3F6;   --tint-grey-fg:#2F3A47;   --tint-grey-muted:rgba(47,58,71,.62);    --tint-grey-line:rgba(47,58,71,.14);
+  --tint-yellow-bg:#FDF8E8; --tint-yellow-fg:#5C4300; --tint-yellow-muted:rgba(92,67,0,.62);   --tint-yellow-line:rgba(92,67,0,.14);
+  --tint-orange-bg:#FEF2EA; --tint-orange-fg:#6B2E0C; --tint-orange-muted:rgba(107,46,12,.62); --tint-orange-line:rgba(107,46,12,.14);
+  --tint-green-bg:#EAF6EE;  --tint-green-fg:#14532D;  --tint-green-muted:rgba(20,83,45,.62);   --tint-green-line:rgba(20,83,45,.14);
 }
+@media(prefers-color-scheme:dark){:root{--blue:#4d90e0;--blue-tint:#122440;--blue-mid:#284a7a;--green:#16a34a;--green-bg:#052e16;--green-text:#86efac;--green-border:#14532d;--amber:#d97706;--amber-bg:#1c1407;--amber-text:#fde68a;--amber-border:#78350f;--red:#dc2626;--red-bg:#450a0a;--red-text:#fca5a5;--red-border:#7f1d1d;--bg:#0e0f12;--surface:#1a1b20;--card:#1e2026;--border:#34363e;--border2:#43454e;--text:#f1f2f4;--text2:#b2b7c1;--text3:#878d98;--nav-bg:#141519;--input-bg:#141519;--sh:0 1px 3px rgba(0,0,0,.4);--sh-md:0 4px 16px rgba(0,0,0,.5);--sh-lg:0 8px 32px rgba(0,0,0,.6);/* Belt tints are a LIGHT-MODE device: they wash a near-white card with the belt's own ink. There is no dark equivalent that stays legible next to the belt bar, so in dark mode every tint collapses BY REFERENCE onto the app's own card tokens — the tinted hero renders as an ordinary dark card and the belt is carried by the SVG alone. No new hex, and the .rank-tint-* classes and cell markup are untouched: they keep reading the same four token names, which now simply point home. */--tint-blue-bg:var(--card);--tint-blue-fg:var(--text);--tint-blue-muted:var(--text3);--tint-blue-line:var(--border);--tint-purple-bg:var(--card);--tint-purple-fg:var(--text);--tint-purple-muted:var(--text3);--tint-purple-line:var(--border);--tint-brown-bg:var(--card);--tint-brown-fg:var(--text);--tint-brown-muted:var(--text3);--tint-brown-line:var(--border);--tint-white-bg:var(--card);--tint-white-fg:var(--text);--tint-white-muted:var(--text3);--tint-white-line:var(--border);--tint-black-bg:var(--card);--tint-black-fg:var(--text);--tint-black-muted:var(--text3);--tint-black-line:var(--border);--tint-grey-bg:var(--card);--tint-grey-fg:var(--text);--tint-grey-muted:var(--text3);--tint-grey-line:var(--border);--tint-yellow-bg:var(--card);--tint-yellow-fg:var(--text);--tint-yellow-muted:var(--text3);--tint-yellow-line:var(--border);--tint-orange-bg:var(--card);--tint-orange-fg:var(--text);--tint-orange-muted:var(--text3);--tint-orange-line:var(--border);--tint-green-bg:var(--card);--tint-green-fg:var(--text);--tint-green-muted:var(--text3);--tint-green-line:var(--border)}}
 html,body{height:100%;background:var(--bg);overflow-x:hidden;max-width:100vw}body{display:flex;justify-content:center;font-family:'Barlow',sans-serif;color:var(--text)}
 #app{width:100%;max-width:430px;height:100dvh;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:relative}
 .lw{display:flex;flex-direction:column;height:100dvh;overflow-y:auto}
@@ -347,6 +356,18 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .card.rank-tint-brown{background:var(--tint-brown-bg);--text:var(--tint-brown-fg);--text2:var(--tint-brown-fg);--text3:var(--tint-brown-muted);--border:var(--tint-brown-line)}
 .card.rank-tint-white{background:var(--tint-white-bg);--text:var(--tint-white-fg);--text2:var(--tint-white-fg);--text3:var(--tint-white-muted);--border:var(--tint-white-line)}
 .card.rank-tint-black{background:var(--tint-black-bg);--text:var(--tint-black-fg);--text2:var(--tint-black-fg);--text3:var(--tint-black-muted);--border:var(--tint-black-line)}
+.card.rank-tint-grey{background:var(--tint-grey-bg);--text:var(--tint-grey-fg);--text2:var(--tint-grey-fg);--text3:var(--tint-grey-muted);--border:var(--tint-grey-line)}
+.card.rank-tint-yellow{background:var(--tint-yellow-bg);--text:var(--tint-yellow-fg);--text2:var(--tint-yellow-fg);--text3:var(--tint-yellow-muted);--border:var(--tint-yellow-line)}
+.card.rank-tint-orange{background:var(--tint-orange-bg);--text:var(--tint-orange-fg);--text2:var(--tint-orange-fg);--text3:var(--tint-orange-muted);--border:var(--tint-orange-line)}
+.card.rank-tint-green{background:var(--tint-green-bg);--text:var(--tint-green-fg);--text2:var(--tint-green-fg);--text3:var(--tint-green-muted);--border:var(--tint-green-line)}
+/* An em-dash cell that can be FIXED is a tap target, not a shrug. Only the sub
+   ("Add in your profile") reacts — underline on hover/focus, no colour change,
+   so the strip's typography never shifts under the pointer and the em dash keeps
+   reading as absent data rather than as a link. */
+.strip-act{cursor:pointer;border-radius:6px}
+.strip-act:hover .strip-sub,.strip-act:focus-visible .strip-sub{text-decoration:underline}
+.strip-act:focus{outline:none}
+.strip-act:focus-visible{outline:2px solid var(--text3);outline-offset:2px}
 /* A zero month is a fact, not an achievement: it drops to the muted tone
    instead of the count blue, so the strip never celebrates an empty month. */
 .cls-strip .cls-zero{color:var(--text3)}
@@ -2531,31 +2552,18 @@ function beltSVG(belt,deg,prog,width){
 //   opts.footerHtml  optional HTML appended inside the card (e.g. the
 //                    "Degree progression is recognised by the
 //                    academy." caption shown to non-owner staff)
-function _memberSince(s){
-  // Format any of the supported "joined" sources to a compact "Mon ’YY".
-  // Order of preference:
-  //   1. row._createdAt — DB created_at (students always; staff after
-  //      the migration-58 select tweak)
-  //   2. first done journey milestone date
-  let iso=s&&s._createdAt;
-  if(!iso&&s&&Array.isArray(s.journey)){
-    const m=s.journey.find(x=>x&&x.done&&x.date);
-    if(m)iso=m.date;
-  }
-  if(!iso)return null;
-  const str=String(iso);
-  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  // ISO 'YYYY-MM' or 'YYYY-MM-DD' / 'YYYY-MM-DDTHH:MM:SSZ'
-  const isoMatch=str.match(/^(\d{4})-(\d{2})/);
-  if(isoMatch){
-    const mo=parseInt(isoMatch[2],10);
-    if(mo<1||mo>12)return str;
-    return months[mo-1]+'’'+String(isoMatch[1]).slice(2);
-  }
-  // Legacy free-text 'May 2024' or 'Mar 2026' fallback
-  const yrMatch=str.match(/^([A-Za-z]+)\s+(\d{4})$/);
-  if(yrMatch)return yrMatch[1]+' ’'+yrMatch[2].slice(2);
-  return str;
+// ── FIX 1 — the tint class, decided in ONE place ────────────────────────────
+// Adult belts are their own key; kids belts are compounds ('grey/white',
+// 'yellow/black') whose BASE colour before the slash is what the card washes
+// with — a kid never gets a tint per variant, only per colour. Anything not on
+// the list (an unknown belt, a bad value) returns '' and the card stays plain,
+// so a data surprise degrades to today's look instead of an undefined token.
+// Kids WHITE deliberately falls through to the adult white tint: same near-white
+// belt bar, same need for a dark ground behind it.
+const _TINT_BASES=['white','blue','purple','brown','black','grey','yellow','orange','green'];
+function _tintClassFor(belt,prog){
+  const base=prog==='kids'?String(belt||'').split('/')[0]:String(belt||'');
+  return _TINT_BASES.indexOf(base)>=0?('rank-tint-'+base):'';
 }
 // ── FIX 3a — the 3-column strip, ONE source of markup ───────────────────────
 // Rendered by the rank hero (TIME) and by the CLASSES card, so the two cards
@@ -2583,6 +2591,25 @@ function _rStrip3(cells){
       _cells.push('<div aria-hidden="true" style="grid-column:'+(gc-1)+';grid-row:1/4;background:var(--border)"></div>');
     }
     _cells.push('<div style="grid-column:'+gc+';grid-row:1;min-width:0;font-size:10px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase">'+c.label+'</div>');
+    // An absent value the reader can actually FIX becomes one focusable control
+    // spanning the value and sub rows. It has to be ONE element, not two: two
+    // would be two tab stops for one action. Spanning grid-row 2/4 is visually
+    // identical to the two separate cells — the grid has no row-gap and the inner
+    // divs keep their own margins — so the other columns' rows are unaffected and
+    // the values stay aligned across the strip.
+    // Cells with no cellAction take the untouched branch below and render exactly
+    // as they did in v502.
+    if(c.cellAction&&c.muted&&c.sub){
+      const _act='_openBjjStart(\''+c.cellAction+'\')';
+      _cells.push('<div class="strip-act" role="button" tabindex="0" aria-label="'+c.sub+'"'
+        +' onclick="'+_act+'"'
+        +' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+_act+'}"'
+        +' style="grid-column:'+gc+';grid-row:2/4;min-width:0">'
+        +'<div class="'+(c.valueClass||'')+'" style="min-width:0;margin-top:4px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:clamp(18px,6.2vw,26px);line-height:1.1;color:'+valColor+';overflow-wrap:anywhere">'+c.value+unit+'</div>'
+        +'<div style="min-width:0;font-size:11px;color:var(--text3);white-space:nowrap"><div class="strip-sub" style="margin-top:3px">'+c.sub+'</div></div>'
+      +'</div>');
+      return;
+    }
     _cells.push('<div class="'+(c.valueClass||'')+'" style="grid-column:'+gc+';grid-row:2;min-width:0;margin-top:4px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:clamp(18px,6.2vw,26px);line-height:1.1;color:'+valColor+';overflow-wrap:anywhere">'+c.value+unit+'</div>');
     _cells.push('<div style="grid-column:'+gc+';grid-row:3;min-width:0;font-size:11px;color:var(--text3);white-space:nowrap">'+(c.sub?'<div style="margin-top:3px">'+c.sub+'</div>':'')+'</div>');
   });
@@ -2613,8 +2640,17 @@ function _renderRankBox(s,opts){
       // Student / kid: lifetime total + member-since (when known).
       stats.push({value:formatStat(s.total||0),label:'total classes'});
     }
-    const since=_memberSince(s);
-    if(since)stats.push({value:since,label:'member since',prefix:true});
+    // NOT "member since". That pill read from _createdAt — the row's DB
+    // created_at, i.e. the date the record was IMPORTED — and staff rows have no
+    // training_started_at or bjj_start_date at all (the staff SELECT only carries
+    // created_at), so for staff it could ONLY ever have been the import date. A
+    // label claiming membership over an import timestamp is a lie about the data,
+    // so it is gone. What replaces it is journey-sourced and says exactly what it
+    // is: when the CURRENT belt was awarded — the same fact, from the same
+    // _progAwardDate, that the student hero prints under its belt line. No dated
+    // grading on file → no pill, never a placeholder.
+    const _awPill=_fmtJnyDate(_progAwardDate(s));
+    if(_awPill)stats.push({value:_awPill,label:'since',prefix:true});
   }
   const _metaCols=Array.isArray(opts.metaCols)?opts.metaCols.filter(function(c){return c&&c.value;}):[];
   const metaHtml=_metaCols.length
@@ -2659,11 +2695,11 @@ function _renderRankBox(s,opts){
     const _aw=_progHasPriorGrading(s)?_fmtJnyDate(_progAwardDate(s)):null;
     const _awLine=_aw?'<div style="font-size:12px;color:var(--text3);margin-top:3px">since '+_aw+'</div>':'';
     const strip='<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">'+_rStrip3(opts.statStrip)+'</div>';
-    // Belt tint: adult students/parents only. Kids belts are compounds with no
-    // token set, and staff/coach never reach this branch at all, so both keep the
-    // plain .card — byte-identical output. The belt SVG paints from BA/BK hex,
-    // so it is untouched by the scoped token override.
-    const _tint=(!isStaff&&prog!=='kids'&&BA[s.belt])?(' rank-tint-'+s.belt):'';
+    // Belt tint via the shared helper — kids included now that the compound belts
+    // have base tokens. The belt SVG paints from BA/BK hex, so it is untouched by
+    // the scoped token override.
+    const _t=_tintClassFor(s.belt,prog);
+    const _tint=_t?(' '+_t):'';
     return '<div class="slbl">Current rank</div>'
       +'<div class="card'+_tint+'">'
       +'<div style="display:flex;align-items:center;gap:16px">'
@@ -2677,8 +2713,11 @@ function _renderRankBox(s,opts){
       +(opts.footerHtml||'')
     +'</div>';
   }
+  // FIX 2 — same tint rule as the hero. Staff resolve prog='adult', so a black
+  // belt instructor gets the black wash exactly as a black belt student does.
+  const _t2=_tintClassFor(s.belt,prog);
   return '<div class="slbl">Current rank</div>'
-    +'<div class="card">'
+    +'<div class="card'+(_t2?' '+_t2:'')+'">'
     +'<div>'+beltSVG(s.belt,deg,prog,110)+'</div>'
     +'<div style="margin-top:6px;font-size:13px;color:var(--text2);font-weight:600">'+beltLine+'</div>'
     +statsRow
@@ -8153,11 +8192,20 @@ function _rStatRow(stu){
   var lifeDur=_sinceLabel(lifeIso);
   // bjj_start_date is student-editable (openEditStu > Basic > es-bjjstart), so
   // the empty sub is a real affordance, not an apology for missing data.
+  // Most of the roster has no bjj_start_date on file, so this em dash is the
+  // COMMON case, not the edge one — it has to be a way in rather than a dead end.
+  // cellAction carries the student id and only COL 1 gets it: _rStrip3 turns the
+  // cell into a tap target that opens this subject's own edit form on the Basic
+  // tab, focused on the very field that fills the gap. A parent looking at their
+  // kid is told whose profile to open; openEditStu owns the authorisation, so
+  // there is deliberately no second gate here.
   var col1=lifeDur
     ?{label:'In jiu-jitsu',value:lifeDur.value,unit:lifeDur.unit,
       sub:(lifeFmt&&tsFmt&&lifeFmt===tsFmt)?'here at myBJJ':(lifeFmt?('since '+lifeFmt):''),
       isCount:false,muted:false}
-    :{label:'In jiu-jitsu',value:EMDASH,unit:'',sub:'Add in your profile',isCount:false,muted:true};
+    :{label:'In jiu-jitsu',value:EMDASH,unit:'',
+      sub:(stu.prog==='kids'&&stu.firstName)?('Add in '+escHtml(stu.firstName)+'\u2019s profile'):'Add in your profile',
+      isCount:false,muted:true,cellAction:stu.id};
 
   // COL 2 — academy tenure.
   var tsDur=_sinceLabel(tsIso);
@@ -8215,13 +8263,16 @@ function rProgress(){
       // surface that row's journey here so personal milestones like
       // belt/stripe promotions land where the user looks for them.
       var sJourney=(myStu&&myStu.journey&&myStu.journey.length?myStu.journey:staff.journey)||[];
-      // Batch 7b — staff rank box uses the shared component. Stat is
-      // member-since only (staff don't promote by class count; the
+      // Batch 7b — staff rank box uses the shared component. No class
+      // count (staff don't promote by class count; the
       // staff.total_classes column isn't surfaced as "classes taught"
-      // anywhere else, so we don't render it here). Non-owner staff
-      // get the degree-progression caption as the helper's footer.
-      // Pass the STAFF row directly — it carries _createdAt (hydrate
-      // pulls staff.created_at) and belt/deg are already in sync with
+      // anywhere else, so we don't render it here). The single stat is
+      // the helper's journey-sourced "since <award>"; the old
+      // member-since pill is gone because staff rows carry no join date
+      // at all, only created_at. Non-owner staff get the
+      // degree-progression caption as the helper's footer.
+      // Pass the STAFF row directly — it carries journey (hydrate maps
+      // staff.journey) and belt/deg are already in sync with
       // S.me via enrichMeFromHydrate.
       var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the academy.</div>';
       var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter});
@@ -16506,6 +16557,24 @@ function openEditStu(sid){
   render();
 }
 function closeEditStu(){S.editStuFor=null;S.editStuTab='basic';S.editStuDraft=null;S.sub=S.viewStu?'stuprof':null;render();}
+// ── FIX 6 — the hero's "In jiu-jitsu" em dash lands here ────────────────────
+// Opens THIS subject's edit form on the Basic tab and puts the cursor in the one
+// field that fills the gap, so the tap ends where the fix is rather than on a
+// form the reader still has to search. Deliberately NO authorisation check:
+// openEditStu already refuses anyone who is not the student, their parent, or
+// staff, and duplicating that rule here would be a second place to keep in sync.
+// It also returns silently when it refuses — hence the `if(el)` guard, which
+// covers the refused case and any future re-layout of the Basic tab alike.
+// requestAnimationFrame, not setTimeout: openEditStu renders synchronously, so
+// the input exists after the next frame with no arbitrary delay to tune.
+function _openBjjStart(sid){
+  S.editStuTab='basic';   // openEditStu sets this too; kept so the intent is local
+  openEditStu(sid);
+  requestAnimationFrame(function(){
+    const el=document.getElementById('es-bjjstart');
+    if(el){el.scrollIntoView({block:'center'});el.focus();}
+  });
+}
 // Open Edit Student and land on the Health tab (openEditStu defaults to 'basic').
 // Only re-targets the tab if the modal actually opened (openEditStu returns early
 // for an unauthorised viewer, leaving S.editStuFor unchanged).
