@@ -2600,7 +2600,10 @@ function _rStrip3(cells){
     // Cells with no cellAction take the untouched branch below and render exactly
     // as they did in v502.
     if(c.cellAction&&c.muted&&c.sub){
-      const _act='_openBjjStart(\''+c.cellAction+'\')';
+      // cellAction is {sid, kind}. 'join' is the staff-only Training-tab route;
+      // everything else is the everyone-can-do-it Basic-tab route. Same markup,
+      // same a11y — only the handler differs.
+      const _act=((c.cellAction.kind==='join')?'_openJoinDate':'_openBjjStart')+'(\''+c.cellAction.sid+'\')';
       _cells.push('<div class="strip-act" role="button" tabindex="0" aria-label="'+c.sub+'"'
         +' onclick="'+_act+'"'
         +' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+_act+'}"'
@@ -8205,13 +8208,23 @@ function _rStatRow(stu){
       isCount:false,muted:false}
     :{label:'In jiu-jitsu',value:EMDASH,unit:'',
       sub:(stu.prog==='kids'&&stu.firstName)?('Add in '+escHtml(stu.firstName)+'\u2019s profile'):'Add in your profile',
-      isCount:false,muted:true,cellAction:stu.id};
+      isCount:false,muted:true,cellAction:{sid:stu.id,kind:'bjj'}};
 
-  // COL 2 — academy tenure.
+  // COL 2 — academy tenure. The empty state is actionable for STAFF ONLY.
+  // training_started_at is an administrative fact: es-trainstart renders only
+  // under isAdminViewer, and the self/parent save path (edit_student_self) does
+  // not carry the column at all — a student or parent who filled it in would
+  // watch the value vanish on save. So they keep the plain em dash, and the copy
+  // for staff says what it is: an admin action on someone's record, not a gap in
+  // your own profile. COL 1 stays actionable for everyone — bjj_start_date IS on
+  // the self-edit payload.
+  var _staff=isStaffOrOwner();
   var tsDur=_sinceLabel(tsIso);
   var col2=tsDur
     ?{label:'At myBJJ',value:tsDur.value,unit:tsDur.unit,sub:tsFmt?('since '+tsFmt):'',isCount:false,muted:false}
-    :Object.assign({label:'At myBJJ'},ABSENT);
+    :(_staff
+      ?{label:'At myBJJ',value:EMDASH,unit:'',sub:'Set join date',isCount:false,muted:true,cellAction:{sid:stu.id,kind:'join'}}
+      :Object.assign({label:'At myBJJ'},ABSENT));
 
   // COL 3 — time at the CURRENT belt. Needs both a real prior grading (a
   // never-promoted white belt has no belt anniversary to report) and a dated
@@ -16602,6 +16615,39 @@ function _openBjjStart(sid){
   if(S.editStuFor!==sid)S._editStuReturnTo=null;
   requestAnimationFrame(function(){
     const el=document.getElementById('es-bjjstart');
+    if(el){el.scrollIntoView({block:'center'});el.focus();}
+  });
+}
+// ── The hero's "At myBJJ" em dash lands here — STAFF ONLY ───────────────────
+// Same shape as _openBjjStart above, three differences: the Training tab, the
+// es-trainstart field, and who can ever reach it.
+//
+// training_started_at is an administrative fact, not a personal one. The field
+// only renders under isAdminViewer (rEditStu), and the self/parent save path
+// posts to edit_student_self, whose payload carries bjj_start_date but NOT
+// training_started_at — so a student or parent editing it would have the value
+// silently dropped on save. That is why _rStatRow attaches this action only when
+// isStaffOrOwner(): an affordance the backend would discard is worse than the em
+// dash it replaces. The if(el) guard below is therefore belt-and-braces, not the
+// gate — it also covers a future re-layout of the Training tab.
+function _openJoinDate(sid){
+  // Where to come back to. Captured BEFORE openEditStu, which overwrites S.sub
+  // (and may open the panel). closeEditStu consumes it on Cancel and on Save.
+  S._editStuReturnTo={tab:S.tab,sub:S.sub,viewStu:S.viewStu,profileSubject:S.profileSubject,parentChild:S.parentChild,panelOpen:S.panelOpen};
+  openEditStu(sid);
+  // openEditStu returns silently for an unauthorised viewer. A breadcrumb left
+  // behind then would hijack the NEXT ordinary Edit → Cancel, so it is dropped
+  // whenever the form did not actually open.
+  if(S.editStuFor!==sid){S._editStuReturnTo=null;return;}
+  // The tab is selected AFTER, not before: openEditStu hard-sets
+  // editStuTab='basic' as part of opening, so an assignment beforehand is
+  // overwritten and the deep link lands on Basic with no es-trainstart in sight.
+  // This is the order openEditStuHealth already uses for the same reason.
+  // (_openBjjStart can set it either side because 'basic' is what openEditStu
+  // writes anyway.)
+  S.editStuTab='training';render();
+  requestAnimationFrame(function(){
+    const el=document.getElementById('es-trainstart');
     if(el){el.scrollIntoView({block:'center'});el.focus();}
   });
 }
