@@ -10814,11 +10814,33 @@ function render(){
   // Still resolving auth — leave the splash up; the in-app "checking"
   // placeholder is what users would see otherwise, and that's an
   // anti-climactic transition from the splash.
+  // Retried the session read to the ceiling and a token IS still in storage, so
+  // this is a read failure, not a sign-out. Showing rAuth here would ask the user
+  // to sign in over the top of their own credential — the bug this replaces.
+  // hideSplash() because unlike 'checking' this screen has to be SEEN and acted
+  // on; it also lands before the 10s generic splash fallback, so the specific
+  // message wins.
+  if(S.authState==='reconnecting'){app.innerHTML=rReconnecting();hideSplash();return;}
   if(S.authState==='checking'){app.innerHTML='<div class="awrap"><div class="abrand"><div class="abrandhead">MyBJJ</div><div class="abrandsub">Neutral Bay pilot</div></div></div>';return;}
   app.innerHTML=rAuth();
   hideSplash();
 }
 
+// Shown only when the boot session read kept failing WITH a token still in
+// storage. Deliberately not phrased as an error the user caused, and it never
+// offers "sign out" — the whole point is that they are still signed in. Tokens
+// only, so it follows the theme like every other surface.
+function rReconnecting(){
+  return '<div style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)">'
+    +'<div class="card" style="max-width:340px;width:100%;text-align:center;margin:0">'
+      +'<div style="font-family:Bebas Neue,sans-serif;font-size:26px;color:var(--blue);line-height:1.1">MyBJJ</div>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);margin-top:14px">Having trouble reconnecting</div>'
+      +'<div style="font-size:13.5px;color:var(--text2);line-height:1.5;margin-top:8px">You are still signed in — we just could not reach the server. Check your connection and try again.</div>'
+      +'<button onclick="retryBootAuth()" style="margin-top:16px;width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;letter-spacing:.5px;cursor:pointer">Try again</button>'
+      +'<button onclick="signInFromReconnect()" style="margin-top:8px;width:100%;background:none;color:var(--text3);border:none;padding:8px;font-size:12.5px;cursor:pointer">Sign in with a different account</button>'
+    +'</div>'
+  +'</div>';
+}
 // Etapa 3 — doLogin demo helper deleted. Real auth lives entirely in
 // signInGoogle / signInMagic / signInWithEmail and the email-step
 // flow in rAuth.
@@ -10871,6 +10893,114 @@ function _detectHashRecovery(){
   return null;
 }
 
+// ── Persisted-session detection ─────────────────────────────────────────────
+// Failing to READ a session and HAVING no session are different facts, and the
+// boot used to collapse them into one. Storage is the tie-breaker: if the token
+// is still sitting there, the read failed — the user is not signed out.
+//
+// The key is DERIVED, never hardcoded. initSupabase() calls createClient with no
+// options, so supabase-js v2's default applies: 'sb-<project-ref>-auth-token',
+// where the ref is the first label of the project hostname. For this project
+// that resolves to sb-dcilltzgegqsrgatskhz-auth-token, but nothing here depends
+// on that string — change SUPABASE_URL and this follows.
+// A scan for the same shape backs it up, so a future supabase-js that tweaks the
+// scheme, or a project-ref change, degrades to "trust what is actually in
+// storage" rather than silently reporting "no session".
+function _authStorageKey(){
+  try{
+    const ref=new URL(SUPABASE_URL).hostname.split('.')[0];
+    const derived=ref?('sb-'+ref+'-auth-token'):null;
+    if(derived&&localStorage.getItem(derived)!=null)return derived;
+    for(let i=0;i<localStorage.length;i++){
+      const n=localStorage.key(i);
+      if(n&&/^sb-.+-auth-token$/.test(n))return n;
+    }
+    return derived;
+  }catch(_){return null;}   // storage blocked (private mode) → treat as absent
+}
+// True when a credential is actually persisted. Deliberately permissive about
+// SHAPE: supabase-js has stored this as plain JSON, as {currentSession:{...}},
+// and more recently base64-prefixed. Any of those means "there is a token here",
+// and getting that wrong in the false direction is what strands a signed-in user
+// on the login screen. Anything unreadable or trivially short counts as absent.
+function _hasStoredSession(){
+  try{
+    const k=_authStorageKey();if(!k)return false;
+    const raw=localStorage.getItem(k);if(!raw)return false;
+    let v=null;
+    try{v=JSON.parse(raw);}catch(_){return String(raw).length>20;}
+    if(!v)return false;
+    const s=v.currentSession||v;
+    return !!(s&&(s.refresh_token||s.access_token));
+  }catch(_){return false;}
+}
+function _authSleep(ms){return new Promise(r=>setTimeout(r,ms));}
+// Auth already decided by something other than this loop (the SIGNED_IN
+// listener, a manual retry, a sign-out). Deliberately does NOT treat
+// 'unauthenticated' as settled: the recovery-link-expired branch sets that
+// before getSession runs, and the original code still signed such a user in if a
+// session turned up.
+function _authSettled(){
+  return !!(S.loggedIn||S.authState==='authenticated'||S.authState==='pending'
+    ||S.authState==='rejected'||S.authState==='recovery'||S.passwordRecovery);
+}
+// Backoff for the boot session read. Four attempts — immediate, +400ms, +1.2s,
+// +2.5s — so a transient failure has ~4.1s to clear. That comfortably covers the
+// window this bug lives in (the controllerchange reload, where the new SW has
+// just taken over, the old cache is gone and the network is saturated fetching
+// new assets) while staying well inside the 10s splash fallback, so the generic
+// "Couldn't load" card can never pre-empt the specific one.
+const _AUTH_RETRY_MS=[400,1200,2500];
+// Resolves the boot session, retrying ONLY when a token is actually persisted.
+// Split out of bootAuth so the retry button can re-run it WITHOUT re-entering
+// bootAuth — that would attach a second onAuthStateChange listener.
+async function _resolveSessionWithRetry(c){
+  let lastErr=null;
+  for(let attempt=0;;attempt++){
+    let session=null;
+    lastErr=null;
+    try{
+      const r=await c.auth.getSession();
+      // The old code destructured data.session and ignored `error` entirely, so
+      // an error response with a null session read as "signed out" too.
+      if(r&&r.error){lastErr=r.error;console.warn('[mybjj] bootAuth getSession error',r.error);}
+      else session=(r&&r.data&&r.data.session)||null;
+    }catch(e){lastErr=e;console.warn('[mybjj] bootAuth',e);}
+    // Recovery wins over any pre-existing session (unchanged).
+    if(S.passwordRecovery)return;
+    if(_authSettled())return;
+    if(session){await onAuthed();return;}   // the ONLY onAuthed call here — loop ends
+    // No session in hand. If nothing is persisted the user is genuinely signed
+    // out (or brand new): sign-in screen immediately, no retry, no delay —
+    // identical to the old behaviour. Retries exist only to protect a token
+    // that is demonstrably still there.
+    if(!_hasStoredSession()){
+      // Preserve the old catch's behaviour: a FAILED read still surfaces its
+      // message on the sign-in screen. A clean "no session" stays silent, as before.
+      if(lastErr)S.authMsg=friendlyAuthError(lastErr);
+      S.authState='unauthenticated';render();return;
+    }
+    if(attempt>=_AUTH_RETRY_MS.length){
+      // Ceiling. Never the sign-in screen while their own token is in storage —
+      // an actionable "can't reconnect" state instead.
+      S.authState='reconnecting';render();return;
+    }
+    await _authSleep(_AUTH_RETRY_MS[attempt]);
+  }
+}
+// Manual retry from the reconnecting card. Re-runs the session read only.
+let _authOnlineBound=false;
+window.retryBootAuth=function(){
+  if(S.authState!=='reconnecting')return;
+  const c=initSupabase();
+  if(!c){render();return;}
+  S.authState='checking';render();
+  _resolveSessionWithRetry(c);
+};
+// Escape hatch: show the sign-in screen because the user asked for it. Does NOT
+// sign out — the stored token is left untouched, so a later reload can still
+// pick it up.
+window.signInFromReconnect=function(){S.authState='unauthenticated';render();};
 async function bootAuth(){
   // Pre-fill the sign-in email from the last successful sign-in on this
   // device. Done once here rather than at each 'unauthenticated' branch, so
@@ -10957,18 +11087,13 @@ async function bootAuth(){
       }
     }
   });
-  try{
-    const{data:{session}}=await c.auth.getSession();
-    // Recovery wins over any pre-existing session. Skip onAuthed and
-    // let the recovery shell stand — the reset form runs against the
-    // recovery session that supabase-js installs from the URL.
-    if(S.passwordRecovery)return;
-    if(session){
-      await onAuthed();
-    } else {
-      S.authState='unauthenticated';render();
-    }
-  }catch(e){console.warn('[mybjj] bootAuth',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
+  // Coming back online is the exact event that fixes a failed boot read, so it
+  // retries by itself rather than making the user find the button. Bound once.
+  if(!_authOnlineBound){
+    _authOnlineBound=true;
+    try{window.addEventListener('online',function(){if(S.authState==='reconnecting')window.retryBootAuth();});}catch(_){}
+  }
+  await _resolveSessionWithRetry(c);
 }
 
 // Batch 9-fix Item 2 — onAuthed-once guard. Fix A in batch 9 moved
