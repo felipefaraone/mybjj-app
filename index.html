@@ -2599,12 +2599,16 @@ function _rStrip3(cells){
     // the values stay aligned across the strip.
     // Cells with no cellAction take the untouched branch below and render exactly
     // as they did in v502.
-    if(c.cellAction&&c.muted&&c.sub){
+    if(c.cellAction&&c.sub){
       // cellAction is {sid, kind}. 'join' is the staff-only Training-tab route;
       // everything else is the everyone-can-do-it Basic-tab route. Same markup,
       // same a11y — only the handler differs.
       const _act=((c.cellAction.kind==='join')?'_openJoinDate':'_openBjjStart')+'(\''+c.cellAction.sid+'\')';
-      _cells.push('<div class="strip-act" role="button" tabindex="0" aria-label="'+c.sub+'"'
+      // A filled cell's sub reads "since Oct 2025" — true, but useless as a button
+      // name. Screen readers get the intent instead; the empty cell's sub already
+      // IS the intent ("Add in your profile").
+      const _lbl=c.muted?c.sub:('Edit '+c.label);
+      _cells.push('<div class="strip-act" role="button" tabindex="0" aria-label="'+_lbl+'"'
         +' onclick="'+_act+'"'
         +' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+_act+'}"'
         +' style="grid-column:'+gc+';grid-row:2/4;min-width:0">'
@@ -3215,6 +3219,34 @@ function _sinceLabel(iso){
   if(n<1)return {value:'<1',unit:'mo'};
   if(n<12)return {value:String(n),unit:'mo'};
   return {value:String(Math.floor(n/12)),unit:n<24?'yr':'yrs'};
+}
+// ── Chronology check for the two training dates ─────────────────────────────
+// Both dates are OPTIONAL and each rule is skipped when its own input is
+// missing, so a half-filled pair never blocks a save — the point is to catch an
+// impossible pair, not to demand completeness.
+//
+// Normalised before comparing: Started BJJ is captured as 'YYYY-MM' (a month
+// input) and the join date as 'YYYY-MM-DD', so the month is read as its first
+// day. String comparison is safe once both are zero-padded ISO. Anything that
+// isn't a recognisable ISO shape is treated as absent rather than rejected —
+// format complaints belong to the field that captured it.
+//
+// There is deliberately NO "belt ladder" rule: journey origin nodes are
+// indistinguishable from real gradings, so any check against them would fire on
+// clean data.
+// Returns {ok:true} or {ok:false,msg}.
+function _validateTrainingDates(bjjIso,joinIso){
+  const norm=function(v){
+    if(v==null||v==='')return null;
+    const t=String(v);
+    if(/^\d{4}-\d{2}$/.test(t))return t+'-01';
+    return /^\d{4}-\d{2}-\d{2}$/.test(t)?t:null;
+  };
+  const b=norm(bjjIso),j=norm(joinIso);
+  const today=new Date().toISOString().slice(0,10);
+  if((b&&b>today)||(j&&j>today))return {ok:false,msg:'That date is in the future.'};
+  if(b&&j&&b>j)return {ok:false,msg:"Started BJJ can't be after you joined myBJJ."};
+  return {ok:true};
 }
 // G17.2b — per-milestone Share button removed. Felipe's call: journey
 // is internal progression, not a social broadcast. shareSid parameter
@@ -8220,29 +8252,30 @@ function _rStatRow(stu){
   // tab, focused on the very field that fills the gap. A parent looking at their
   // kid is told whose profile to open; openEditStu owns the authorisation, so
   // there is deliberately no second gate here.
+  // Both branches carry the action now, not just the empty one: a date typed
+  // wrong is exactly as much of a dead end as a date never typed, and the value
+  // is the obvious thing to reach for when you want to correct it.
   var col1=lifeDur
     ?{label:'In jiu-jitsu',value:lifeDur.value,unit:lifeDur.unit,
       sub:(lifeFmt&&tsFmt&&lifeFmt===tsFmt)?'here at myBJJ':(lifeFmt?('since '+lifeFmt):''),
-      isCount:false,muted:false}
+      isCount:false,muted:false,cellAction:{sid:stu.id,kind:'bjj'}}
     :{label:'In jiu-jitsu',value:EMDASH,unit:'',
       sub:(stu.prog==='kids'&&stu.firstName)?('Add in '+escHtml(stu.firstName)+'\u2019s profile'):'Add in your profile',
       isCount:false,muted:true,cellAction:{sid:stu.id,kind:'bjj'}};
 
-  // COL 2 — academy tenure. The empty state is actionable for STAFF ONLY.
-  // training_started_at is an administrative fact: es-trainstart renders only
-  // under isAdminViewer, and the self/parent save path (edit_student_self) does
-  // not carry the column at all — a student or parent who filled it in would
-  // watch the value vanish on save. So they keep the plain em dash, and the copy
-  // for staff says what it is: an admin action on someone's record, not a gap in
-  // your own profile. COL 1 stays actionable for everyone — bjj_start_date IS on
-  // the self-edit payload.
-  var _staff=isStaffOrOwner();
+  // COL 2 — academy tenure. Actionable for EVERYONE now. The staff-only gate that
+  // used to live here existed because training_started_at was admin-only markup
+  // and absent from the self/parent payload, so a student filling it in would
+  // have watched the value vanish on save. Migration 113 allowlisted the column
+  // and the field moved to the ungated Basic tab, so the reason is gone — and it
+  // is the student, not the academy, who actually knows this date: the import
+  // never carried it. Same subject-aware copy as COL 1, because it is now the
+  // same kind of ask.
   var tsDur=_sinceLabel(tsIso);
+  var _joinSub=(stu.prog==='kids'&&stu.firstName)?('Add in '+escHtml(stu.firstName)+'\u2019s profile'):'Add in your profile';
   var col2=tsDur
-    ?{label:'At myBJJ',value:tsDur.value,unit:tsDur.unit,sub:tsFmt?('since '+tsFmt):'',isCount:false,muted:false}
-    :(_staff
-      ?{label:'At myBJJ',value:EMDASH,unit:'',sub:'Set join date',isCount:false,muted:true,cellAction:{sid:stu.id,kind:'join'}}
-      :Object.assign({label:'At myBJJ'},ABSENT));
+    ?{label:'At myBJJ',value:tsDur.value,unit:tsDur.unit,sub:tsFmt?('since '+tsFmt):'',isCount:false,muted:false,cellAction:{sid:stu.id,kind:'join'}}
+    :{label:'At myBJJ',value:EMDASH,unit:'',sub:_joinSub,isCount:false,muted:true,cellAction:{sid:stu.id,kind:'join'}};
 
   // COL 3 — time at the CURRENT belt. Needs both a real prior grading (a
   // never-promoted white belt has no belt anniversary to report) and a dated
@@ -16636,34 +16669,29 @@ function _openBjjStart(sid){
     if(el){el.scrollIntoView({block:'center'});el.focus();}
   });
 }
-// ── The hero's "At myBJJ" em dash lands here — STAFF ONLY ───────────────────
-// Same shape as _openBjjStart above, three differences: the Training tab, the
-// es-trainstart field, and who can ever reach it.
+// ── The hero's "At myBJJ" cell lands here ───────────────────────────────────
+// Identical to _openBjjStart above but for the field it focuses. Both dates now
+// sit side by side on the ungated Basic tab, so both deep links land on the same
+// tab and differ only in where the cursor ends up.
 //
-// training_started_at is an administrative fact, not a personal one. The field
-// only renders under isAdminViewer (rEditStu), and the self/parent save path
-// posts to edit_student_self, whose payload carries bjj_start_date but NOT
-// training_started_at — so a student or parent editing it would have the value
-// silently dropped on save. That is why _rStatRow attaches this action only when
-// isStaffOrOwner(): an affordance the backend would discard is worse than the em
-// dash it replaces. The if(el) guard below is therefore belt-and-braces, not the
-// gate — it also covers a future re-layout of the Training tab.
+// This was staff-only until migration 113 put training_started_at on the
+// edit_student_self allowlist: before that the column was absent from the
+// self/parent payload, so a student who filled it in would have watched the value
+// vanish on save, and an affordance the backend discards is worse than the em
+// dash it replaces. Now it persists, and the student is the only one who
+// actually knows the date — the import never carried it.
+// Kept as its own function rather than a parameter on _openBjjStart so each
+// caller reads as the thing it does; the shared return path is _editStuReturnTo.
 function _openJoinDate(sid){
   // Where to come back to. Captured BEFORE openEditStu, which overwrites S.sub
   // (and may open the panel). closeEditStu consumes it on Cancel and on Save.
   S._editStuReturnTo={tab:S.tab,sub:S.sub,viewStu:S.viewStu,profileSubject:S.profileSubject,parentChild:S.parentChild,panelOpen:S.panelOpen};
+  S.editStuTab='basic';   // openEditStu sets this too; kept so the intent is local
   openEditStu(sid);
   // openEditStu returns silently for an unauthorised viewer. A breadcrumb left
   // behind then would hijack the NEXT ordinary Edit → Cancel, so it is dropped
   // whenever the form did not actually open.
-  if(S.editStuFor!==sid){S._editStuReturnTo=null;return;}
-  // The tab is selected AFTER, not before: openEditStu hard-sets
-  // editStuTab='basic' as part of opening, so an assignment beforehand is
-  // overwritten and the deep link lands on Basic with no es-trainstart in sight.
-  // This is the order openEditStuHealth already uses for the same reason.
-  // (_openBjjStart can set it either side because 'basic' is what openEditStu
-  // writes anyway.)
-  S.editStuTab='training';render();
+  if(S.editStuFor!==sid)S._editStuReturnTo=null;
   requestAnimationFrame(function(){
     const el=document.getElementById('es-trainstart');
     if(el){el.scrollIntoView({block:'center'});el.focus();}
@@ -16940,6 +16968,7 @@ function rEditStu(){
 <div class="erow"><div class="elbl">First name</div><input class="einput" id="es-first" maxlength="60" value="${esc(first)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Last name</div><input class="einput" id="es-last" maxlength="60" value="${esc(last)}" autocomplete="off" autocorrect="off" autocapitalize="words" data-1p-ignore="true" data-lpignore="true"/></div>
 <div class="erow"><div class="elbl">Started BJJ</div><input class="einput" id="es-bjjstart" type="month" value="${esc(bjjStartMonth)}" style="min-width:0"/></div>
+<div class="erow"><div class="elbl">Joined myBJJ</div><input class="einput" id="es-trainstart" type="date" value="${esc(trainingStartedAt)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>
 <div class="erow"><div class="elbl">Gender</div><select class="esel" id="es-gender" style="text-align:right">${genders.map(g=>`<option value="${g.v}" ${g.v===gender?'selected':''}>${g.l}</option>`).join('')}</select></div>
 </div>`;
   // -------- Training --------
@@ -17002,15 +17031,12 @@ function rEditStu(){
   // SOCIAL card via openSocialEditor. `social` snapshot kept for the
   // unchanged saveEditStu local pre-write (still mirrors the existing
   // socialHandles when nothing here changes them).
-  // Date of birth — admin-only (isAdminViewer), same pattern as trainStartRow.
+  // Date of birth — admin-only (isAdminViewer), same pattern as membershipRow.
   // Imported students often have date_of_birth NULL; without it the 16-year-old
   // bridge (_kidEligibleForAdultBelts) silently fails and the age warnings are
   // dead code. This row lets staff backfill it. Student/parent never see it.
   const dobRow=isAdminViewer
     ?`<div class="erow"><div class="elbl">Date of birth</div><input class="einput" id="es-dob" type="date" value="${esc(dob)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>`
-    :'';
-  const trainStartRow=isAdminViewer
-    ?`<div class="erow"><div class="elbl">Training started</div><input class="einput" id="es-trainstart" type="date" value="${esc(trainingStartedAt)}" style="width:100%;box-sizing:border-box;min-width:0"/></div>`
     :'';
   // Membership level — staff-only (same isAdminViewer gate as standing/dob).
   const membershipRow=isAdminViewer
@@ -17054,7 +17080,6 @@ function rEditStu(){
 <div class="ef" style="margin-top:8px">
 ${dobRow}
 ${membershipRow}
-${trainStartRow}
 <div class="erow"><div class="elbl">Weight (kg)</div><input class="einput" id="es-weight" type="number" min="0" step="1" placeholder="Optional" value="${esc(weightKg)}"/></div>
 <div class="erow"><div class="elbl">Height (cm)</div><input class="einput" id="es-height" type="number" min="0" step="1" placeholder="Optional" value="${esc(heightCm)}"/></div>
 ${_staff?`<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="toggle ${hasMybjjGi?'on':''}" id="es-hasmybjjgi" onclick="this.classList.toggle('on')"></button></div>`:''}
@@ -17264,8 +17289,14 @@ async function saveEditStu(){
   const weightKg=weightStr?parseInt(weightStr,10):null;
   const heightCm=heightStr?parseInt(heightStr,10):null;
   const hasMybjjGi=D.hasMybjjGi!==undefined?!!D.hasMybjjGi:!!s.hasMybjjGi;
+  // Migration 113 put training_started_at on the edit_student_self allowlist and
+  // the field moved to the ungated Basic tab, so the isAdminViewer guard that
+  // used to sit on this line is gone. It has to go: it forced the value to null
+  // for a self/parent save, and now that the column travels in their payload it
+  // would post null and WIPE the join date they just typed. Admin behaviour is
+  // unchanged — for isAdminViewer the old expression and this one agree.
   const trainingStartedAtRaw=D.trainingStartedAt!==undefined?D.trainingStartedAt:s.trainingStartedAt;
-  const trainingStartedAt=(isAdminViewer&&trainingStartedAtRaw)?String(trainingStartedAtRaw):null;
+  const trainingStartedAt=trainingStartedAtRaw?String(trainingStartedAtRaw):null;
   // Module 1 — account standing. Admin-only: for student-self / parent
   // viewers preserve the current row values (they can't touch the flag).
   // Membership level — admin-only (mirrors standing). membershipDef normalises to
@@ -17295,6 +17326,15 @@ async function saveEditStu(){
       bjjStartDateOut=_bDate;
     }
   }
+  // Both outgoing training dates are settled by here, and nothing has been
+  // mutated yet — so ONE call covers the self/parent RPC and the admin UPDATE
+  // alike. Deliberately not placed next to each dispatch: by that point the
+  // local writes have run and closeEditStu() has already dismissed the form, so
+  // an abort there would leave the panel shut and the rejected value sitting in
+  // memory. showErr is the form's existing surface (inline banner when the form
+  // is on screen, showSaveToast2(msg,'error') otherwise).
+  const _dchk=_validateTrainingDates(bjjStartDateOut,trainingStartedAt);
+  if(!_dchk.ok)return showErr(_dchk.msg);
   const ecName=trim(D.ecName,s.ecName||'')||null;
   const ecPhone=_phoneSanitize(trim(D.ecPhone,s.ecPhone||''))||null;
   if(ecPhone&&!_phoneValid(ecPhone))return showErr('Enter a valid emergency phone number');
@@ -17345,7 +17385,11 @@ async function saveEditStu(){
   s.weightKg=weightKg;s.heightCm=heightCm;
   s.hasMybjjGi=hasMybjjGi;
   s.standing=standingOut;s.holdNote=holdNoteOut;s.membershipLevel=membershipOut;
-  if(isAdminViewer){s.prog=progOut;s.belt=beltOut;s.trainingStartedAt=trainingStartedAt;}
+  // prog/belt stay admin-only; the join date does not (see the normalisation
+  // above), so it is written for every viewer or a student's own save would not
+  // show up on Progress until the next hydrate.
+  if(isAdminViewer){s.prog=progOut;s.belt=beltOut;}
+  s.trainingStartedAt=trainingStartedAt;
   s.bjjStartDate=bjjStartDateOut;
   s.ecName=ecName;s.ecPhone=ecPhone;
   if(isKids){
@@ -17375,7 +17419,8 @@ async function saveEditStu(){
       weight_kg:weightKg,height_cm:heightCm,
       emergency_contact_name:ecName,emergency_contact_phone:ecPhone,
       has_mybjj_gi:hasMybjjGi,
-      bjj_start_date:bjjStartDateOut
+      bjj_start_date:bjjStartDateOut,
+      training_started_at:trainingStartedAt
     };
     const r=await cli.rpc('edit_student_self',{p_legacy_id:s.id,p_payload:payload});
     if(r&&r.error){console.warn('[mybjj] edit_student_self:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');}
