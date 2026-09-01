@@ -2106,7 +2106,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -16556,7 +16556,30 @@ function openEditStu(sid){
   if(!S.profileAreaOpen)S.panelOpen=true;
   render();
 }
-function closeEditStu(){S.editStuFor=null;S.editStuTab='basic';S.editStuDraft=null;S.sub=S.viewStu?'stuprof':null;render();}
+// Deep links into this form (the Progress hero's "In jiu-jitsu" em dash) leave a
+// breadcrumb in S._editStuReturnTo before opening, because they arrive from a
+// screen this function otherwise cannot name: the restore below reads S.viewStu,
+// which a deep link never sets, so Cancel AND Save both landed on whatever
+// profile happened to be open last — frequently a different student altogether.
+// When the breadcrumb is present it wins and is consumed. When it is null — every
+// ordinary caller: the roster row, the profile Edit button, the transfer path —
+// the original line runs exactly as before.
+function closeEditStu(){
+  const r=S._editStuReturnTo;
+  S.editStuFor=null;S.editStuTab='basic';S.editStuDraft=null;
+  if(r){
+    S._editStuReturnTo=null;
+    S.tab=r.tab;S.sub=r.sub;S.viewStu=r.viewStu;S.profileSubject=r.profileSubject;S.parentChild=r.parentChild;
+    // panelOpen too: openEditStu force-opens the slide-out panel when the profile
+    // drawer isn't already hosting it, and Progress is a main tab, so returning
+    // without this leaves the menu drawer sitting open over the screen we just
+    // restored. Captured and restored with the rest so the trip back is a true
+    // undo of the trip out.
+    S.panelOpen=r.panelOpen;
+    render();return;
+  }
+  S.sub=S.viewStu?'stuprof':null;render();
+}
 // ── FIX 6 — the hero's "In jiu-jitsu" em dash lands here ────────────────────
 // Opens THIS subject's edit form on the Basic tab and puts the cursor in the one
 // field that fills the gap, so the tap ends where the fix is rather than on a
@@ -16568,8 +16591,15 @@ function closeEditStu(){S.editStuFor=null;S.editStuTab='basic';S.editStuDraft=nu
 // requestAnimationFrame, not setTimeout: openEditStu renders synchronously, so
 // the input exists after the next frame with no arbitrary delay to tune.
 function _openBjjStart(sid){
+  // Where to come back to. Captured BEFORE openEditStu, which overwrites S.sub
+  // (and may open the panel). closeEditStu consumes it on Cancel and on Save.
+  S._editStuReturnTo={tab:S.tab,sub:S.sub,viewStu:S.viewStu,profileSubject:S.profileSubject,parentChild:S.parentChild,panelOpen:S.panelOpen};
   S.editStuTab='basic';   // openEditStu sets this too; kept so the intent is local
   openEditStu(sid);
+  // openEditStu returns silently for an unauthorised viewer. A breadcrumb left
+  // behind then would hijack the NEXT ordinary Edit → Cancel, so it is dropped
+  // whenever the form did not actually open.
+  if(S.editStuFor!==sid)S._editStuReturnTo=null;
   requestAnimationFrame(function(){
     const el=document.getElementById('es-bjjstart');
     if(el){el.scrollIntoView({block:'center'});el.focus();}
