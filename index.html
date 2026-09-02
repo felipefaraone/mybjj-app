@@ -4690,6 +4690,44 @@ async function _fetchStuAtt(){
     if(!S.stuAttList||S.stuAttList!==stl)return;
     stl.rows=[];stl.error="Couldn't load attendance";
   }
+  // -- TAUGHT side (professor sheet only) -----------------------------------
+  // Runs INSIDE the same loading cycle - before stl.loading=false below - so the
+  // list never paints half-loaded and then jumps. The attendance query above is
+  // untouched; this only adds a second source on top of its result.
+  // p_since mirrors the range floor the attendance query already applied, so both
+  // sides answer for the same window and the two counts are comparable.
+  if(stl.withTaught){
+    const staffId=(typeof meStaffDbId==='function')?meStaffDbId():null;
+    // Tag the trained side FIRST: if the taught fetch then fails, the list is
+    // still uniformly tagged rather than a mix of tagged and untagged rows.
+    (stl.rows||[]).forEach(function(x){if(x)x._kind='trained';});
+    if(staffId){
+      try{
+        const p_since=stl.range==='all'?null:dk(new Date(Date.now()-Number(stl.range)*864e5));
+        const tr=await cli.rpc('teaching_all',{p_staff_id:staffId,p_since:p_since});
+        if(!S.stuAttList||S.stuAttList!==stl)return;
+        if(tr&&tr.error){
+          // Keep the trained rows: a missing taught half is worth less than an
+          // empty screen, and the rows that ARE here are still true.
+          console.warn('[mybjj] teaching_all:',tr.error);
+        }else{
+          const taught=(Array.isArray(tr&&tr.data)?tr.data:[]).map(function(x){
+            // Shaped to satisfy the row renderer: modality short-circuits
+            // _modalityFromType, status drives the pill, and the absent
+            // class_type/class_value/confirmed_by make privateChip, valueMark and
+            // the confirmation trail no-op by themselves.
+            return {class_date:x.class_date,class_time:x.class_time,
+              modality:_modalityFromUniform(x.uniform),status:'present',_kind:'taught'};
+          });
+          // Same date+time string key the merged Recent uses - no Date.parse of
+          // class_date, so no timezone shift, and one key across both sources.
+          stl.rows=(stl.rows||[]).concat(taught).sort(function(a,b){
+            return String((b.class_date||'')+' '+(b.class_time||'')).localeCompare(String((a.class_date||'')+' '+(a.class_time||'')));
+          });
+        }
+      }catch(e){console.warn('[mybjj] teaching_all exception:',e);}
+    }
+  }
   stl.loading=false;
   render();
 }
@@ -4705,7 +4743,11 @@ function openStuAttList(sid,opts){
   // from a top-level Progress tab, not from inside an admin/peer
   // stuprof sub". Kept as two flags so the caller's intent stays
   // legible at the call site (parent kid view vs student self).
-  S.stuAttList={sid,modality:'all',range:30,rows:null,loading:true,page:1,fromParent:!!(opts&&opts.fromParent),fromSelf:!!(opts&&opts.fromSelf),_prevPanelOpen:wasOpen};
+  // withTaught turns this sheet into the professor's "all my classes": the taught
+  // side (teaching_all) is merged in on top of the attendance rows. It is OFF for
+  // every existing caller, so the student/parent/admin paths are untouched.
+  // roleFilter is a client-side filter over _kind, the twin of `modality`.
+  S.stuAttList={sid,modality:'all',range:30,rows:null,loading:true,page:1,fromParent:!!(opts&&opts.fromParent),fromSelf:!!(opts&&opts.fromSelf),withTaught:!!(opts&&opts.withTaught),roleFilter:'all',_prevPanelOpen:wasOpen};
   S.sub='stuattlist';
   S.panelOpen=true;
   render();
@@ -4728,6 +4770,13 @@ function setStuAttFilter(m){
   if(!S.stuAttList)return;
   S.stuAttList.modality=m;S.stuAttList.page=1;render();
 }
+// Role filter (professor sheet only). Pure client-side over the merged rows —
+// no refetch, same as setStuAttFilter. The RANGE is what refetches, because the
+// window has to apply to both sources at the source.
+function setStuAttRole(k){
+  if(!S.stuAttList)return;
+  S.stuAttList.roleFilter=k;S.stuAttList.page=1;render();
+}
 function loadMoreStuAtt(){
   if(!S.stuAttList)return;
   S.stuAttList.page=(S.stuAttList.page||1)+1;render();
@@ -4748,6 +4797,16 @@ function rStuAttList(){
     +chipBtn(stl.range===90,'Last 90d','setStuAttRange(90)')
     +chipBtn(stl.range==='all','All time','setStuAttRange(\'all\')')
     +'</div>';
+  // Professor sheet only. Client-side over _kind; the modality and range chips
+  // above are unchanged and stack with it.
+  const _role=stl.roleFilter||'all';
+  const roleChips=stl.withTaught
+    ?'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+      +chipBtn(_role==='all','All','setStuAttRole(\'all\')')
+      +chipBtn(_role==='taught','Taught','setStuAttRole(\'taught\')')
+      +chipBtn(_role==='trained','Trained','setStuAttRole(\'trained\')')
+      +'</div>'
+    :'';
   let body='';
   if(stl.loading||stl.rows===null){
     body='<div class="card" style="padding:2px 14px">'+skelRows(4)+'</div>';
@@ -4758,12 +4817,15 @@ function rStuAttList(){
     body='<div style="padding:40px 16px;text-align:center;color:var(--red-text);font-size:13px">'+stl.error+'</div>';
   }else{
     const filtered=(stl.rows||[]).filter(r=>{
+      // _role is 'all' on every non-professor path (roleFilter absent), so this
+      // line is a no-op there and the modality filter below is unchanged.
+      if(_role!=='all'&&r._kind!==_role)return false;
       if(stl.modality==='all')return true;
       const m=r.modality||_modalityFromType(r.class_type);
       return m===stl.modality;
     });
     if(!filtered.length){
-      body='<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No attendance entries for this filter.</div>';
+      body='<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">'+(stl.withTaught?'No classes for this filter.':'No attendance entries for this filter.')+'</div>';
     }else{
       const pageSize=50;
       const visible=filtered.slice(0,(stl.page||1)*pageSize);
@@ -4820,11 +4882,25 @@ function rStuAttList(){
         if(r.status==='present'&&ins)trail='Confirmed by '+ins+(when?' on '+when:'');
         else if(r.status==='absent')trail='Marked absent'+(ins?' by '+ins:'')+(when?' on '+when:'');
         else if(r.status==='going')trail='Awaiting confirmation';
+        // _kind is present only on the professor sheet. A class he RAN has no
+        // confirmation trail to show - nobody confirmed him - so it says what it is.
+        // Every piece below collapses to '' without _kind, so a student row's markup
+        // is byte-identical to before.
+        const _rk=r._kind;
+        if(_rk==='taught')trail='You taught';
+        const roleIco=_rk
+          ?'<span style="flex-shrink:0;display:inline-flex;color:'+(_rk==='taught'?'var(--blue)':'var(--text3)')+'">'+(_rk==='taught'?_ICO_WHISTLE:_ICO_GRAPPLE)+'</span>'
+          :'';
+        const roleTag=_rk
+          ?'<span class="rec-tag '+_rk+'">'+(_rk==='taught'?'Taught':'Trained')+'</span>'
+          :'';
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0'+(last?'':';border-bottom:1px solid var(--border)')+'">'
+          +roleIco
           +'<div style="flex:1;min-width:0">'
             +'<div style="font-size:13px;color:var(--text);font-weight:500">'+_fmtAttWhen(r.class_date,r.class_time)+modBadge(m)+privateChip(r)+valueMark(r)+'</div>'
             +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+trail+'</div>':'')
           +'</div>'
+          +roleTag
           +pill(r.status)
         +'</div>';
       }).join('')+'</div>';
@@ -4833,10 +4909,21 @@ function rStuAttList(){
       }
     }
   }
+  // Window summary (professor only): describes the RANGE, not the active chip
+  // filters - it is the header for what was fetched, so it stays put while the
+  // user narrows the list below it.
+  let summary='';
+  if(stl.withTaught&&!stl.loading&&!stl.error&&Array.isArray(stl.rows)){
+    const _tc=stl.rows.filter(function(r){return r&&r._kind==='taught';}).length;
+    const _nc=stl.rows.filter(function(r){return r&&r._kind==='trained';}).length;
+    const _rl=stl.range==='all'?'all time':('last '+stl.range+' days');
+    summary='<div style="font-size:12px;color:var(--text3);margin-bottom:10px">'+formatStat(_tc)+' taught · '+formatStat(_nc)+' trained · '+_rl+'</div>';
+  }
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="closeStuAttList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Attendance · '+s.name.split(' ')[0]+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="closeStuAttList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+(stl.withTaught?'All my classes':('Attendance · '+s.name.split(' ')[0]))+'</div></div>'
     +'<div class="sbody">'
-      +'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">'+modChips+rngChips+'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">'+modChips+roleChips+rngChips+'</div>'
+      +summary
       +body
       +'<div style="height:24px"></div>'
     +'</div></div>';
@@ -8351,7 +8438,7 @@ function _loadTeachingStats(staffId){
 // Same 3-column strip as the CLASSES card, via the shared _rStrip3, so the two
 // cards cannot drift apart. Loading and error both paint em dashes: an unknown
 // count is not a zero.
-function _rTeachingCard(staffRow){
+function _rTeachingCard(staffRow,myStu){
   const staffId=meStaffDbId();
   if(!staffId)return '';
   _loadTeachingStats(staffId);
@@ -8376,8 +8463,15 @@ function _rTeachingCard(staffRow){
       {label:'Weekly avg',value:formatStat(t.weekly||0),unit:'/wk',sub:'classes given',isCount:false,muted:false}
     ];
   }
+  // "All my classes" - the professor's twin of the student's "View all
+  // attendance", opening the SAME sheet with the taught source switched on.
+  // Needs myStu because the sheet is keyed by a students row (it reads its own
+  // attendance for the trained half); a staff member without one gets no link.
+  const viewAll=(myStu&&myStu.id&&myStu._dbId)
+    ?'<div style="margin-top:6px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+myStu.id+'\',{fromSelf:true,withTaught:true})" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:6px 0 0">View all classes →</button></div>'
+    :'';
   return '<div class="slbl" style="margin-top:16px">Teaching</div>'
-    +'<div class="card cls-strip teach">'+_rStrip3(cells)+'</div>';
+    +'<div class="card cls-strip teach">'+_rStrip3(cells)+viewAll+'</div>';
 }
 function _rTrainingCard(stu){
   if(!stu||!stu._dbId)return '';
@@ -8675,7 +8769,7 @@ function rProgress(){
       // No new fetching - _rTrainingCard calls _ensureProgressAtt(myStu), the same
       // slot _rTeacherRecentCard already warms on this path.
       var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter})
-        +_rTeachingCard(staff)
+        +_rTeachingCard(staff,myStu)
         // Same .prog-pair wrapper the student path uses, so the professor gets the
         // identical layout: 2-col grid at >=900px, single column below. Teaching
         // stays OUTSIDE it - full width, professor-only, no student counterpart.
