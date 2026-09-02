@@ -8463,15 +8463,8 @@ function _rTeachingCard(staffRow,myStu){
       {label:'Weekly avg',value:formatStat(t.weekly||0),unit:'/wk',sub:'classes given',isCount:false,muted:false}
     ];
   }
-  // "All my classes" - the professor's twin of the student's "View all
-  // attendance", opening the SAME sheet with the taught source switched on.
-  // Needs myStu because the sheet is keyed by a students row (it reads its own
-  // attendance for the trained half); a staff member without one gets no link.
-  const viewAll=(myStu&&myStu.id&&myStu._dbId)
-    ?'<div style="margin-top:6px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+myStu.id+'\',{fromSelf:true,withTaught:true})" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:6px 0 0">View all classes →</button></div>'
-    :'';
   return '<div class="slbl" style="margin-top:16px">Teaching</div>'
-    +'<div class="card cls-strip teach">'+_rStrip3(cells)+viewAll+'</div>';
+    +'<div class="card cls-strip teach">'+_rStrip3(cells)+'</div>';
 }
 function _rTrainingCard(stu){
   if(!stu||!stu._dbId)return '';
@@ -8591,8 +8584,17 @@ function _rTeacherRecentCard(staffRow,myStu){
   const summary=(st&&st!=='loading')
     ?'<div style="font-size:11px;color:var(--text3);padding:0 0 8px;border-bottom:1px solid var(--border);margin-bottom:2px">Taught '+formatStat(st.taught||0)+' · Trained '+formatStat(trained12)+'</div>'
     :'';
+  // "All my classes" - the professor's twin of the student's "View all
+  // attendance", and it sits in the same place: the last thing inside the Recent
+  // card. Opens the SAME sheet with the taught source switched on, so the full
+  // history reads like the preview above it.
+  // Needs myStu because that sheet is keyed by a students row (it reads its own
+  // attendance for the trained half); a staff member without one gets no link.
+  const viewAll=(myStu&&myStu.id&&myStu._dbId)
+    ?'<div style="margin-top:6px;display:flex;justify-content:flex-end"><button onclick="openStuAttList(\''+myStu.id+'\',{fromSelf:true,withTaught:true})" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:6px 0 0">View all classes →</button></div>'
+    :'';
   return '<div class="slbl" style="margin-top:16px">Recent</div>'
-    +'<div class="card" style="padding:9px 16px">'+summary+body+'</div>';
+    +'<div class="card" style="padding:9px 16px">'+summary+body+viewAll+'</div>';
 }
 function _fmtAttWhen(classDate,classTime){
   const d=String(classDate||'');
