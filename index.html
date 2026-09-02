@@ -3319,10 +3319,16 @@ function rTL(journey,subject){
     return Number.isNaN(t)?null:t;
   };
   const s=subject||null;
-  // V3 — ONE chronological list. "Started BJJ" (bjjStartDate, life history) and
-  // "Joined myBJJ" (trainingStartedAt, academy join) are merged in as ordinary
-  // DATED items — no longer pinned anchors — alongside belt/stripe milestones
-  // from the journey array. UNDATED entries (origin nodes carrying date:null,
+  // V3 — ONE chronological list. "Started BJJ" (bjjStartDate, life history) is
+  // merged in as an ordinary DATED item — no longer a pinned anchor — alongside
+  // belt/stripe milestones from the journey array.
+  // There is deliberately NO "Joined myBJJ" node. trainingStartedAt is the day
+  // the student was onboarded into THIS APP, not the day they joined the academy:
+  // for a veteran it reads as though they started this year, and for a genuinely
+  // new student it just restates "Started BJJ". This timeline is jiu-jitsu
+  // progression; an app-signup date is administrative and belongs in the Rank
+  // hero's "At myBJJ" stat, which still carries it.
+  // UNDATED entries (origin nodes carrying date:null,
   // legacy unparseable dates) are OMITTED entirely: nothing synthetic-without-
   // data renders, and there is no "Date not set / Add date" node in the timeline
   // (that affordance lives only in the edit form — openEditStu, id es-bjjstart).
@@ -3333,12 +3339,10 @@ function rTL(journey,subject){
   const _syn=[];
   if(s){
     if(s.bjjStartDate)_syn.push({_synthetic:'started',label:'Started BJJ',date:s.bjjStartDate,done:true});
-    if(s.trainingStartedAt)_syn.push({_synthetic:'joined',label:'Joined myBJJ',date:s.trainingStartedAt,done:true});
   }
   const _tlOrder=(s&&s.prog==='kids')?BELT_ORDER_K:BELT_ORDER_A;
   const _tlRank=(m)=>{
     if(m._synthetic==='started')return -2;        // life-history origin sorts first on an equal date
-    if(m._synthetic==='joined')return -1;          // academy join next
     const bi=m.belt?_tlOrder.indexOf(m.belt):-1;
     if(bi<0)return 9999;                            // belt:null (transfer/left/return) → after belts on equal date
     const dg=parseInt(m.label,10);                  // leading int = stripe degree; NaN for "Blue belt" (belt promo → 0)
@@ -3402,17 +3406,14 @@ function rTL(journey,subject){
       +'</div>';
     }
   }
-  // "Started BJJ" and "Joined myBJJ" are no longer pinned nodes — they were
-  // merged into `arr` above and render inline in date order via the _synthetic
-  // branch inside the map below.
+  // "Started BJJ" is no longer a pinned node — it is merged into `arr` above and
+  // renders inline in date order via the _synthetic branch inside the map below.
   return `<div class="tl"><div class="tlline"></div>${arr.map((m,i)=>{
     if(m._synthetic){
-      // Non-belt life-event node ("Started BJJ" / "Joined myBJJ"): plain dot +
-      // title + date, no belt visual / class count / "You are here" pill.
+      // Non-belt life-event node ("Started BJJ", the only synthetic left): plain
+      // dot + title + date, no belt visual / class count / "You are here" pill.
       const _sd=_fmtJnyDate(m.date);
-      const _sicon=m._synthetic==='joined'
-        ?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'
-        :'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>';
+      const _sicon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>';
       return '<div class="tli"><div class="tldot" style="background:var(--bg);color:var(--text3);border:2px solid var(--border2)">'+_sicon+'</div>'
         +'<div class="tlb"'+((i===arr.length-1&&!nextNode)?' style="padding-bottom:4px"':'')+'>'
           +'<div class="tlt" style="color:var(--text)">'+m.label+'</div>'
