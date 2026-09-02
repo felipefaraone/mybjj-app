@@ -11106,6 +11106,69 @@ function _mirrorSession(){
     catch(e){try{console.debug('[mybjj] auth mirror read:',e&&e.message||e);}catch(_){}}
   },0);}catch(_){}
 }
+// -- Phase 2b - restore the session from the mirror --------------------------
+// iOS evicts a standalone PWA's localStorage and takes the Supabase session with
+// it. Phase 2a kept a copy in IndexedDB, which survives that; this puts the copy
+// back BEFORE the session read, so getSession() and _hasStoredSession() find a
+// session exactly as if nothing had been evicted.
+//
+// DELIBERATELY DUMB. It does not validate the token, does not decide anything,
+// and never short-circuits the boot. It writes the raw string back and gets out
+// of the way, so _resolveSessionWithRetry runs unchanged and supabase-js gets to
+// attempt the refresh itself. A mirror EXISTING is not a session being VALID: a
+// device left closed for weeks has a mirror whose refresh token is dead, and the
+// only thing that can tell us is the refresh attempt. When it fails, supabase-js
+// clears storage and emits SIGNED_OUT, the handler's _authMirror.clear() removes
+// the dead backup, and the user lands on the login screen cleanly.
+//
+// Returns why it finished, because the caller treats one case differently:
+//   'skipped'  - localStorage already had a session; nothing to do (normal boot)
+//   'restored' - mirror had a value, localStorage repopulated
+//   'empty'    - the read completed and there was no backup; CONFIRMED signed out
+//   'timeout'  - the read did not complete; we do NOT know whether a backup exists
+// Measured cold open+get on a persisted DB is ~22ms (max 23ms across three
+// cold-process runs); the 1200ms ceiling is ~50x that, so it only ever fires on a
+// genuinely stuck IndexedDB rather than on a merely slow one.
+const _RESTORE_TIMEOUT_MS=1200;
+const _RESTORE_TIMED_OUT={};   // identity sentinel - cannot collide with a stored value
+async function _restoreFromMirror(){
+  // Password recovery owns the session slot: detectSessionInUrl installs the
+  // recovery session there from the hash. Writing an older session into the same
+  // key while that is in flight buys nothing (the recovery render is already
+  // driven by the synchronous S.passwordRecovery flag, and
+  // _resolveSessionWithRetry returns early on it) and would put this code inside
+  // the most protected path in the file. Cheaper to stay out of it entirely.
+  if(S.passwordRecovery)return 'skipped';
+  let key=null;
+  try{
+    key=_authStorageKey();
+    if(!key)return 'empty';                        // storage blocked entirely
+    if(localStorage.getItem(key))return 'skipped'; // localStorage intact - the common path
+  }catch(e){try{console.debug('[mybjj] restore precheck:',e&&e.message||e);}catch(_){}return 'empty';}
+  let raw=null,timer=null;
+  try{
+    // _authMirror.get() already swallows its own failures to null, so this race
+    // resolves on a BROKEN IndexedDB. The timeout is for a HUNG one, which is the
+    // only way an await here could hold up the boot.
+    raw=await Promise.race([
+      _authMirror.get(),
+      new Promise(function(res){timer=setTimeout(function(){res(_RESTORE_TIMED_OUT);},_RESTORE_TIMEOUT_MS);})
+    ]);
+  }catch(e){try{console.debug('[mybjj] restore read:',e&&e.message||e);}catch(_){}return 'empty';}
+  finally{if(timer)clearTimeout(timer);}
+  if(raw===_RESTORE_TIMED_OUT){try{console.debug('[mybjj] restore: mirror read timed out');}catch(_){}return 'timeout';}
+  if(!raw)return 'empty';
+  try{
+    localStorage.setItem(key,raw);
+    try{console.debug('[mybjj] restore: session recovered from mirror');}catch(_){}
+    return 'restored';
+  }catch(e){
+    // We know a backup existed but could not write it (quota, blocked storage).
+    // Retrying would hit the same wall, so this is 'empty', not 'timeout'.
+    try{console.debug('[mybjj] restore write:',e&&e.message||e);}catch(_){}
+    return 'empty';
+  }
+}
 // Auth already decided by something other than this loop (the SIGNED_IN
 // listener, a manual retry, a sign-out). Deliberately does NOT treat
 // 'unauthenticated' as settled: the recovery-link-expired branch sets that
@@ -11141,10 +11204,16 @@ async function _resolveSessionWithRetry(c){
     if(S.passwordRecovery)return;
     if(_authSettled())return;
     if(session){
-      // A session that was already valid at boot fires no SIGNED_IN, so this is
-      // the only place it gets mirrored. Before onAuthed and fire-and-forget, so
-      // the backup happens even if claim_profile is slow or throws; the onAuthed
-      // call and the return below are untouched.
+      // NOT the only place this gets mirrored. Measured against supabase-js v2: a
+      // boot with a valid stored session emits SIGNED_IN *and* INITIAL_SESSION, so
+      // the SIGNED_IN branch mirrors too and the write happens more than once per
+      // boot - harmless, since put() is idempotent on the same value. That same
+      // measurement is why _onAuthedBusy is load-bearing rather than defensive:
+      // that SIGNED_IN and this line both reach onAuthed on a normal boot.
+      // Kept here regardless because it is the path that still runs when the
+      // listener is bypassed (retryBootAuth). Before onAuthed and fire-and-forget,
+      // so the backup happens even if claim_profile is slow or throws; the
+      // onAuthed call and the return below are untouched.
       _mirrorSession();
       await onAuthed();return;   // the ONLY onAuthed call here — loop ends
     }
@@ -11168,11 +11237,17 @@ async function _resolveSessionWithRetry(c){
 }
 // Manual retry from the reconnecting card. Re-runs the session read only.
 let _authOnlineBound=false;
-window.retryBootAuth=function(){
+window.retryBootAuth=async function(){
   if(S.authState!=='reconnecting')return;
   const c=initSupabase();
   if(!c){render();return;}
   S.authState='checking';render();
+  // Retry the RESTORE as well, not just the session read. The reconnecting card
+  // is reachable specifically because the mirror read timed out, so a Try again
+  // that skipped the restore would find an empty localStorage and drop straight
+  // to the login screen - the one outcome this phase is meant to avoid.
+  const r=await _restoreFromMirror();
+  if(r==='timeout'&&!S.passwordRecovery&&!_authSettled()){S.authState='reconnecting';render();return;}
   _resolveSessionWithRetry(c);
 };
 // Escape hatch: show the sign-in screen because the user asked for it. Does NOT
@@ -11286,6 +11361,23 @@ async function bootAuth(){
   if(!_authOnlineBound){
     _authOnlineBound=true;
     try{window.addEventListener('online',function(){if(S.authState==='reconnecting')window.retryBootAuth();});}catch(_){}
+  }
+  // Phase 2b - step 4. Runs AFTER the synchronous hash parse, AFTER the client
+  // exists and AFTER the listener is attached (all three untouched above), and
+  // BEFORE the session read below, so a restored token is already in localStorage
+  // when getSession() and _hasStoredSession() go looking. getSession() re-reads
+  // storage rather than trusting a createClient-time cache (measured), which is
+  // what makes this ordering legal without moving anything else.
+  //
+  // Only the UNCERTAIN outcome is special-cased. A completed read that found no
+  // backup is a confirmed sign-out and falls through to the normal flow, which
+  // ends on the login screen. A read that TIMED OUT tells us nothing: sending
+  // that user to login would reproduce the exact symptom this phase exists to
+  // cure, so it goes to the reconnecting card instead - one tap, reversible, and
+  // it fails toward the safe side.
+  const _restore=await _restoreFromMirror();
+  if(_restore==='timeout'&&!S.passwordRecovery&&!_authSettled()){
+    S.authState='reconnecting';render();return;
   }
   await _resolveSessionWithRetry(c);
 }
