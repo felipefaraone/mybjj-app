@@ -898,7 +898,38 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 const SUPABASE_URL='https://dcilltzgegqsrgatskhz.supabase.co';
 const SUPABASE_ANON_KEY='sb_publishable_EdatFnl6MfCgyd7tv7wHRw_Z5msKQTC';
 let sb=null;
-function initSupabase(){if(sb)return sb;if(!window.supabase||!window.supabase.createClient){console.warn('[mybjj] supabase-js not loaded');return null;}sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);return sb;}
+// The ONE browser client. Auth options are stated explicitly rather than left to
+// supabase-js's defaults: they are the SAME values (verified against the loaded
+// v2 bundle — autoRefreshToken / persistSession / detectSessionInUrl are all true
+// by default), so this pins current behaviour rather than changing it. The point
+// is that a future supabase-js is no longer free to flip autoRefreshToken or
+// persistSession under us — this app's whole session model assumes both.
+//
+// storageKey is DELIBERATELY NOT SET. The default derives to
+// sb-<project-ref>-auth-token and every live session on every device already
+// sits in that slot; naming it explicitly would be equivalent right up until
+// someone typed it slightly differently, and getting it wrong signs the entire
+// academy out at once. _authStorageKey() derives the same value for reading.
+function initSupabase(){
+  if(sb)return sb;
+  if(!window.supabase||!window.supabase.createClient){console.warn('[mybjj] supabase-js not loaded');return null;}
+  sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{
+    auth:{
+      persistSession:true,      // keep the session in localStorage across loads
+      autoRefreshToken:true,    // refresh before expiry; without it users drop out mid-session
+      detectSessionInUrl:true   // consume the #access_token fragment on magic-link / recovery returns
+      // NO flowType — this app is on the IMPLICIT (hash) flow, which is also v2's
+      // default. Everything downstream is built on it: _detectHashRecovery reads
+      // `type=recovery` out of location.hash, and there is no ?code= handling or
+      // exchangeCodeForSession call anywhere in the app. Setting 'pkce' would mint
+      // ?code= links the recovery gate cannot see, so the reset form would never
+      // render; PKCE also stores a code verifier at request time, so a link opened
+      // on a different device than the one that requested it would fail. Moving to
+      // PKCE is a flow migration, not a config line.
+    }
+  });
+  return sb;
+}
 // Etapa 3 — IS_DEV constant removed alongside the demo-login shortcut
 // block in rAuth. Real auth (email continue + Google OAuth) is the
 // only login path now.
