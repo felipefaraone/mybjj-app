@@ -11032,6 +11032,80 @@ function _hasStoredSession(){
   }catch(_){return false;}
 }
 function _authSleep(ms){return new Promise(r=>setTimeout(r,ms));}
+// ── FIX 1 — write-only IndexedDB mirror of the session ──────────────────────
+// iOS evicts a standalone PWA's localStorage, which takes the Supabase session
+// with it and forces a login. IndexedDB survives that far better, so every time
+// the session changes we drop a copy here.
+//
+// PHASE 2a IS WRITE-ONLY. Nothing reads this yet — _mirrorGet exists for 2b and
+// has no caller. That is deliberate: a backup that is never read cannot break
+// boot, login, or recovery, so this phase is safe to ship on its own.
+//
+// EVERY operation is fire-and-forget and swallows its own failure to
+// console.debug. IndexedDB is genuinely unavailable in some situations (private
+// mode, storage pressure, a blocked upgrade), and a mirror that throws into the
+// auth handler would turn a nice-to-have backup into a sign-in outage. Failing to
+// back up is not an error the user needs to hear about.
+const _MIRROR_DB='mybjj-auth',_MIRROR_STORE='session';
+const _authMirror=(function(){
+  let _open=null;
+  function db(){
+    if(_open)return _open;
+    _open=new Promise(function(res,rej){
+      if(typeof indexedDB==='undefined'||!indexedDB){rej(new Error('indexedDB unavailable'));return;}
+      const req=indexedDB.open(_MIRROR_DB,1);
+      req.onupgradeneeded=function(){
+        const d=req.result;
+        if(!d.objectStoreNames.contains(_MIRROR_STORE))d.createObjectStore(_MIRROR_STORE,{keyPath:'k'});
+      };
+      req.onsuccess=function(){res(req.result);};
+      req.onerror=function(){rej(req.error||new Error('indexedDB open failed'));};
+      req.onblocked=function(){rej(new Error('indexedDB blocked'));};
+    }).catch(function(e){_open=null;throw e;});   // let a later attempt retry
+    return _open;
+  }
+  function tx(mode,run){
+    return db().then(function(d){
+      return new Promise(function(res,rej){
+        const t=d.transaction(_MIRROR_STORE,mode);
+        const req=run(t.objectStore(_MIRROR_STORE));
+        t.oncomplete=function(){res(req&&'result' in req?req.result:null);};
+        t.onerror=function(){rej(t.error||new Error('indexedDB tx failed'));};
+        t.onabort=function(){rej(t.error||new Error('indexedDB tx aborted'));};
+      });
+    });
+  }
+  const hush=function(where){return function(e){try{console.debug('[mybjj] auth mirror '+where+':',e&&e.message||e);}catch(_){}return null;};};
+  return {
+    // `raw` is the session JSON EXACTLY as supabase-js wrote it to localStorage —
+    // not a reconstructed object. 2b replays this string straight back into the
+    // same slot, so any re-serialisation here would be a chance to get it wrong.
+    put:function(raw){
+      if(!raw)return Promise.resolve(null);   // nothing to back up; never store a null "backup"
+      return tx('readwrite',function(s){return s.put({k:'session',v:raw,ts:Date.now()});}).catch(hush('put'));
+    },
+    // Defined for Phase 2b (restore). Intentionally has no caller yet.
+    get:function(){
+      return tx('readonly',function(s){return s.get('session');}).then(function(r){return r&&r.v||null;}).catch(hush('get'));
+    },
+    clear:function(){
+      return tx('readwrite',function(s){return s.delete('session');}).catch(hush('clear'));
+    }
+  };
+})();
+// Read the live session out of localStorage and mirror it. Deferred by a
+// macrotask on purpose: called from inside the onAuthStateChange handler, it
+// returns instantly, so the handler's timing — and the boot ordering the Batch 9
+// comments protect — is untouched. The deferral also removes any dependence on
+// whether supabase-js persists to storage before or after it notifies
+// subscribers; by the time this runs the handler has fully unwound and the new
+// token is definitely in the slot.
+function _mirrorSession(){
+  try{setTimeout(function(){
+    try{_authMirror.put(localStorage.getItem(_authStorageKey()));}
+    catch(e){try{console.debug('[mybjj] auth mirror read:',e&&e.message||e);}catch(_){}}
+  },0);}catch(_){}
+}
 // Auth already decided by something other than this loop (the SIGNED_IN
 // listener, a manual retry, a sign-out). Deliberately does NOT treat
 // 'unauthenticated' as settled: the recovery-link-expired branch sets that
@@ -11066,7 +11140,14 @@ async function _resolveSessionWithRetry(c){
     // Recovery wins over any pre-existing session (unchanged).
     if(S.passwordRecovery)return;
     if(_authSettled())return;
-    if(session){await onAuthed();return;}   // the ONLY onAuthed call here — loop ends
+    if(session){
+      // A session that was already valid at boot fires no SIGNED_IN, so this is
+      // the only place it gets mirrored. Before onAuthed and fire-and-forget, so
+      // the backup happens even if claim_profile is slow or throws; the onAuthed
+      // call and the return below are untouched.
+      _mirrorSession();
+      await onAuthed();return;   // the ONLY onAuthed call here — loop ends
+    }
     // No session in hand. If nothing is persisted the user is genuinely signed
     // out (or brand new): sign-in screen immediately, no retry, no delay —
     // identical to the old behaviour. Retries exist only to protect a token
@@ -11160,8 +11241,21 @@ async function bootAuth(){
       // recovery session; we must not bounce into home/hydrate.
       if(S.passwordRecovery)return;
       onAuthed();
+      _mirrorSession();   // fire-and-forget; see _mirrorSession
     }
-    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();}
+    else if(ev==='TOKEN_REFRESHED'){
+      // New branch. A refresh is NOT a sign-in: no onAuthed, no render, no state
+      // change — the only thing that happened is that the stored token was
+      // replaced. Mirroring here is what keeps the backup usable; without it the
+      // mirror would still hold whatever token was current at sign-in and would
+      // be stale (and likely unrefreshable) within hours.
+      _mirrorSession();
+    }
+    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();
+      // A real sign-out must take the backup with it, or Phase 2b would restore
+      // the session the user just deliberately ended.
+      _authMirror.clear();
+    }
     else if(ev==='USER_UPDATED'){
       // Fired when a self-service email change is confirmed. Reflect the
       // new email immediately (no manual reload): mirror onto S.profile /
@@ -11182,6 +11276,9 @@ async function bootAuth(){
         render();
         if(typeof hydrateData==='function')hydrateData();
       }
+      // Outside the email-changed guard on purpose: USER_UPDATED also fires for a
+      // password change, which rotates the token even though no email moved.
+      _mirrorSession();
     }
   });
   // Coming back online is the exact event that fixes a failed boot read, so it
