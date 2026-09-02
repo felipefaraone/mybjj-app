@@ -8307,6 +8307,20 @@ function _rMonthByMonth(stu){
 //   null      -> asked and failed (em dashes; do not retry on every render)
 // The null-on-failure is what stops a broken RPC from re-firing once per render
 // for the rest of the session.
+// The teaching window: today minus 12 months, as 'YYYY-MM-DD'.
+// ONE source on purpose. Both teaching RPCs take it as p_since, and the Journey
+// Recent summary counts the professor's own attendance against the SAME string —
+// so "Taught N · Trained M" compares like with like. It used to count Trained
+// over the whole attendance slot (.limit(500), no date filter), which put a
+// 12-month number beside an all-time one and invited a comparison that was never
+// valid. Two independent date calculations would be free to drift apart again;
+// one function cannot.
+function _teachSince(){
+  const now=new Date();
+  const d=new Date(now.getFullYear()-1,now.getMonth(),now.getDate());
+  const pad=function(n){return String(n).padStart(2,'0');};
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
 function _loadTeachingStats(staffId){
   if(!staffId)return;
   if(S._teachingStats[staffId]!==undefined)return;
@@ -8316,10 +8330,7 @@ function _loadTeachingStats(staffId){
   // render, and a synchronous re-entry would recurse. The .then below is safe
   // because it resolves after the current render has unwound.
   if(!cli){S._teachingStats[staffId]=null;return;}
-  const now=new Date();
-  const since=new Date(now.getFullYear()-1,now.getMonth(),now.getDate());
-  const pad=function(n){return String(n).padStart(2,'0');};
-  const p_since=since.getFullYear()+'-'+pad(since.getMonth()+1)+'-'+pad(since.getDate());
+  const p_since=_teachSince();
   cli.rpc('teaching_stats',{p_staff_id:staffId,p_since:p_since}).then(function(r){
     if(r&&r.error){console.warn('[mybjj] teaching_stats:',r.error);S._teachingStats[staffId]=null;}
     else{
@@ -8476,9 +8487,15 @@ function _rTeacherRecentCard(staffRow,myStu){
 
   // Summary only when the Rank card's stats happen to be cached already - this
   // card never fires that fetch itself, so it cannot block on it.
+  // Trained is counted over the SAME 12-month window as `taught`, not over the
+  // whole slot. The merged row list above is deliberately unaffected — it shows
+  // the most recent classes whenever they happened; only this summary needs the
+  // two numbers to be commensurable.
+  const _since=_teachSince();
+  const trained12=trained.filter(function(r){return String(r&&r.class_date||'')>=_since;}).length;
   const st=S._teachingStats[staffId];
   const summary=(st&&st!=='loading')
-    ?'<div style="font-size:11px;color:var(--text3);padding:0 0 8px;border-bottom:1px solid var(--border);margin-bottom:2px">Taught '+formatStat(st.taught||0)+' · Trained '+formatStat(trained.length)+'</div>'
+    ?'<div style="font-size:11px;color:var(--text3);padding:0 0 8px;border-bottom:1px solid var(--border);margin-bottom:2px">Taught '+formatStat(st.taught||0)+' · Trained '+formatStat(trained12)+'</div>'
     :'';
   return '<div class="slbl" style="margin-top:16px">Recent</div>'
     +'<div class="card" style="padding:9px 16px">'+summary+body+'</div>';
