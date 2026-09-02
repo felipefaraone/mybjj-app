@@ -7957,35 +7957,47 @@ function _progMonthCounts(rows){
   });
   return {byMonth:byMonth,keys:Object.keys(byMonth).sort()};
 }
-// ── FIX 1 — classes per week over a rolling window ──────────────────────────
-// ONE source for "how often do they actually train". The CLASSES card reads it;
-// nothing inlines this arithmetic.
+// ── Training cadence — ONE source for every average on this screen ──────────
+// The chart footer, the chart's reference line and the CLASSES card all read
+// this. They used to compute their own: the footer averaged complete months
+// while the card divided by a fixed 13 weeks that INCLUDED the current partial
+// week, so the same student read 7.5/month and 1.2/week — 7.5/month is 1.7/week,
+// and the two numbers sat one card apart contradicting each other.
 //
-// A ROLLING window of whole days, not calendar months: the point of this number
-// is cadence, and a calendar-month average swings wildly on the 2nd of the month
-// for reasons that have nothing to do with the student. 13 weeks (91 days) is
-// the default — long enough that one missed week doesn't dominate, short enough
-// to still describe how they train NOW.
+// WINDOW. Deliberately identical to the chart's: the contiguous run of months
+// from the first month with attendance up to today, capped at the last 12, with
+// the CURRENT month excluded. Three things fall out of that and all three matter:
+//   • Averaging over byMonth's KEYS instead would silently skip months the
+//     student did not train at all — a two-month lay-off would RAISE their
+//     average. The contiguous sequence counts those as the zeros they are.
+//   • Capping at 12 keeps the number describing the bars actually on screen; a
+//     line drawn at a mean that includes months nobody can see is not a reference.
+//   • Excluding the current month is what makes it an average rather than a
+//     part-finished month dragging the mean down every 1st.
+// Because the chart derives its own window the same way, pace.monthly and the
+// footer figure are equal by construction, not by coincidence.
 //
-// Dates are compared as 'YYYY-MM-DD' strings against a locally-derived window,
-// the same string-comparison idiom the chart and the week counter already use —
-// no Date.parse of class_date, so no timezone shift.
-// Returns a fixed-1 string, or null when the window is empty (the caller paints
-// its em dash — an absence, never a fabricated 0.0).
-function _weeklyAvg(rows,weeks){
-  const w=Math.max(1,Number(weeks)||13);
-  const pad=function(n){return String(n).padStart(2,'0');};
-  const key=function(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());};
+// weekly is monthly / 4.33 (mean weeks per month) — the SAME fact in a different
+// unit, so the two can never drift. Rounding is the caller's business; the
+// numbers come back raw.
+// Returns null below two complete months: one data point is not an average, and
+// null is what makes the card, the footer and the line go quiet together.
+function _monthlyPace(rows){
+  const mc=_progMonthCounts(rows);
+  if(!mc.keys.length)return null;
   const now=new Date();
-  // w*7-1 so the window is w*7 days INCLUSIVE of today.
-  const from=key(new Date(now.getFullYear(),now.getMonth(),now.getDate()-(w*7-1)));
-  const to=key(now);
-  let n=0;
-  (rows||[]).forEach(function(r){
-    const d=String(r&&r.class_date||'');
-    if(d.length>=10&&d>=from&&d<=to)n++;
-  });
-  return n>0?(n/w).toFixed(1):null;
+  const nowKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  let firstKey=mc.keys[0];
+  if(firstKey>nowKey)firstKey=nowKey;
+  const seq=[];
+  let yy=Number(firstKey.split('-')[0]),mm=Number(firstKey.split('-')[1]);
+  const ny=Number(nowKey.split('-')[0]),nm=Number(nowKey.split('-')[1]);
+  while((yy<ny||(yy===ny&&mm<=nm))&&seq.length<=240){seq.push(yy+'-'+String(mm).padStart(2,'0'));mm++;if(mm>12){mm=1;yy++;}}
+  const complete=[];
+  seq.slice(-12).forEach(function(k){if(k!==nowKey)complete.push(mc.byMonth[k]||0);});
+  if(complete.length<2)return null;
+  const monthly=complete.reduce(function(a,b){return a+b;},0)/complete.length;
+  return {monthly:monthly,weekly:monthly/4.33,completeMonths:complete.length};
 }
 function _rTrainingChart(stu){
   if(!stu||!stu._dbId)return '';
@@ -8014,7 +8026,6 @@ function _rTrainingChart(stu){
   const maxCount=Math.max(1,Math.max.apply(null,counts));
   let bestIdx=-1,bestCount=-1;
   shown.forEach(function(k,i){if(k!==nowKey&&counts[i]>bestCount){bestCount=counts[i];bestIdx=i;}});
-  const completeCounts=[];shown.forEach(function(k,i){if(k!==nowKey)completeCounts.push(counts[i]);});
   const bars=shown.map(function(k,i){
     const c=counts[i],mo=Number(k.split('-')[1]),isCur=(k===nowKey);
     const h=Math.max(4,Math.round(c/maxCount*66));
@@ -8045,18 +8056,22 @@ function _rTrainingChart(stu){
   // that month, and a line lying exactly on a single bar is noise.
   // The current month's bar stays dashed; when the line sits above it that reads
   // as "this month hasn't reached your average yet", which is the intent.
-  const _avgNum=completeCounts.length?completeCounts.reduce(function(a,b){return a+b;},0)/completeCounts.length:0;
-  const _avgLine=(completeCounts.length>=2)
+  // The line, the footer and the CLASSES card are the SAME number — _monthlyPace
+  // builds its window exactly as this function does (contiguous, last 12, current
+  // month excluded), so the mean it returns is the mean of the complete bars
+  // drawn here. null below two complete months, which is also the gate: no line,
+  // no avg footer, and the card's em dash — all three go quiet together.
+  const _pace=_monthlyPace(rows);
+  const _avgNum=_pace?_pace.monthly:0;
+  const _avgLine=_pace
     ?'<div aria-hidden="true" style="position:absolute;left:0;right:0;bottom:'+(17+Math.round(_avgNum/maxCount*66))+'px;pointer-events:none;border-top:2px dashed var(--blue);opacity:.5"></div>'
       +'<div aria-hidden="true" style="position:absolute;right:0;bottom:'+(17+Math.round(_avgNum/maxCount*66))+'px;transform:translateY(-50%);pointer-events:none;background:var(--card);color:var(--blue);font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.4px;line-height:1;padding:1px 4px;border-radius:4px">avg '+_avgNum.toFixed(1)+'</div>'
     :'';
   let footer='';
-  // Gate lowered 3 → 2: two complete months is the common case for a student a
-  // couple of months in, and an average over two months is a real average. The
-  // maths is untouched — completeCounts already excludes the current month.
-  if(completeCounts.length>=2){
-    const sum=completeCounts.reduce(function(a,b){return a+b;},0);
-    const avg=(sum/completeCounts.length).toFixed(1);
+  // Two complete months is the common case for a student a couple of months in,
+  // and an average over two months is a real average.
+  if(_pace){
+    const avg=_pace.monthly.toFixed(1);
     const bestM=Number(shown[bestIdx].split('-')[1]);
     footer='<div style="display:flex;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">'
       +'<div style="flex:1;text-align:center;border-right:1px solid var(--border)"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:var(--text)">'+avg+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:1px">Monthly avg</div></div>'
@@ -8124,10 +8139,13 @@ function _rClassesCard(stu,rows){
   // and it is the number a student actually recognises about themselves.
   // Not a count, so it isn't painted count-blue; the '/wk' rides the same small
   // unit span the hero uses for '2 yrs'.
+  // Same number the chart footer prints, divided by 4.33. The old sub said
+  // "last 3 months", which was a guess: the window is COMPLETE months and may
+  // well be two. 'avg pace' states what it is without inventing a span.
   let col3;
-  const wk=rows?_weeklyAvg(rows,13):null;
-  col3=(wk!=null)
-    ?{label:'Weekly avg',value:wk,unit:'/wk',sub:'last 3 months',isCount:false,muted:false}
+  const pace=rows?_monthlyPace(rows):null;
+  col3=pace
+    ?{label:'Weekly avg',value:pace.weekly.toFixed(1),unit:'/wk',sub:'avg pace',isCount:false,muted:false}
     :{label:'Weekly avg',value:EMDASH,unit:'',sub:'',isCount:false,muted:true};
 
   // margin-top:16px matches Month by month and Belt by belt. Desktop already got
