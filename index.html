@@ -7944,9 +7944,9 @@ async function _fetchProgressAtt(){
 // Footer (avg + best month) only with >=3 complete months; the first-month case
 // shows a muted build-up line. Loading → placeholder; fetch error → nothing.
 // ── FIX 5a — attendance rows -> per-calendar-month counts ───────────────────
-// ONE source for "how many classes in month X". The chart reads it for its bars
-// and the CLASSES card reads it for "this month / last month", so the two can
-// never disagree about the same month.
+// ONE source for "how many classes in month X" — the chart's bars, its complete-
+// month average and the reference line all read it, so they can never disagree
+// about the same month.
 // Returns {byMonth:{'YYYY-MM':n}, keys:[...sorted ascending]}. Rows with an
 // unusable class_date are skipped, not counted as an unknown month.
 function _progMonthCounts(rows){
@@ -7956,6 +7956,36 @@ function _progMonthCounts(rows){
     if(d.length>=7){const k=d.slice(0,7);byMonth[k]=(byMonth[k]||0)+1;}
   });
   return {byMonth:byMonth,keys:Object.keys(byMonth).sort()};
+}
+// ── FIX 1 — classes per week over a rolling window ──────────────────────────
+// ONE source for "how often do they actually train". The CLASSES card reads it;
+// nothing inlines this arithmetic.
+//
+// A ROLLING window of whole days, not calendar months: the point of this number
+// is cadence, and a calendar-month average swings wildly on the 2nd of the month
+// for reasons that have nothing to do with the student. 13 weeks (91 days) is
+// the default — long enough that one missed week doesn't dominate, short enough
+// to still describe how they train NOW.
+//
+// Dates are compared as 'YYYY-MM-DD' strings against a locally-derived window,
+// the same string-comparison idiom the chart and the week counter already use —
+// no Date.parse of class_date, so no timezone shift.
+// Returns a fixed-1 string, or null when the window is empty (the caller paints
+// its em dash — an absence, never a fabricated 0.0).
+function _weeklyAvg(rows,weeks){
+  const w=Math.max(1,Number(weeks)||13);
+  const pad=function(n){return String(n).padStart(2,'0');};
+  const key=function(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());};
+  const now=new Date();
+  // w*7-1 so the window is w*7 days INCLUSIVE of today.
+  const from=key(new Date(now.getFullYear(),now.getMonth(),now.getDate()-(w*7-1)));
+  const to=key(now);
+  let n=0;
+  (rows||[]).forEach(function(r){
+    const d=String(r&&r.class_date||'');
+    if(d.length>=10&&d>=from&&d<=to)n++;
+  });
+  return n>0?(n/w).toFixed(1):null;
 }
 function _rTrainingChart(stu){
   if(!stu||!stu._dbId)return '';
@@ -7993,13 +8023,38 @@ function _rTrainingChart(stu){
     else if(i===bestIdx&&bestCount>0)fill='background:var(--blue)';
     else fill='background:var(--blue-tint)';
     return '<div style="flex:1;min-width:0;text-align:center">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2);margin-bottom:3px">'+c+'</div>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;line-height:15px;color:var(--text2);margin-bottom:3px">'+c+'</div>'
       +'<div style="height:70px;display:flex;align-items:flex-end;justify-content:center"><div style="width:70%;max-width:26px;height:'+h+'px;border-radius:5px 5px 0 0;'+fill+'"></div></div>'
-      +'<div style="font-size:10px;color:var(--text3);font-family:Barlow Condensed,sans-serif;letter-spacing:.4px;margin-top:5px">'+MS[mo-1]+'</div>'
+      +'<div style="font-size:10px;line-height:12px;color:var(--text3);font-family:Barlow Condensed,sans-serif;letter-spacing:.4px;margin-top:5px">'+MS[mo-1]+'</div>'
     +'</div>';
   }).join('');
+  // FIX 4 — one dashed reference line at the average of the COMPLETE months,
+  // drawn across the bar row.
+  //
+  // GEOMETRY. A bar is height:max(4,round(c/maxCount*66))px anchored to the
+  // flex-end baseline of its own 70px band, so the line must sit
+  // round(avg/maxCount*66)px above that SAME baseline. The baseline is not the
+  // bottom of the row, though: each column is [count 15px + 3px margin] /
+  // [70px band] / [5px margin + month label 12px], so the band's floor sits
+  // 17px up from the row's bottom edge. Both label line-heights are stated
+  // explicitly above for exactly this reason — without them the offset moves
+  // with the font metrics (and Barlow Condensed may not have loaded yet).
+  // Hence bottom = 17 + round(avg/maxCount*66).
+  //
+  // Only drawn from two complete months: one month is not an average, it is just
+  // that month, and a line lying exactly on a single bar is noise.
+  // The current month's bar stays dashed; when the line sits above it that reads
+  // as "this month hasn't reached your average yet", which is the intent.
+  const _avgNum=completeCounts.length?completeCounts.reduce(function(a,b){return a+b;},0)/completeCounts.length:0;
+  const _avgLine=(completeCounts.length>=2)
+    ?'<div aria-hidden="true" style="position:absolute;left:0;right:0;bottom:'+(17+Math.round(_avgNum/maxCount*66))+'px;pointer-events:none;border-top:2px dashed var(--blue);opacity:.5"></div>'
+      +'<div aria-hidden="true" style="position:absolute;right:0;bottom:'+(17+Math.round(_avgNum/maxCount*66))+'px;transform:translateY(-50%);pointer-events:none;background:var(--card);color:var(--blue);font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.4px;line-height:1;padding:1px 4px;border-radius:4px">avg '+_avgNum.toFixed(1)+'</div>'
+    :'';
   let footer='';
-  if(completeCounts.length>=3){
+  // Gate lowered 3 → 2: two complete months is the common case for a student a
+  // couple of months in, and an average over two months is a real average. The
+  // maths is untouched — completeCounts already excludes the current month.
+  if(completeCounts.length>=2){
     const sum=completeCounts.reduce(function(a,b){return a+b;},0);
     const avg=(sum/completeCounts.length).toFixed(1);
     const bestM=Number(shown[bestIdx].split('-')[1]);
@@ -8013,7 +8068,7 @@ function _rTrainingChart(stu){
   // gap 6px -> 3px: with 12 bars instead of 6 the columns are half as wide, and at
   // 320px the 6px gaps pushed the row into horizontal overflow. 3px clears it and
   // simply gives the bars a little more room at every other width.
-  return LABEL+'<div class="card" style="padding:14px 12px"><div style="display:flex;align-items:flex-end;gap:3px">'+bars+'</div>'+footer+'</div>';
+  return LABEL+'<div class="card" style="padding:14px 12px"><div style="position:relative;display:flex;align-items:flex-end;gap:3px">'+bars+_avgLine+'</div>'+footer+'</div>';
 }
 // ── Belt-box meta + two-stat helpers (student Progress only) ─────────────────
 // Award date of the CURRENT belt: the earliest dated journey entry AT this belt
@@ -8062,25 +8117,18 @@ function _rClassesCard(stu,rows){
   const _bNogi=Math.max(Number(stu.nogiGrade||0),0);
   const _showSplit=(_bGrade>0&&(_bGi+_bNogi)===_bGrade);
 
-  // COL 3 — this calendar month, with last month as its sub. Derived from the
-  // same browser-local `now` and the same 'YYYY-MM' string keys the chart uses,
-  // so the number here and the last bar of the chart are the same number.
-  // "last month N" appears only when that month is actually IN the data: an
-  // absent key means the student wasn't training then, not that they did zero.
+  // COL 3 — cadence, not a count. "This month N / last month N" used to live here
+  // and it said nothing the Month-by-month chart immediately below wasn't already
+  // saying better: the chart's last two bars ARE this month and last month, drawn
+  // to scale. A weekly average is the one thing the chart doesn't state outright,
+  // and it is the number a student actually recognises about themselves.
+  // Not a count, so it isn't painted count-blue; the '/wk' rides the same small
+  // unit span the hero uses for '2 yrs'.
   let col3;
-  if(!rows){
-    col3={label:'This month',value:EMDASH,unit:'',sub:'',isCount:false,muted:true};
-  }else{
-    const byMonth=_progMonthCounts(rows).byMonth;
-    const now=new Date();
-    const curKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-    const pv=new Date(now.getFullYear(),now.getMonth()-1,1);
-    const prevKey=pv.getFullYear()+'-'+String(pv.getMonth()+1).padStart(2,'0');
-    const cur=byMonth[curKey]||0;
-    col3={label:'This month',value:formatStat(cur),unit:'',
-      sub:(byMonth[prevKey]!=null)?('last month '+formatStat(byMonth[prevKey])):'',
-      isCount:cur>0,muted:false,valueClass:cur>0?'':'cls-zero'};
-  }
+  const wk=rows?_weeklyAvg(rows,13):null;
+  col3=(wk!=null)
+    ?{label:'Weekly avg',value:wk,unit:'/wk',sub:'last 3 months',isCount:false,muted:false}
+    :{label:'Weekly avg',value:EMDASH,unit:'',sub:'',isCount:false,muted:true};
 
   // margin-top:16px matches Month by month and Belt by belt. Desktop already got
   // it from `.prog-pair > div:first-child > .slbl`; MOBILE has no such rule, so
