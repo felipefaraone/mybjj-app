@@ -8667,9 +8667,20 @@ function rProgress(){
       var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the academy.</div>';
       // Rank box (the belt hero) first, then what the professor actually does all
       // week. journeyTab below is untouched.
-      var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter})+_rTeachingCard(staff);
+      // Full Rank: hero -> Teaching -> Classes + Month by month -> Belt by belt.
+      // The last two are the STUDENT cards, rendered against myStu (the staff's own
+      // student row) because they answer questions about their own training, not
+      // their teaching. Gated on myStu: a staff member with no student row has no
+      // attendance to show, and keeps just hero + Teaching.
+      // No new fetching - _rTrainingCard calls _ensureProgressAtt(myStu), the same
+      // slot _rTeacherRecentCard already warms on this path.
+      var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter})
+        +_rTeachingCard(staff)
+        +((myStu&&myStu._dbId)?(_rTrainingCard(myStu)+_rClassHistorySection(myStu)):'');
       // timeline -> Belt by belt -> Recent (trained + taught, merged).
-      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney,myStu||staff)+'</div>'+((myStu&&myStu._dbId)?_rClassHistorySection(myStu):'')+_rTeacherRecentCard(staff,myStu);
+      // Belt by belt moved to Rank (above), so it is NOT rendered here too -
+      // Journey keeps the timeline plus the trained/taught Recent.
+      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney,myStu||staff)+'</div>'+_rTeacherRecentCard(staff,myStu);
       var iContent=S.ptab==='journey'?journeyTab:rankTab;
       return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button></div>'+iContent+'<div style="height:16px"></div>';
     }
