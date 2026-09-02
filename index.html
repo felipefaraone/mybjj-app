@@ -3292,7 +3292,32 @@ function rTL(journey,subject){
   // date:null) sort to the START, keeping their relative order; dated entries go
   // ascending; equal dates keep their original order (stable sort + a comparator
   // that returns 0 for equals — never NaN, which would give undefined ordering).
-  const jnyTime=(m)=>{const d=m&&m.date;if(d==null||d==='')return null;const t=new Date(d).getTime();return Number.isNaN(t)?null:t;};
+  // Milestone date -> comparable timestamp. Parsed EXPLICITLY rather than handed
+  // to new Date(string), because that is only specified for ISO forms: for the
+  // legacy "Mon YYYY" shape (e.g. "Aug 2011") the result is implementation-
+  // defined, and Safari/iOS returns Invalid Date. jnyTime returning null there
+  // did not merely hide those milestones — the .filter below DROPPED them, so
+  // imported students lost their entire grading history on iOS while the same
+  // page rendered fine on Chrome. The data was never wrong; this parser was.
+  //
+  // Both branches return Date.UTC so ISO and legacy dates sit on the SAME clock.
+  // Mixing UTC (what new Date('2011-08-01') gives) with local midnight (what
+  // Chrome gives for 'Aug 2011') would put two same-day milestones up to 14h
+  // apart and silently reorder them; on equal values the sort falls through to
+  // _tlRank, which is the intended tie-break.
+  // "Mon YYYY" anchors to the 1st — the day is genuinely unknown, and any other
+  // choice would invent precision the source never had.
+  const _MON3={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  const jnyTime=(m)=>{
+    const d=m&&m.date;if(d==null||d==='')return null;
+    const s=String(d).trim();
+    let mm=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);                 // ISO — the common case
+    if(mm)return Date.UTC(+mm[1],+mm[2]-1,+mm[3]);
+    mm=s.match(/^([A-Za-z]{3,})\s+(\d{4})$/);                    // legacy "Mon YYYY"
+    if(mm){const mo=_MON3[mm[1].slice(0,3).toLowerCase()];if(mo!=null)return Date.UTC(+mm[2],mo,1);}
+    const t=new Date(s).getTime();                               // anything else — last resort
+    return Number.isNaN(t)?null:t;
+  };
   const s=subject||null;
   // V3 — ONE chronological list. "Started BJJ" (bjjStartDate, life history) and
   // "Joined myBJJ" (trainingStartedAt, academy join) are merged in as ordinary
