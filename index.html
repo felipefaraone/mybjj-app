@@ -423,6 +423,12 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 /* Recent-attendance rows 4-8: desktop only. !important because the row carries an
    inline display:flex, which a plain class rule cannot outrank. */
 .rec-more{display:none!important}
+/* Row tag on the staff Recent: which side of the mat this class was.
+   Taught is the filled/solid one because giving the class is the professor's
+   primary role; Trained is the quieter tint. Tokens only. */
+.rec-tag{display:inline-flex;align-items:center;gap:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.rec-tag.taught{background:var(--blue);color:#fff;border:1px solid var(--blue)}
+.rec-tag.trained{background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid)}
 .drow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}.drow:last-child{border-bottom:none}
 .blt{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase}
 .pt{background:var(--border);border-radius:99px;height:7px;overflow:hidden}.pf{height:100%;border-radius:99px}
@@ -2141,7 +2147,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -8377,6 +8383,106 @@ function _rTrainingCard(stu){
 // Single source for the attendance "when" label — the RECENT card idiom, reused
 // by rStuAttList so both surfaces render identically (weekday day month + a muted
 // time span, no middle-dot separator). Returns HTML.
+// -- Recent classes the professor TAUGHT (staff self-view) -------------------
+// Same state machine and guards as _loadTeachingStats (v516):
+//   undefined -> never asked | 'loading' -> in flight | array -> rows | null -> failed
+// null-on-failure is what stops a broken RPC re-firing once per render forever.
+function _loadTeachingRecent(staffId){
+  if(!staffId)return;
+  if(S._teachingRecent[staffId]!==undefined)return;
+  S._teachingRecent[staffId]='loading';
+  const cli=initSupabase();
+  // No render() here: this runs INSIDE a render, so a synchronous re-entry would
+  // recurse. The .then below is safe - it resolves after the render unwinds.
+  if(!cli){S._teachingRecent[staffId]=null;return;}
+  cli.rpc('teaching_recent',{p_staff_id:staffId,p_limit:20}).then(function(r){
+    if(r&&r.error){console.warn('[mybjj] teaching_recent:',r.error);S._teachingRecent[staffId]=null;}
+    else S._teachingRecent[staffId]=Array.isArray(r&&r.data)?r.data:[];
+    render();
+  }).catch(function(e){
+    console.warn('[mybjj] teaching_recent:',e);
+    S._teachingRecent[staffId]=null;render();
+  });
+}
+// Small inline glyphs for the row tags. ~14px, stroke currentColor so each one
+// takes the colour of the pill it sits in.
+const _ICO_WHISTLE='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M11 3h4"/><path d="M13 3v3"/><circle cx="9" cy="14" r="5.5"/><path d="M14.2 12H21l-2.2 3.2H14"/></svg>';
+const _ICO_GRAPPLE='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><circle cx="7.5" cy="6" r="2.6"/><circle cx="16.5" cy="6" r="2.6"/><path d="M3.5 20c.6-4 2.6-6.4 5.5-6.4"/><path d="M20.5 20c-.6-4-2.6-6.4-5.5-6.4"/><path d="M9 12.2l6 2.2"/><path d="M15 12.2l-6 2.2"/></svg>';
+// -- MERGED RECENT (staff Journey tab) ---------------------------------------
+// One chronological list of what the professor actually did on the mats, from
+// TWO sources that answer different questions:
+//   TRAINED - S.progressAtt, their own attendance rows (classes they took)
+//   TAUGHT  - the teaching_recent RPC (classes they gave)
+// _rRecentCard (the student card) is deliberately untouched: it reads one source
+// and carries no tags, and a professor's list is only legible if every row says
+// which side of the mat they were on.
+//
+// _ensureProgressAtt is called here because nothing else on the staff path does.
+// The slot is loaded by _rTrainingCard / _rMonthByMonth, both of which live in
+// the STUDENT branch that staff never reach - so without this the Trained half
+// would silently always be empty. It is the existing fire-and-forget loader; no
+// new fetching machinery.
+function _rTeacherRecentCard(staffRow,myStu){
+  const staffId=meStaffDbId();
+  if(!staffId)return '';
+  _loadTeachingRecent(staffId);
+  if(myStu&&myStu._dbId)_ensureProgressAtt(myStu);
+  const taught=S._teachingRecent[staffId];
+  const slot=S.progressAtt;
+  const slotReady=!!(myStu&&slot&&slot.sid===myStu.id&&!slot.loading&&!slot.error);
+  const trained=slotReady?(slot.rows||[]):[];
+  const taughtRows=Array.isArray(taught)?taught:[];
+
+  const merged=[];
+  trained.forEach(function(r){
+    merged.push({date:r.class_date,time:r.class_time,mod:(r.modality||_modalityFromType(r.class_type)),kind:'trained'});
+  });
+  taughtRows.forEach(function(r){
+    merged.push({date:r.class_date,time:r.class_time,mod:_modalityFromUniform(r.uniform),kind:'taught'});
+  });
+  // Same date+time string comparison _rRecentCard uses - no Date.parse of
+  // class_date, so no timezone shift, and the two sources sort on one key.
+  merged.sort(function(a,b){
+    return String((b.date||'')+' '+(b.time||'')).localeCompare(String((a.date||'')+' '+(a.time||'')));
+  });
+  const recent=merged.slice(0,8);
+
+  // Chip copied in shape from _rRecentCard so both Recents read identically.
+  const chip=function(mod){
+    if(mod==='gi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 7px;border-radius:4px">GI</span>';
+    if(mod==='nogi')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text2);background:var(--input-bg);border:1px solid var(--border);padding:1px 7px;border-radius:4px">NO-GI</span>';
+    return '';
+  };
+  const tag=function(kind){
+    return kind==='taught'
+      ?'<span class="rec-tag taught">'+_ICO_WHISTLE+'Taught</span>'
+      :'<span class="rec-tag trained">'+_ICO_GRAPPLE+'Trained</span>';
+  };
+
+  let body;
+  if(recent.length){
+    body=recent.map(function(r,i){
+      return '<div'+(i>2?' class="rec-more"':'')+' style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;'+(i===0?'':'border-top:1px solid var(--border)')+'">'
+        +'<div style="font-size:13px;color:var(--text);min-width:0">'+_fmtAttWhen(r.date,r.time)+'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+chip(r.mod)+tag(r.kind)+'</div>'
+      +'</div>';
+    }).join('');
+  }else{
+    // Still waiting on either source -> say so. Only claim "nothing" once both
+    // have actually answered; an unfinished fetch is not an empty history.
+    const busy=(taught===undefined||taught==='loading')||!!(myStu&&slot&&slot.sid===myStu.id&&slot.loading);
+    body='<div style="font-size:13px;color:var(--text3);padding:9px 0">'+(busy?'Loading…':'No classes yet')+'</div>';
+  }
+
+  // Summary only when the Rank card's stats happen to be cached already - this
+  // card never fires that fetch itself, so it cannot block on it.
+  const st=S._teachingStats[staffId];
+  const summary=(st&&st!=='loading')
+    ?'<div style="font-size:11px;color:var(--text3);padding:0 0 8px;border-bottom:1px solid var(--border);margin-bottom:2px">Taught '+formatStat(st.taught||0)+' · Trained '+formatStat(trained.length)+'</div>'
+    :'';
+  return '<div class="slbl" style="margin-top:16px">Recent</div>'
+    +'<div class="card" style="padding:9px 16px">'+summary+body+'</div>';
+}
 function _fmtAttWhen(classDate,classTime){
   const d=String(classDate||'');
   const t=d?Date.parse(d+'T00:00:00'):NaN;
@@ -8545,7 +8651,8 @@ function rProgress(){
       // Rank box (the belt hero) first, then what the professor actually does all
       // week. journeyTab below is untouched.
       var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter})+_rTeachingCard(staff);
-      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney,myStu||staff)+'</div>'+((myStu&&myStu._dbId)?_rClassHistorySection(myStu):'');
+      // timeline -> Belt by belt -> Recent (trained + taught, merged).
+      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney,myStu||staff)+'</div>'+((myStu&&myStu._dbId)?_rClassHistorySection(myStu):'')+_rTeacherRecentCard(staff,myStu);
       var iContent=S.ptab==='journey'?journeyTab:rankTab;
       return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button></div>'+iContent+'<div style="height:16px"></div>';
     }
