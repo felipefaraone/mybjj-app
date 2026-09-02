@@ -371,6 +371,10 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 /* A zero month is a fact, not an achievement: it drops to the muted tone
    instead of the count blue, so the strip never celebrates an empty month. */
 .cls-strip .cls-zero{color:var(--text3)}
+/* The Teaching twin of the CLASSES strip. One hairline in the existing soft
+   blue is the whole distinction - it marks a different SUBJECT (classes given,
+   not taken) without turning into a second visual language. */
+.cls-strip.teach{border-top:2px solid var(--blue-mid)}
 /* Roster card (rARosterListInner) — 3 zones: identity | progress | belt, plus a
    full-width invite/waiver row. Mobile keeps the shape the card has always had:
    identity left with the belt beside it, progress underneath, invite last.
@@ -2137,7 +2141,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -8282,6 +8286,82 @@ function _rMonthByMonth(stu){
 // to the attendance fetch, so a slow or failed fetch costs the reader column 3
 // and nothing else. Both children land in the left cell automatically; on mobile
 // the cell is an ordinary block, so they simply stack.
+// -- TEACHING card (staff self-view only) ------------------------------------
+// Classes the professor GIVES, from the teaching_stats RPC (migration 114) over
+// the last 12 months. Deliberately NOT the S.progressAtt slot: that slot caches
+// ATTENDANCE rows for one student, and this is a different question about a
+// different subject, so it gets its own cache keyed by staff id.
+//
+// Same async shape as the slot loader: paint whatever is known now, fire the
+// fetch, re-render when it lands. Nothing here awaits inside a render.
+// S._teachingStats[staffId] is a small state machine:
+//   undefined -> never asked      (this call asks)
+//   'loading' -> in flight        (guard: never re-fire)
+//   object    -> the stats row
+//   null      -> asked and failed (em dashes; do not retry on every render)
+// The null-on-failure is what stops a broken RPC from re-firing once per render
+// for the rest of the session.
+function _loadTeachingStats(staffId){
+  if(!staffId)return;
+  if(S._teachingStats[staffId]!==undefined)return;
+  S._teachingStats[staffId]='loading';
+  const cli=initSupabase();
+  // No client: record the failure but do NOT render() here - this runs inside a
+  // render, and a synchronous re-entry would recurse. The .then below is safe
+  // because it resolves after the current render has unwound.
+  if(!cli){S._teachingStats[staffId]=null;return;}
+  const now=new Date();
+  const since=new Date(now.getFullYear()-1,now.getMonth(),now.getDate());
+  const pad=function(n){return String(n).padStart(2,'0');};
+  const p_since=since.getFullYear()+'-'+pad(since.getMonth()+1)+'-'+pad(since.getDate());
+  cli.rpc('teaching_stats',{p_staff_id:staffId,p_since:p_since}).then(function(r){
+    if(r&&r.error){console.warn('[mybjj] teaching_stats:',r.error);S._teachingStats[staffId]=null;}
+    else{
+      // A TABLE-returning RPC arrives as an array; a record/json one as an object.
+      const d=r&&r.data;
+      S._teachingStats[staffId]=Array.isArray(d)?(d[0]||null):(d||null);
+    }
+    render();
+  }).catch(function(e){
+    console.warn('[mybjj] teaching_stats:',e);
+    S._teachingStats[staffId]=null;render();
+  });
+}
+// Renders the Teaching card. Called ONLY from the staff branch of rProgress,
+// which is already gated on isStaffOrOwner() && !_kidActiveTop - i.e. being here
+// at all IS the self-view, so this needs no gate of its own. A staff member
+// looking at a student goes through viewStu/the roster and never reaches it.
+// Same 3-column strip as the CLASSES card, via the shared _rStrip3, so the two
+// cards cannot drift apart. Loading and error both paint em dashes: an unknown
+// count is not a zero.
+function _rTeachingCard(staffRow){
+  const staffId=meStaffDbId();
+  if(!staffId)return '';
+  _loadTeachingStats(staffId);
+  const t=S._teachingStats[staffId];
+  const ready=!!(t&&t!=='loading');
+  const EMDASH='—';
+  const SMALL='font-size:.5em;font-weight:700;margin:0 2px';
+  let cells;
+  if(!ready){
+    cells=[
+      {label:'Classes taught',value:EMDASH,unit:'',sub:'',isCount:false,muted:true},
+      {label:'Gi · No-Gi', value:EMDASH,unit:'',sub:'',isCount:false,muted:true},
+      {label:'Weekly avg',    value:EMDASH,unit:'',sub:'',isCount:false,muted:true}
+    ];
+  }else{
+    const gi=formatStat(t.gi||0),nogi=formatStat(t.nogi||0),mixed=Number(t.mixed||0);
+    cells=[
+      {label:'Classes taught',value:formatStat(t.taught||0),unit:'',sub:'last 12 months',isCount:true,muted:false},
+      {label:'Gi · No-Gi',
+       value:gi+'<span style="'+SMALL+'">·</span>'+nogi,unit:'',
+       sub:mixed>0?('+'+formatStat(mixed)+' mixed'):'what you teach',isCount:true,muted:false},
+      {label:'Weekly avg',value:formatStat(t.weekly||0),unit:'/wk',sub:'classes given',isCount:false,muted:false}
+    ];
+  }
+  return '<div class="slbl" style="margin-top:16px">Teaching</div>'
+    +'<div class="card cls-strip teach">'+_rStrip3(cells)+'</div>';
+}
 function _rTrainingCard(stu){
   if(!stu||!stu._dbId)return '';
   _ensureProgressAtt(stu);
@@ -8462,7 +8542,9 @@ function rProgress(){
       // staff.journey) and belt/deg are already in sync with
       // S.me via enrichMeFromHydrate.
       var staffFooter=isOwnerLocal?'':'<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5">Degree progression is recognised by the academy.</div>';
-      var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter});
+      // Rank box (the belt hero) first, then what the professor actually does all
+      // week. journeyTab below is untouched.
+      var rankTab=_renderRankBox(staff,{kind:'staff',footerHtml:staffFooter})+_rTeachingCard(staff);
       var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney,myStu||staff)+'</div>'+((myStu&&myStu._dbId)?_rClassHistorySection(myStu):'');
       var iContent=S.ptab==='journey'?journeyTab:rankTab;
       return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button></div>'+iContent+'<div style="height:16px"></div>';
