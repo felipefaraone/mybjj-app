@@ -2391,11 +2391,26 @@ function _occFor(cid){
 // flip to "yesterday" via UTC drift.
 const SCHEDULE_PAST_DAYS=6;
 const SCHEDULE_FUTURE_DAYS=6;
+// The date strip's window. Anchored on the SELECTED day, not on TODAY, so the
+// strip can follow the user to any date instead of being permanently trapped in
+// a fixed window around today. With S.selDay null - the default, and the state
+// on every boot - the anchor IS today, so the strip is identical to before.
+//
+// This is what makes a future "jump to any past date" possible: selDay(k) can
+// only pick a day that bdays() already contains, so a window that never moves
+// can never reach beyond its own edges. Re-anchoring is the whole change; no
+// caller reads this array positionally (only .map and .find), so nothing here
+// depended on today sitting at the centre.
+//
+// The S&& guard is for a call before the state object exists. S is declared
+// above this function and every call site is inside a render function, so it is
+// belt-and-braces rather than a live path.
 function bdays(){
+  const anchor=(S&&S.selDay)?S.selDay:TODAY;
   const a=[];
   for(let i=-SCHEDULE_PAST_DAYS;i<=SCHEDULE_FUTURE_DAYS;i++){
-    const d=new Date(TODAY);
-    d.setDate(TODAY.getDate()+i);
+    const d=new Date(anchor);
+    d.setDate(anchor.getDate()+i);
     a.push(d);
   }
   return a;
