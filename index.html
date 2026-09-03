@@ -1577,9 +1577,48 @@ function getNextMarker(student){
   }
   return path.find(p=>p.belt===belt&&p.marker==='promotion')||null;
 }
+// Y/M/D as WRITTEN, for month arithmetic. Two input shapes reach here and they
+// are not the same kind of value:
+//   'YYYY-MM-DD'  - a Postgres DATE (last_marker_date, journey dates). It denotes
+//                   a calendar day, not an instant, so its parts are read
+//                   literally. new Date('2026-07-06') would parse it as UTC
+//                   midnight, which is 2026-07-05 in any negative-offset zone -
+//                   the whole gate would then move by a day depending on where
+//                   the phone is.
+//   timestamptz   - a real instant (created_at). Converted to the viewer's local
+//                   calendar day, which is the correct reading for an instant.
+// A Date object is read in local time. null for anything unparseable.
+function _ymdParts(v){
+  if(v==null||v==='')return null;
+  if(v instanceof Date)return isNaN(v.getTime())?null:{y:v.getFullYear(),m:v.getMonth()+1,d:v.getDate()};
+  const s=String(v).trim();
+  const dOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if(dOnly)return {y:+dOnly[1],m:+dOnly[2],d:+dOnly[3]};
+  const t=new Date(s);
+  return isNaN(t.getTime())?null:{y:t.getFullYear(),m:t.getMonth()+1,d:t.getDate()};
+}
+// Day 0 of the NEXT month is the last day of this one.
+function _isLastDayOfMonth(p){return p.d===new Date(p.y,p.m,0).getDate();}
+// COMPLETE elapsed months, anniversary-based. An anchor of 2026-07-06 reaches
+// 2 months on 2026-09-06 - not on 2026-09-01.
+//
+// It used to count calendar-month BOUNDARIES and ignore the day entirely, so a
+// grading on the 31st scored a full month on the 1st. On the live roster that
+// wrongly showed 9 students as Ready, including a kid 17 days past his grading.
+//
+// END-OF-MONTH RULE: when the target is the last day of its month, the
+// anniversary is treated as reached even if the anchor day is later in the
+// month - there is no 31st of February. So 2026-01-31 -> 2026-02-28 is 1 month,
+// and the count cannot stall for anchors on the 29th-31st.
+//
+// Pure, and clamped at 0: a future anchor returns 0, never a negative that would
+// read as "already served" anywhere downstream.
 function monthsBetween(from,to){
-  const f=new Date(from);const t=new Date(to);
-  return(t.getFullYear()-f.getFullYear())*12+(t.getMonth()-f.getMonth());
+  const f=_ymdParts(from),t=_ymdParts(to);
+  if(!f||!t)return 0;
+  let m=(t.y-f.y)*12+(t.m-f.m);
+  if(t.d<f.d&&!_isLastDayOfMonth(t))m--;
+  return m>0?m:0;
 }
 // Anchor for the months gate. Prefer the cached last_marker_date
 // (set by migration 45's recompute_student_stats from public.promotions).
