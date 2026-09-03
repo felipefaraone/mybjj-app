@@ -5955,7 +5955,7 @@ function rClass(){
     return h*60+m;
   })();
   _maybePromoToast();
-  return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}</div>`:''}</div>
+  return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}</div>`:''}</div>
   ${_otherUnitCheckinsBanner(sk)}
   ${closed?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${escHtml(closed.reason||'Academy closed')}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Regular classes cancelled</div></div></div>`:''}
   ${cls.length>0?'<div class="agenda">'+cls.map(c=>{
@@ -15371,6 +15371,35 @@ async function pickUnit(u){
   }
 }
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
+// -- Jump to any past date (Classes screen, staff/owner only) ----------------
+// selDay(k) is deliberately NOT the entry point here: it resolves k inside the
+// CURRENT bdays() window and falls back to TODAY for anything outside it, which
+// is precisely the case this feature exists to serve. Setting S.selDay directly
+// is what re-anchors the strip (the window follows the selected day since v523).
+function _jumpToDate(v){
+  const d=_parseISODate(v);          // local midnight from PARTS - new Date(iso)
+  if(!d)return;                      // is UTC and lands a day early in Sydney
+  // The input carries max=today; this is the same rule enforced in code, for a
+  // typed value or a browser that ignores max.
+  if(dk(d)>dk(TODAY))return;
+  S.selDay=d;render();
+}
+// Back to today. null (not TODAY) so the anchor falls through to the same
+// default a fresh boot has - one state for "not jumped anywhere".
+function _backToToday(){S.selDay=null;render();}
+// The date input sits transparent OVER the pill so a TAP opens the native picker
+// on its own - showPicker() from a handler is blocked/janky on iOS Safari, and a
+// hidden input cannot be opened there at all. On desktop the opposite is true:
+// clicking an opacity:0 input's body opens nothing, so showPicker() is needed.
+// Gated on a real mouse pointer, the same media query _bindDateAffordance uses,
+// which cleanly excludes every touch device. showPicker throws without a user
+// gesture or when unsupported - swallow.
+function _clsDateJumpOpen(el){
+  try{
+    if(!el||!el.showPicker)return;
+    if(window.matchMedia&&window.matchMedia('(hover:hover) and (pointer:fine)').matches)el.showPicker();
+  }catch(_){}
+}
 // Parses the synthetic class id getDC() builds: 'YYYY-MM-DD_HH:MM_legacy'
 function _parseCID(id){const m=String(id||'').match(/^(\d{4}-\d{2}-\d{2})_(\d{2}:\d{2})_(.+)$/);if(!m)return null;return{date:m[1],time:m[2],legacy:m[3]};}
 
