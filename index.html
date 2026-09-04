@@ -375,15 +375,6 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
    blue is the whole distinction - it marks a different SUBJECT (classes given,
    not taken) without turning into a second visual language. */
 .cls-strip.teach{border-top:2px solid var(--blue-mid)}
-/* Wall belt-promotion banner. beltSVG draws at a fixed 110px with a matching
-   viewBox, so width:100% scales it - stripes, knot and the composite tip all
-   keep their proportions. height:auto is what stops the 28px height attribute
-   squashing it. No colour here: every pixel comes from beltSVG.
-   max-width caps the scale at ~2.4x: edge-to-edge (3.4x) turned the band into
-   a slab and blew the graduation bar - drawn to read at 110px - out of
-   proportion. Capped it stays a banner, not a billboard. */
-.wall-belt svg{width:100%;height:auto}
-.wall-belt{max-width:260px}
 /* Roster card (rARosterListInner) — 3 zones: identity | progress | belt, plus a
    full-width invite/waiver row. Mobile keeps the shape the card has always had:
    identity left with the belt beside it, progress underneath, invite last.
@@ -7687,22 +7678,30 @@ function rCommunityWall(){
     // ossHtml below keeps its own padding wrapper, so the divider's
     // padding-bottom is the only breathing room added between them.
     const tap='onclick="viewStu(\''+s.id+'\',\'community\')" style="display:flex;align-items:flex-start;gap:12px;padding:14px 14px 12px;cursor:pointer"';
-    const _eyebrowStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1';
+    // The belt card sits on a tint that redefines --text/--text2/--text3/--border
+    // but NOT --blue, so a blue eyebrow loses contrast on it - worst case the
+    // white tint, which is a DARK ground (#6F7987) in light mode. --text is set by
+    // each tint class to something legible on its own ground. Stripe cards are
+    // untinted and keep --blue; concatenation below is byte-identical for them.
+    const _eyebrowBase='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:';
+    const _eyebrowStyle=_eyebrowBase+(isBelt?'var(--text)':'var(--blue)')+';line-height:1';
     const _nameStyle='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;line-height:1.2';
     const _dateStyle='font-size:11px;color:var(--text3);margin-top:4px';
     let _eyebrow,_trail;
     if(isBelt){
-      // Belt — the eyebrow NAMES the belt ('BLUE BELT', 'GREY/WHITE BELT'),
-      // and the belt visual moves out of the trailing column to a full-width
-      // banner above the text (see _beltBanner / the return below). A new belt
-      // is the milestone of the whole progression and used to read exactly like
-      // a third stripe on white.
-      // beltDef is the file's existing label resolver: it falls back BA→BK, so
-      // a composite kids belt returns 'Grey/White' whole. The eyebrow style
-      // already uppercases, so no hand-rolled capitalisation here.
+      // Belt — the eyebrow NAMES the belt ('BLUE BELT'). The emphasis is carried
+      // by the CARD (tint + belt-coloured border, see the return below), not by
+      // the layout: the belt visual sits in the same trailing column, drawn with
+      // the same markup as the stripe branch, so both cards are the same height.
+      // beltDef is the file's existing label resolver; the eyebrow style already
+      // uppercases, so no hand-rolled capitalisation here.
       // deg 0 on purpose — this is the belt itself, not its stripe count.
+      // 'adult' throughout: the Wall feed is adults-only for every viewer, so
+      // only white/blue/purple/brown/black reach these cards.
       _eyebrow=beltDef(p.toBelt,'adult').label+' belt';
-      _trail='';
+      _trail='<div style="display:inline-flex;flex-direction:column;gap:0;align-items:center;flex-shrink:0">'
+        +beltSVG(p.toBelt,0,'adult',110)
+      +'</div>';
     }else{
       // Stripe — eyebrow "NEW STRIPE" (or "NEW DEGREE" on black); right column
       // is the bare beltSVG with deg markings. The ordinal caption ("2ND
@@ -7719,32 +7718,40 @@ function rCommunityWall(){
     // branch here and rendered once. Empty (no copy for this belt) → no div.
     const _congrats=isBelt?_wallCongrats('belt',p.toBelt,p.toDeg||0,p._dbId):_wallCongrats('stripe',p.toBelt,deg,p._dbId);
     const _congratsHtml=_congrats?('<div style="'+_WALL_CONGRATS_STYLE+'">'+_congrats+'</div>'):'';
-    // The text column is identical on both branches; only what surrounds it
-    // differs. Extracted so the stripe path below concatenates to the exact
-    // same string it always has.
-    const _textCol='<div style="flex:1;min-width:0">'
+    // Belt and stripe share ONE body again - same avatar, same text column, same
+    // trailing belt visual. What separates a belt card is the card itself:
+    //   TINT   the same .card.rank-tint-<belt> class the Current rank card uses.
+    //          It redefines --text/--text2/--text3/--border inside the card, so
+    //          the existing markup picks the treatment up without changing.
+    //   BORDER the belt's own colour, from beltDef().bg.
+    // TWO belts cannot use their own colour as the border, because each one
+    // disappears into the ground it sits on. Everything else uses beltDef().bg.
+    //   WHITE  #e5e7eb is the same grey as the default card border, so the card
+    //          would be indistinguishable from a stripe card. #B8BEC7 is
+    //          _AV_BELT.white[2], the darker rim the avatars already use for
+    //          exactly this reason.
+    //   BLACK  #111827 on the DARK-mode card ground (#1e2026, where the tint
+    //          collapses by design) measures 1.09:1 - invisible, and black belt is
+    //          the promotion that can least afford to read as a stripe. #374151 is
+    //          BA.black.bdr, the design system's own outline for black, and it is
+    //          what beltSVG already strokes the black belt with.
+    // Stripe cards get no border and no tint.
+    const _WALL_BORDER_FIX={white:'#B8BEC7',black:'#374151'};
+    const _tintCls=isBelt?(function(){const t=_tintClassFor(p.toBelt,'adult');return t?' '+t:'';})():'';
+    const _beltBorder=isBelt
+      ?(';border:1.5px solid '+(_WALL_BORDER_FIX[p.toBelt]||beltDef(p.toBelt,'adult').bg))
+      :'';
+    return '<div class="card'+_tintCls+'" style="margin-bottom:8px;position:relative'+_beltBorder+'">'+_hideKebab('hidePromoConfirm(\''+p._dbId+'\')')
+      +'<div '+tap+'>'
+      +avStu(s,40)
+      +'<div style="flex:1;min-width:0">'
         +'<div style="'+_eyebrowStyle+'">'+_eyebrow+'</div>'
         +'<div style="'+_nameStyle+'">'+s.name+'</div>'
         +_congratsHtml
         +'<div style="'+_dateStyle+'">'+when+'</div>'
-      +'</div>';
-    // BELT: banner on top, then the avatar+text row. Same tap target and the
-    // same padding as the shared row, minus the flex (the banner is a block).
-    // beltSVG is what bb() delegates to - same drawing routine, same composite
-    // handling via beltDef/b.tip - called directly because bb() hardcodes 110px
-    // and this one has to stretch. Deliberately no background, border, or
-    // animation: at ~2 belt promotions a week anything louder gets tiring fast.
-    const _beltBody='<div onclick="viewStu(\''+s.id+'\',\'community\')" style="padding:14px 14px 12px;cursor:pointer">'
-      +'<div class="wall-belt" style="margin-bottom:12px">'+beltSVG(p.toBelt,0,'adult',110)+'</div>'
-      +'<div style="display:flex;align-items:flex-start;gap:12px">'+avStu(s,40)+_textCol+'</div>'
-    +'</div>';
-    const _stripeBody='<div '+tap+'>'
-      +avStu(s,40)
-      +_textCol
+      +'</div>'
       +_trail
-      +'</div>';
-    return '<div class="card" style="margin-bottom:8px;position:relative">'+_hideKebab('hidePromoConfirm(\''+p._dbId+'\')')
-      +(isBelt?_beltBody:_stripeBody)
+      +'</div>'
       +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
       // Same wrapper for belt + stripe (they share this return). sharePromo
       // looks promotions up by legacy id (PROMOTION_LOG.find(x=>x.id===...)),
