@@ -375,6 +375,15 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
    blue is the whole distinction - it marks a different SUBJECT (classes given,
    not taken) without turning into a second visual language. */
 .cls-strip.teach{border-top:2px solid var(--blue-mid)}
+/* Wall belt-promotion banner. beltSVG draws at a fixed 110px with a matching
+   viewBox, so width:100% scales it - stripes, knot and the composite tip all
+   keep their proportions. height:auto is what stops the 28px height attribute
+   squashing it. No colour here: every pixel comes from beltSVG.
+   max-width caps the scale at ~2.4x: edge-to-edge (3.4x) turned the band into
+   a slab and blew the graduation bar - drawn to read at 110px - out of
+   proportion. Capped it stays a banner, not a billboard. */
+.wall-belt svg{width:100%;height:auto}
+.wall-belt{max-width:260px}
 /* Roster card (rARosterListInner) — 3 zones: identity | progress | belt, plus a
    full-width invite/waiver row. Mobile keeps the shape the card has always had:
    identity left with the belt beside it, progress underneath, invite last.
@@ -7683,12 +7692,17 @@ function rCommunityWall(){
     const _dateStyle='font-size:11px;color:var(--text3);margin-top:4px';
     let _eyebrow,_trail;
     if(isBelt){
-      // Belt — eyebrow "NEW PROMOTION"; right column = belt visual
-      // at deg 0 (bb() draws the belt name under it, e.g. "PURPLE").
-      _eyebrow='New promotion';
-      _trail='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">'
-        +bb(p.toBelt,0,'adult',undefined,true)
-      +'</div>';
+      // Belt — the eyebrow NAMES the belt ('BLUE BELT', 'GREY/WHITE BELT'),
+      // and the belt visual moves out of the trailing column to a full-width
+      // banner above the text (see _beltBanner / the return below). A new belt
+      // is the milestone of the whole progression and used to read exactly like
+      // a third stripe on white.
+      // beltDef is the file's existing label resolver: it falls back BA→BK, so
+      // a composite kids belt returns 'Grey/White' whole. The eyebrow style
+      // already uppercases, so no hand-rolled capitalisation here.
+      // deg 0 on purpose — this is the belt itself, not its stripe count.
+      _eyebrow=beltDef(p.toBelt,'adult').label+' belt';
+      _trail='';
     }else{
       // Stripe — eyebrow "NEW STRIPE" (or "NEW DEGREE" on black); right column
       // is the bare beltSVG with deg markings. The ordinal caption ("2ND
@@ -7705,16 +7719,32 @@ function rCommunityWall(){
     // branch here and rendered once. Empty (no copy for this belt) → no div.
     const _congrats=isBelt?_wallCongrats('belt',p.toBelt,p.toDeg||0,p._dbId):_wallCongrats('stripe',p.toBelt,deg,p._dbId);
     const _congratsHtml=_congrats?('<div style="'+_WALL_CONGRATS_STYLE+'">'+_congrats+'</div>'):'';
-    return '<div class="card" style="margin-bottom:8px;position:relative">'+_hideKebab('hidePromoConfirm(\''+p._dbId+'\')')+'<div '+tap+'>'
-      +avStu(s,40)
-      +'<div style="flex:1;min-width:0">'
+    // The text column is identical on both branches; only what surrounds it
+    // differs. Extracted so the stripe path below concatenates to the exact
+    // same string it always has.
+    const _textCol='<div style="flex:1;min-width:0">'
         +'<div style="'+_eyebrowStyle+'">'+_eyebrow+'</div>'
         +'<div style="'+_nameStyle+'">'+s.name+'</div>'
         +_congratsHtml
         +'<div style="'+_dateStyle+'">'+when+'</div>'
-      +'</div>'
+      +'</div>';
+    // BELT: banner on top, then the avatar+text row. Same tap target and the
+    // same padding as the shared row, minus the flex (the banner is a block).
+    // beltSVG is what bb() delegates to - same drawing routine, same composite
+    // handling via beltDef/b.tip - called directly because bb() hardcodes 110px
+    // and this one has to stretch. Deliberately no background, border, or
+    // animation: at ~2 belt promotions a week anything louder gets tiring fast.
+    const _beltBody='<div onclick="viewStu(\''+s.id+'\',\'community\')" style="padding:14px 14px 12px;cursor:pointer">'
+      +'<div class="wall-belt" style="margin-bottom:12px">'+beltSVG(p.toBelt,0,'adult',110)+'</div>'
+      +'<div style="display:flex;align-items:flex-start;gap:12px">'+avStu(s,40)+_textCol+'</div>'
+    +'</div>';
+    const _stripeBody='<div '+tap+'>'
+      +avStu(s,40)
+      +_textCol
       +_trail
-      +'</div>'
+      +'</div>';
+    return '<div class="card" style="margin-bottom:8px;position:relative">'+_hideKebab('hidePromoConfirm(\''+p._dbId+'\')')
+      +(isBelt?_beltBody:_stripeBody)
       +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
       // Same wrapper for belt + stripe (they share this return). sharePromo
       // looks promotions up by legacy id (PROMOTION_LOG.find(x=>x.id===...)),
