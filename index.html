@@ -7671,13 +7671,10 @@ function rCommunityWall(){
       // divider, same oss row - deliberately WITHOUT the tint or the coloured
       // border, which belong to belt promotions and stay distinctive.
       const po=item.po;
-      const _mine=!!(S.profile&&S.profile.id&&po.author_user_id===S.profile.id);
-      // Author, admin and unit owner. isStaffOrOwner() is NOT the gate: it is true
-      // for every instructor, and a plain instructor must not remove or edit a
-      // colleague's post. isOwner() is this app's admin (see the Etapa 6 note on
-      // isStaffOrOwner - staff role is always 'instructor'; ownership is the
-      // unit-level fact).
-      const _canManage=_mine||isOwner();
+      // ONE predicate, the same one openPostEdit and removePostConfirm call. This
+      // used to re-implement the rule inline, which is exactly how the rendered
+      // controls and the actions behind them were able to disagree.
+      const _canManage=_canManagePost(po);
       // 'edited' only once the edit is a REVISION. Fixing a typo in the first few
       // minutes is part of publishing, not a change of record.
       const _editedAt=po.edited_at?new Date(po.edited_at):null;
@@ -7855,6 +7852,14 @@ const _POST_MAX=2000;
 // instructor's post. isOwner() is this app's admin.
 function _canManagePost(po){
   if(!po)return false;
+  // STAFF FIRST, and it is not optional. Writing posts is staff-only, so managing
+  // them is too. Authorship alone used to be enough, which meant someone MOVED
+  // FROM STAFF TO STUDENT kept edit + remove on the posts they had written -
+  // controls that then failed silently against RLS, which now requires is_staff()
+  // as well. Same guard openPostComposer uses, so composing and managing agree.
+  if(!isStaffOrOwner())return false;
+  // On top of staff: the author manages their own post, and a unit owner manages
+  // any post in their unit. A plain instructor still cannot touch a colleague's.
   const uid=S.profile&&S.profile.id;
   return !!((uid&&po.author_user_id===uid)||isOwner());
 }
