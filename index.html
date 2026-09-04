@@ -2168,6 +2168,10 @@ function staffDisplayName(s,opts){
 // PROMOTION_LOG so consumers don't need rewriting; an empty array
 // triggers the "No promotions yet" empty state in rCommunityWall.
 let PROMOTION_LOG=[];
+// Staff-written Wall posts (public.posts). Rows arrive already unit-scoped and
+// already filtered to active=true by RLS, so nothing here re-filters either -
+// same contract the promotion feed relies on for its own rows.
+let POSTS=[];
 
 // MOCK-FIX — EVENTS is hydrated from public.events (see hydrateData).
 // Empty on boot; if hydrate returns no rows or errors, EVENTS stays
@@ -2194,7 +2198,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -7574,6 +7578,29 @@ function rCommunityWall(){
   // Keyed on the STUDENTS legacy id both lists carry (welcomes: w.s.id, promos:
   // e.s.id via the STUDENTS resolve above), built from the SAME `welcomes`
   // array that renders. Members without an active welcome are unaffected.
+  // Staff-written posts. NOT re-filtered by unit and NOT date-capped: RLS already
+  // scopes the rows and returns only active ones, and an announcement is current
+  // until it is removed - unlike a promotion, which ages out of the 12-month
+  // window. Sorted into the same feed by created_at below.
+  // Unit guard, same shape as the promotion and welcome filters above. It is
+  // needed because the posts RLS is `is_unit_owner_any() OR unit_id =
+  // current_unit()`: an owner of more than one unit receives BOTH units' posts
+  // whatever the picker says, so without this a Neutral Bay post shows up in
+  // Camperdown.
+  // FIELD/SPACE MISMATCH - the reason this is not simply `po.unit===curUnit`:
+  // PROMOTION_LOG rows are mapped through uMap at hydrate, so p.unit holds the
+  // UNITS legacy id, which is what curUnit (curU.id) also holds. POSTS rows come
+  // straight off the select and carry the raw DB uuid in unit_id, so they have to
+  // be compared against curU._dbId. Comparing a uuid to a legacy id would match
+  // nothing and silently empty the feed of posts.
+  // Guarded on curUnitDb (the value actually compared) rather than curUnit: both
+  // are null together when no unit resolves, so the escape hatch behaves exactly
+  // like the other two filters, and a unit row somehow missing _dbId falls back to
+  // "don't filter" instead of hiding every post.
+  const curUnitDb=curU?curU._dbId:null;
+  const _wallPostRows=(POSTS||[])
+    .filter(po=>po&&(!curUnitDb||po.unit_id===curUnitDb))
+    .map(po=>({kind:'post',po,date:po.created_at}));
   const _welcomeJoinById={};
   welcomes.forEach(w=>{ if(w.s&&w.s.id)_welcomeJoinById[w.s.id]=w.s._createdAt; });
   // Interleave promotions + welcomes into one feed, newest first.
@@ -7592,6 +7619,7 @@ function rCommunityWall(){
     })
     .map(e=>({kind:'promo',p:e.p,s:e.s,date:e.p.date}))
     .concat(welcomes)
+    .concat(_wallPostRows)
     .sort((a,b)=>new Date(b.date)-new Date(a.date));
   const _wallShown=S.wallShown||5;
   const rows=feed.slice(0,_wallShown);
@@ -7604,7 +7632,12 @@ function rCommunityWall(){
     // must not claim a restriction that no longer exists.
     const _hd=_viewingOtherUnit()?('Viewing '+escHtml(S.unit)):'No promotions yet';
     const _bd='Belt and stripe promotions will appear here as they happen.';
-    return '<div class="feed">'
+    // The composer has to survive the empty state too - otherwise the very first
+    // post could never be written.
+    const _emptyCompose=isStaffOrOwner()
+      ?'<button onclick="openPostComposer()" style="width:100%;background:var(--card);border:1px dashed var(--border2);border-radius:12px;padding:13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--blue);cursor:pointer;margin-bottom:8px">+ Write a post</button>'
+      :'';
+    return '<div class="feed">'+_emptyCompose
       +'<div class="card" style="text-align:center;padding:32px 20px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">'+_hd+'</div>'
       +'<div style="font-size:12px;color:var(--text3);line-height:1.5">'+_bd+'</div>'
@@ -7618,6 +7651,7 @@ function rCommunityWall(){
   // a fresh fetch automatically.
   const promoIds=rows.filter(r=>r.kind==='promo'&&r.p).map(r=>r.p._dbId)
     .concat(rows.filter(r=>r.kind==='welcome'&&r.s).map(r=>r.s._dbId))
+    .concat(rows.filter(r=>r.kind==='post'&&r.po).map(r=>r.po.id))
     .filter(Boolean);
   _ensureWallReactions(promoIds);
   const beltLabel=k=>(BA[k]||BK[k]||{label:k}).label;
@@ -7625,10 +7659,50 @@ function rCommunityWall(){
   // card corner. stopPropagation so it doesn't trigger the card's viewStu tap.
   // Non-staff get an empty string → nothing renders.
   const _wallStaff=isStaffOrOwner();
-  const _hideKebab=(call)=>_wallStaff
+  // `allowed` overrides the default staff-wide gate. Promotions and welcomes pass
+  // nothing and keep _wallStaff, so their output is unchanged; a POST passes its
+  // own rule, because a plain instructor must not be able to remove a colleague's.
+  const _hideKebab=(call,allowed)=>((allowed===undefined?_wallStaff:allowed)
     ?'<button onclick="event.stopPropagation();'+call+'" title="Hide from Wall" aria-label="Hide from Wall" style="position:absolute;top:6px;right:6px;z-index:2;width:28px;height:28px;border:none;background:none;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>'
-    :'';
+    :'');
   const cards=rows.map(item=>{
+    if(item.kind==='post'){
+      // Staff-written post. Same shell as a promotion card - same padding, same
+      // divider, same oss row - deliberately WITHOUT the tint or the coloured
+      // border, which belong to belt promotions and stay distinctive.
+      const po=item.po;
+      const _mine=!!(S.profile&&S.profile.id&&po.author_user_id===S.profile.id);
+      // Author, admin and unit owner. isStaffOrOwner() is NOT the gate: it is true
+      // for every instructor, and a plain instructor must not remove or edit a
+      // colleague's post. isOwner() is this app's admin (see the Etapa 6 note on
+      // isStaffOrOwner - staff role is always 'instructor'; ownership is the
+      // unit-level fact).
+      const _canManage=_mine||isOwner();
+      // 'edited' only once the edit is a REVISION. Fixing a typo in the first few
+      // minutes is part of publishing, not a change of record.
+      const _editedAt=po.edited_at?new Date(po.edited_at):null;
+      const _createdAt=new Date(po.created_at);
+      const _showEdited=!!(_editedAt&&!isNaN(_editedAt)&&!isNaN(_createdAt)&&(_editedAt-_createdAt)>300000);
+      // escHtml on the body: it is user-written text going into innerHTML on a
+      // feed every member reads. white-space:pre-wrap keeps the author's line
+      // breaks without building HTML out of them.
+      const _body='<div style="font-size:14px;color:var(--text);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px">'+escHtml(po.body||'')+'</div>';
+      const _editBtn=_canManage
+        ?'<button onclick="event.stopPropagation();openPostEdit(\''+po.id+'\')" style="background:none;border:none;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0 14px 0 0;text-transform:uppercase">Edit</button>'
+        :'';
+      return '<div class="card" style="margin-bottom:8px;position:relative">'+_hideKebab('removePostConfirm(\''+po.id+'\')',_canManage)
+        +'<div style="padding:14px 14px 12px">'
+          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1">'+escHtml(po.author_name||'myBJJ')+'</div>'
+          +_body
+          +'<div style="font-size:11px;color:var(--text3);margin-top:8px">'+_promoWhen(po.created_at)+(_showEdited?' · edited':'')+'</div>'
+        +'</div>'
+        +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'
+          +_ossControlHtml(po.id,'post')
+          +_editBtn
+        +'</div>'
+      +'</div>';
+    }
     if(item.kind==='welcome'){
       // New adult member — same card container / avatar / fonts as a promo
       // card. Eyebrow "New member", white belt visual (deg 0), no arrow, no
@@ -7765,7 +7839,135 @@ function rCommunityWall(){
   const _loadMore=(feed.length>_wallShown)
     ?'<button onclick="wallLoadMore()" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--blue);cursor:pointer;margin-top:4px">Load more</button>'
     :'';
-  return '<div class="feed">'+cards+_loadMore+'</div>';
+  // Composer trigger — staff/owner only, via the same isStaffOrOwner() gate the
+  // hide-kebab uses. A student or parent never receives this markup at all.
+  const _composeBtn=_wallStaff
+    ?'<button onclick="openPostComposer()" style="width:100%;background:var(--card);border:1px dashed var(--border2);border-radius:12px;padding:13px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;color:var(--blue);cursor:pointer;margin-bottom:8px">+ Write a post</button>'
+    :'';
+  return '<div class="feed">'+_composeBtn+cards+_loadMore+'</div>';
+}
+// ── Wall posts — compose / edit / remove ────────────────────────────────────
+// public.posts. Text only in this phase; photo_path exists on the table and is
+// left null on purpose.
+const _POST_MAX=2000;
+// Author, admin or unit owner. Deliberately NOT isStaffOrOwner(): that is true
+// for every instructor, and a plain instructor must not edit or remove another
+// instructor's post. isOwner() is this app's admin.
+function _canManagePost(po){
+  if(!po)return false;
+  const uid=S.profile&&S.profile.id;
+  return !!((uid&&po.author_user_id===uid)||isOwner());
+}
+function openPostComposer(){
+  if(!isStaffOrOwner())return;                     // students/parents never reach this
+  S.postCompose={id:null,text:'',busy:false,err:''};
+  render();
+}
+function openPostEdit(id){
+  const po=(POSTS||[]).find(x=>x&&x.id===id);
+  if(!po||!_canManagePost(po))return;
+  S.postCompose={id:po.id,text:String(po.body||''),busy:false,err:''};
+  render();
+}
+function closePostComposer(){S.postCompose=null;render();}
+// Counter only — DOM-only so typing never triggers a render (same idiom the bug
+// report composer uses for its textarea).
+function _onPostInput(el){
+  try{
+    const n=String(el&&el.value||'').length;
+    const c=document.getElementById('post-count');
+    if(c){c.textContent=n+' / '+_POST_MAX;c.style.color=(n>_POST_MAX-200)?'var(--text2)':'var(--text3)';}
+    const b=document.getElementById('post-save');
+    if(b){const ok=String(el.value||'').trim().length>0&&n<=_POST_MAX;b.disabled=!ok;b.style.opacity=ok?'1':'.5';}
+  }catch(_){}
+}
+async function savePost(){
+  const st=S.postCompose;if(!st||st.busy)return;
+  const el=document.getElementById('post-body');
+  const txt=String((el&&el.value)||'').trim();
+  if(!txt||txt.length>_POST_MAX)return;             // 1..2000 after trim, as the column requires
+  st.text=txt;st.busy=true;st.err='';render();
+  const cli=initSupabase();
+  if(!cli){st.busy=false;st.err='Connection issue';render();return;}
+  try{
+    if(st.id){
+      // EDIT — body + edited_at. The 'edited' marker is a render decision (see the
+      // post card): it is suppressed when the edit lands within 5 minutes.
+      const nowIso=new Date().toISOString();
+      const r=await cli.from('posts').update({body:txt,edited_at:nowIso}).eq('id',st.id).select().single();
+      if(r&&r.error)throw r.error;
+      const po=(POSTS||[]).find(x=>x&&x.id===st.id);
+      if(po){po.body=(r&&r.data&&r.data.body)||txt;po.edited_at=(r&&r.data&&r.data.edited_at)||nowIso;}
+      S.postCompose=null;render();showSaveToast2('Post updated');
+    }else{
+      // NEW — author_user_id must equal auth.uid() for the INSERT policy to pass.
+      // author_name is a SNAPSHOT: the column exists so the post still reads
+      // correctly after the author leaves the academy.
+      const uid=S.profile&&S.profile.id;
+      const unitId=meUnitDbId();                    // active unit, from state - never the DOM
+      if(!uid||!unitId){st.busy=false;st.err='Could not resolve your account or unit';render();return;}
+      const r=await cli.from('posts').insert({
+        unit_id:unitId,
+        author_user_id:uid,
+        author_name:(S.me&&S.me.name)||(S.profile&&S.profile.full_name)||'',
+        body:txt
+      }).select().single();
+      if(r&&r.error)throw r.error;
+      if(r&&r.data)POSTS=[r.data].concat(POSTS||[]);
+      S.postCompose=null;render();showSaveToast2('Posted');
+    }
+  }catch(e){
+    console.warn('[mybjj] savePost:',e);
+    const s2=S.postCompose;if(s2){s2.busy=false;s2.err=friendlyMutationError(e)||'Could not save';render();}
+  }
+}
+function removePostConfirm(id){
+  const po=(POSTS||[]).find(x=>x&&x.id===id);
+  if(!po||!_canManagePost(po))return;
+  openConfirm({title:'Remove post?',message:'Remove this post from the Wall? It stops being visible to members.',dangerLabel:'Remove',onConfirm:()=>removePost(id)});
+}
+async function removePost(id){
+  const i=(POSTS||[]).findIndex(x=>x&&x.id===id);
+  if(i<0)return;
+  const po=POSTS[i];
+  POSTS=POSTS.filter(x=>x&&x.id!==id);render();     // optimistic
+  const cli=initSupabase();
+  if(!cli){POSTS.splice(i,0,po);render();showSaveToast2('Connection issue','error');return;}
+  // active=false, never DELETE: there is no delete policy on public.posts, so a
+  // delete would be rejected and the row would silently stay.
+  const r=await cli.from('posts').update({active:false}).eq('id',id);
+  if(r&&r.error){
+    POSTS.splice(i,0,po);render();
+    console.warn('[mybjj] removePost:',r.error);
+    showSaveToast2(friendlyMutationError(r.error)||'Could not remove','error');
+    return;
+  }
+  showSaveToast2('Post removed');
+}
+// Mounted from rApp(), like every other sheet - a .cov is position:absolute and
+// must anchor to #app, not to whatever scroller happens to be under it.
+function rPostComposer(){
+  const st=S.postCompose;
+  if(!st)return '';
+  const initLen=String(st.text||'').length;
+  const ok=String(st.text||'').trim().length>0&&initLen<=_POST_MAX&&!st.busy;
+  const errBlock=st.err
+    ?'<div style="color:var(--red-text);font-size:13px;margin-top:10px;text-align:center">'+escHtml(st.err)+'</div>'
+    :'';
+  return '<div class="cov" onclick="'+(st.busy?'':'closePostComposer()')+'" style="align-items:center;justify-content:center;z-index:300;padding:20px">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:460px;padding:18px">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:18px;letter-spacing:.5px;color:var(--text);margin-bottom:12px">'+(st.id?'Edit post':'Write a post')+'</div>'
+      +'<textarea id="post-body" maxlength="'+_POST_MAX+'" oninput="_onPostInput(this)" placeholder="Share something with the academy…" '
+        +'style="width:100%;box-sizing:border-box;min-height:150px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);line-height:1.5;resize:vertical;outline:none">'+escHtml(st.text||'')+'</textarea>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">'
+        +'<div id="post-count" style="font-size:11px;color:'+(initLen>_POST_MAX-200?'var(--text2)':'var(--text3)')+'">'+initLen+' / '+_POST_MAX+'</div>'
+        +'<div style="display:flex;gap:8px">'
+          +'<button onclick="closePostComposer()" '+(st.busy?'disabled':'')+' style="background:none;border:1px solid var(--border);border-radius:9px;padding:8px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2);cursor:pointer">Cancel</button>'
+          +'<button id="post-save" onclick="savePost()" '+(ok?'':'disabled')+' style="background:var(--blue);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer;opacity:'+(ok?'1':'.5')+'">'+(st.busy?'Saving…':(st.id?'Save':'Post'))+'</button>'
+        +'</div>'
+      +'</div>'
+      +errBlock
+    +'</div></div>';
 }
 // Wall hide — soft, reversible-by-SQL, staff-only. The card is removed from
 // the public feed (a flag); the underlying promotion / member record stays
@@ -7801,8 +8003,11 @@ async function hideWelcome(dbId){
 // kids-excluded); tapping the count opens a small modal listing
 // reactors as avatar + name.
 const _OSS_FIST_SVG='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M6 11V8a2 2 0 0 1 4 0v3"/><path d="M10 11V7a2 2 0 0 1 4 0v4"/><path d="M14 11V8a2 2 0 0 1 4 0v3"/><path d="M6 11h12v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4z"/></svg>';
-function _ossControlHtml(promoDbId){
+// targetType defaults to 'promotion' so every existing call site is byte-
+// identical; the post card passes 'post'. toggle_oss already accepts both.
+function _ossControlHtml(promoDbId,targetType){
   if(!promoDbId)return '';
+  const _tt=targetType||'promotion';
   const r=(S.wallReactions||{})[promoDbId]||{count:0,reacted:false,reactors:[]};
   const reacted=!!r.reacted;
   const count=Number(r.count||0);
@@ -7813,7 +8018,7 @@ function _ossControlHtml(promoDbId){
   // _OSS_FIST_SVG const is retained below for backward-compat / quick
   // rollback; only the usage here was swapped.
   const heartIcon='<img src="'+OSS_HEART_URI+'" alt="Oss" style="width:14px;height:14px;display:block;flex-shrink:0">';
-  const btn='<button onclick="event.stopPropagation();toggleOss(\'promotion\',\''+promoDbId+'\')" style="background:'+bg+';color:'+fg+';border:1px solid '+bd+';border-radius:18px;padding:0 12px;height:30px;display:inline-flex;align-items:center;gap:6px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;line-height:1">'+heartIcon+'Oss</button>';
+  const btn='<button onclick="event.stopPropagation();toggleOss(\''+_tt+'\',\''+promoDbId+'\')" style="background:'+bg+';color:'+fg+';border:1px solid '+bd+';border-radius:18px;padding:0 12px;height:30px;display:inline-flex;align-items:center;gap:6px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;line-height:1">'+heartIcon+'Oss</button>';
   // V2 — avatar stack replaces the standalone numeric count. Top 3
   // most-recent reactors (reverse-ordered, since toggleOss appends
   // the current user to the tail of r.reactors). "+N" overflow when
@@ -7870,7 +8075,12 @@ async function _ensureWallReactions(ids){
   if(S.wallReactionsLoading)return;
   S.wallReactionsLoading=true;
   S.wallReactionsKey=key;
-  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').eq('target_type','promotion').in('target_id',ids);
+  // 'post' joins 'promotion' here because the Wall now mixes both and they share
+  // ONE reaction store, one control and one toggle_oss call. Without this the
+  // pill on a post would render 0/unreacted on every load and only look right
+  // until the next refresh. target_id is a uuid on both sides, so merging them
+  // into one map cannot collide.
+  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post']).in('target_id',ids);
   S.wallReactionsLoading=false;
   if(r&&r.error){
     console.warn('[mybjj] wall_reactions:',r.error);
@@ -10885,7 +11095,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -14089,6 +14299,31 @@ async function _fetchAllAttendance(c, fromDate, toDate){
 // (no dupes, no skips). Column list is copied verbatim from the query this
 // replaces, embedded parent_user join included. Returns the same {data,error}
 // shape as _fetchAllAttendance because the caller reads results positionally.
+// Wall posts, paginated like _fetchAllStudents. The explicit .order() is
+// load-bearing, not decoration: PostgREST caps an unordered select at 1000 rows
+// and the rows it drops are arbitrary - in practice the newest, which on a feed
+// is exactly the set that matters. created_at DESC also means that if the 10-page
+// safety cap were ever hit, what survives is the most recent posts rather than
+// the oldest. id is the tiebreak so paging is deterministic when two posts share
+// a timestamp.
+async function _fetchAllPosts(c){
+  const PAGE=1000;
+  const COLS='id,unit_id,author_user_id,author_name,body,photo_path,created_at,edited_at,active';
+  let all=[],from=0;
+  for(let page=0;page<10;page++){
+    const r=await c.from('posts').select(COLS)
+      .eq('active',true)
+      .order('created_at',{ascending:false})
+      .order('id',{ascending:false})
+      .range(from,from+PAGE-1);
+    if(r&&r.error)return {data:null,error:r.error};
+    const rows=(r&&r.data)||[];
+    all=all.concat(rows);
+    if(rows.length<PAGE)break;
+    from+=PAGE;
+  }
+  return {data:all,error:null};
+}
 async function _fetchAllStudents(c){
   const PAGE = 1000;
   const COLS = 'id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,nogi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_student_id,parent2_student_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,membership_level,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)';
@@ -14152,9 +14387,17 @@ async function refetchUnitScopedData(){
     // every existing index in this positional array is untouched. RLS su_select is
     // `using (true)`, matching staff_select, so students and parents read it too.
     c.from('staff_units').select('staff_id,unit_id'),
+    // posts — APPENDED LAST, same discipline as staff_units above: every
+    // existing positional index stays untouched.
+    _fetchAllPosts(c),
   ]);
   const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
   const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9),ce=get(10),ts=get(11),su=get(12);
+  const po=get(13);
+  // Wall posts. An error leaves POSTS empty rather than stale - a failed fetch
+  // must not leave yesterday's feed looking current.
+  if(po&&po.data)POSTS=po.data;
+  else{POSTS=[];if(po&&po.error)console.warn('[mybjj] posts:',po.error);}
   // Rebuild the visitor map each refetch (empty on error / non-staff).
   VISITORS={};
   if(vs&&vs.data){for(const r of vs.data){if(r&&r.id)VISITORS[r.id]={id:r.id,_dbId:r.id,name:r.full_name,belt:r.belt,prog:r.prog,initials:r.initials,unit:uMap[r.unit_id]||null,_visitor:true};}}
@@ -19821,7 +20064,7 @@ function _swSafeToReload(){
     if(typeof S==='undefined'||!S)return false;
     // Any open modal / sheet / sub-panel / in-flight action blocks the reload.
     if(S.editCls!=null)return false;
-    if(S.addCls||S.cdel||S.markP||S.closeDay||S.oneoff||S.editJny||S.pcInfo)return false;
+    if(S.addCls||S.cdel||S.markP||S.closeDay||S.oneoff||S.editJny||S.pcInfo||S.postCompose)return false;
     if(S.contactLogFor||S.qrFor||S.waiverDoc||S.panelOpen||S.sub||S.inboxOpen)return false;
     if(S.cardEx||S.promoteFor||S.fbModalFor||S.staffNoteModalFor||S.classAdd)return false;
     if(S.cropOpen||S.addStaff||S.removeStaffConfirm||S.emailEdit||S.changeEmail)return false;
