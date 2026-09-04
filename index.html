@@ -13133,7 +13133,14 @@ async function _shareCard(kind,legacyId){
       if(!canShareCard(s))return;
       const isBelt=!!p.isNewBelt||p.type==='belt';
       belt=p.toBelt||'white';deg=p.toDeg|0;
-      eyebrow=isBelt?'New promotion':(belt==='black'?'New degree':'New stripe');
+      // Same expression the Wall belt branch uses (beltDef(...).label+' belt'), so
+      // the image a student posts says exactly what the app said - it used to read
+      // 'NEW PROMOTION' while the feed card beside it said 'BLUE BELT'.
+      // 'adult' mirrors the Wall verbatim: beltDef falls back BA→BK, so a composite
+      // kids belt resolves to 'Grey/White' either way. `belt` is p.toBelt||'white' -
+      // the same value the canvas draws with, so the label and the drawn belt cannot
+      // disagree. Degree/stripe sides untouched.
+      eyebrow=isBelt?(beltDef(belt,'adult').label+' belt'):(belt==='black'?'New degree':'New stripe');
       congrats=isBelt?_wallCongrats('belt',p.toBelt,p.toDeg||0,p._dbId):_wallCongrats('stripe',p.toBelt,deg,p._dbId);
       unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
       text=sharePromoText(p,s);
