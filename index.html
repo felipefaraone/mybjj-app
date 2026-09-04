@@ -14801,33 +14801,6 @@ async function hydrateData(){
     // loadMyStudent so a linked kid stays visible + checkinable no matter
     // which unit the parent's dropdown is on. Never re-run on unit switch.
     await loadMyKids();
-    // Batch 2a — origin-belt backfill. Runs after both STUDENTS and
-    // PROMOTION_LOG are populated so the earliest-promotion lookup is
-    // valid. Skips students whose journey already contains an entry
-    // at the derived origin belt — that's the idempotency guard: once
-    // a row is seeded (manually, by create, or by this backfill on a
-    // previous load), subsequent hydrates leave it alone.
-    try{
-      const _beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
-      STUDENTS.forEach(s=>{
-        if(!s||!s._dbId)return;
-        const journey=Array.isArray(s.journey)?s.journey:[];
-        // Earliest non-correction promotion → fromBelt; fall back to
-        // the student's current belt when no promotion history exists.
-        const promos=PROMOTION_LOG
-          .filter(p=>p&&p.studentId===s.id&&p.type!=='correction'&&p.fromBelt&&p.date)
-          .slice()
-          .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-        const originBelt=(promos[0]&&promos[0].fromBelt)||s.belt||null;
-        if(!originBelt)return;
-        if(journey.some(j=>j&&j.belt===originBelt))return;
-        const entry={belt:originBelt,label:_beltLabel(originBelt)+' belt',date:null,done:true,auto:true,origin:true};
-        s.journey=[entry].concat(journey);
-        // Fire-and-forget persistence — never block hydrate on this.
-        c.from('students').update({journey:s.journey}).eq('id',s._dbId)
-          .then(r=>{if(r&&r.error)console.warn('[mybjj] origin backfill update:',r.error);});
-      });
-    }catch(e){console.warn('[mybjj] origin backfill loop:',e);}
     // EVENTS / SCHED / ATTENDANCE / feedback-attach are populated by
     // refetchUnitScopedData() above (shared boot + unit-switch path).
     // Batch B — fire-and-forget cleanup of stale 'going' rows past
