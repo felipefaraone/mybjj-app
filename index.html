@@ -7488,6 +7488,16 @@ const WALL_COPY={
     brown:['Brown belt. Refined, dangerous, almost there.','Brown belt earned. The final stretch before black.','From purple to brown. Elite company now.','Brown belt. Mastery taking shape.','Brown. Sharp and heavy. Oss!'],
     black:['Black belt. A decade of the grind, right here. Oss!','Black belt earned. The rarest air in jiu jitsu.','From white to black. A whole journey, honored.','Black belt. Years of blood on the mat, all of it earned.','Black belt. Respect.']
   },
+  // Automatic milestone posts (public.posts kind='milestone'), written by a DB
+  // trigger at 50 and 100 total classes. Keyed by the milestone number so the
+  // card can look the set up directly. Selected with _wallVariant seeded on the
+  // post id - the SAME mechanism the promotion copy uses - so two students
+  // crossing the same number read differently, and a given post never changes
+  // its line between renders.
+  milestone:{
+    50:['50 classes in. The habit is real now.','50 classes. That is a lot of mat time.','50 classes deep. Consistency showing.','50 on the board. Kept turning up.','50 classes. The hard part was the first ten.','50 classes done. Still learning, still going.','50 classes. Quietly stacking them up.','50 sessions in. The mat knows this one.','50 classes. No shortcuts to that number.','50 classes logged. Earned one at a time.','50 classes. Showing up is the whole trick.','50 in the book. Onwards.'],
+    100:['100 classes. Triple digits.','100 classes in. That is commitment.','100 classes. The mat has seen a lot of this one.','100 sessions deep. Serious mileage.','100 classes. Built one session at a time.','100 on the board. Not many get here.','100 classes. The grind paid off.','100 classes logged. Respect.','100 classes in. Still hungry.','100 classes. A hundred times choosing the mat.','100 done. A long way from the first one.','100 classes. That number speaks for itself.']
+  },
   welcome:['Just joined the mats at MyBJJ. Welcome aboard!','New face at MyBJJ. See you on the mats!','Welcome to MyBJJ. The journey starts now.','Just stepped onto the mats at MyBJJ. Oss!','New member at MyBJJ. Welcome to the team.'],
   welcomeGraded:['Welcome to MyBJJ. A NAME_BELT joins the mats. Oss!','New to MyBJJ, already a NAME_BELT. Welcome aboard!','A NAME_BELT joins MyBJJ. Great to have you on the mats.','Welcome to MyBJJ. Glad to have a NAME_BELT rolling with us.','New NAME_BELT at MyBJJ. Welcome to the team.']
 };
@@ -7600,7 +7610,15 @@ function rCommunityWall(){
   const curUnitDb=curU?curU._dbId:null;
   const _wallPostRows=(POSTS||[])
     .filter(po=>po&&(!curUnitDb||po.unit_id===curUnitDb))
-    .map(po=>({kind:'post',po,date:po.created_at}));
+    // A milestone is ABOUT someone, so it resolves its subject here, once.
+    // subject_student_id is the students uuid, which is STUDENTS._dbId.
+    .map(po=>({kind:'post',po,date:po.created_at,
+      stu:(po.kind==='milestone'&&po.subject_student_id)
+        ?(STUDENTS.find(x=>x&&x._dbId===po.subject_student_id)||null)
+        :null}))
+    // Unresolvable subject → drop the row entirely. Filtered HERE rather than in
+    // the card so it never takes up one of the paged slots and renders nothing.
+    .filter(r=>r.po.kind!=='milestone'||!!r.stu);
   const _welcomeJoinById={};
   welcomes.forEach(w=>{ if(w.s&&w.s.id)_welcomeJoinById[w.s.id]=w.s._createdAt; });
   // Interleave promotions + welcomes into one feed, newest first.
@@ -7666,6 +7684,49 @@ function rCommunityWall(){
     ?'<button onclick="event.stopPropagation();'+call+'" title="Hide from Wall" aria-label="Hide from Wall" style="position:absolute;top:6px;right:6px;z-index:2;width:28px;height:28px;border:none;background:none;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>'
     :'');
   const cards=rows.map(item=>{
+    if(item.kind==='post'&&item.po&&item.po.kind==='milestone'){
+      // Automatic milestone (50 / 100 classes). Rendered like a PROMOTION card,
+      // not like a manual post: it is about a person the way a promotion is, so
+      // it gets the avatar, the name and the belt in the trailing column.
+      // Styles are spelled out here rather than reused from the promo branch
+      // below because those consts are declared after this return - same reason
+      // the welcome branch carries its own copies.
+      // NO tint and NO coloured border: those stay exclusive to belt promotions.
+      const po=item.po;
+      const ms=item.stu;                                  // guaranteed by the filter above
+      const mN=Number(po.milestone||0);
+      const mTap='onclick="viewStu(\''+ms.id+'\',\'community\')" style="display:flex;align-items:flex-start;gap:12px;padding:14px 14px 12px;cursor:pointer"';
+      // var(--blue), like the stripe eyebrow. The belt branch switched to
+      // var(--text) only because it sits on a tinted ground; this card has none.
+      const mEyebrow='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1';
+      const mName='font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px;line-height:1.2';
+      const mDate='font-size:11px;color:var(--text3);margin-top:4px';
+      // posts.body holds '50 classes' as DATA. The displayed line comes from
+      // WALL_COPY, seeded on the post id via the shared _wallVariant.
+      const mCongrats=_wallVariant((WALL_COPY.milestone||{})[mN]||[],po.id);
+      const mCongratsHtml=mCongrats?('<div style="'+_WALL_CONGRATS_STYLE+'">'+mCongrats+'</div>'):'';
+      // Owner-only in practice: _canManagePost falls through to isOwner() because
+      // a milestone has author_user_id NULL, so no author test can pass.
+      const mCanManage=_canManagePost(po);
+      return '<div class="card" style="margin-bottom:8px;position:relative">'+_hideKebab('removePostConfirm(\''+po.id+'\')',mCanManage)+'<div '+mTap+'>'
+        +avStu(ms,40)
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="'+mEyebrow+'">'+mN+' classes</div>'
+          +'<div style="'+mName+'">'+ms.name+'</div>'
+          +mCongratsHtml
+          +'<div style="'+mDate+'">'+_promoWhen(po.created_at)+'</div>'
+        +'</div>'
+        +'<div style="display:inline-flex;flex-direction:column;gap:0;align-items:center;flex-shrink:0">'
+          +beltSVG(ms.belt,ms.deg|0,ms.prog||'adult',110)
+        +'</div>'
+        +'</div>'
+        +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
+        // No Edit: nobody wrote this, so there is nothing to correct.
+        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'
+          +_ossControlHtml(po.id,'post')
+        +'</div>'
+      +'</div>';
+    }
     if(item.kind==='post'){
       // Staff-written post. Same shell as a promotion card - same padding, same
       // divider, same oss row - deliberately WITHOUT the tint or the coloured
@@ -7871,6 +7932,10 @@ function openPostComposer(){
 function openPostEdit(id){
   const po=(POSTS||[]).find(x=>x&&x.id===id);
   if(!po||!_canManagePost(po))return;
+  // A milestone has no author and no prose to fix - its body is data ('50
+  // classes'), and the visible line comes from WALL_COPY. The card renders no
+  // Edit control; this closes the function to a direct call as well.
+  if(po.kind==='milestone')return;
   S.postCompose={id:po.id,text:String(po.body||''),busy:false,err:''};
   render();
 }
@@ -14324,7 +14389,7 @@ async function _fetchAllAttendance(c, fromDate, toDate){
 // a timestamp.
 async function _fetchAllPosts(c){
   const PAGE=1000;
-  const COLS='id,unit_id,author_user_id,author_name,body,photo_path,created_at,edited_at,active';
+  const COLS='id,unit_id,author_user_id,author_name,body,photo_path,created_at,edited_at,active,kind,subject_student_id,milestone';
   let all=[],from=0;
   for(let page=0;page<10;page++){
     const r=await c.from('posts').select(COLS)
