@@ -7938,9 +7938,20 @@ async function removePost(id){
   POSTS=POSTS.filter(x=>x&&x.id!==id);render();     // optimistic
   const cli=initSupabase();
   if(!cli){POSTS.splice(i,0,po);render();showSaveToast2('Connection issue','error');return;}
-  // active=false, never DELETE: there is no delete policy on public.posts, so a
-  // delete would be rejected and the row would silently stay.
-  const r=await cli.from('posts').update({active:false}).eq('id',id);
+  // Soft delete via RPC. TWO reasons this is not a plain PATCH and not a DELETE:
+  //   NOT A DELETE — there is no delete policy on public.posts, so a delete is
+  //     rejected and the row silently stays.
+  //   NOT A DIRECT UPDATE — posts_select requires `active is true`, and Postgres
+  //     applies a SELECT policy as an implicit WITH CHECK on the row an UPDATE
+  //     PRODUCES. Setting active=false is exactly the update that makes the row
+  //     unreadable, so it can never satisfy that check: the PATCH came back 403
+  //     / 42501 even for an owner who authored the post and passed every arm of
+  //     the UPDATE policy. Editing works only because the row stays active.
+  // set_post_active is SECURITY DEFINER and enforces the same rule server-side
+  // (authenticated, approved, staff, post exists, author or unit owner), so this
+  // is not a way around the permission check - it is the same check, somewhere
+  // the SELECT policy cannot veto the result.
+  const r=await cli.rpc('set_post_active',{p_id:id,p_active:false});
   if(r&&r.error){
     POSTS.splice(i,0,po);render();
     console.warn('[mybjj] removePost:',r.error);
