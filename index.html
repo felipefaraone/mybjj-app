@@ -3478,10 +3478,62 @@ function closeJnyDeclare(){S.jnyDeclare=null;render();}
 // students.belt — RLS would not let it — but the app was offering a blue belt
 // the option to put a BLACK belt line on a timeline the whole gym reads. Don't
 // offer what cannot be true.
+// What is ALREADY on the timeline, as a set of 'belt#degree' keys. The ceiling
+// above answers "what could he have earned"; this answers "what has he not
+// recorded yet", which is the actual question. A blue belt whose blue belt is
+// already on the timeline was still being offered a second one.
+//
+// The SET comes from _jnyFromPromotions so the sheet and the timeline can never
+// disagree about what is recorded — same corrections excluded, same staff/student
+// merge, same dedupe. The DEGREE does not: an entry carries `belt` but not the
+// number, which lives only inside the label text. So each entry is resolved back
+// to its PROMOTION_LOG row by _promoId and the pair is read off isNewBelt/toDeg —
+// the exact two fields _jnyFromPromotions builds the label from, so a "Blue belt"
+// entry keys as blue#0 and a "2nd stripe" entry as blue#2 without ever parsing a
+// string. (Reading it off the entry would have meant adding a field to
+// _jnyFromPromotions, which is on the do-not-touch list.)
+function _jnyDeclTaken(stu){
+  const set=Object.create(null);
+  if(!stu)return set;
+  const byId=Object.create(null);
+  (PROMOTION_LOG||[]).forEach(p=>{if(!p)return;const k=p._dbId||p.id;if(k!=null)byId[k]=p;});
+  (_jnyFromPromotions(stu)||[]).forEach(m=>{
+    if(!m||!m.belt||m._promoId==null)return;
+    const row=byId[m._promoId];
+    if(!row)return;
+    const deg=row.isNewBelt?0:(Number(row.toDeg)||0);
+    set[m.belt+'#'+deg]=true;
+  });
+  return set;
+}
+// The degrees still addable on one belt: the ceiling, minus what is recorded.
+// `taken` is threaded in so _jnyDeclBelts can build it once instead of once per
+// belt — thirteen passes over PROMOTION_LOG on the kids order otherwise.
+function _jnyDeclDegs(stu,belt,taken){
+  if(!stu||!belt)return [];
+  const t=taken||_jnyDeclTaken(stu);
+  const mx=_jnyDeclMaxDeg(stu,belt);
+  const out=[];
+  for(let n=0;n<=mx;n++)if(!t[belt+'#'+n])out.push(n);
+  return out;
+}
 function _jnyDeclBelts(stu){
   const ORDER=(stu&&stu.prog==='kids')?BELT_ORDER_K:BELT_ORDER_A;
   const ci=stu?ORDER.indexOf(stu.belt):-1;
-  return ci<0?ORDER.slice():ORDER.slice(0,ci+1);   // unknown belt -> cap nothing rather than empty the list
+  const capped=ci<0?ORDER.slice():ORDER.slice(0,ci+1);   // unknown belt -> cap nothing rather than empty the list
+  // A belt with nothing left to add drops out of the list entirely. Blue stays
+  // while its stripes are still addable, even once the blue belt itself is
+  // recorded.
+  const taken=_jnyDeclTaken(stu);
+  return capped.filter(b=>_jnyDeclDegs(stu,b,taken).length>0);
+}
+// Their own declared entries — the set the remove list at the bottom of the
+// sheet renders. Counted here so the Journey entry point does not repeat the
+// filter.
+function _jnyDeclMine(stu){
+  return (_jnyFromPromotions(stu)||[])
+    .filter(m=>m&&m.source==='declared'&&m._promoId)
+    .sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
 }
 // Stripes depend on WHICH belt was picked:
 //   a belt BELOW the current one — every stripe was passed through, so 0..4;
@@ -3504,10 +3556,8 @@ function _jnyDeclBeltOptsHtml(stu,sel){
     '<option value="'+b+'" '+(b===sel?'selected':'')+'>'+(BA[b]||BK[b]||{label:b}).label+'</option>').join('');
 }
 function _jnyDeclDegOptsHtml(stu,belt,sel){
-  const mx=_jnyDeclMaxDeg(stu,belt);
-  let out='';
-  for(let n=0;n<=mx;n++)out+='<option value="'+n+'" '+(n===(sel|0)?'selected':'')+'>'+(n===0?'No stripes':(n+_ordSuffix(n)+' stripe'))+'</option>';
-  return out;
+  return _jnyDeclDegs(stu,belt).map(n=>
+    '<option value="'+n+'" '+(n===(sel|0)?'selected':'')+'>'+(n===0?'No stripes':(n+_ordSuffix(n)+' stripe'))+'</option>').join('');
 }
 // Compares two date strings at the COARSER of their two granularities. The
 // strings carry their own precision in their length — _jnyFromPromotions emits
@@ -3551,6 +3601,13 @@ function _jnyDeclDate(st){
 function _jnyDeclError(st,stu){
   if(!st||!stu)return 'Something went wrong — close and try again.';
   if(!st.belt)return 'Pick the belt you were awarded.';
+  // Already on the timeline. The dropdowns no longer offer it, so this only
+  // fires if the sheet went stale under a concurrent change — but nothing else
+  // stops a duplicate: RLS has no opinion on it, and the timeline would simply
+  // show the same milestone twice.
+  if(_jnyDeclTaken(stu)[st.belt+'#'+(st.deg|0)]){
+    return 'That one is already on your journey. Pick something that is still missing.';
+  }
   if(!st.y)return 'Pick at least the year.';
   if(st.d&&!st.m)return 'Pick a month too, or clear the day.';
   const dt=_jnyDeclDate(st);
@@ -3628,8 +3685,11 @@ function setJnyDeclField(k,v){
     // reason the rest of this sheet is DOM-only — a re-render would tear the
     // sheet down under the finger mid-choice.
     const stu=_jnyDeclSubject(st.sid);
-    const mx=_jnyDeclMaxDeg(stu,st.belt);
-    if((st.deg|0)>mx)st.deg=mx;                 // clamp before repainting, never leave a dead selection
+    // Snap to an option that actually exists rather than clamping to the
+    // ceiling: with recorded milestones excluded the range has holes, so the
+    // top of it is not necessarily offered.
+    const degs=_jnyDeclDegs(stu,st.belt);
+    if(degs.indexOf(st.deg|0)<0)st.deg=degs.length?degs[0]:0;
     const sel=document.getElementById('jd-deg');
     if(sel&&stu)sel.innerHTML=_jnyDeclDegOptsHtml(stu,st.belt,st.deg|0);
   }
@@ -3730,10 +3790,12 @@ function rJnyDeclareSheet(){
   if(!st)return '';
   const stu=_jnyDeclSubject(st.sid);
   if(!stu)return '';
+  const addable=_jnyDeclBelts(stu);
   const beltOpts=_jnyDeclBeltOptsHtml(stu,st.belt);
-  // Before a belt is chosen, show the range the CURRENT belt allows — the most
-  // restrictive of the offered set. Picking a lower belt widens it back to 0..4.
-  const degOpts=_jnyDeclDegOptsHtml(stu,st.belt||stu.belt,st.deg|0);
+  // Before a belt is chosen, preview the first belt still offered — not the
+  // student's current belt, which may have nothing left to add and would show an
+  // empty stripe list.
+  const degOpts=_jnyDeclDegOptsHtml(stu,st.belt||addable[0]||stu.belt,st.deg|0);
   // Three selects rather than a native date input — the SAME reason the Add
   // Student form gives for date of birth: type="date" cannot reach a distant
   // year without dozens of taps, and three dropdowns behave identically on
@@ -3753,9 +3815,7 @@ function rJnyDeclareSheet(){
   // Their own declared entries, straight off the same derivation the timeline
   // uses — so what they remove here is exactly what they see there. Academy
   // rows are filtered out and get no control at all.
-  const mine=_jnyFromPromotions(stu)
-    .filter(m=>m&&m.source==='declared'&&m._promoId)
-    .sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+  const mine=_jnyDeclMine(stu);
   const mineRows=mine.length
     ? mine.map(m=>'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)">'
         +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600">'+escHtml(m.label||'—')+'</div>'
@@ -3770,8 +3830,10 @@ function rJnyDeclareSheet(){
     +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;margin:0 auto;padding:18px;max-height:calc(100vh - 40px);overflow:auto">'
       +'<button onclick="closeJnyDeclare()" aria-label="Close" '+(st.busy?'disabled':'')+' style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
       +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:18px;letter-spacing:.5px;color:var(--text);margin-bottom:4px;padding-right:40px">Add past history</div>'
-      +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin-bottom:14px;padding-right:40px">Belts you earned before joining myBJJ. This does not change your current belt, your class count, or when you are next due.</div>'
-      +'<div class="ef">'
+      +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin-bottom:14px;padding-right:40px">'+(addable.length
+        ?'Belts you earned before joining myBJJ. This does not change your current belt, your class count, or when you are next due.'
+        :'Every belt and stripe up to your current rank is already on your journey — there is nothing left to add. If something is wrong, remove it below and add it again.')+'</div>'
+      +(addable.length?('<div class="ef">'
         +'<div class="erow"><div class="elbl">Belt</div><select class="esel" id="jd-belt" style="text-align:right" onchange="setJnyDeclField(\'belt\',this.value)">'+beltOpts+'</select></div>'
         +'<div class="erow"><div class="elbl">Stripes</div><select class="esel" id="jd-deg" style="text-align:right" onchange="setJnyDeclField(\'deg\',this.value)">'+degOpts+'</select></div>'
         +'<div class="erow"><div class="elbl">When</div><div style="display:flex;gap:6px;flex:1;flex-wrap:wrap;justify-content:flex-end">'
@@ -3785,7 +3847,10 @@ function rJnyDeclareSheet(){
       +'<div style="display:flex;gap:10px;margin-top:14px">'
         +'<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeJnyDeclare()" '+(st.busy?'disabled':'')+'>Cancel</button>'
         +'<button id="jd-save" class="bblue" style="flex:1;padding:12px;opacity:'+(ok?'1':'.5')+'" onclick="saveJnyDeclare()" '+(ok?'':'disabled')+'>'+(st.busy?'Saving…':'Add')+'</button>'
-      +'</div>'
+      +'</div>')
+      // Nothing left to add: no dropdowns, no Add. The remove list still renders
+      // below, which is the whole reason the sheet stays reachable at all.
+      :('<div style="display:flex;margin-top:4px"><button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeJnyDeclare()">Close</button></div>'))
       +mineBlock
     +'</div></div>';
 }
@@ -9807,9 +9872,22 @@ function rProgress(){
   //   stu._dbId             there is a students row to write against.
   // Staff add history through Promote, which is why this never appears for them.
   var _canDeclare=!_kidActive&&!!(stu&&stu._dbId&&stu._userId&&S.profile&&stu._userId===S.profile.id);
-  var _declareBtn=_canDeclare
+  // Ownership (above) says who MAY open the sheet; these two say whether there is
+  // anything in it. Both come from the same helpers the sheet itself uses, never
+  // a second computation that could drift from it.
+  //   _declAddable  belts with at least one milestone still missing
+  //   _declMine     entries they declared, i.e. the remove list
+  // Nothing to add AND nothing to remove -> no button, because the sheet would
+  // be empty. Nothing to add but something to remove -> the button stays and
+  // changes what it says: hiding it on "nothing left to add" alone would strand
+  // the remove list, which lives only inside this sheet, and a student who
+  // completed their history could never undo a typo in it.
+  var _declAddable=_canDeclare?_jnyDeclBelts(stu).length:0;
+  var _declMine=_canDeclare?_jnyDeclMine(stu).length:0;
+  var _declLbl=_declAddable?'Trained before joining? Add your history':'Manage the history you added';
+  var _declareBtn=(_canDeclare&&(_declAddable||_declMine))
     ?'<div style="padding:10px 16px 12px;text-align:center;border-top:1px solid var(--border);margin-top:4px">'
-      +'<button onclick="openJnyDeclare(\''+stu.id+'\')" style="background:none;border:1px dashed var(--border2);border-radius:10px;padding:9px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--blue);cursor:pointer">Trained before joining? Add your history</button>'
+      +'<button onclick="openJnyDeclare(\''+stu.id+'\')" style="background:none;border:1px dashed var(--border2);border-radius:10px;padding:9px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--blue);cursor:pointer">'+_declLbl+'</button>'
     +'</div>'
     :'';
   var journeyTab=`<div class="prog-pair"><div><div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(_jnyFromPromotions(stu),stu)}${_declareBtn}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
