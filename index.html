@@ -14405,6 +14405,52 @@ async function _fetchAllPosts(c){
   }
   return {data:all,error:null};
 }
+// Promotions, paginated like _fetchAllStudents. This replaced a
+// .order('date',{ascending:false}).limit(200): there are ~360 rows in
+// production, so 160 of them - every promotion older than 2026 - never reached
+// the client at all. The rows that got dropped were the longest histories in
+// the academy: the head instructor's belts from 2018, the owner's black-belt
+// degrees back to 2005. They were in the database and invisible in the app.
+//
+// ASCENDING, unlike _fetchAllPosts. Both orders are deliberate and they differ
+// because what is worth keeping differs. A feed truncated at the safety cap
+// should keep the newest posts. A belt history truncated at the cap should keep
+// the OLDEST promotions: recent ones can be re-derived from the app's own
+// current state, but a 2005 black belt exists nowhere else. id is the tiebreak
+// so paging stays deterministic when several promotions share a date - which is
+// common here, since a whole grading is recorded on one day.
+async function _fetchAllPromotions(c){
+  const PAGE=1000;
+  const COLS='id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,hidden,source,date_precision,staff_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)';
+  let all=[],from=0;
+  for(let page=0;page<10;page++){          // safety cap: 10 pages / 10k rows
+    const r=await c.from('promotions').select(COLS)
+      .order('date',{ascending:true})
+      .order('id',{ascending:true})
+      .range(from,from+PAGE-1);
+    if(r&&r.error)return {data:null,error:r.error};
+    const rows=(r&&r.data)||[];
+    all=all.concat(rows);
+    if(rows.length<PAGE)break;
+    from+=PAGE;
+  }
+  // Paged ascending, RETURNED descending. These are two different questions and
+  // they have two different answers:
+  //   the FETCH order decides which rows survive the safety cap - oldest, above;
+  //   the ARRAY order is a contract three consumers already depend on.
+  // The query this replaced was date DESC, so PROMOTION_LOG has always arrived
+  // newest-first, and rPromote (:4026), revertPromo (:4047) and rEditStuGrading
+  // (:5443) all read "the student's last promotion" as the FIRST .find() match.
+  // Handing them an ascending array would silently turn that into the student's
+  // OLDEST promotion - and revertPromo deletes the row it finds, so it would
+  // have deleted a 2018 belt from the database and rolled the student back to
+  // whatever they were before it. Sorting here keeps the array byte-compatible
+  // with what those consumers have always been given, without touching any of
+  // them. id DESC is the tiebreak: the old query had none, so same-date rows
+  // came back in whatever order PostgREST felt like.
+  all.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.id||'').localeCompare(String(a.id||'')));
+  return {data:all,error:null};
+}
 async function _fetchAllStudents(c){
   const PAGE = 1000;
   const COLS = 'id,legacy_id,full_name,first_name,last_name,email,belt,degree,prog,total,gi_classes,nogi_classes,grade,gi_grade,nogi_grade,initials,gender,journey,unit_id,photo_url,user_id,parent_user_id,parent_student_id,parent2_student_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email,date_of_birth,phone,weight_kg,height_cm,emergency_contact_name,emergency_contact_phone,active,created_at,last_marker_date,has_mybjj_gi,social_handles,training_started_at,bjj_start_date,standing,membership_level,hold_note,welcome_hidden,converted_at,waiver_token,waiver_sent_at,waiver_signed_at,parent_user:users!parent_user_id(full_name)';
@@ -14435,7 +14481,7 @@ async function refetchUnitScopedData(){
     // can render the instructor's clean display name without a
     // second lookup. Order so rebuildTT sees a stable shape.
     c.from('classes').select('id,unit_id,day_of_week,time,type,uniform,level,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)').eq('active',true).order('day_of_week').order('time'),
-    c.from('promotions').select('id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,hidden,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)').order('date',{ascending:false}).limit(200),
+    _fetchAllPromotions(c),
     c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
     c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
     _fetchAllAttendance(c,dk(new Date(Date.now()-21*864e5)),dk(new Date(Date.now()+14*864e5))),
@@ -14617,6 +14663,16 @@ async function refetchUnitScopedData(){
         date:r.date,
         promotedBy:r.promoted_by_name,
         promotedById:r.promoted_by_id||null,
+        // Academy-recorded vs student-declared. Without it the client cannot
+        // tell a graded promotion from one someone typed in about themselves.
+        source:r.source||null,
+        // 'day' | 'month' - a month-precision row must not be rendered with an
+        // invented day.
+        datePrecision:r.date_precision||null,
+        // A promotion that belongs to a STAFF member rather than a student.
+        // Raw uuid, like promotedById above: it is a staff.id, and unlike
+        // studentId there is no legacy id on the join to translate it to.
+        staffId:r.staff_id||null,
         promotedByStaff,
         unit:uMap[r.unit_id]||null,
         hidden:!!r.hidden,
