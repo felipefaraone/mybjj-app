@@ -335,6 +335,16 @@ html,body{overscroll-behavior-y:none}
 .erow[data-datelabel]>*:not(input){pointer-events:none}
 .erow[data-datelabel]::after{content:attr(data-datelabel);position:absolute;right:16px;top:50%;transform:translateY(-50%);font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);pointer-events:none}
 .erow[data-emptydate]::after{color:var(--text3)}
+/* Crop zoom slider. Scoped to .crop-zoom so it can never restyle another range
+   input later. -webkit-appearance:none on BOTH the input and the thumb is load-
+   bearing: without it Safari ignores the track and thumb rules entirely and
+   falls back to the UA slider. Every colour is a token, so the dark @media
+   override below carries it with no second rule. */
+.crop-zoom{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:4px;border-radius:99px;background:var(--border2);outline:none;margin:0;padding:0}
+.crop-zoom::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--blue);border:2px solid var(--card);box-shadow:var(--sh);cursor:pointer}
+.crop-zoom::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--blue);border:2px solid var(--card);box-shadow:var(--sh);cursor:pointer}
+.crop-zoom::-moz-range-track{height:4px;border-radius:99px;background:var(--border2)}
+.crop-zoom:focus-visible{outline:2px solid var(--blue-mid);outline-offset:4px}
 /* G17.2a.2 — hide the native WebKit search-clear button so the Members
    search input shows only our custom × affordance (two clear buttons
    was the smoke regression). */
@@ -13681,7 +13691,12 @@ function avStu(s,size){
   return av(s&&s.initials||'?',s&&s.belt||'',size);
 }
 
-let _crop={img:null,scale:1,x:0,y:0,panning:false,lastX:0,lastY:0,sid:null};
+// `fit` is the scale at which the image exactly fills the circle — the framing
+// the modal opens with. It is the zoom FLOOR: there is never a reason to zoom
+// out past it, and until this existed the absolute 0.3 floor sat far above the
+// fit of any phone photo, so one pinch trapped the user above their own
+// starting framing with no way back.
+let _crop={img:null,scale:1,fit:1,x:0,y:0,panning:false,lastX:0,lastY:0,sid:null};
 let _pinch=null;
 const _CROP_SIZE=320;
 function canUploadPhotoFor(s){
@@ -14490,7 +14505,10 @@ function _cropStart(file){
       _crop.img=im;
       const w=im.naturalWidth,h=im.naturalHeight;
       const minDim=Math.min(w,h);
-      _crop.scale=_CROP_SIZE/minDim;
+      // Computed ONCE, here. Every other consumer (the clamp, the slider bounds)
+      // reads _crop.fit rather than recomputing _CROP_SIZE/minDim.
+      _crop.fit=_CROP_SIZE/minDim;
+      _crop.scale=_crop.fit;
       _crop.x=(_CROP_SIZE-w*_crop.scale)/2;
       _crop.y=(_CROP_SIZE-h*_crop.scale)/2;
       S.cropOpen=true;render();
@@ -14514,13 +14532,32 @@ function _cropDraw(){
 }
 function _cropPoint(ev){if(ev.touches&&ev.touches[0])return{x:ev.touches[0].clientX,y:ev.touches[0].clientY};return{x:ev.clientX,y:ev.clientY};}
 function _pinchInfo(ev){const t1=ev.touches[0],t2=ev.touches[1];const dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;return{dist:Math.sqrt(dx*dx+dy*dy)};}
+// Bounds are RELATIVE to the opening framing: floor = fit, ceiling = fit*4.
+// The old absolute 0.3/5 was meaningless — a 4032x3024 photo fits at 0.1058, so
+// its whole usable range sat below the floor and the modal could never be
+// returned to the state it opened in. Falls back to the old absolute pair only
+// if fit is somehow unset, rather than dividing by undefined.
 function _cropApplyZoom(newScale){
-  newScale=Math.max(0.3,Math.min(5,newScale));
+  const fit=_crop.fit;
+  const lo=(fit>0)?fit:0.3, hi=(fit>0)?fit*4:5;
+  newScale=Math.max(lo,Math.min(hi,newScale));
   if(newScale===_crop.scale)return;
   const cx=_CROP_SIZE/2,cy=_CROP_SIZE/2;
   _crop.x=cx-(cx-_crop.x)*(newScale/_crop.scale);
   _crop.y=cy-(cy-_crop.y)*(newScale/_crop.scale);
   _crop.scale=newScale;
+  // Keep the slider in step with pinch and wheel. Direct DOM write, never
+  // render(): re-rendering would recreate the input mid-gesture and drop the
+  // drag. Guarded because this also runs before the modal markup exists.
+  const _sl=document.getElementById('crop-zoom');
+  if(_sl)_sl.value=String(newScale);
+}
+// Slider input handler. _cropApplyZoom + _cropDraw ONLY — see above.
+function _cropSlide(v){
+  const n=parseFloat(v);
+  if(!isFinite(n))return;
+  _cropApplyZoom(n);
+  _cropDraw();
 }
 function _cropPanStart(ev){
   if(ev.touches&&ev.touches.length===2){_pinch=_pinchInfo(ev);_crop.panning=false;ev.preventDefault();return;}
@@ -14540,12 +14577,26 @@ function _cropZoom(ev){ev.preventDefault();_cropApplyZoom(_crop.scale*(ev.deltaY
 function closeCrop(){S.cropOpen=false;_crop.img=null;_crop.sid=null;render();}
 function rCropModal(){
   if(!S.cropOpen)return '';
-  return `<div class="cov" onclick="closeCrop()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
+  // Slider bounds mirror _cropApplyZoom's clamp exactly, from the SAME _crop.fit
+  // — so the far-left stop is the opening framing to the last decimal, not an
+  // approximation of it. Same fallback pair when fit is unset.
+  const _zFit=(_crop.fit>0)?_crop.fit:0;
+  const _zMin=_zFit||0.3, _zMax=_zFit?(_zFit*4):5;
+  // 200 stops across whatever the range happens to be — derived, never a
+  // hardcoded step that would be coarse at 0.1 and absurd at 0.8.
+  const _zStep=(_zMax-_zMin)/200;
+  const _zVal=Math.max(_zMin,Math.min(_zMax,_crop.scale));
+  return `<div class="cov" onclick="closeCrop()\" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
 <button onclick="closeCrop()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:4px;padding-right:40px">Crop photo</div>
-<div style="font-size:12px;color:var(--text2);margin-bottom:14px;padding-right:40px">Drag to position. Pinch or scroll to zoom.</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:14px;padding-right:40px">Drag to position.</div>
 <div style="display:flex;justify-content:center;margin-bottom:14px">
 <canvas id="crop-canvas" width="${_CROP_SIZE}" height="${_CROP_SIZE}" style="border-radius:50%;background:#000;cursor:move;touch-action:none;width:min(${_CROP_SIZE}px,calc(100vw - 80px));height:min(${_CROP_SIZE}px,calc(100vw - 80px));aspect-ratio:1/1" onmousedown="_cropPanStart(event)" onmousemove="_cropPanMove(event)" onmouseup="_cropPanEnd()" onmouseleave="_cropPanEnd()" ontouchstart="_cropPanStart(event)" ontouchmove="_cropPanMove(event)" ontouchend="_cropPanEnd()" ontouchcancel="_cropPanEnd()" onwheel="_cropZoom(event)"></canvas>
+</div>
+<div style="display:flex;align-items:center;gap:12px;min-height:44px;margin-bottom:10px;padding:0 2px;color:var(--text2)">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="7"/></svg>
+<input id="crop-zoom" class="crop-zoom" type="range" aria-label="Zoom" min="${_zMin}" max="${_zMax}" step="${_zStep}" value="${_zVal}" oninput="_cropSlide(this.value)"/>
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/></svg>
 </div>
 <div style="display:flex;gap:10px">
 <button class="bout" style="flex:1;min-height:44px" onclick="closeCrop()">Cancel</button>
