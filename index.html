@@ -11498,7 +11498,26 @@ function rARoster(){
 }
 function rStaff(){
   const ownerView=isOwner();
-  const active=STAFF.filter(s=>s._active!==false);
+  // Active unit, same two-line derivation rCommunityPeople uses (:7652). It must
+  // be the LEGACY id, not the uuid: uMap is built dbId -> legacy (:14934), the
+  // staff mapper stores unit:uMap[r.unit_id], and _units is filled from that same
+  // map (:15055) — so staffInUnit compares legacy ids on both sides. UNITS carries
+  // it on .id (id:r.legacy_id, :15291). Handing it curU._dbId would match nothing
+  // and empty the tab for everyone.
+  // NOT the :14225 shape (rAddStaffModal), which binds the whole unit OBJECT to a
+  // variable of the same name and would be wrong here.
+  const curU=UNITS.find(u=>u.name===S.unit);
+  const curUnit=curU?curU.id:null;
+  // Scope the list to the active unit. staff_units is the N:N source of where a
+  // person appears, and this tab was the one surface never asking it — all 15
+  // Camperdown staff showed up on Neutral Bay.
+  // The !curUnit escape hatch is deliberate: if the unit cannot be resolved we
+  // fall back to today's unfiltered list. An empty Staff tab is a worse failure
+  // than an unfiltered one, and staffInUnit returns false for a null unitId.
+  // Only membership changes here — Admin rows stay (Evelin Lara and Patricia are
+  // role_title 'Admin' and this is where they are managed, unlike the Members
+  // instructor picker at :7680), and isDevStaff is left exactly as it was.
+  const active=STAFF.filter(s=>s._active!==false&&(!curUnit||staffInUnit(s,curUnit)));
   const header='<div style="margin-bottom:14px"><div style="font-size:13px;color:var(--text2);line-height:1.5">Instructors and their belt progression.</div>'+(ownerView?'<div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="bblue" style="padding:8px 14px;font-size:13px;display:inline-flex;align-items:center;gap:4px" onclick="openAddStaff()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add staff</button></div>':'')+'</div>';
   const rows=active.map(s=>{
     const b=BA[s.belt]||BA.white;
