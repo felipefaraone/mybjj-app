@@ -9561,6 +9561,43 @@ function _rStatRow(stu){
 
   return [col1,col2,col3];
 }
+// Declare-history button for the Journey tab. ONE source for all three branches
+// of rProgress — staff, coach and student/parent. It used to live inline in the
+// student branch only, which is why the head instructor had no way to record his
+// own pre-app belts: the feature is for anyone with a student record, not for
+// people who happen to render through the student branch.
+//
+// The gating is the block that was at :9790, moved verbatim, not rewritten:
+//   _kidActive            a parent looking at their child is viewing someone
+//                         else's journey; only the person who lived it declares
+//                         it. Recomputed here with the same expression the
+//                         student branch used (:9351) so the student output is
+//                         unchanged, and the other two branches gain the same
+//                         protection for free.
+//   stu._userId === me    the row belongs to the signed-in user.
+//   stu._dbId             there is a students row to write against.
+// Then whether the sheet would have anything IN it:
+//   _declAddable  belts with at least one milestone still missing
+//   _declMine     entries they declared, i.e. the remove list
+// Nothing to add AND nothing to remove -> no button, because the sheet would be
+// empty. Nothing to add but something to remove -> the button stays and changes
+// what it says: hiding it on "nothing left to add" alone would strand the remove
+// list, which lives only inside this sheet.
+//
+// A null `stu` (staff member with no students row) falls out at the first test
+// and returns '' — never an error.
+function _rDeclareBtn(stu){
+  const _kidActive=!activeProfileIsSelf()?parentSelectedChild():null;
+  const _canDeclare=!_kidActive&&!!(stu&&stu._dbId&&stu._userId&&S.profile&&stu._userId===S.profile.id);
+  const _declAddable=_canDeclare?_jnyDeclBelts(stu).length:0;
+  const _declMine=_canDeclare?_jnyDeclMine(stu).length:0;
+  const _declLbl=_declAddable?'Trained before joining? Add your history':'Manage the history you added';
+  return (_canDeclare&&(_declAddable||_declMine))
+    ?'<div style="padding:10px 16px 12px;text-align:center;border-top:1px solid var(--border);margin-top:4px">'
+      +'<button onclick="openJnyDeclare(\''+stu.id+'\')" style="background:none;border:1px dashed var(--border2);border-radius:10px;padding:9px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--blue);cursor:pointer">'+_declLbl+'</button>'
+    +'</div>'
+    :'';
+}
 function rProgress(){
   // B3b-2 — parent kid Progress now conforms to the student tabbed
   // surface (Rank/Journey/Wall/Feedback). The parent path resolves
@@ -9627,7 +9664,19 @@ function rProgress(){
       // timeline -> Belt by belt -> Recent (trained + taught, merged).
       // Belt by belt moved to Rank (above), so it is NOT rendered here too -
       // Journey keeps the timeline plus the trained/taught Recent.
-      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(_jnyFromPromotions(myStu||staff),myStu||staff)+'</div>'+_rTeacherRecentCard(staff,myStu);
+      // Same .prog-pair nesting as the student branch (:9840): each grid cell is
+      // a <div> holding its own .slbl then its .card, because the CSS at :723
+      // selects `.prog-pair > div > .card` and `> .slbl` directly — nest it any
+      // deeper and the equal-height columns silently stop working.
+      // Label stays "My BJJ journey"; only the layout changes.
+      // _rTeacherRecentCard returns '' when the viewer has no staff row to load
+      // teaching data for. Pairing a half-width timeline with a blank column
+      // would look broken, so that degenerate case keeps the full-width layout.
+      var _teachRecent=_rTeacherRecentCard(staff,myStu);
+      var _jnyBody='<div class="card" style="padding:12px 16px">'+rTL(_jnyFromPromotions(myStu||staff),myStu||staff)+_rDeclareBtn(myStu)+'</div>';
+      var journeyTab=_teachRecent
+        ?('<div class="prog-pair"><div><div class="slbl">My BJJ journey</div>'+_jnyBody+'</div><div>'+_teachRecent+'</div></div>')
+        :('<div class="slbl">My BJJ journey</div>'+_jnyBody);
       var iContent=S.ptab==='journey'?journeyTab:rankTab;
       return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button></div>'+iContent+'<div style="height:16px"></div>';
     }
@@ -9661,7 +9710,9 @@ function rProgress(){
     // gone — same scope discipline as the L3787 student path).
     var rankTab=_renderRankBox(coachStu,{kind:'student'})
       +'<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:var(--blue)">'+coachPctHtml+'</div></div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
-    var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(_jnyFromPromotions(coachStu),coachStu)+'</div>';
+    // Layout unchanged — no .prog-pair, this branch has no Recent card to pair
+    // with. It only gains the declare button.
+    var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(_jnyFromPromotions(coachStu),coachStu)+_rDeclareBtn(coachStu)+'</div>';
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
@@ -9776,36 +9827,7 @@ function rProgress(){
   // down by 16px. The 16px is added desktop-side instead, in the @media block,
   // so mobile renders exactly as before. On mobile the cells stack, so it still
   // reads label, card, label, card.
-  // "Add your history" — the student's OWN Journey only. Three separate facts
-  // have to hold, and each one closes a different door:
-  //   !_kidActive           a parent looking at their child is viewing someone
-  //                         else's journey; only the person who lived it can
-  //                         declare it.
-  //   stu._userId === me    the row belongs to the signed-in user. Staff never
-  //                         reach this branch at all (the staff path returns at
-  //                         :9261) and a peer's profile renders through
-  //                         rStuProf/rJnySection, which is a different surface.
-  //   stu._dbId             there is a students row to write against.
-  // Staff add history through Promote, which is why this never appears for them.
-  var _canDeclare=!_kidActive&&!!(stu&&stu._dbId&&stu._userId&&S.profile&&stu._userId===S.profile.id);
-  // Ownership (above) says who MAY open the sheet; these two say whether there is
-  // anything in it. Both come from the same helpers the sheet itself uses, never
-  // a second computation that could drift from it.
-  //   _declAddable  belts with at least one milestone still missing
-  //   _declMine     entries they declared, i.e. the remove list
-  // Nothing to add AND nothing to remove -> no button, because the sheet would
-  // be empty. Nothing to add but something to remove -> the button stays and
-  // changes what it says: hiding it on "nothing left to add" alone would strand
-  // the remove list, which lives only inside this sheet, and a student who
-  // completed their history could never undo a typo in it.
-  var _declAddable=_canDeclare?_jnyDeclBelts(stu).length:0;
-  var _declMine=_canDeclare?_jnyDeclMine(stu).length:0;
-  var _declLbl=_declAddable?'Trained before joining? Add your history':'Manage the history you added';
-  var _declareBtn=(_canDeclare&&(_declAddable||_declMine))
-    ?'<div style="padding:10px 16px 12px;text-align:center;border-top:1px solid var(--border);margin-top:4px">'
-      +'<button onclick="openJnyDeclare(\''+stu.id+'\')" style="background:none;border:1px dashed var(--border2);border-radius:10px;padding:9px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--blue);cursor:pointer">'+_declLbl+'</button>'
-    +'</div>'
-    :'';
+  var _declareBtn=_rDeclareBtn(stu);
   var journeyTab=`<div class="prog-pair"><div><div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(_jnyFromPromotions(stu),stu)}${_declareBtn}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
   // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
   // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
