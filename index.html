@@ -3355,6 +3355,56 @@ function _validateTrainingDates(bjjIso,joinIso){
   if(b&&j&&b>j)return {ok:false,msg:"Started BJJ can't be after you joined myBJJ."};
   return {ok:true};
 }
+// ── Journey milestones, derived from public.promotions ──────────────────────
+// THE single source for every rTL() call site. The jsonb students.journey /
+// staff.journey arrays are legacy: they are still WRITTEN (promote flow, the
+// now-unreachable milestone editor) but nothing reads them for the timeline any
+// more. public.promotions is the source of truth for belt and stripe history.
+//
+// SUBJECT RESOLUTION — the two row shapes carry the matching id in different
+// properties, and the hydrate mapping is what settles which:
+//   STUDENTS (:14543)  id:r.legacy_id  ->  PROMOTION_LOG.studentId, which the
+//                      mapper fills from r.student.legacy_id — the SAME legacy
+//                      id. Matched on subject.id.
+//   STAFF    (:14560)  _dbId:r.id      ->  PROMOTION_LOG.staffId, which is
+//                      promotions.staff_id, a staff UUID. Matched on
+//                      subject._dbId.
+// Which shape a subject is, is settled by looking it up in STAFF by _dbId rather
+// than by sniffing a property: student and staff UUIDs come from two different
+// tables and cannot collide, whereas the legacy ids are short strings ('nb',
+// 'mario') with no cross-table uniqueness guarantee — matching those blind could
+// hand a student's history to a staff member who happens to share a key.
+function _jnyFromPromotions(subject){
+  const s=subject;if(!s)return [];
+  const isStaffRow=!!(s._dbId&&Array.isArray(STAFF)&&STAFF.some(x=>x&&x._dbId===s._dbId));
+  const rows=(PROMOTION_LOG||[]).filter(p=>{
+    if(!p)return false;
+    // Corrections are fixes to miscadastred data, not achievements — dropped by
+    // the same test the Wall feed uses (:7559).
+    if(p.type==='correction')return false;
+    return isStaffRow?(!!s._dbId&&p.staffId===s._dbId):(!!s.id&&p.studentId===s.id);
+  });
+  const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
+  return rows.map(p=>{
+    // Same two label shapes savePromote writes (:5630), built from the file's
+    // existing ordinal helper _ordSuffix (:7431). Black belt counts DEGREES.
+    const label=p.isNewBelt
+      ? beltLabel(p.toBelt)+' belt'
+      : (p.toDeg+_ordSuffix(p.toDeg)+(p.toBelt==='black'?' degree':' stripe'));
+    // Precision decides how much of the date survives. 'day' and 'month' both
+    // pass the ISO string through untouched — _fmtJnyDate renders either as
+    // "Mon YYYY", so the day is simply never displayed and nothing has to be
+    // stripped. 'year' is cut to the bare 4-digit string: _fmtJnyDate returns
+    // that as free text, and rTL's jnyTime parses it back through
+    // new Date('2005') -> 2005-01-01T00:00:00Z, the same UTC clock its ISO and
+    // "Mon YYYY" branches use. A year is never widened into a fake January date.
+    const date=(p.datePrecision==='year'&&p.date)?String(p.date).slice(0,4):p.date;
+    // done:true always — promotions.date is NOT NULL, so nothing here is undated
+    // or pending. No `classes`: a promotion row carries no class count, and rTL
+    // already renders that meta line only when the number is present.
+    return {belt:p.toBelt,label,date,done:true};
+  });
+}
 // G17.2b — per-milestone Share button removed. Felipe's call: journey
 // is internal progression, not a social broadcast. shareSid parameter
 // dropped; isStaffJourney usage in callers simplified accordingly.
@@ -4599,14 +4649,19 @@ function rJnySection(s,sidKey){
   const isEditing=!!(canEdit&&S.jnyEditFor===sidKey);
   const dirty=isEditing&&jnyHasChanges(s);
   if(!isEditing){
-    // Batch social-edit Change 4 — Edit button moves from the label
-    // row INTO the card, top-right. Gate (canEdit) unchanged; readers
-    // without permission see no button. Matches the SOCIAL card
-    // pattern shipped in the same batch.
-    const editBtn=canEdit
-      ? '<button onclick="openJnyEdit(\''+sidKey+'\')" title="Edit journey" style="position:absolute;top:10px;right:10px;z-index:2;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:6px;padding:4px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer">Edit</button>'
-      : '';
-    const jArr=Array.isArray(s.journey)?s.journey:[];
+    // NO Edit affordance. The timeline is derived from public.promotions now, so
+    // the milestone editor would let staff rewrite a jsonb array that nothing
+    // renders — a control that silently does nothing. Belt and stripe history is
+    // corrected through the Promote flow. openJnyEdit and the editing branch
+    // below are left in place but unreachable: S.jnyEditFor was only ever set by
+    // the button that used to sit here, so `isEditing` is now permanently false.
+    // Deleting them is a separate cleanup.
+    // Derived from public.promotions, no longer read off s.journey. Sorted
+    // ascending HERE, unlike the other three call sites, because this one slices
+    // before rTL ever sees the array: rTL sorts whatever it is handed, but
+    // slice(-6) below has to be the six most RECENT, and _jnyFromPromotions
+    // returns in PROMOTION_LOG order, which is date DESC.
+    const jArr=_jnyFromPromotions(s).sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
     const collapsed=jArr.length>6 && !S.showAllJourney;
     const showLink=jArr.length>6
       ? '<div style="padding:10px 16px 12px 16px;text-align:center"><button onclick="toggleShowAllJourney()" style="background:none;border:none;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--blue);cursor:pointer;padding:4px 8px">'+(S.showAllJourney?'Show less ↑':'Show all ('+jArr.length+') →')+'</button></div>'
@@ -4614,7 +4669,6 @@ function rJnySection(s,sidKey){
     const renderJourney=collapsed?jArr.slice(-6):jArr;
     return '<div class="slbl">Journey</div>'
       +'<div class="card" style="padding:12px 16px;position:relative">'
-        +editBtn
         +rTL(renderJourney,s)
         +showLink
       +'</div>'
@@ -9155,7 +9209,6 @@ function rProgress(){
       // If they also have a student row (training in their own academy),
       // surface that row's journey here so personal milestones like
       // belt/stripe promotions land where the user looks for them.
-      var sJourney=(myStu&&myStu.journey&&myStu.journey.length?myStu.journey:staff.journey)||[];
       // Batch 7b — staff rank box uses the shared component. No class
       // count (staff don't promote by class count; the
       // staff.total_classes column isn't surfaced as "classes taught"
@@ -9186,7 +9239,7 @@ function rProgress(){
       // timeline -> Belt by belt -> Recent (trained + taught, merged).
       // Belt by belt moved to Rank (above), so it is NOT rendered here too -
       // Journey keeps the timeline plus the trained/taught Recent.
-      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(sJourney,myStu||staff)+'</div>'+_rTeacherRecentCard(staff,myStu);
+      var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(_jnyFromPromotions(myStu||staff),myStu||staff)+'</div>'+_rTeacherRecentCard(staff,myStu);
       var iContent=S.ptab==='journey'?journeyTab:rankTab;
       return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button></div>'+iContent+'<div style="height:16px"></div>';
     }
@@ -9220,7 +9273,7 @@ function rProgress(){
     // gone — same scope discipline as the L3787 student path).
     var rankTab=_renderRankBox(coachStu,{kind:'student'})
       +'<div class="card"><div class="row" style="margin-bottom:10px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+coachHeading+'</div><div style="font-family:Bebas Neue,sans-serif;font-size:24px;color:var(--blue)">'+coachPctHtml+'</div></div>'+coachBarHtml+coachReasonHtml+coachGiHint+'</div>';
-    var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(coachStu.journey||[],coachStu)+'</div>';
+    var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(_jnyFromPromotions(coachStu),coachStu)+'</div>';
     var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
@@ -9335,7 +9388,7 @@ function rProgress(){
   // down by 16px. The 16px is added desktop-side instead, in the @media block,
   // so mobile renders exactly as before. On mobile the cells stack, so it still
   // reads label, card, label, card.
-  var journeyTab=`<div class="prog-pair"><div><div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(stu.journey||[],stu)}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
+  var journeyTab=`<div class="prog-pair"><div><div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(_jnyFromPromotions(stu),stu)}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
   // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
   // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
   // 'feedback' is still a LIVE tab in the coach branch above, which must stay
