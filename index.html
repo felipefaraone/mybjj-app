@@ -4544,8 +4544,9 @@ function rPromoPanel(s){
       +'</div>')
     :'';
 
-  // Revert last promotion
-  const lastPromo=PROMOTION_LOG.find(p=>p.studentId===s.id);
+  // Revert last promotion — same predicate revertPromo uses, so the row named
+  // here is always the row the button acts on.
+  const lastPromo=_revertTarget(s.id);
   let revertRow='';
   if(lastPromo){
     const revertLabel=lastPromo.isNewBelt
@@ -4562,11 +4563,36 @@ function rPromoPanel(s){
     +'<div class="card" style="padding:14px 16px">'+stripeRow+beltRow+revertRow+'</div>';
 }
 
+// THE one rule for "which promotion can Revert undo". Three surfaces asked this
+// question with three different filters, so the Promote panel could name one row
+// while revertPromo deleted another. One predicate, one answer.
+//   type!=='correction'  a correction is a deliberate admin fix; auto-reverting
+//                        one would undo the fix.
+//   source!=='declared'  a declared row is the student stating a fact about their
+//                        own past, not something the academy awarded. Nobody
+//                        promoted them from anything, so from_belt is NULL and
+//                        there is nothing to revert TO — and it is not the
+//                        academy's record to delete. Students remove their own
+//                        declared entries from the declare sheet, which is the
+//                        correct path. `source` is the property the hydrate
+//                        mapper gives promotions.source (:15223).
+//   fromBelt truthy      even an ACADEMY row can carry from_belt NULL: an
+//                        imported initial-white record has no "before". Reverting
+//                        it would set the student's belt to null, and the label
+//                        crashed outright on fromBelt.charAt(0). The Wall drops
+//                        these rows for exactly the same reason (:6412).
+// PROMOTION_LOG arrives date DESC, so the first match is the LATEST revertable
+// academy promotion — the row both the label and the revert now act on.
+function _revertIdx(sid){
+  return (PROMOTION_LOG||[]).findIndex(p=>p&&p.studentId===sid&&p.type!=='correction'&&p.source!=='declared'&&p.fromBelt);
+}
+function _revertTarget(sid){
+  const i=_revertIdx(sid);
+  return i<0?null:PROMOTION_LOG[i];
+}
 function revertPromo(id){
   const s=STUDENTS.find(x=>x.id===id);if(!s)return;
-  // Skip type='correction' rows — corrections are deliberate admin
-  // fixes and must never be auto-reverted by this path.
-  const idx=PROMOTION_LOG.findIndex(p=>p.studentId===id&&p.type!=='correction');
+  const idx=_revertIdx(id);
   if(idx<0)return;
   const p=PROMOTION_LOG[idx];
   if(!confirm('Revert promotion for '+s.name+'? This will restore their previous belt/stripe.'))return;
@@ -5963,10 +5989,11 @@ function rPromoteModal(){
     ?'Recording when '+_bfFirst+' was awarded '+escHtml(beltLabel(s.belt))+' belt'+(s.deg?', '+s.deg+' stripe'+(s.deg>1?'s':''):'')
     :'Recording the date of '+_bfFirst+'\u2019s current grading';
   const egd=_egDisplay(s);
-  // Revert lookup skips type='correction' rows so a hydrated correction
-  // can't masquerade as the last promotion and trigger a reverse-of-a-
-  // correction (which would undo a deliberate admin fix).
-  const lastPromo=PROMOTION_LOG.find(p=>p.studentId===s.id&&p.type!=='correction');
+  // Same predicate as the Promote panel and revertPromo. This button carries no
+  // belt text so it never crashed, but without the shared rule it would keep
+  // OFFERING Revert for a student whose only promotions are declared — and then
+  // do nothing at all when tapped, because revertPromo now refuses them.
+  const lastPromo=_revertTarget(s.id);
 
   // Eligibility hint — keep the existing copy.
   const eligLine=egd.reason
