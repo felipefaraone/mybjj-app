@@ -11558,8 +11558,31 @@ function rStaff(){
     // Roster role label — "Owner" badge derives from units.owner_user_id
     // (Batch 2A). Etapa 6 dropped the legacy s.role==='owner' fallback;
     // all in-memory staff rows carry role:'instructor' now.
-    const roleLbl=isUnitOwner(s)?'Owner':staffTitle(s);
-    const unitName=(UNITS.find(u=>u.id===s.unit)||{name:'—'}).name;
+    // Ownership is a PERMISSIONS fact, not a title. Publishing it on the card
+    // turned an access decision into a social claim about the business — the
+    // head instructor was made an owner to test with and the card announced him
+    // as "Owner" to the person who actually owns the academy. Same shape as the
+    // 'Head Professor' retirement (staffTitle, :2100): the DB value and every
+    // gate are untouched, only the label stops saying it.
+    const roleLbl=staffTitle(s);
+    // Units come from _units — the SAME array staffInUnit reads and this list is
+    // now filtered by (:15147: legacy ids, with the s.unit fallback baked in).
+    // NEVER s.unit: that is the single HOME unit, and it disagrees with the
+    // filter for exactly the five people who work in both academies — the card
+    // read "Neutral Bay" while the viewer was looking at the Camperdown list.
+    // Mirrors staffInUnit's own fallback so the two can't diverge.
+    const _sUnits=(Array.isArray(s._units)&&s._units.length)?s._units:(s.unit?[s.unit]:[]);
+    const _uName=(u)=>(UNITS.find(x=>x&&x.id===u)||{}).name;
+    // Only the OTHER units are worth naming — the active one is the list the
+    // viewer is already reading. Someone who works here and nowhere else gets no
+    // segment at all, separator included.
+    // When curUnit could not be resolved the list is UNFILTERED (see the escape
+    // hatch above), so there is no "here" for "Also at" to mean: name their units
+    // plainly instead, which is what an unfiltered list wants anyway.
+    const _otherUnits=(curUnit?_sUnits.filter(u=>u&&u!==curUnit):_sUnits).map(_uName).filter(Boolean);
+    const unitSeg=_otherUnits.length
+      ?(' · '+(curUnit?'Also at ':'')+_otherUnits.join(', '))
+      :'';
     const degLbl=s.deg>0?' · '+s.deg+(s.deg===1?'st':s.deg===2?'nd':s.deg===3?'rd':'th')+' degree':'';
     // Admin staff have belt=null — omit the belt segment (and its
     // separator) entirely, so the subtitle reads "Title · Unit".
@@ -11569,7 +11592,7 @@ function rStaff(){
     const actions=(showEdit||showRemove)?'<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">'+editBtn+remBtn+'</div>':'';
     const emailLine=s.email?'<div style="font-size:11px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.email+'</div>':'';
     const inviteRow=inviteStatusRow(s,'staff');
-    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+beltSeg+' · '+unitName+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
+    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+beltSeg+unitSeg+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
   }).join('');
   return header+rows;
 }
@@ -13026,8 +13049,9 @@ function _meRoleLabel(){
   const me=S.me; if(!me)return '';
   const staff=(typeof isStaffOrOwner==='function')&&isStaffOrOwner();
   const title=(staff&&typeof getStaffBJJTitle==='function')?getStaffBJJTitle(me):null;
-  const owner=(typeof isOwner==='function')&&isOwner();
-  if(owner&&title)return 'Owner · '+title;
+  // No 'Owner · ' prefix — same rule as the Staff card (:11561): ownership is a
+  // permissions fact and does not belong in a name plate. isOwner() itself is
+  // untouched and every gate that reads it still works.
   if(title)return title;
   const r=String(me.role||'').trim();
   return r?(r.charAt(0).toUpperCase()+r.slice(1)):'';
