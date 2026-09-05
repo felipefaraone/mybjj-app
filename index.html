@@ -535,6 +535,17 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .tli{display:flex;gap:16px;align-items:flex-start;position:relative;z-index:1}.tldot{width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}.tlb{flex:1;padding:8px 0 20px}
 .tlt{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;line-height:1}.tld{font-size:11px;color:var(--text3);margin-top:2px}.tlc{font-size:11px;color:var(--text2);margin-top:3px}
 .tlhere{display:inline-block;background:var(--blue-tint);color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;margin-top:4px}
+/* Collapsed stripe group inside a past belt's timeline row. It lives INSIDE that
+   row's .tlb, so the indent comes from the row itself — no negative margins to
+   drift — and the left border reads as the timeline rule continuing down through
+   the stripes. Tokens only, so both themes follow. */
+.tlgrp{margin-top:8px;border-left:2px solid var(--border);padding:2px 0 2px 12px}
+.tlgrp[hidden]{display:none}
+.tlgs{font-size:12px;color:var(--text2);padding:5px 0;line-height:1.3}
+/* The whole .tli is the tap target; .tlb's 8px/20px padding plus the 38px dot
+   already clears 44px, and min-height states it rather than relying on that. */
+.tlexp{cursor:pointer;min-height:44px}
+.tlchev{align-self:flex-start;margin-top:8px;display:inline-flex;flex-shrink:0;transition:transform .15s}
 .tlxfer{display:inline-block;background:var(--amber-bg);color:var(--amber-text);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;margin-top:4px;border:1px solid var(--amber-border)}
 @media(prefers-color-scheme:dark){.tlhere{color:#4d90e0}}
 .fbitem{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--sh)}.fbhdr{display:flex;align-items:center;gap:8px;margin-bottom:8px}.fbins{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text)}.fbdate{font-size:11px;color:var(--text3);margin-left:auto}.fbtxt{font-size:14px;color:var(--text2);line-height:1.55}
@@ -3867,6 +3878,23 @@ function rJnyDeclareSheet(){
 // G17.2b — per-milestone Share button removed. Felipe's call: journey
 // is internal progression, not a social broadcast. shareSid parameter
 // dropped; isStaffJourney usage in callers simplified accordingly.
+// Stripe-group expander. DOM-only by design: no S, no sessionStorage, no
+// render(). A re-render would rebuild the timeline and throw away the open state
+// mid-tap, and persisting it would contradict "collapsed by default on every
+// render". The chevron is swapped in the same handler that flips the box.
+let _tlGrpSeq=0;
+function _tlToggleGrp(el,id){
+  const box=document.getElementById(id);
+  if(!box)return;
+  const opening=box.hasAttribute('hidden');
+  if(opening)box.removeAttribute('hidden');else box.setAttribute('hidden','');
+  const row=(el&&el.closest)?el.closest('.tli'):null;
+  if(row){
+    row.setAttribute('aria-expanded',opening?'true':'false');
+    const chev=row.querySelector('.tlchev');
+    if(chev)chev.style.transform=opening?'rotate(180deg)':'rotate(0deg)';
+  }
+}
 function rTL(journey,subject){
   const _rawJny=Array.isArray(journey)?journey:[];
   // Render-time chronological sort (oldest first). Work on a COPY: rTL receives
@@ -4016,7 +4044,17 @@ function rTL(journey,subject){
   }
   // "Started BJJ" is no longer a pinned node — it is merged into `arr` above and
   // renders inline in date order via the _synthetic branch inside the map below.
-  return `<div class="tl"><div class="tlline"></div>${arr.map((m,i)=>{
+  // ONE row renderer, unchanged in output when `opt` is empty — the grouping
+  // below is the only caller that passes anything, so an ungrouped timeline
+  // renders byte-for-byte what it always did.
+  //   opt.metaSuffix  extra part joined into the date line ('3 stripes')
+  //   opt.trailing    markup after .tlb inside the .tli (the chevron)
+  //   opt.extraBody   markup appended inside .tlb (the collapsed stripe list)
+  //   opt.rowClass    extra class on the .tli (the tap-target rule)
+  //   opt.rowAttrs    extra attributes on the .tli (tap target, aria)
+  //   opt.lastPad     force the last-item padding when the group owns the tail
+  const _tlRow=(m,i,opt)=>{
+    opt=opt||{};
     if(m._synthetic){
       // Non-belt life-event node ("Started BJJ", the only synthetic left): plain
       // dot + title + date, no belt visual / class count / "You are here" pill.
@@ -4040,6 +4078,13 @@ function rTL(journey,subject){
     const _curMetaParts=[];
     if(dateLbl)_curMetaParts.push(dateLbl);
     if(_viewerIsStaff&&_classesN>0)_curMetaParts.push(_classesN+' classes');
+    if(opt.metaSuffix)_curMetaParts.push(opt.metaSuffix);
+    // Same parts-and-join idiom as the current-item line above, so an absent
+    // date can never leave a leading ' · ' hanging off the suffix.
+    const _metaParts=[];
+    if(dateLbl)_metaParts.push(dateLbl);
+    if(opt.metaSuffix)_metaParts.push(opt.metaSuffix);
+    const _metaLine=_metaParts.length?('<div class="tld">'+_metaParts.join(' · ')+'</div>'):'';
     const _curMetaLine=isCur
       ?(_curMetaParts.length?'<div class="tld">'+_curMetaParts.join(' · ')+'</div>':'')
       :'';
@@ -4055,14 +4100,66 @@ function rTL(journey,subject){
     const _titleRow=isCur
       ?'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+';line-height:1.4">'+m.label+'</div>'+_herePill+'</div>'
       :'<div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+'">'+m.label+'</div>';
-    return `<div class="tli"><div class="tldot" style="background:${isFut?'var(--bg)':isTr?'var(--amber-bg)':bl.bg};color:${isFut?'var(--text3)':isTr?'var(--amber-text)':bl.fg};border:2px solid ${isFut?'var(--border2)':isTr?'var(--amber-border)':isCur?'var(--blue)':bl.bg}${isCur?';box-shadow:0 0 0 3px var(--blue-tint)':''}">
+    return `<div class="tli${opt.rowClass||''}"${opt.rowAttrs||''}><div class="tldot" style="background:${isFut?'var(--bg)':isTr?'var(--amber-bg)':bl.bg};color:${isFut?'var(--text3)':isTr?'var(--amber-text)':bl.fg};border:2px solid ${isFut?'var(--border2)':isTr?'var(--amber-border)':isCur?'var(--blue)':bl.bg}${isCur?';box-shadow:0 0 0 3px var(--blue-tint)':''}">
       ${isTr?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`:isFut?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>`:isCur?`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><circle cx="12" cy="12" r="4" fill="${bl.fg}"/></svg>`:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`}
-    </div><div class="tlb" ${i===arr.length-1&&!nextNode?'style="padding-bottom:4px"':''}>
+    </div><div class="tlb" ${(i===arr.length-1||opt.lastPad)&&!nextNode?'style="padding-bottom:4px"':''}>
       ${_titleRow}
-      ${isCur?_curMetaLine:(dateLbl?`<div class="tld">${dateLbl}</div>`:'')}
+      ${isCur?_curMetaLine:_metaLine}
       ${isCur?'':(_showClasses?`<div class="tlc">${_classesN} classes</div>`:'')}
-      ${isTr?`<div class="tlxfer">Transferred from ${m.prev||'previous academy'}</div>`:''}
-    </div></div>`;}).join('')}${nextNode}</div>`;
+      ${isTr?`<div class="tlxfer">Transferred from ${m.prev||'previous academy'}</div>`:''}${opt.extraBody||''}
+    </div>${opt.trailing||''}</div>`;
+  };
+  // Group CONTIGUOUS same-belt entries. Contiguous, not keyed: `arr` is already
+  // in timeline order and this must never reorder it, so a belt that somehow
+  // appears twice becomes two groups rather than being pulled together.
+  // Synthetic rows ('Started BJJ') and belt-less rows (transfer / left / return)
+  // are their own solo groups — they sit outside the grouping entirely.
+  const _grp=[];
+  arr.forEach((m,i)=>{
+    const last=_grp[_grp.length-1];
+    if(m._synthetic||!m.belt){_grp.push({solo:true,items:[{m,i}]});return;}
+    if(last&&!last.solo&&last.belt===m.belt){last.items.push({m,i});return;}
+    _grp.push({belt:m.belt,items:[{m,i}]});
+  });
+  // A leading integer in the label is the stripe degree — the SAME test _tlRank
+  // above uses to tie-break, so "Blue belt" reads as the belt row and "3rd
+  // stripe" as a stripe without parsing prose.
+  const _degOf=(m)=>{const d=parseInt(m&&m.label,10);return Number.isFinite(d)?d:null;};
+  const _chev='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+  const _rows=_grp.map(g=>{
+    const stripes=g.items.filter(x=>_degOf(x.m)!==null);
+    const beltItem=g.items.find(x=>_degOf(x.m)===null);
+    // THE RULE:
+    //   3 or more stripes — two lines behind a tap the user has to make is a
+    //     worse trade than just showing them.
+    //   never the CURRENT belt — it is where the person is and where the next
+    //     marker renders; hiding live progress is hiding the reason they opened
+    //     the screen.
+    //   needs a belt row to hang the expander on — a student who declared
+    //     stripes but not the belt itself has nothing to collapse into.
+    //   a belt with no stripes is a plain line, no chevron: mark the exception.
+    const isCurBelt=!!(s&&s.belt&&g.belt===s.belt);
+    if(g.solo||isCurBelt||!beltItem||stripes.length<3){
+      return g.items.map(x=>_tlRow(x.m,x.i)).join('');
+    }
+    const gid='tlg'+(++_tlGrpSeq);
+    const n=stripes.length;
+    const list='<div id="'+gid+'" class="tlgrp" hidden>'
+      +stripes.map(x=>'<div class="tlgs">'+x.m.label+(_fmtJnyDate(x.m.date)?(' · '+_fmtJnyDate(x.m.date)):'')+'</div>').join('')
+      +'</div>';
+    // lastPad: the group owns the tail whenever any of its entries was the last
+    // in `arr`, so the closing padding does not vanish with the hidden stripes.
+    const ownsTail=g.items.some(x=>x.i===arr.length-1);
+    return _tlRow(beltItem.m,beltItem.i,{
+      metaSuffix:n+' stripe'+(n===1?'':'s'),
+      trailing:'<span class="tlchev">'+_chev+'</span>',
+      extraBody:list,
+      lastPad:ownsTail,
+      rowClass:' tlexp',
+      rowAttrs:' onclick="_tlToggleGrp(this,\''+gid+'\')" role="button" tabindex="0" aria-expanded="false" aria-controls="'+gid+'"'
+    });
+  }).join('');
+  return `<div class="tl"><div class="tlline"></div>${_rows}${nextNode}</div>`;
 }
 
 
