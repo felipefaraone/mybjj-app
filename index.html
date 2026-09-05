@@ -3547,23 +3547,46 @@ function rTL(journey,subject){
   // the stored m.current flag so existing call sites that haven't been
   // updated keep working.
   const useDerived=!!s;
-  // Faded "next belt" preview after the last entry. Hidden at the
-  // terminal belt (black for adults, green/black for kids) and for
-  // any subject with pending criteria (kids).
+  // Faded "next" preview after the last entry. Hidden at the terminal belt
+  // (getNextMarker returns null on black) and for any subject with pending
+  // criteria (kids).
+  //
+  // WHAT the student is working towards comes from getNextMarker (:1567) — THE
+  // source of truth for that question. It reads the degree slot, splits adult vs
+  // kids criteria by BELT rather than programme, handles the white-belt-at-16
+  // bridge, and returns null on black. The local "next belt in the order"
+  // derivation that used to live here ignored stripes completely, so a blue belt
+  // with no stripes was told he was working towards PURPLE when the thing he is
+  // actually training for is his 1st stripe on blue — wrong for every student
+  // between stripes, which is most of the gym.
   let nextNode='';
   if(s&&s.belt){
-    const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
-    const curBeltIdx=ORDER.indexOf(s.belt);
-    const nextBelt=(curBeltIdx>=0&&curBeltIdx<ORDER.length-1)?ORDER[curBeltIdx+1]:null;
+    const nm=(typeof getNextMarker==='function')?getNextMarker(s):null;
     const egd=(typeof _egDisplay==='function')?_egDisplay(s):{isPending:false};
-    if(nextBelt&&!egd.isPending){
-      const nbl=BA[nextBelt]||BK[nextBelt]||{label:nextBelt};
+    let nextLabel=null;
+    if(nm&&nm.marker==='promotion'){
+      // getNextMarker names the CURRENT belt, so the target is the next one in
+      // the order. Same ORDER selection as before this fix, so belt previews
+      // render exactly the string they always did.
+      const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
+      const curBeltIdx=ORDER.indexOf(s.belt);
+      const nextBelt=(curBeltIdx>=0&&curBeltIdx<ORDER.length-1)?ORDER[curBeltIdx+1]:null;
+      if(nextBelt)nextLabel=(BA[nextBelt]||BK[nextBelt]||{label:nextBelt}).label+' belt';
+    }else if(nm){
+      // '1st_stripe'..'4th_stripe'. _ordSuffix (:7522) is the file's ordinal
+      // helper — the same one savePromote (:5723) and _jnyFromPromotions use to
+      // write the real entry, so the preview reads exactly like the milestone it
+      // turns into once the stripe is awarded.
+      const d=parseInt(nm.marker,10);
+      if(Number.isFinite(d)&&d>0)nextLabel=d+_ordSuffix(d)+' stripe';
+    }
+    if(nextLabel&&!egd.isPending){
       nextNode='<div class="tli" style="opacity:.5">'
         +'<div class="tldot" style="background:var(--bg);color:var(--text3);border:2px dashed var(--border2)">'
           +'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
         +'</div>'
         +'<div class="tlb" style="padding-bottom:4px">'
-          +'<div class="tlt" style="color:var(--text3)">'+nbl.label+' belt</div>'
+          +'<div class="tlt" style="color:var(--text3)">'+nextLabel+'</div>'
           +'<div class="tld" style="color:var(--text3);font-style:italic">Next</div>'
         +'</div>'
       +'</div>';
