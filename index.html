@@ -4509,60 +4509,6 @@ function rAddStaff(){
 // openStaffNoteModal → rStaffNoteModal → saveStaffNoteModal, mirroring
 // the student feedback modal.
 
-function rPromoPanel(s){
-  const me=S.me;
-  if(!isStaffOrOwner())return '';
-  const instrBelt=me.belt||'white';const instrDeg=me.deg||0;
-  // v1.39.x Fix 4(b) — reuse the shared BELT_ORDER_* progression so
-  // the kids' compound-belt chain is honoured (grey/white → grey →
-  // grey/black → yellow/white …) instead of the old 5-belt skip.
-  const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
-  const curIdx=ORDER.indexOf(s.belt);
-  const nextBelt=curIdx<ORDER.length-1?ORDER[curIdx+1]:null;
-  const maxDeg=(s.belt==='black')?6:4;
-  const canAddStripe=s.deg<maxDeg;
-  const stripeChk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false,s);
-  const beltChk=nextBelt?canPromote(instrBelt,instrDeg,nextBelt,0,true,s):{ok:false,reason:'Already at maximum belt.'};
-
-  const stripeRow=canAddStripe
-    ?('<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-      +'<div><div style="font-size:14px;color:var(--text);font-weight:500">Add stripe</div>'
-      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+s.belt.charAt(0).toUpperCase()+s.belt.slice(1)+' belt, degree '+(s.deg+1)+'</div></div>'
-      +(stripeChk.ok
-        ?'<button onclick="doPromote(this.dataset.sid,false)" data-sid="'+s.id+'" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer">+ Stripe</button>'
-        :'<div style="font-size:11px;color:var(--red-text);text-align:right;max-width:140px">'+stripeChk.reason+'</div>')
-      +'</div>')
-    :'<div style="font-size:13px;color:var(--text2);margin-bottom:10px">4 stripes reached — eligible for belt promotion.</div>';
-
-  const beltRow=nextBelt
-    ?('<div class="divider" style="padding-top:10px;display:flex;align-items:center;justify-content:space-between">'
-      +'<div><div style="font-size:14px;color:var(--text);font-weight:500">Belt promotion</div>'
-      +'<div style="display:flex;align-items:center;gap:6px;margin-top:4px"><span style="font-size:12px;color:var(--text3);margin-right:2px">→</span>'+bb(nextBelt,0,s.prog)+'</div></div>'
-      +(beltChk.ok
-        ?'<button onclick="doPromote(this.dataset.sid,true)" data-sid="'+s.id+'" style="background:#7e22ce;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer">Promote ✦</button>'
-        :'<div style="font-size:11px;color:var(--red-text);text-align:right;max-width:150px">'+beltChk.reason+'</div>')
-      +'</div>')
-    :'';
-
-  // Revert last promotion — same predicate revertPromo uses, so the row named
-  // here is always the row the button acts on.
-  const lastPromo=_revertTarget(s.id);
-  let revertRow='';
-  if(lastPromo){
-    const revertLabel=lastPromo.isNewBelt
-      ?'Revert to '+lastPromo.fromBelt.charAt(0).toUpperCase()+lastPromo.fromBelt.slice(1)+(lastPromo.fromDeg?' '+lastPromo.fromDeg+'-stripe':'')
-      :'Remove stripe (back to '+lastPromo.fromBelt.charAt(0).toUpperCase()+lastPromo.fromBelt.slice(1)+' '+lastPromo.fromDeg+'-stripe)';
-    revertRow='<div class="divider" style="padding-top:10px;display:flex;align-items:center;justify-content:space-between">'
-      +'<div><div style="font-size:13px;color:var(--text2);font-weight:500">Revert last promotion</div>'
-      +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+revertLabel+'</div></div>'
-      +'<button onclick="revertPromo(this.dataset.sid)" data-sid="'+s.id+'" style="background:none;color:var(--red-text);border:1px solid var(--red-text);border-radius:8px;padding:7px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;cursor:pointer">Revert</button>'
-      +'</div>';
-  }
-
-  return '<div class="slbl">Promote</div>'
-    +'<div class="card" style="padding:14px 16px">'+stripeRow+beltRow+revertRow+'</div>';
-}
-
 // THE one rule for "which promotion can Revert undo". Three surfaces asked this
 // question with three different filters, so the Promote panel could name one row
 // while revertPromo deleted another. One predicate, one answer.
@@ -4608,73 +4554,6 @@ function revertPromo(id){
   if(s._dbId)withSb(c=>c.from('students').update({belt:s.belt,degree:s.deg,grade:0,gi_grade:0,journey:s.journey||[]}).eq('id',s._dbId),'revert student');
 }
 
-function doPromote(id, isBeltPromotion){
-  const s=STUDENTS.find(x=>x.id===id);if(!s)return;
-  const me=S.me;
-  const instrBelt=me.belt||'white';const instrDeg=me.deg||0;
-  // v1.39.x Fix 4(b) — shared 13-key kids progression.
-  const ORDER=s.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
-
-  let newPromo=null;
-  if(isBeltPromotion){
-    const curIdx=ORDER.indexOf(s.belt);
-    if(curIdx>=ORDER.length-1){alert('Already at maximum belt.');return;}
-    const nextBelt=ORDER[curIdx+1];
-    const chk=canPromote(instrBelt,instrDeg,nextBelt,0,true,s);
-    if(!chk.ok){alert('Not authorized: '+chk.reason);return;}
-    const fromBelt=s.belt;const fromDeg=s.deg;
-    s.belt=nextBelt;s.deg=0;s.grade=0;s.giGrade=0;
-    newPromo={
-      id:'pl'+Date.now(),studentId:s.id,studentName:s.name,
-      fromBelt,fromDeg,toBelt:nextBelt,toDeg:0,isNewBelt:true,
-      date:new Date().toISOString().slice(0,10),
-      promotedBy:me.name,unit:s.unit||'nb'
-    };
-    PROMOTION_LOG.unshift(newPromo);
-    if(!s.journey)s.journey=[];
-    const bl=s.prog==='kids'?BK:BA;
-    const nb=beltDef(nextBelt,s.prog);
-    const doneIdx=s.journey.findLastIndex?s.journey.findLastIndex(j=>j.done):-1;
-    if(doneIdx>=0)s.journey[doneIdx].current=false;
-    s.journey.push({belt:nextBelt,label:nb.label+' belt',date:new Date().toISOString().slice(0,10),classes:s.total,done:true,current:true,auto:true});
-  } else {
-    const maxDeg=s.belt==='black'?6:4;
-    if(s.deg>=maxDeg){alert('Already at maximum stripes for this belt.');return;}
-    const chk=canPromote(instrBelt,instrDeg,s.belt,s.deg,false,s);
-    if(!chk.ok){alert('Not authorized: '+chk.reason);return;}
-    const fromDeg=s.deg;
-    s.deg+=1;s.grade=0;s.giGrade=0;
-    newPromo={
-      id:'pl'+Date.now(),studentId:s.id,studentName:s.name,
-      fromBelt:s.belt,fromDeg,toBelt:s.belt,toDeg:s.deg,isNewBelt:false,
-      date:new Date().toISOString().slice(0,10),
-      promotedBy:me.name,unit:s.unit||'nb'
-    };
-    PROMOTION_LOG.unshift(newPromo);
-    if(s.journey){
-      s.journey.forEach(j=>{if(j.current)j.current=false;});
-      const ord=s.deg===1?'1st':s.deg===2?'2nd':s.deg===3?'3rd':s.deg+'th';
-      // "degree" on black belt, "stripe" on every other colour.
-      const unit=s.belt==='black'?' degree':' stripe';
-      s.journey.push({belt:s.belt,label:ord+unit,date:new Date().toISOString().slice(0,10),classes:s.total,done:true,current:true,auto:true});
-    }
-  }
-  render();
-  if(s._dbId){
-    const unit=UNITS.find(u=>u.id===newPromo.unit);
-    withSb(c=>c.from('promotions').insert({
-      legacy_id:newPromo.id,student_id:s._dbId,
-      from_belt:newPromo.fromBelt,to_belt:newPromo.toBelt,
-      from_deg:newPromo.fromDeg,to_deg:newPromo.toDeg,
-      type:newPromo.isNewBelt?'belt':'stripe',is_new_belt:newPromo.isNewBelt,
-      date:newPromo.date,student_name:newPromo.studentName,
-      promoted_by_name:newPromo.promotedBy,unit_id:unit&&unit._dbId
-    }),'insert promotion');
-    withSb(c=>c.from('students').update({
-      belt:s.belt,degree:s.deg,grade:s.grade,gi_grade:s.giGrade,journey:s.journey||[]
-    }).eq('id',s._dbId),'update student after promotion');
-  }
-}
 // Whole-years age from a 'YYYY-MM-DD' dob, or null when absent/unparseable.
 function _ageFromDob(dob){
   if(!dob)return null;
@@ -6014,7 +5893,7 @@ function rPromoteModal(){
 <div style="font-size:12px;color:var(--text3);margin-bottom:6px">${_backfill?_bfSubtitle:'Currently '+(s.belt?beltLabel(s.belt):'No belt set')+(s.deg?', '+s.deg+'-stripe':'')}</div>${(!_backfill&&_kidEligibleForAdultBelts(s))?`<div style="font-size:12px;color:var(--blue);margin-bottom:6px">Eligible for adult belts this year</div>`:''}
 ${_backfill?'':eligLine}
 <div class="ef" style="margin-bottom:12px">
-<div class="erow"><div class="elbl">Belt</div>${_backfill?`<div style="flex:1;text-align:right;font-size:14px;color:var(--text)">${escHtml(beltLabel(targetBelt))}</div>`:`<select class="esel" id="pm-belt" onchange="setPromoteBelt(this.value)">${beltOpts}</select>`}</div>
+<div class="erow"><div class="elbl">Belt</div>${_backfill?`<div style="flex:1;text-align:right;font-size:14px;color:var(--text)">${targetBelt?escHtml(beltLabel(targetBelt)):'No belt set'}</div>`:`<select class="esel" id="pm-belt" onchange="setPromoteBelt(this.value)">${beltOpts}</select>`}</div>
 <div class="erow"><div class="elbl">${targetBelt==='black'?'Degree':'Stripes'}</div>${_backfill?`<div style="flex:1;text-align:right;font-size:14px;color:var(--text)">${targetDeg}</div>`:`<select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${degOpts}</select>`}</div>
 <div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date" value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
 ${!F.setCurrent?`<div class="erow"><div class="elbl">Classes (optional)</div><input class="einput" id="pm-classes" type="number" min="0" step="0.25" value="${escAttr(F.classes||'')}" oninput="setPromoteClasses(this.value)" placeholder="" style="width:100%;box-sizing:border-box;min-width:0"/></div>`:''}
