@@ -2198,7 +2198,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -3439,8 +3439,254 @@ function _jnyFromPromotions(subject){
     // done:true always — promotions.date is NOT NULL, so nothing here is undated
     // or pending. No `classes`: a promotion row carries no class count, and rTL
     // already renders that meta line only when the number is present.
-    return {belt:p.toBelt,label,date,done:true};
+    // source and _promoId ride along so a surface OUTSIDE rTL can tell an
+    // academy-recorded promotion from one the student declared, and can delete
+    // the declared one. rTL itself never reads either — its body is untouched.
+    return {belt:p.toBelt,label,date,done:true,source:p.source||null,_promoId:p._dbId||p.id||null};
   });
+}
+// ── Declared history — a student records the belts they earned before myBJJ ──
+// Students who trained elsewhere arrive with an empty timeline: public.promotions
+// only knows what this academy recorded. Only they know those dates, so this is
+// the one write on the journey a student makes about themselves.
+//
+// The DATABASE is the authority, not this code. RLS lets a student INSERT only
+// with source='declared', only on their own students row, and only with a date
+// before their own students.created_at; UPDATE/DELETE only on their own declared
+// rows; source='academy' is untouchable. The triggers skip source='declared', so
+// nothing here moves last_marker_date, changes a belt, or feeds eligibility.
+// Everything below is there so the person gets a readable message instead of
+// discovering the rule by being rejected.
+function _jnyDeclSubject(sid){
+  const s=(STUDENTS||[]).find(x=>x&&x.id===sid);
+  if(!s||!s._dbId)return null;
+  // Own row only, re-checked HERE and not just at the render gate: this runs
+  // from an onclick, and the panel that drew the button is long gone by then.
+  if(!(s._userId&&S.profile&&s._userId===S.profile.id))return null;
+  return s;
+}
+function openJnyDeclare(sid){
+  if(!_jnyDeclSubject(sid))return;
+  S.jnyDeclare={sid,belt:'',deg:0,d:'',m:'',y:'',busy:false,err:''};
+  render();
+}
+function closeJnyDeclare(){S.jnyDeclare=null;render();}
+// Assembles the three Day/Month/Year selects into one ISO date + the precision
+// the person implied by how much of it they filled in. Year alone is the whole
+// point of the feature: someone who only remembers "2015" says 2015 and sees
+// 2015, never 1 January 2015.
+//   year  + nothing  -> 'year'   YYYY-01-01
+//   year  + month    -> 'month'  YYYY-MM-01
+//   all three        -> 'day'    YYYY-MM-DD
+// Day without month is incomplete, not a third precision.
+function _jnyDeclDate(st){
+  if(!st||!st.y)return null;
+  if(st.d&&!st.m)return null;
+  if(st.m&&st.d)return {iso:st.y+'-'+st.m+'-'+st.d,precision:'day'};
+  if(st.m)return {iso:st.y+'-'+st.m+'-01',precision:'month'};
+  return {iso:st.y+'-01-01',precision:'year'};
+}
+// Why a save would be refused, in the person's words — or null when it is fine.
+// Compares CALENDAR DAYS. RLS tests `date < created_at`, and because a DATE
+// widens to midnight, a promotion dated the same day someone was registered can
+// technically pass it. This is deliberately one notch stricter: a promotion on
+// your joining day is not history from before you joined. Stricter than the
+// policy can only ever prevent a surprise, never cause one.
+function _jnyDeclError(st,stu){
+  if(!st||!stu)return 'Something went wrong — close and try again.';
+  if(!st.belt)return 'Pick the belt you were awarded.';
+  if(!st.y)return 'Pick at least the year.';
+  if(st.d&&!st.m)return 'Pick a month too, or clear the day.';
+  const dt=_jnyDeclDate(st);
+  if(!dt)return 'Pick at least the year.';
+  const today=new Date().toISOString().slice(0,10);
+  if(dt.iso>today)return 'That date is in the future.';
+  const joined=stu._createdAt?String(stu._createdAt).slice(0,10):null;
+  if(!joined)return 'We could not read your join date — ask your academy to check your profile.';
+  if(dt.iso>=joined){
+    // Spelled out to the DAY, not via _fmtJnyDate: that renders "Feb 2026",
+    // which reads as though the whole month were barred when in fact only this
+    // day and later are. Parts are read literally — new Date(iso) would shift
+    // the day in any negative-offset zone.
+    const jp=/^(\d{4})-(\d{2})-(\d{2})$/.exec(joined);
+    const jl=jp?(Number(jp[3])+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(jp[2])-1]+' '+jp[1]):joined;
+    return 'This screen is for belts you earned BEFORE you joined myBJJ on '+jl+'. Anything from that day on is added by your professor.';
+  }
+  return null;
+}
+// DOM-only, like the post composer's counter: a <select> change must not
+// re-render, or the sheet rebuilds under the person's finger mid-choice.
+function _jnyDeclSync(){
+  const st=S.jnyDeclare;if(!st)return;
+  const stu=_jnyDeclSubject(st.sid);
+  const dt=_jnyDeclDate(st);
+  const err=_jnyDeclError(st,stu);
+  const prev=document.getElementById('jd-preview');
+  if(prev)prev.textContent=dt?('Saved as '+((_fmtJnyDate(dt.precision==='year'?st.y:dt.iso))||dt.iso)):'Pick a belt and at least a year.';
+  const msg=document.getElementById('jd-err');
+  if(msg){msg.textContent=(err&&(st.belt||st.y))?err:'';msg.style.display=(err&&(st.belt||st.y))?'block':'none';}
+  const b=document.getElementById('jd-save');
+  if(b){const ok=!err&&!st.busy;b.disabled=!ok;b.style.opacity=ok?'1':'.5';}
+}
+function setJnyDeclField(k,v){
+  const st=S.jnyDeclare;if(!st)return;
+  if(k==='deg')st.deg=parseInt(v,10)||0;else st[k]=String(v||'');
+  _jnyDeclSync();
+}
+async function saveJnyDeclare(){
+  const st=S.jnyDeclare;if(!st||st.busy)return;
+  const stu=_jnyDeclSubject(st.sid);
+  const err=_jnyDeclError(st,stu);
+  if(err){st.err=err;render();return;}
+  const dt=_jnyDeclDate(st);
+  const deg=st.deg|0;
+  st.busy=true;st.err='';render();
+  const cli=initSupabase();
+  if(!cli){st.busy=false;st.err='Connection issue';render();return;}
+  // The student's OWN unit, resolved from their row — not meUnitDbId(), which
+  // follows the unit picker in the header and would file the promotion under
+  // whichever academy happens to be selected.
+  const _u=(UNITS||[]).find(u=>u&&u.id===stu.unit);
+  const unitId=(_u&&_u._dbId)||meUnitDbId()||null;
+  const payload={
+    student_id:stu._dbId,
+    source:'declared',
+    type:deg===0?'belt':'stripe',
+    to_belt:st.belt,
+    to_deg:deg,
+    is_new_belt:deg===0,
+    date:dt.iso,
+    date_precision:dt.precision,
+    // History, not an event: it must never reach the Community Wall, whose feed
+    // filter already drops hidden rows.
+    hidden:true,
+    unit_id:unitId
+  };
+  try{
+    // .select('id').single() to capture the new row's uuid — the same shape
+    // savePromote uses, and the id is what the remove control needs.
+    const r=await cli.from('promotions').insert(payload).select('id').single();
+    if(r&&r.error)throw r.error;
+    const newId=(r&&r.data&&r.data.id)||null;
+    // Local push, mapped EXACTLY like the hydrate mapper builds PROMOTION_LOG,
+    // so the timeline picks it up on this render instead of after a refetch.
+    PROMOTION_LOG.unshift({
+      id:newId,_dbId:newId,
+      studentId:stu.id,studentName:stu.name,
+      fromBelt:null,fromDeg:null,
+      toBelt:payload.to_belt,toDeg:payload.to_deg,
+      isNewBelt:payload.is_new_belt,type:payload.type,
+      date:payload.date,
+      promotedBy:null,promotedById:null,promotedByStaff:null,
+      unit:stu.unit||null,hidden:true,
+      source:'declared',datePrecision:payload.date_precision,staffId:null
+    });
+    // Reset the form, keep the sheet open: someone entering a history usually
+    // has several belts to add, and reopening for each one is the wrong shape.
+    S.jnyDeclare={sid:st.sid,belt:'',deg:0,d:'',m:'',y:'',busy:false,err:''};
+    render();showSaveToast2('History added');
+  }catch(e){
+    console.warn('[mybjj] saveJnyDeclare:',e);
+    const s2=S.jnyDeclare;if(s2){s2.busy=false;s2.err=friendlyMutationError(e)||'Could not save';render();}
+  }
+}
+function removeDeclaredConfirm(promoId){
+  const st=S.jnyDeclare;if(!st)return;
+  const stu=_jnyDeclSubject(st.sid);if(!stu)return;
+  const p=(PROMOTION_LOG||[]).find(x=>x&&x._dbId===promoId);
+  // Declared AND theirs. An academy row has no remove control, and this closes
+  // the function to a direct call as well.
+  if(!p||p.source!=='declared'||p.studentId!==stu.id)return;
+  openConfirm({title:'Remove this entry?',message:'This removes it from your journey. Your professor\'s records are not affected.',dangerLabel:'Remove',onConfirm:()=>removeDeclared(promoId)});
+}
+async function removeDeclared(promoId){
+  const st=S.jnyDeclare;if(!st)return;
+  const stu=_jnyDeclSubject(st.sid);if(!stu)return;
+  const i=(PROMOTION_LOG||[]).findIndex(x=>x&&x._dbId===promoId);
+  if(i<0)return;
+  const p=PROMOTION_LOG[i];
+  if(p.source!=='declared'||p.studentId!==stu.id)return;
+  PROMOTION_LOG.splice(i,1);render();                 // optimistic
+  const cli=initSupabase();
+  if(!cli){PROMOTION_LOG.splice(i,0,p);render();showSaveToast2('Connection issue','error');return;}
+  // A real DELETE, unlike posts: promotions HAS a delete policy, scoped to the
+  // student's own declared rows. A soft delete would leave the row in the
+  // timeline, since _jnyFromPromotions reads every non-correction row.
+  const r=await cli.from('promotions').delete().eq('id',promoId);
+  if(r&&r.error){
+    PROMOTION_LOG.splice(i,0,p);render();
+    console.warn('[mybjj] removeDeclared:',r.error);
+    showSaveToast2(friendlyMutationError(r.error)||'Could not remove','error');
+    return;
+  }
+  showSaveToast2('Entry removed');
+}
+// Mounted from rApp(), like every other sheet — a .cov is position:absolute and
+// must anchor to #app, never to a scrollable sub-view.
+function rJnyDeclareSheet(){
+  const st=S.jnyDeclare;
+  if(!st)return '';
+  const stu=_jnyDeclSubject(st.sid);
+  if(!stu)return '';
+  const ORDER=stu.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
+  const beltOpts='<option value="">Belt…</option>'+ORDER.map(b=>
+    '<option value="'+b+'" '+(b===st.belt?'selected':'')+'>'+(BA[b]||BK[b]||{label:b}).label+'</option>').join('');
+  const degOpts=[0,1,2,3,4].map(n=>
+    '<option value="'+n+'" '+(n===(st.deg|0)?'selected':'')+'>'+(n===0?'No stripes':(n+_ordSuffix(n)+' stripe'))+'</option>').join('');
+  // Three selects rather than a native date input — the SAME reason the Add
+  // Student form gives for date of birth: type="date" cannot reach a distant
+  // year without dozens of taps, and three dropdowns behave identically on
+  // iPhone and desktop. It also sidesteps showPicker() entirely, which iOS
+  // Safari blocks from a handler.
+  const _p2=n=>(n<10?'0':'')+n;
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dayOpts='<option value="">Day</option>'+Array.from({length:31},(_,i)=>{const d=_p2(i+1);return '<option value="'+d+'" '+(d===st.d?'selected':'')+'>'+(i+1)+'</option>';}).join('');
+  const monOpts='<option value="">Month</option>'+MON.map((nm,i)=>{const m=_p2(i+1);return '<option value="'+m+'" '+(m===st.m?'selected':'')+'>'+nm+'</option>';}).join('');
+  const _cy=new Date().getFullYear();
+  const yrOpts='<option value="">Year</option>'+Array.from({length:_cy-1970+1},(_,i)=>{const y=String(_cy-i);return '<option value="'+y+'" '+(y===st.y?'selected':'')+'>'+y+'</option>';}).join('');
+  const dt=_jnyDeclDate(st);
+  const liveErr=_jnyDeclError(st,stu);
+  const showErr=st.err||((liveErr&&(st.belt||st.y))?liveErr:'');
+  const ok=!liveErr&&!st.busy;
+  const previewTxt=dt?('Saved as '+((_fmtJnyDate(dt.precision==='year'?st.y:dt.iso))||dt.iso)):'Pick a belt and at least a year.';
+  // Their own declared entries, straight off the same derivation the timeline
+  // uses — so what they remove here is exactly what they see there. Academy
+  // rows are filtered out and get no control at all.
+  const mine=_jnyFromPromotions(stu)
+    .filter(m=>m&&m.source==='declared'&&m._promoId)
+    .sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+  const mineRows=mine.length
+    ? mine.map(m=>'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)">'
+        +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600">'+escHtml(m.label||'—')+'</div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+escHtml(_fmtJnyDate(m.date)||'')+'</div></div>'
+        +'<button onclick="removeDeclaredConfirm(\''+m._promoId+'\')" title="Remove" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:30px;height:30px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>'
+      +'</div>').join('')
+    : '';
+  const mineBlock=mine.length
+    ? '<div style="margin-top:18px"><div class="slbl" style="margin:0 0 2px">History you added</div>'+mineRows+'</div>'
+    : '';
+  return '<div class="cov" onclick="'+(st.busy?'':'closeJnyDeclare()')+'" style="align-items:flex-end;z-index:300">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;margin:0 auto;padding:18px;max-height:calc(100vh - 40px);overflow:auto">'
+      +'<button onclick="closeJnyDeclare()" aria-label="Close" '+(st.busy?'disabled':'')+' style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:18px;letter-spacing:.5px;color:var(--text);margin-bottom:4px;padding-right:40px">Add past history</div>'
+      +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin-bottom:14px;padding-right:40px">Belts you earned before joining myBJJ. This does not change your current belt, your class count, or when you are next due.</div>'
+      +'<div class="ef">'
+        +'<div class="erow"><div class="elbl">Belt</div><select class="esel" id="jd-belt" style="text-align:right" onchange="setJnyDeclField(\'belt\',this.value)">'+beltOpts+'</select></div>'
+        +'<div class="erow"><div class="elbl">Stripes</div><select class="esel" id="jd-deg" style="text-align:right" onchange="setJnyDeclField(\'deg\',this.value)">'+degOpts+'</select></div>'
+        +'<div class="erow"><div class="elbl">When</div><div style="display:flex;gap:6px;flex:1;flex-wrap:wrap;justify-content:flex-end">'
+          +'<select class="esel" id="jd-d" style="flex:1;min-width:60px;text-align:left" onchange="setJnyDeclField(\'d\',this.value)">'+dayOpts+'</select>'
+          +'<select class="esel" id="jd-m" style="flex:1;min-width:70px;text-align:left" onchange="setJnyDeclField(\'m\',this.value)">'+monOpts+'</select>'
+          +'<select class="esel" id="jd-y" style="flex:1;min-width:70px;text-align:left" onchange="setJnyDeclField(\'y\',this.value)">'+yrOpts+'</select>'
+        +'</div></div>'
+      +'</div>'
+      +'<div id="jd-preview" style="font-size:12px;color:var(--text3);margin-top:8px">'+escHtml(previewTxt)+'</div>'
+      +'<div id="jd-err" style="display:'+(showErr?'block':'none')+';color:var(--red-text);font-size:12px;line-height:1.45;margin-top:8px">'+escHtml(showErr||'')+'</div>'
+      +'<div style="display:flex;gap:10px;margin-top:14px">'
+        +'<button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeJnyDeclare()" '+(st.busy?'disabled':'')+'>Cancel</button>'
+        +'<button id="jd-save" class="bblue" style="flex:1;padding:12px;opacity:'+(ok?'1':'.5')+'" onclick="saveJnyDeclare()" '+(ok?'':'disabled')+'>'+(st.busy?'Saving…':'Add')+'</button>'
+      +'</div>'
+      +mineBlock
+    +'</div></div>';
 }
 // G17.2b — per-milestone Share button removed. Felipe's call: journey
 // is internal progression, not a social broadcast. shareSid parameter
@@ -9448,7 +9694,24 @@ function rProgress(){
   // down by 16px. The 16px is added desktop-side instead, in the @media block,
   // so mobile renders exactly as before. On mobile the cells stack, so it still
   // reads label, card, label, card.
-  var journeyTab=`<div class="prog-pair"><div><div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(_jnyFromPromotions(stu),stu)}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
+  // "Add your history" — the student's OWN Journey only. Three separate facts
+  // have to hold, and each one closes a different door:
+  //   !_kidActive           a parent looking at their child is viewing someone
+  //                         else's journey; only the person who lived it can
+  //                         declare it.
+  //   stu._userId === me    the row belongs to the signed-in user. Staff never
+  //                         reach this branch at all (the staff path returns at
+  //                         :9261) and a peer's profile renders through
+  //                         rStuProf/rJnySection, which is a different surface.
+  //   stu._dbId             there is a students row to write against.
+  // Staff add history through Promote, which is why this never appears for them.
+  var _canDeclare=!_kidActive&&!!(stu&&stu._dbId&&stu._userId&&S.profile&&stu._userId===S.profile.id);
+  var _declareBtn=_canDeclare
+    ?'<div style="padding:10px 16px 12px;text-align:center;border-top:1px solid var(--border);margin-top:4px">'
+      +'<button onclick="openJnyDeclare(\''+stu.id+'\')" style="background:none;border:1px dashed var(--border2);border-radius:10px;padding:9px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;color:var(--blue);cursor:pointer">Trained before joining? Add your history</button>'
+    +'</div>'
+    :'';
+  var journeyTab=`<div class="prog-pair"><div><div class="slbl">Your BJJ journey</div><div class="card" style="padding:12px 16px">${rTL(_jnyFromPromotions(stu),stu)}${_declareBtn}</div></div><div>${_rRecentCard(stu,!!_kidActive)}</div></div>`;
   // Two tabs only. A stale S.ptab (the removed 'feedback', or 'techniques'/'wall')
   // maps to My belt LOCALLY -- not via the global reroute at line 6136 -- because
   // 'feedback' is still a LIVE tab in the coach branch above, which must stay
@@ -11289,7 +11552,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -20287,7 +20550,7 @@ function _swSafeToReload(){
     if(typeof S==='undefined'||!S)return false;
     // Any open modal / sheet / sub-panel / in-flight action blocks the reload.
     if(S.editCls!=null)return false;
-    if(S.addCls||S.cdel||S.markP||S.closeDay||S.oneoff||S.editJny||S.pcInfo||S.postCompose)return false;
+    if(S.addCls||S.cdel||S.markP||S.closeDay||S.oneoff||S.editJny||S.pcInfo||S.postCompose||S.jnyDeclare)return false;
     if(S.contactLogFor||S.qrFor||S.waiverDoc||S.panelOpen||S.sub||S.inboxOpen)return false;
     if(S.cardEx||S.promoteFor||S.fbModalFor||S.staffNoteModalFor||S.classAdd)return false;
     if(S.cropOpen||S.addStaff||S.removeStaffConfirm||S.emailEdit||S.changeEmail)return false;
