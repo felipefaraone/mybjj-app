@@ -3471,6 +3471,59 @@ function openJnyDeclare(sid){
   render();
 }
 function closeJnyDeclare(){S.jnyDeclare=null;render();}
+// What a person could possibly have earned. ONE source for the two dropdowns,
+// used by both the render and the live rebuild below, so they can never drift.
+//
+// Belts stop at the student's CURRENT belt, inclusive. Declaring never touches
+// students.belt — RLS would not let it — but the app was offering a blue belt
+// the option to put a BLACK belt line on a timeline the whole gym reads. Don't
+// offer what cannot be true.
+function _jnyDeclBelts(stu){
+  const ORDER=(stu&&stu.prog==='kids')?BELT_ORDER_K:BELT_ORDER_A;
+  const ci=stu?ORDER.indexOf(stu.belt):-1;
+  return ci<0?ORDER.slice():ORDER.slice(0,ci+1);   // unknown belt -> cap nothing rather than empty the list
+}
+// Stripes depend on WHICH belt was picked:
+//   a belt BELOW the current one — every stripe was passed through, so 0..4;
+//   the CURRENT belt — 0 up to and including the degree they hold. Blue with 2
+//   stripes earned both somewhere and must be able to record both; blue with
+//   none gets only "No stripes".
+function _jnyDeclMaxDeg(stu,belt){
+  if(!stu||!belt)return 4;
+  const ORDER=(stu.prog==='kids')?BELT_ORDER_K:BELT_ORDER_A;
+  const ci=ORDER.indexOf(stu.belt),bi=ORDER.indexOf(belt);
+  if(ci<0||bi<0)return 4;                          // unknown belt either side — invent no cap
+  if(bi<ci)return 4;
+  // Same defensive read getNextMarker uses: hydrated rows carry `deg`, some
+  // call sites pass `degree`.
+  const cur=(stu.degree!=null?stu.degree:(stu.deg!=null?stu.deg:0))||0;
+  return Math.max(0,Math.min(4,cur));
+}
+function _jnyDeclBeltOptsHtml(stu,sel){
+  return '<option value="">Belt…</option>'+_jnyDeclBelts(stu).map(b=>
+    '<option value="'+b+'" '+(b===sel?'selected':'')+'>'+(BA[b]||BK[b]||{label:b}).label+'</option>').join('');
+}
+function _jnyDeclDegOptsHtml(stu,belt,sel){
+  const mx=_jnyDeclMaxDeg(stu,belt);
+  let out='';
+  for(let n=0;n<=mx;n++)out+='<option value="'+n+'" '+(n===(sel|0)?'selected':'')+'>'+(n===0?'No stripes':(n+_ordSuffix(n)+' stripe'))+'</option>';
+  return out;
+}
+// Compares two date strings at the COARSER of their two granularities. The
+// strings carry their own precision in their length — _jnyFromPromotions emits
+// a bare '2015' for a year-precision row, '2018-03-01' for a month one — so
+// truncating both to the shorter length compares like with like. Without this a
+// declaration of "2024" would be measured as 1 January 2024 against a start date
+// of September 2024 and refused, when September 2024 is inside 2024 and the
+// claim is perfectly possible. Refusing the possible is the same mistake as
+// offering the impossible, pointed the other way.
+function _jnyDeclCmp(a,b){
+  const A=String(a||''),B=String(b||'');
+  const n=Math.min(A.length,B.length);
+  if(!n)return 0;
+  const x=A.slice(0,n),y=B.slice(0,n);
+  return x<y?-1:(x>y?1:0);
+}
 // Assembles the three Day/Month/Year selects into one ISO date + the precision
 // the person implied by how much of it they filled in. Year alone is the whole
 // point of the feature: someone who only remembers "2015" says 2015 and sees
@@ -3482,9 +3535,12 @@ function closeJnyDeclare(){S.jnyDeclare=null;render();}
 function _jnyDeclDate(st){
   if(!st||!st.y)return null;
   if(st.d&&!st.m)return null;
-  if(st.m&&st.d)return {iso:st.y+'-'+st.m+'-'+st.d,precision:'day'};
-  if(st.m)return {iso:st.y+'-'+st.m+'-01',precision:'month'};
-  return {iso:st.y+'-01-01',precision:'year'};
+  // `key` is the same date truncated to the precision the person actually gave.
+  // iso is what the row stores; key is what any comparison must use, because
+  // "2015" widened to 2015-01-01 is a January the person never claimed.
+  if(st.m&&st.d)return {iso:st.y+'-'+st.m+'-'+st.d,precision:'day',key:st.y+'-'+st.m+'-'+st.d};
+  if(st.m)return {iso:st.y+'-'+st.m+'-01',precision:'month',key:st.y+'-'+st.m};
+  return {iso:st.y+'-01-01',precision:'year',key:st.y};
 }
 // Why a save would be refused, in the person's words — or null when it is fine.
 // Compares CALENDAR DAYS. RLS tests `date < created_at`, and because a DATE
@@ -3512,6 +3568,40 @@ function _jnyDeclError(st,stu){
     const jl=jp?(Number(jp[3])+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(jp[2])-1]+' '+jp[1]):joined;
     return 'This screen is for belts you earned BEFORE you joined myBJJ on '+jl+'. Anything from that day on is added by your professor.';
   }
+  // Not before they started training. bjjStartDate is what the synthetic
+  // "Started BJJ" node reads (:3750) and what the hydrate maps from
+  // bjj_start_date. A belt awarded before the first class is impossible.
+  // Truncated to YYYY-MM because that is the precision the value actually has:
+  // both entry points for bjj_start_date are <input type="month"> (add-bjjstart,
+  // es-bjjstart), so its day component is always a stored 01, never a claim.
+  const started=stu.bjjStartDate?String(stu.bjjStartDate).slice(0,7):null;
+  if(started&&_jnyDeclCmp(dt.key,started)<0){
+    return 'You started jiu-jitsu in '+(_fmtJnyDate(started)||started)+', so a belt before that is not possible. Check the year — or fix your Started BJJ date in your profile.';
+  }
+  // Not after a milestone on a HIGHER belt. If the timeline already carries a
+  // Purple belt in 2021, a White belt in 2023 cannot be true. Read through
+  // _jnyFromPromotions, not PROMOTION_LOG, so the check sees exactly the set the
+  // timeline shows — same corrections excluded, same merge of the staff/student
+  // rows, same date precision.
+  const _ORD=(stu.prog==='kids')?BELT_ORDER_K:BELT_ORDER_A;
+  const _bi=_ORD.indexOf(st.belt);
+  if(_bi>=0){
+    let hit=null;
+    (_jnyFromPromotions(stu)||[]).forEach(m=>{
+      if(!m||!m.belt||!m.date)return;
+      const mi=_ORD.indexOf(m.belt);
+      if(mi<0||mi<=_bi)return;                       // same belt or lower — no constraint
+      if(_jnyDeclCmp(dt.key,m.date)<=0)return;       // declared date is at or before it — fine
+      // Keep the EARLIEST offending milestone: that is the real ceiling, and
+      // naming it tells the person the actual limit rather than an arbitrary one.
+      if(!hit||_jnyDeclCmp(m.date,hit.date)<0)hit=m;
+    });
+    if(hit){
+      const hiLbl=(BA[hit.belt]||BK[hit.belt]||{label:hit.belt}).label;
+      const myLbl=(BA[st.belt]||BK[st.belt]||{label:st.belt}).label;
+      return 'Your journey already shows '+hiLbl+' belt in '+(_fmtJnyDate(hit.date)||hit.date)+'. Anything on '+myLbl+' has to come before that.';
+    }
+  }
   return null;
 }
 // DOM-only, like the post composer's counter: a <select> change must not
@@ -3531,6 +3621,18 @@ function _jnyDeclSync(){
 function setJnyDeclField(k,v){
   const st=S.jnyDeclare;if(!st)return;
   if(k==='deg')st.deg=parseInt(v,10)||0;else st[k]=String(v||'');
+  if(k==='belt'){
+    // The stripe range is a function of the belt, so it has to be rebuilt here:
+    // someone who picks the current belt and then drops to a lower one must get
+    // the full 0..4 back. Rebuilt in place rather than via render() for the same
+    // reason the rest of this sheet is DOM-only — a re-render would tear the
+    // sheet down under the finger mid-choice.
+    const stu=_jnyDeclSubject(st.sid);
+    const mx=_jnyDeclMaxDeg(stu,st.belt);
+    if((st.deg|0)>mx)st.deg=mx;                 // clamp before repainting, never leave a dead selection
+    const sel=document.getElementById('jd-deg');
+    if(sel&&stu)sel.innerHTML=_jnyDeclDegOptsHtml(stu,st.belt,st.deg|0);
+  }
   _jnyDeclSync();
 }
 async function saveJnyDeclare(){
@@ -3628,11 +3730,10 @@ function rJnyDeclareSheet(){
   if(!st)return '';
   const stu=_jnyDeclSubject(st.sid);
   if(!stu)return '';
-  const ORDER=stu.prog==='kids'?BELT_ORDER_K:BELT_ORDER_A;
-  const beltOpts='<option value="">Belt…</option>'+ORDER.map(b=>
-    '<option value="'+b+'" '+(b===st.belt?'selected':'')+'>'+(BA[b]||BK[b]||{label:b}).label+'</option>').join('');
-  const degOpts=[0,1,2,3,4].map(n=>
-    '<option value="'+n+'" '+(n===(st.deg|0)?'selected':'')+'>'+(n===0?'No stripes':(n+_ordSuffix(n)+' stripe'))+'</option>').join('');
+  const beltOpts=_jnyDeclBeltOptsHtml(stu,st.belt);
+  // Before a belt is chosen, show the range the CURRENT belt allows — the most
+  // restrictive of the offered set. Picking a lower belt widens it back to 0..4.
+  const degOpts=_jnyDeclDegOptsHtml(stu,st.belt||stu.belt,st.deg|0);
   // Three selects rather than a native date input — the SAME reason the Add
   // Student form gives for date of birth: type="date" cannot reach a distant
   // year without dozens of taps, and three dropdowns behave identically on
