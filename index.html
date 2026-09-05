@@ -4135,29 +4135,61 @@ function rTL(journey,subject){
     //   never the CURRENT belt — it is where the person is and where the next
     //     marker renders; hiding live progress is hiding the reason they opened
     //     the screen.
-    //   needs a belt row to hang the expander on — a student who declared
-    //     stripes but not the belt itself has nothing to collapse into.
     //   a belt with no stripes is a plain line, no chevron: mark the exception.
+    // A missing belt row is NOT a reason to skip: nobody is promoted TO white —
+    // it is where everyone starts — so the white group is headless for almost
+    // every student and is almost always the longest. v550 skipped it and left
+    // four loose stripes at the top of the very screen this was meant to
+    // declutter. A headless group gets a SYNTHESISED header instead (below).
     const isCurBelt=!!(s&&s.belt&&g.belt===s.belt);
-    if(g.solo||isCurBelt||!beltItem||stripes.length<3){
+    if(g.solo||isCurBelt||stripes.length<3){
       return g.items.map(x=>_tlRow(x.m,x.i)).join('');
     }
     const gid='tlg'+(++_tlGrpSeq);
     const n=stripes.length;
+    // The header: the real belt row when one exists, otherwise one made up here.
+    //
+    // The synthesised row is a PRESENTATIONAL header for a run of stripes, not a
+    // milestone. It is built inside this map, which runs AFTER `arr`, `curIdx`
+    // and `nextNode` are already settled, so it cannot enter any count, move the
+    // "You are here" marker, feed the next-marker node, or affect ordering — it
+    // exists only as markup. `_synthHeader` marks it so a future reader can see
+    // that at a glance.
+    //   label  beltDef(belt, prog).label — the same resolver _tlRow already uses
+    //          for this row's colours, and the same '<Belt> belt' shape
+    //          _jnyFromPromotions builds real belt entries with. No new helper,
+    //          nothing hardcoded, kids compounds resolve through BK as usual.
+    //   date   the EARLIEST stripe's raw date. `arr` is date-ascending, so that
+    //          is stripes[0]; it goes through the same _fmtJnyDate every other
+    //          row uses, because _tlRow does the formatting.
+    //   dot    untouched — done:true and a real belt key give it exactly the
+    //          treatment a belt row of that belt gets today.
+    // The index handed to _tlRow is the first stripe's. It must be a real index
+    // (not -1, which equals curIdx when no current entry was found and would
+    // wrongly light up "You are here"), and it is safe because a collapsed group
+    // is never the current belt, so none of its indices can be curIdx.
+    const head=beltItem||{
+      m:{belt:g.belt,label:beltDef(g.belt,subject&&subject.prog).label+' belt',date:stripes[0].m.date,done:true,_synthHeader:true},
+      i:stripes[0].i
+    };
+    // Any OTHER non-stripe row in the same belt group — two "White belt" entries
+    // could coexist if the academy recorded one a student had also declared.
+    // v550 dropped them silently; they render as ordinary rows after the group.
+    const spare=g.items.filter(x=>x!==head&&_degOf(x.m)===null);
     const list='<div id="'+gid+'" class="tlgrp" hidden>'
       +stripes.map(x=>'<div class="tlgs">'+x.m.label+(_fmtJnyDate(x.m.date)?(' · '+_fmtJnyDate(x.m.date)):'')+'</div>').join('')
       +'</div>';
     // lastPad: the group owns the tail whenever any of its entries was the last
     // in `arr`, so the closing padding does not vanish with the hidden stripes.
     const ownsTail=g.items.some(x=>x.i===arr.length-1);
-    return _tlRow(beltItem.m,beltItem.i,{
+    return _tlRow(head.m,head.i,{
       metaSuffix:n+' stripe'+(n===1?'':'s'),
       trailing:'<span class="tlchev">'+_chev+'</span>',
       extraBody:list,
       lastPad:ownsTail,
       rowClass:' tlexp',
       rowAttrs:' onclick="_tlToggleGrp(this,\''+gid+'\')" role="button" tabindex="0" aria-expanded="false" aria-controls="'+gid+'"'
-    });
+    })+spare.map(x=>_tlRow(x.m,x.i)).join('');
   }).join('');
   return `<div class="tl"><div class="tlline"></div>${_rows}${nextNode}</div>`;
 }
