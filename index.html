@@ -4130,8 +4130,11 @@ function rTL(journey,subject){
     const stripes=g.items.filter(x=>_degOf(x.m)!==null);
     const beltItem=g.items.find(x=>_degOf(x.m)===null);
     // THE RULE:
-    //   3 or more stripes — two lines behind a tap the user has to make is a
-    //     worse trade than just showing them.
+    //   ANY stripes at all — a stripe belongs to its belt, so every past belt
+    //     folds its own. The earlier threshold of 3 meant two students with the
+    //     same past brown belt rendered differently, one with two loose stripes
+    //     and one folded, with nothing on screen to explain why. Predictable
+    //     structure beats the saved tap (Felipe's call).
     //   never the CURRENT belt — it is where the person is and where the next
     //     marker renders; hiding live progress is hiding the reason they opened
     //     the screen.
@@ -4142,7 +4145,7 @@ function rTL(journey,subject){
     // four loose stripes at the top of the very screen this was meant to
     // declutter. A headless group gets a SYNTHESISED header instead (below).
     const isCurBelt=!!(s&&s.belt&&g.belt===s.belt);
-    if(g.solo||isCurBelt||stripes.length<3){
+    if(g.solo||isCurBelt||stripes.length<1){
       return g.items.map(x=>_tlRow(x.m,x.i)).join('');
     }
     const gid='tlg'+(++_tlGrpSeq);
