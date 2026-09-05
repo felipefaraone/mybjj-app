@@ -3363,10 +3363,10 @@ function _validateTrainingDates(bjjIso,joinIso){
 //
 // SUBJECT RESOLUTION — the two row shapes carry the matching id in different
 // properties, and the hydrate mapping is what settles which:
-//   STUDENTS (:14543)  id:r.legacy_id  ->  PROMOTION_LOG.studentId, which the
+//   STUDENTS (:14633)  id:r.legacy_id  ->  PROMOTION_LOG.studentId, which the
 //                      mapper fills from r.student.legacy_id — the SAME legacy
 //                      id. Matched on subject.id.
-//   STAFF    (:14560)  _dbId:r.id      ->  PROMOTION_LOG.staffId, which is
+//   STAFF    (:14665)  _dbId:r.id      ->  PROMOTION_LOG.staffId, which is
 //                      promotions.staff_id, a staff UUID. Matched on
 //                      subject._dbId.
 // Which shape a subject is, is settled by looking it up in STAFF by _dbId rather
@@ -3377,17 +3377,54 @@ function _validateTrainingDates(bjjIso,joinIso){
 function _jnyFromPromotions(subject){
   const s=subject;if(!s)return [];
   const isStaffRow=!!(s._dbId&&Array.isArray(STAFF)&&STAFF.some(x=>x&&x._dbId===s._dbId));
+  // A person who is BOTH staff and student has one row in each table, and their
+  // belt history lives on whichever row the promotion was recorded against —
+  // usually the STUDENT one, because that is where they actually train. The
+  // profile panel resolves the subject from STAFF, so matching staffId alone
+  // returned nothing and the head instructor's journey rendered EMPTY on a
+  // screen every member can open.
+  //
+  // The two rows are linked by _userId, the auth user id: STAFF (:14665) and
+  // STUDENTS (:14633) both map it straight from their table's user_id column.
+  // That is an identity KEY, not a text attribute, and the file links these two
+  // shapes this way throughout: myStudentRow (:2499), myPersonLegacyId (:2518),
+  // the wall reactor lookup (:8212/:8214). One site (:6633) adds an email
+  // fallback; deliberately NOT copied, because an email is editable and two
+  // people can share one, so it is not an identity.
+  //
+  // Null-safe by construction: staff without an account carry _userId null, and
+  // `s._userId&&` stops that from matching the first student who also has none.
+  const linkedStuId=(isStaffRow&&s._userId&&Array.isArray(STUDENTS))
+    ?((STUDENTS.find(x=>x&&x._userId===s._userId)||{}).id||null)
+    :null;
+  // MERGE both sides, never choose: promotions can in principle sit on both
+  // rows, and picking one would hide the other half of the history.
+  const seen=Object.create(null);
   const rows=(PROMOTION_LOG||[]).filter(p=>{
     if(!p)return false;
     // Corrections are fixes to miscadastred data, not achievements — dropped by
-    // the same test the Wall feed uses (:7559).
+    // the same test the Wall feed uses (:7651).
     if(p.type==='correction')return false;
-    return isStaffRow?(!!s._dbId&&p.staffId===s._dbId):(!!s.id&&p.studentId===s.id);
+    const match=isStaffRow
+      ? ((!!s._dbId&&p.staffId===s._dbId)||(!!linkedStuId&&p.studentId===linkedStuId))
+      : (!!s.id&&p.studentId===s.id);
+    if(!match)return false;
+    // Dedupe on the promotion's own PK (_dbId is promotions.id; `id` falls back
+    // to legacy_id and is not guaranteed unique). The OR above already visits
+    // each row once, so this cannot fire on the linked-row merge — it is here
+    // for the case PROMOTION_LOG itself carries the same row twice, which
+    // paginated .range() fetching can produce if a row is inserted mid-fetch and
+    // shifts the page boundary. Without it that promotion renders twice.
+    const key=p._dbId||p.id;
+    if(key==null)return true;
+    if(seen[key])return false;
+    seen[key]=true;
+    return true;
   });
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
   return rows.map(p=>{
-    // Same two label shapes savePromote writes (:5630), built from the file's
-    // existing ordinal helper _ordSuffix (:7431). Black belt counts DEGREES.
+    // Same two label shapes savePromote writes (:5723), built from the file's
+    // existing ordinal helper _ordSuffix (:7522). Black belt counts DEGREES.
     const label=p.isNewBelt
       ? beltLabel(p.toBelt)+' belt'
       : (p.toDeg+_ordSuffix(p.toDeg)+(p.toBelt==='black'?' degree':' stripe'));
