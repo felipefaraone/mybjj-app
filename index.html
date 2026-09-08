@@ -12986,7 +12986,7 @@ function myPhotoRejected(){
 // is NEVER read or rendered here — those were written for other instructors.
 function photoStatusNote(){
   if(myPhotoPending())return '<div style="margin-top:8px;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);border-radius:6px;padding:7px 10px;font-size:11px;line-height:1.4;text-align:center">Your new photo is waiting for approval.</div>';
-  if(myPhotoRejected())return '<div style="margin-top:8px;background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);border-radius:6px;padding:7px 10px;font-size:11px;line-height:1.4;text-align:center">Your photo was not approved. You can upload another.</div>';
+  if(myPhotoRejected())return '<div style="margin-top:8px;background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);border-radius:6px;padding:7px 10px;font-size:11px;line-height:1.4;text-align:center">Your photo was not approved. Please upload a clear, recent photo of your face that other members will recognise.</div>';
   return '';
 }
 // Drawer-header chip. Same one-call-site rule as photoStatusNote; the pending
@@ -14569,17 +14569,27 @@ function rRemoveStaffConfirm(){
 </div></div>`;
 }
 
-function triggerPhotoUpload(sid){
-  let inp=document.getElementById('photo-input');
-  if(!inp){inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.id='photo-input';inp.style.display='none';document.body.appendChild(inp);}
+// TWO hidden inputs, ONE downstream path. 'Take a photo' differs only by which
+// element is clicked: capture="user" asks the OS for the front camera. Both hand
+// the file to _cropStart, so the crop modal and uploadCroppedPhoto never learn
+// where it came from — the upload logic is not forked.
+// capture is ignored on desktop, where the button opens the ordinary file
+// picker. That is the accepted fallback; no browser detection.
+function triggerPhotoUpload(sid,useCamera){
+  const _id=useCamera?'photo-input-cam':'photo-input';
+  let inp=document.getElementById(_id);
+  if(!inp){inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.id=_id;inp.style.display='none';if(useCamera)inp.setAttribute('capture','user');document.body.appendChild(inp);}
   _crop.sid=sid;
   inp.onchange=(e)=>{const f=e.target.files&&e.target.files[0];if(f)_cropStart(f);inp.value='';};
   inp.click();
 }
-// Avatar tap. With a photo present, surface the Change/Remove menu;
-// otherwise jump straight to the picker (matches the legacy
-// no-photo behaviour). `sid` is 'self' for the signed-in user's own
-// avatar, or a student legacy id for staff editing a student.
+// Avatar tap — ALWAYS surfaces the menu now. It used to jump straight to the
+// file picker when there was no photo yet, which sent exactly the person who has
+// never uploaded anything into a picker with no guidance at all. That is where
+// the memes came from. `sid` is 'self' for the signed-in user's own avatar, or a
+// student legacy id for staff editing a student. hasPhoto rides along in the
+// state so the render does not recompute it — it decides whether the Remove row
+// is offered.
 function openPhotoMenu(sid){
   let hasPhoto=false;
   if(sid==='self'){
@@ -14591,8 +14601,7 @@ function openPhotoMenu(sid){
     const s=STUDENTS.find(x=>x.id===sid);
     hasPhoto=!!(s&&s.photoUrl);
   }
-  if(!hasPhoto){triggerPhotoUpload(sid);return;}
-  S.photoMenu={sid};render();
+  S.photoMenu={sid,hasPhoto};render();
 }
 function closePhotoMenu(){S.photoMenu=null;render();}
 // View-only photo lightbox — enlarge a profile photo (round) full-screen; tap
@@ -14606,10 +14615,10 @@ function rPhotoLightbox(){
     +'<img src="'+S.photoLightbox+'" alt="" onclick="closePhotoLightbox()" style="border-radius:50%;object-fit:cover;width:min(80vw,400px);height:min(80vw,400px);box-shadow:0 8px 40px rgba(0,0,0,.5)"/>'
   +'</div>';
 }
-function _photoMenuChange(){
+function _photoMenuPick(useCamera){
   const sid=S.photoMenu&&S.photoMenu.sid;
   S.photoMenu=null;render();
-  if(sid)triggerPhotoUpload(sid);
+  if(sid)triggerPhotoUpload(sid,!!useCamera);
 }
 async function removePhoto(sid){
   const cli=initSupabase();
@@ -14662,9 +14671,32 @@ function rPhotoMenu(){
   return '<div class="cov" onclick="closePhotoMenu()" style="align-items:flex-end;justify-content:center;z-index:9999">'
     +'<div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px 16px 0 0;max-width:480px;width:100%;padding:16px 16px 22px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.7px;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:12px">Photo</div>'
-      +'<button onclick="_photoMenuChange()" style="width:100%;padding:14px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px">Change photo</button>'
-      +'<button onclick="removePhoto(\''+String(S.photoMenu.sid).replace(/\\/g,'\\\\').replace(/\x27/g,'\\\x27')+'\')" style="width:100%;padding:14px;background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px">Remove photo</button>'
-      +'<button onclick="closePhotoMenu()" style="width:100%;padding:14px;background:none;color:var(--text2);border:1px solid var(--border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Cancel</button>'
+      // Muted informational panel — same treatment the sign-in explainer uses
+      // (:16347): --input-bg on --border, 13px --text2. Two paragraphs, as
+      // separate blocks so the gap is real spacing and not a <br>.
+      +'<div style="background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--text2);line-height:1.5">'
+        +'<div>A clear, recent photo of your face so people at the gym recognise you.</div>'
+        +'<div style="margin-top:10px">All photos are checked before they go live. Memes, cartoons, pets, group shots and joke images get rejected.</div>'
+      +'</div>'
+      // Icon + label centred TOGETHER: justify-content:center with a gap, not a
+      // left-anchored icon pushing the label across the row.
+      // Camera glyph is the file's existing one (:13021, :14502). The library
+      // glyph is drawn with the same mechanism — inline 24x24 SVG, currentColor,
+      // stroke-width 2 — because the file has no gallery icon and importing a
+      // set for one button is not worth it.
+      +'<button onclick="_photoMenuPick(true)" style="width:100%;min-height:44px;padding:14px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:8px">'
+        +'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'
+        +'<span>Take a photo</span></button>'
+      +'<button onclick="_photoMenuPick(false)" style="width:100%;min-height:44px;padding:14px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:8px">'
+        +'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
+        +'<span>Choose from library</span></button>'
+      // Remove is now CONDITIONAL: the menu opens for people with no photo too,
+      // and offering them "Remove photo" would be offering to delete nothing.
+      // For anyone who already has one it is the same row, unchanged.
+      +(S.photoMenu.hasPhoto
+        ?'<button onclick="removePhoto(\''+String(S.photoMenu.sid).replace(/\\/g,'\\\\').replace(/\x27/g,'\\\x27')+'\')" style="width:100%;min-height:44px;padding:14px;background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px">Remove photo</button>'
+        :'')
+      +'<button onclick="closePhotoMenu()" style="width:100%;min-height:44px;padding:14px;background:none;color:var(--text2);border:1px solid var(--border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Cancel</button>'
     +'</div>'
   +'</div>';
 }
@@ -14776,6 +14808,7 @@ function rCropModal(){
 <input id="crop-zoom" class="crop-zoom" type="range" aria-label="Zoom" min="${_zMin}" max="${_zMax}" step="${_zStep}" value="${_zVal}" oninput="_cropSlide(this.value)"/>
 <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/></svg>
 </div>
+<div style="font-size:12px;color:var(--text3);line-height:1.45;text-align:center;margin-bottom:12px">Can people at the gym recognise you from this? It gets checked before it goes live.</div>
 <div style="display:flex;gap:10px">
 <button class="bout" style="flex:1;min-height:44px" onclick="closeCrop()">Cancel</button>
 <button class="bmain" style="flex:1;min-height:44px" onclick="uploadCroppedPhoto()">Upload</button>
