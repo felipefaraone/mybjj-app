@@ -14575,6 +14575,27 @@ function rRemoveStaffConfirm(){
 // where it came from — the upload logic is not forked.
 // capture is ignored on desktop, where the button opens the ordinary file
 // picker. That is the accepted fallback; no browser detection.
+// Camera-capable? Tested by CAPABILITY on a detached input — never a user agent
+// or a width, because a touch laptop and an iPad both have cameras and both must
+// keep the button.
+// `capture` is an IDL attribute only where HTML Media Capture is implemented
+// (iOS Safari, Android Chrome). Desktop Chrome leaves it undefined while still
+// TOLERATING the attribute, so setAttribute/getAttribute cannot tell them apart
+// — measured: `'capture' in input` is false on desktop Chrome both with and
+// without a webcam, yet getAttribute('capture') still reads back 'user'.
+// That is the right semantic here. What the button promises is "the OS opens
+// the camera", which is what capture support means; a desktop webcam still only
+// gets a file picker, so the label would lie there too.
+// Anything unexpected resolves to TRUE: showing the button and falling back to a
+// picker beats hiding it from someone who has a camera. Cached because the
+// answer cannot change within a session, following the _desktopPointer idiom.
+let _camCapable=null;
+function _hasCameraCapture(){
+  if(_camCapable!==null)return _camCapable;
+  try{_camCapable=('capture' in document.createElement('input'));}
+  catch(_){_camCapable=true;}
+  return _camCapable;
+}
 function triggerPhotoUpload(sid,useCamera){
   const _id=useCamera?'photo-input-cam':'photo-input';
   let inp=document.getElementById(_id);
@@ -14684,9 +14705,11 @@ function rPhotoMenu(){
       // glyph is drawn with the same mechanism — inline 24x24 SVG, currentColor,
       // stroke-width 2 — because the file has no gallery icon and importing a
       // set for one button is not worth it.
-      +'<button onclick="_photoMenuPick(true)" style="width:100%;min-height:44px;padding:14px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:8px">'
+      +(_hasCameraCapture()
+        ?'<button onclick="_photoMenuPick(true)" style="width:100%;min-height:44px;padding:14px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:8px">'
         +'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'
         +'<span>Take a photo</span></button>'
+        :'')
       +'<button onclick="_photoMenuPick(false)" style="width:100%;min-height:44px;padding:14px;background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:8px">'
         +'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
         +'<span>Choose from library</span></button>'
@@ -14722,7 +14745,7 @@ function _cropStart(file){
       _crop.x=(_CROP_SIZE-w*_crop.scale)/2;
       _crop.y=(_CROP_SIZE-h*_crop.scale)/2;
       S.cropOpen=true;render();
-      requestAnimationFrame(_cropDraw);
+      _cropFirstPaint(im);
     };
     im.onload=_openCrop; // fallback when decode() is unsupported / rejects
     im.onerror=()=>showSaveToast2("Couldn't load image.",'error');
@@ -14732,6 +14755,39 @@ function _cropStart(file){
     if(im.decode)im.decode().then(_openCrop).catch(()=>{});
   };
   reader.readAsDataURL(file);
+}
+// FIRST paint. One requestAnimationFrame covered neither of the two hazards:
+//
+//   READINESS — an <img> load event can fire before the bitmap is decodable for
+//   canvas; the note in _openCrop already says so for iOS. A 4000px camera photo
+//   takes long enough to decode that `onload` reliably beats decode(), so
+//   _openCrop ran from the load path and the very first drawImage was handed an
+//   image that was not yet decoded. It painted nothing and our own black
+//   fillRect is what stayed on screen — which is exactly the reported symptom:
+//   black canvas, image present, any later draw correct. A library file is small
+//   and usually already decoded, so it never lost the race.
+//
+//   ELEMENT — render() replaces the DOM, so the canvas to draw into is the one
+//   that exists AFTER it. It is re-queried every attempt here and never captured
+//   beforehand.
+//
+// decode() is the platform's own readiness promise, not a timer, and it is the
+// primary mechanism: calling it again is idempotent and resolves immediately
+// when the image is already decoded (the decode() path in _openCrop). The rAF
+// loop only waits for the ELEMENT, re-querying each frame, and is capped so it
+// can never spin. Both inputs, camera and library, take this identical path.
+function _cropFirstPaint(im){
+  const paint=(n)=>{
+    if(!_crop.img)return;                                   // closed while we waited
+    if(document.getElementById('crop-canvas')){_cropDraw();return;}
+    if(n>=60)return;                                        // ~1s of frames, then stop quietly
+    requestAnimationFrame(()=>paint(n+1));
+  };
+  const go=()=>requestAnimationFrame(()=>paint(0));
+  // Same handler on both settlements: a rejected decode is no worse than today,
+  // and the draw should still be attempted.
+  if(im&&typeof im.decode==='function'){try{im.decode().then(go,go);return;}catch(_){}}
+  go();
 }
 function _cropDraw(){
   const cv=document.getElementById('crop-canvas');
