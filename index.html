@@ -444,7 +444,12 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 /* Technique row: a list row, not an input box. No ground, no border box; the
    1px rule between rows is the separator and the first row has none. */
 .trow{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--border);cursor:pointer;min-width:0}
-.trow:first-child{border-top:0}
+/* The first row of EACH section, not the first in the card. Each section is
+   <div><div class="slbl">…</div>ROWS</div>, so the row is never :first-child —
+   the label is — and every row kept its border, reading as an underline beneath
+   STAND UP / GROUND. The adjacent-sibling selector is exact on both breakpoints:
+   stacked or in the 2-column grid, each label is followed by its own first row. */
+.slbl+.trow{border-top:0;padding-top:0}
 .trow-t{flex:1;min-width:0;font-size:15px;color:var(--text);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trow-play{width:28px;height:28px;border-radius:50%;background:var(--blue-tint);color:var(--blue);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
 /* Cycle list row. A <button> for keyboard and screen-reader reach, reset to
@@ -464,11 +469,12 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
    Same language as the curriculum half: a hero with the brand left bar, then
    plainer cards, then a compact past list. Tokens only. */
 .ev-date{width:52px;flex-shrink:0;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:6px 0;text-align:center;font-family:'Barlow Condensed',sans-serif}
-.ev-date b{display:block;font-size:26px;font-weight:700;color:var(--text);line-height:1}
-.ev-date span{display:block;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);margin-top:2px}
+.ev-date b{display:block;font-size:22px;font-weight:700;color:var(--text);line-height:1}
+.ev-date span{display:block;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);margin-top:2px}
 /* Participation: a rule above it, no grey inner box. */
 .ev-part{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
-.ev-stats{display:flex;gap:16px;flex-wrap:wrap}
+.ev-stats{display:flex;gap:24px}
+.ev-stat{flex:1;min-width:0}
 .ev-stat-k{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);margin-bottom:5px}
 .ev-acts{display:flex;gap:8px;margin-top:12px}
 .ev-btn{flex:1;height:var(--ctrl-h);border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
@@ -2542,10 +2548,21 @@ function _evLongDate(iso){
   if(!d)return '';
   return _EV_DOW[d.getDay()]+' '+d.getDate()+' '+MFULL[d.getMonth()];
 }
+// "· Register ↗" as a TEXT link, not the bare chain icon. Built once and used by
+// all three event card variants. inlineLinkHtml is left alone — it has other
+// callers with a different shape. stopPropagation because the expanded past card
+// makes its whole header a collapse target.
+function _evLinkHtml(url){
+  if(!url)return '';
+  return ' · <a href="'+escAttr(url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--blue);text-decoration:none;display:inline-flex;align-items:center;gap:3px">Register'
+    +'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>';
+}
 // Description clamp and past-row expansion. Both are pure view state and both
 // re-render, which is what the rest of this tab does on a tap.
 function toggleEvDesc(id){S.evDescOpen=S.evDescOpen||{};S.evDescOpen[id]=!S.evDescOpen[id];render();}
-function toggleEvOpen(id){S.evOpen=S.evOpen||{};S.evOpen[id]=!S.evOpen[id];render();}
+// Accordion: opening one past event closes any other. Two expanded cards at once
+// was the reported state, and with no collapse control there was no way back.
+function toggleEvOpen(id){S.evOpen=(S.evOpen&&S.evOpen[id])?{}:{[id]:true};render();}
 // Mobile cycle list: collapsed to a window around the current week until tapped.
 function setCycleListAll(){S.cycleListAll=true;render();}
 // Phase B1.5 — day closure is DATA-DRIVEN (class_exceptions kind='closed'),
@@ -10356,9 +10373,13 @@ function rSchedule(){
       // "THIS WEEK · 5 OF 18 · 13 WEEKS LEFT" on the live week, else
       // "WEEK 6 · 15 TO 21 JUNE". The range replaces the old "WEEK N · MONTH",
       // which read w.weekStart — only a month anchor, and stale on a cycle.
+      // A non-current week used to print its range in the eyebrow AND again in
+      // the sub line right below it. The eyebrow now says where the week sits in
+      // the cycle, which is the thing the range cannot tell you; the sub line
+      // keeps the dates. The current-week eyebrow is unchanged.
       const _eyebrow=_isNow
         ?('THIS WEEK · '+w.week+' OF '+_len+' · '+_left+' WEEK'+(_left===1?'':'S')+' LEFT')
-        :('WEEK '+w.week+(_rng?(' · '+_fmtRange(_rng.start,_rng.end).toUpperCase()):''));
+        :('WEEK '+w.week+' OF '+_len);
       const _eyeCol=_isNow?'var(--blue)':'var(--text3)';
       // The gear is rendered in BOTH places and hidden by breakpoint: the
       // "Week N of LEN" line it normally sits on is mobile-only here.
@@ -10628,13 +10649,22 @@ function rEvents(isA){
     const rel=_evRelative(iso);
     const editBtn=isA?('<button onclick="event.stopPropagation();openEditEv(\''+e.id+'\')" style="background:none;border:none;color:var(--text3);font-size:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.5px;padding:0">EDIT</button>'):'';
     const shareEvBtn=shareBtnHtml('event.stopPropagation();shareEvent(\''+e.id+'\')');
-    const topActions='<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto">'+(editBtn||'')+shareEvBtn+'</div>';
+    // Expanded past card: a chevron-up beside Share is the way back. The header
+    // is also a collapse target (below), but a card that only closes by tapping
+    // "somewhere in the title" is not discoverable.
+    const collapseBtn=opts.past
+      ?'<button onclick="event.stopPropagation();toggleEvOpen(\''+e.id+'\')" aria-label="Collapse" title="Collapse" style="width:28px;height:28px;background:none;border:0;padding:0;cursor:pointer;color:var(--text3);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>'
+      :'';
+    const topActions='<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto">'+(editBtn||'')+shareEvBtn+collapseBtn+'</div>';
     const badge='<span style="background:'+typeCol+'20;color:'+typeCol+';font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:4px;text-transform:uppercase">'+typeLbl+'</span>';
-    const linkInline=e.link?inlineLinkHtml(e.link,'Register / more info'):'';
+    const linkInline=_evLinkHtml(e.link);
     // Meta: the long date when we have an ISO one, otherwise e.date verbatim —
     // it is free text and may already read "12 to 14 Sep".
     const _metaBits=[];
-    if(opts.hero){_metaBits.push(iso?_evLongDate(iso):(e.date||''));}
+    // Hero and an expanded PAST card carry the full date, because neither has a
+    // date block to read it from. An upcoming "Later" card has the block, so its
+    // meta only needs the weekday and how far off it is.
+    if(opts.hero||opts.past){_metaBits.push(iso?_evLongDate(iso):(e.date||''));}
     else{_metaBits.push(iso?_EV_DOW[_parseISODate(iso).getDay()]:(e.date||''));if(rel)_metaBits.push(rel);}
     const meta='<div style="font-size:13px;color:var(--text2);margin-top:3px">'+_metaBits.filter(Boolean).join(' · ')+linkInline+'</div>';
     // Clamp rule: length, not measurement. A post-render scrollHeight check
@@ -10651,7 +10681,7 @@ function rEvents(isA){
     // on a social event any legacy competing ids count as attending.
     const _stat=(group,label,ids)=>{
       const tap=e._dbId?' onclick="event.stopPropagation();openEventRoster(\''+e._dbId+'\',\''+group+'\')" style="cursor:pointer"':'';
-      return '<div'+tap+'><div class="ev-stat-k">'+label+' · '+ids.length+'</div>'
+      return '<div class="ev-stat"'+tap+'><div class="ev-stat-k">'+label+' · '+ids.length+'</div>'
         +(ids.length?evFacePile(ids):'<div style="font-size:13px;color:var(--text3)">No one yet</div>')
       +'</div>';
     };
@@ -10682,8 +10712,16 @@ function rEvents(isA){
       +'</div>';
     }else{
       const _d=iso?_parseISODate(iso):null;
-      const dateBox=_d?('<div class="ev-date"><b>'+_d.getDate()+'</b><span>'+MFULL[_d.getMonth()].slice(0,3)+'</span></div>'):'';
-      head='<div style="display:flex;align-items:flex-start;gap:12px">'
+      // UPCOMING only. A past card has no block — the date is spelled out in the
+      // meta line instead — which also stops an ~54px box hanging below a
+      // two-line text stack.
+      const dateBox=(_d&&!opts.past)?('<div class="ev-date"><b>'+_d.getDate()+'</b><span>'+MFULL[_d.getMonth()].slice(0,3)+'</span></div>'):'';
+      // align-items:center so the block sits against the middle of the
+      // badge + title + meta stack rather than hanging off its top.
+      // An expanded past card collapses on a header tap; the roster taps, share,
+      // edit, the collapse button and the link all stopPropagation.
+      head='<div style="display:flex;align-items:center;gap:12px'+(opts.past?';cursor:pointer':'')+'"'
+        +(opts.past?' onclick="toggleEvOpen(\''+e.id+'\')"':'')+'>'
         +dateBox
         +'<div style="flex:1;min-width:0">'
           +'<div style="margin-bottom:5px">'+badge+'</div>'
