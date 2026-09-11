@@ -17960,9 +17960,34 @@ const _PC_INFO_PARAS=[
 ];
 function rPCInfoSheet(){
   if(!S.pcInfo)return '';
-  const paras=_PC_INFO_PARAS.map(function(t){
+  // The three paragraphs are untouched — same strings, same <p> markup. Only the
+  // JOIN changed: the levels block is spliced in after the first one, so .join
+  // moved off the end of the map and onto the two slices below.
+  const _pcParas=_PC_INFO_PARAS.map(function(t){
     return '<p style="font-size:13.5px;color:var(--text2);line-height:1.6;margin:0 0 14px">'+t+'</p>';
-  }).join('');
+  });
+  // Names come from CLASS_VALUE_TIERS (:1485), the single source the marking
+  // sheet reads too (rMarkPSheet, :17982) — a copy here would drift the moment a
+  // label is edited. Keyed by VALUE, not by array position: the credit words are
+  // copy and belong to a specific amount, so a reorder of the constant can never
+  // pair "half credit" with the wrong label. A tier whose value is not in the map
+  // is skipped rather than rendered with a blank credit.
+  const _pcCredit={1:'full credit',0.5:'half credit',0.25:'a quarter',0:'no credit'};
+  // Emphasis is the sheet's OWN two-tone hierarchy, nothing new: --text for the
+  // part that carries the meaning (the title uses it), --text2 for the rest (the
+  // paragraphs use it). Same 13.5px/1.6 and the same 14px bottom margin as a
+  // paragraph, so the block keeps the vertical rhythm around it.
+  const _pcLevels=CLASS_VALUE_TIERS
+    .filter(function(t){return t&&_pcCredit[t.value]!==undefined;})
+    .map(function(t){
+      return '<div style="margin-bottom:4px"><span style="color:var(--text);font-weight:600">'+escHtml(t.label)+'</span>'
+        +'<span style="color:var(--text2)"> — '+_pcCredit[t.value]+'</span></div>';
+    }).join('');
+  const _pcBlock=_pcLevels
+    ?('<p style="font-size:13.5px;color:var(--text2);line-height:1.6;margin:0 0 8px">The professor marks every class:</p>'
+      +'<div style="font-size:13.5px;line-height:1.6;margin:0 0 14px">'+_pcLevels+'</div>')
+    :'';
+  const paras=_pcParas.slice(0,1).join('')+_pcBlock+_pcParas.slice(1).join('');
   return '<div class="cov" onclick="closePCInfo()" style="align-items:flex-end;z-index:290">'
     +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;margin:0 auto;padding:18px;max-height:calc(100vh - 40px);overflow:auto">'
       +'<button onclick="closePCInfo()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
