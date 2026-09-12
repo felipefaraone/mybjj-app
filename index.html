@@ -481,9 +481,24 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .ev-btn.is-on-comp{background:var(--blue);border-color:var(--blue);color:#fff}
 .ev-btn.is-on-go{background:var(--green-bg);border-color:var(--green-border);color:var(--green-text)}
 /* 2-line clamp with an inline More/Less. */
-.ev-desc{font-size:13px;color:var(--text2);line-height:1.5;margin-top:10px}
+/* ONE title style for every event surface — hero, Later card and past row —
+   with only the size (and the row's tighter tracking) varying. Three inline
+   copies was how they drifted to Barlow 700 in the first place.
+   Bebas Neue is the app's display face — the same one the curriculum hero title
+   uses (:10443 / :10458) — so the two heroes read as one family. No font-weight:
+   Bebas ships a single weight and declaring 700 only invites a synthesised bold
+   on a fallback face. */
+.ev-t{font-family:'Bebas Neue',sans-serif;text-transform:uppercase;line-height:1.05;color:var(--text);min-width:0}
+.ev-t-hero{font-size:25px}
+.ev-t-card{font-size:22px}
+.ev-t-row{font-size:20px;letter-spacing:.3px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Title and badge share a line and wrap together when the title is long. */
+.ev-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.ev-desc{font-size:14px;color:var(--text2);line-height:1.5;margin-top:10px}
 .ev-desc.is-clamped{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.ev-more{background:none;border:0;padding:0;font:inherit;color:var(--blue);cursor:pointer}
+/* Same size and weight as the body text it continues — it is a word in the
+   sentence, not a control shouting over it. */
+.ev-more{background:none;border:0;padding:0;margin:0;font-family:inherit;font-size:14px;font-weight:500;line-height:1.5;color:var(--blue);cursor:pointer}
 /* Past list: rows inside one padding-0 card. */
 /* Past event row — two lines. display:block, not flex: the two lines are the
    rows, each one flexes internally. */
@@ -491,9 +506,13 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .ev-past:first-child{border-top:0}
 .ev-past:hover,.ev-past:active{background:var(--input-bg)}
 .ev-past-1{display:flex;align-items:center;gap:8px}
-.ev-past-t{flex:1;min-width:0;font-family:'Barlow',sans-serif;font-weight:600;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ev-past-d{flex-shrink:0;font-size:13px;color:var(--text3);white-space:nowrap}
-.ev-past-c{flex-shrink:0;color:var(--text3);font-size:18px;line-height:1}
+/* Chevron points right when closed, down when the row is open. */
+.ev-past-c{flex-shrink:0;color:var(--text3);display:inline-flex;transition:transform .2s}
+.ev-past.open .ev-past-c{transform:rotate(90deg)}
+.ev-past.open{background:var(--input-bg)}
+/* The open body belongs to the row — a dashed rule, not a nested card. */
+.ev-past-body{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)}
 .ev-past-2{display:flex;align-items:center;gap:10px;margin-top:6px}
 /* The labels sit BESIDE the pile and must not drop under it at these counts. */
 .ev-past-k{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);white-space:nowrap}
@@ -2344,7 +2363,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,webcam:null,cycleListAll:false,evDescOpen:{},_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,webcam:null,cycleListAll:false,evDescOpen:{},evOpen:null,_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -2612,6 +2631,10 @@ function _evBadgeHtml(e){
 // Description clamp. Both are pure view state and both
 // re-render, which is what the rest of this tab does on a tap.
 function toggleEvDesc(id){S.evDescOpen=S.evDescOpen||{};S.evDescOpen[id]=!S.evDescOpen[id];render();}
+// Past-row accordion. S.evOpen holds ONE id, so opening a row closes whichever
+// was open and tapping the open row closes it. An id that no longer exists after
+// a unit switch simply matches no row — nothing renders open and nothing breaks.
+function toggleEvOpen(id){S.evOpen=(S.evOpen===id)?null:id;render();}
 // Mobile cycle list: collapsed to a window around the current week until tapped.
 function setCycleListAll(){S.cycleListAll=true;render();}
 // Phase B1.5 — day closure is DATA-DRIVEN (class_exceptions kind='closed'),
@@ -10713,7 +10736,7 @@ function rEvents(isA){
     // has the block, so its meta only needs the weekday and how far off it is.
     if(opts.hero){_metaBits.push(iso?_evLongDate(iso):(e.date||''));}
     else{_metaBits.push(iso?_EV_DOW[_parseISODate(iso).getDay()]:(e.date||''));if(rel)_metaBits.push(rel);}
-    const meta='<div style="font-size:13px;color:var(--text2);margin-top:3px">'+_metaBits.filter(Boolean).join(' · ')+linkInline+'</div>';
+    const meta='<div style="font-size:13px;color:var(--text2);margin-top:4px">'+_metaBits.filter(Boolean).join(' · ')+linkInline+'</div>';
     // Clamp rule: length, not measurement. A post-render scrollHeight check
     // would need a second pass per card and would fight the re-render; 140
     // characters is about two lines at this width and is deterministic.
@@ -10722,7 +10745,14 @@ function rEvents(isA){
       const _open=!!(S.evDescOpen&&S.evDescOpen[e.id]);
       const _long=String(e.desc).length>140;
       const _tog=_long?('<button class="ev-more" onclick="event.stopPropagation();toggleEvDesc(\''+e.id+'\')">'+(_open?'Less':'More')+'</button>'):'';
-      descHtml='<div class="ev-desc'+((_long&&!_open)?' is-clamped':'')+'">'+e.desc+'</div>'+(_tog?'<div style="margin-top:2px">'+_tog+'</div>':'');
+      // OPEN: the toggle sits truly inline at the end of the sentence. CLAMPED:
+      // it cannot — -webkit-line-clamp clips everything past the second line,
+      // including an inline button — so it follows the block immediately, same
+      // size and weight, reading as the continuation of the text rather than a
+      // separate control.
+      descHtml=_open
+        ?('<div class="ev-desc">'+e.desc+' '+_tog+'</div>')
+        :('<div class="ev-desc'+(_long?' is-clamped':'')+'">'+e.desc+'</div>'+(_tog?'<div>'+_tog+'</div>':''));
     }
     const part=_evPartHtml(e,me,{});
     // Head: hero gets the eyebrow, everything else gets the date block.
@@ -10731,8 +10761,7 @@ function rEvents(isA){
       head='<div style="display:flex;align-items:flex-start;gap:10px">'
         +'<div style="flex:1;min-width:0">'
           +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--blue);margin-bottom:6px">'+('NEXT EVENT'+(rel?(' · '+rel.toUpperCase()):''))+'</div>'
-          +'<div style="margin-bottom:5px">'+badge+'</div>'
-          +'<div style="font-family:Barlow,sans-serif;font-weight:700;font-size:24px;color:var(--text);line-height:1.15">'+e.title+'</div>'
+          +'<div class="ev-head"><div class="ev-t ev-t-hero">'+e.title+'</div>'+badge+'</div>'
           +meta
         +'</div>'+topActions
       +'</div>';
@@ -10744,8 +10773,7 @@ function rEvents(isA){
       head='<div style="display:flex;align-items:center;gap:12px">'
         +dateBox
         +'<div style="flex:1;min-width:0">'
-          +'<div style="margin-bottom:5px">'+badge+'</div>'
-          +'<div style="font-family:Barlow,sans-serif;font-weight:700;font-size:17px;color:var(--text);line-height:1.2">'+e.title+'</div>'
+          +'<div class="ev-head"><div class="ev-t ev-t-card">'+e.title+'</div>'+badge+'</div>'
           +meta
         +'</div>'+topActions
       +'</div>';
@@ -10756,40 +10784,60 @@ function rEvents(isA){
   };
 
   // ── Past: one compact row, expanding in place into the full card ─────────
-  // Past event row. Two lines, the whole thing a single <button>: title + short
-  // date + chevron, then who turned up. Tapping opens the EXISTING roster
-  // subview on the list that matters for the type — a competition opens on
-  // Competing, a social on Attending — instead of a detail screen of its own.
+  // Past event row. Two lines closed, expanding in place — a <div role="button">
+  // and NOT a <button>, because the open body carries Share, Edit and a "See who
+  // went" link, and a button may not contain interactive content. The keydown
+  // handler restores the Enter/Space activation a real button gave for free.
   const _evPastRow=(e)=>{
+    const isOpen=S.evOpen===e.id;
     const d=e._dateIso?_parseISODate(e._dateIso):null;
     const when=d?(d.getDate()+' '+MFULL[d.getMonth()].slice(0,3)):(e.date||'');
     const competing=e.competing||[];
     const supporting=e.supporting||[];
     const isComp=e.type==='competition';
     const evOpts=e.options||['competing','supporting'];
-    // Which groups this event actually offers. A social has one concept —
-    // attending — and folds any legacy competing ids into it, the same rule the
-    // cards and the roster use.
     const groups=isComp
       ?[['competing','Competed',competing],['supporting','Supported',supporting]]
          .filter(g=>evOpts.includes(g[0]))
       :[['supporting','Attended',[...new Set([...supporting,...competing])]]];
-    // Faces come from the union of the groups actually shown, so a hidden group
-    // never contributes a face the labels do not account for.
     const faceIds=[...new Set(groups.reduce((a,g)=>a.concat(g[2]),[]))];
     const pile=faceIds.length?_evFacePileSm(faceIds):'';
     const labels=groups.map(g=>'<span class="ev-past-k">'+g[1]+' · <b>'+g[2].length+'</b></span>').join('');
-    // No _dbId → no roster to open, so the row is inert and loses the chevron
-    // rather than lying about being tappable.
-    const tap=e._dbId?(' onclick="openEventRoster(\''+e._dbId+'\',\''+(isComp?'competing':'supporting')+'\')"'):'';
-    return '<button class="ev-past"'+tap+'>'
+    const chev='<span class="ev-past-c"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>';
+    // ── the open body ──
+    let body='';
+    if(isOpen){
+      const rosterGroup=isComp?'competing':'supporting';
+      const seeWho=(e._dbId&&faceIds.length)
+        ?'<button onclick="event.stopPropagation();openEventRoster(\''+e._dbId+'\',\''+rosterGroup+'\')" style="background:none;border:0;padding:0;font-family:inherit;font-size:13px;font-weight:500;color:var(--blue);cursor:pointer;flex-shrink:0">See who went ›</button>'
+        :'';
+      const who=faceIds.length
+        ?('<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px">'+pile+seeWho+'</div>')
+        :'<div style="font-size:13px;color:var(--text3);margin-top:12px">No one recorded</div>';
+      const editBtn=isA?'<button onclick="event.stopPropagation();openEditEv(\''+e.id+'\')" style="background:none;border:none;color:var(--text3);font-size:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.5px;padding:0">EDIT</button>':'';
+      body='<div class="ev-past-body">'
+        +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+_evBadgeHtml(e)
+          +'<span style="font-size:13px;color:var(--text2)">'+(d?_evLongDate(e._dateIso):(e.date||''))+_evLinkHtml(e.link)+'</span>'
+        +'</div>'
+        +(e.desc?'<div style="font-size:14px;color:var(--text2);line-height:1.5;margin-top:6px">'+e.desc+'</div>':'')
+        +who
+        +'<div style="display:flex;align-items:center;gap:8px;margin-top:12px">'
+          +shareBtnHtml('event.stopPropagation();shareEvent(\''+e.id+'\')')+editBtn
+        +'</div>'
+      +'</div>';
+    }
+    const act='toggleEvOpen(\''+e.id+'\')';
+    return '<div class="ev-past'+(isOpen?' open':'')+'" role="button" tabindex="0" aria-expanded="'+(isOpen?'true':'false')+'"'
+      +' onclick="'+act+'"'
+      +' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+act+';}">'
       +'<span class="ev-past-1">'
-        +'<span class="ev-past-t">'+e.title+'</span>'
+        +'<span class="ev-t ev-t-row">'+e.title+'</span>'
         +(when?'<span class="ev-past-d">'+when+'</span>':'')
-        +(e._dbId?'<span class="ev-past-c">›</span>':'')
+        +chev
       +'</span>'
       +'<span class="ev-past-2">'+pile+labels+'</span>'
-    +'</button>';
+      +body
+    +'</div>';
   };
 
   const addBtn=isA?'<button class="badd" style="margin-top:4px;margin-bottom:12px" onclick="openAddEv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add event</button>':'';
