@@ -6212,6 +6212,8 @@ async function saveStaffNoteModal(sid){
 }
 // G17.2d — generic confirm modal. State shape:
 //   S.confirm = {title, message, dangerLabel, onConfirm(), busy}
+//   optional second action: altLabel + onAlt() — renders the two actions
+//   stacked (primary first) with Cancel below; same busy/close handling.
 // onConfirm is a function the caller passes; it should return a
 // promise (or be sync). The modal sets busy=true while awaiting it,
 // disables the buttons, then closes on resolution. Errors leave the
@@ -6222,13 +6224,17 @@ function openConfirm(opts){
   render();
 }
 function closeConfirm(){S.confirm=null;render();}
-async function confirmExecute(){
+async function confirmExecute(alt){
   if(!S.confirm||S.confirm.busy)return;
-  const fn=S.confirm.onConfirm;
-  S.confirm.busy=true;render();
+  const c=S.confirm;
+  const fn=alt?c.onAlt:c.onConfirm;
+  c.busy=true;render();
   try{
     if(typeof fn==='function')await fn();
-    S.confirm=null;render();
+    // Only clear the confirm we opened: an action may chain into a new one
+    // (saveCls: duplicate confirm → instructor-change confirm).
+    if(S.confirm===c)S.confirm=null;
+    render();
   }catch(e){
     console.warn('[mybjj] confirmExecute error:',e);
     if(S.confirm){S.confirm.busy=false;render();}
@@ -6240,13 +6246,18 @@ function rConfirmModal(){
   const message=String(c.message||'');
   const dangerLabel=String(c.dangerLabel||'Delete');
   const busy=!!c.busy;
+  const altLabel=c.altLabel?String(c.altLabel):'';
   return `<div class="cov cov-center cov-w380" onclick="${busy?'':'closeConfirm()'}" style="align-items:center;z-index:10000"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:340px;width:calc(100% - 32px);margin:0 16px;padding:22px">
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:6px">${title}</div>
 <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">${message}</div>
-<div style="display:flex;gap:10px">
+${altLabel?`<div style="display:flex;flex-direction:column;gap:10px">
+<button style="background:${c.confirmColor||'var(--red)'};color:#fff;border:none;border-radius:10px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="confirmExecute()" ${busy?'disabled':''}>${busy?'Working…':dangerLabel}</button>
+<button class="bsm" style="padding:12px;border-radius:10px;font-size:14px" onclick="confirmExecute(true)" ${busy?'disabled':''}>${altLabel}</button>
+<button class="bsm" style="padding:12px;border-radius:10px;font-size:14px;border:none;background:none;color:var(--text3)" onclick="closeConfirm()" ${busy?'disabled':''}>Cancel</button>
+</div>`:`<div style="display:flex;gap:10px">
 <button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeConfirm()" ${busy?'disabled':''}>Cancel</button>
 <button style="flex:1;background:${c.confirmColor||'var(--red)'};color:#fff;border:none;border-radius:10px;padding:12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="confirmExecute()" ${busy?'disabled':''}>${busy?'Working…':dangerLabel}</button>
-</div>
+</div>`}
 </div></div>`;
 }
 
@@ -20693,7 +20704,50 @@ function setCel(v){
 // (2 mats). Duplicate protection is now a soft client-side confirm below;
 // skipDupConfirm bypasses it on the confirmed "Create anyway" retry.
 const _CLS_SELECT='id,unit_id,day_of_week,time,type,uniform,level,legacy_id,duration_minutes,audience,active,instructor_id,instructor:staff(id,full_name,initials,belt,degree,role_title,photo_url)';
-async function saveCls(skipDupConfirm){
+// Instructor change on an existing class. teaching_stats resolves every past
+// occurrence through the CURRENT classes.instructor_id unless an
+// instructor_override names someone, so a bare update rewrites history.
+// "From now on" first pins every past occurrence (distinct attendance
+// class_date <= today — today counts as past) to the OUTGOING instructor via
+// instructor_override rows, skipping dates that already have one (an existing
+// cover is a fact). ONE multi-row INSERT = one statement, all-or-nothing.
+// Returns false (and toasts) on any failure; the caller must then NOT update
+// the class. Existing class_exceptions rows are never touched.
+async function _pinInstructorHistory(cli,cls,outgoingId){
+  const today=dk(new Date());
+  const PAGE=1000; // PostgREST default max-rows; page until an empty page.
+  const readAll=async(build)=>{
+    const out=[];
+    for(let from=0;;from+=PAGE){
+      const r=await build().range(from,from+PAGE-1);
+      if(r&&r.error)throw r.error;
+      const d=(r&&r.data)||[];
+      out.push(...d);
+      if(!d.length)break;
+    }
+    return out;
+  };
+  const fail=(e)=>{
+    console.warn('[mybjj] _pinInstructorHistory:',e);
+    showSaveToast2('Instructor not changed — past classes could not be kept with the previous instructor. Please try again.','error');
+    return false;
+  };
+  try{
+    const att=await readAll(()=>cli.from('attendance').select('id,class_date').eq('class_id',cls.id).lte('class_date',today).order('id',{ascending:true}));
+    const have=await readAll(()=>cli.from('class_exceptions').select('id,exception_date').eq('class_id',cls.id).eq('kind','instructor_override').lte('exception_date',today).order('id',{ascending:true}));
+    const covered=new Set(have.map(e=>String(e.exception_date).slice(0,10)));
+    const dates=[...new Set(att.map(a=>String(a.class_date||'').slice(0,10)).filter(Boolean))]
+      .filter(d=>d<=today&&!covered.has(d)).sort();
+    if(!dates.length)return true;
+    const r=await cli.from('class_exceptions').insert(dates.map(d=>_overridePayload(cls.unit_id,cls.id,d,outgoingId))).select(_EXC_SELECT);
+    if(r&&r.error)return fail(r.error);
+    ((r&&r.data)||[]).forEach(_cexcPush);
+    return true;
+  }catch(e){return fail(e);}
+}
+// instrMode: undefined on the first pass; 'forward' | 'all' once the
+// instructor-change confirm has been answered.
+async function saveCls(skipDupConfirm,instrMode){
   if(S.clsSaving)return;
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue. Please try again.','error');return;}
@@ -20718,7 +20772,7 @@ async function saveCls(skipDupConfirm){
     aud:S._cea||(S.editCls&&S.editCls.aud)||null
   });
   let form;
-  if(skipDupConfirm){
+  if(skipDupConfirm||instrMode){
     form=S._clsFormSnapshot||readForm();
   } else {
     form=readForm();
@@ -20760,7 +20814,36 @@ async function saveCls(skipDupConfirm){
       return;
     }
   }
+  // Instructor-change prompt: ONLY an existing class whose instructor_id is
+  // actually changing. Add, or an edit with the same instructor, skips it.
+  const prevCls=(!isAdd&&S.editCls&&S.editCls.classId)?CLASSES.find(x=>x&&x.id===S.editCls.classId):null;
+  const outgoingId=(prevCls&&prevCls.instructor_id)||null;
+  const instrChanging=!!(prevCls&&outgoingId&&outgoingId!==instructor_id);
+  if(instrChanging&&!instrMode){
+    const outStaff=STAFF.find(s=>s&&s._dbId===outgoingId);
+    const outName=outStaff?staffDisplayName(outStaff):'The previous instructor';
+    // openConfirm re-renders rCEdit, whose select reads S.editCls.ins; keep the
+    // new pick showing behind the prompt (and after Cancel). S.editCls is the
+    // editor's own copy — CLASSES, which prevCls reads, is untouched.
+    S.editCls.ins=insName;
+    openConfirm({
+      title:'Change instructor',
+      message:'<b>From now on</b> — '+escHtml(outName)+' keeps every past class.<br><b>Everything</b> — '+escHtml(insName)+' takes the whole history.',
+      dangerLabel:'From now on',
+      confirmColor:'var(--blue)',
+      onConfirm:()=>saveCls(true,'forward'),
+      altLabel:'Everything',
+      onAlt:()=>saveCls(true,'all')
+    });
+    return;
+  }
   S.clsSaving=true;render();
+  // Sequenced: overrides are written and confirmed BEFORE instructor_id moves.
+  // If they fail, the class is not updated at all.
+  if(instrChanging&&instrMode==='forward'){
+    const pinned=await _pinInstructorHistory(cli,prevCls,outgoingId);
+    if(!pinned){S.clsSaving=false;S._clsFormSnapshot=null;render();return;}
+  }
   let r;
   if(isAdd){
     r=await cli.from('classes').insert(payload).select(_CLS_SELECT).single();
@@ -20843,13 +20926,31 @@ function cancelDel(){if(S.clsSaving)return;S.cdel=null;queueMicrotask(render);/*
 // camelCase (identical shape to the hydrate map). S.exSaving is the busy flag.
 // Note: confirm buttons use color:#fff on the coloured fill, matching rCDel/.bblue
 // exactly (no white design token exists) — the only non-token colour, per pattern.
+const _EXC_SELECT='id,unit_id,class_id,exception_date,kind,substitute_instructor_id,reason,oneoff_time,oneoff_uniform,oneoff_level,oneoff_audience,oneoff_duration_minutes,created_by,created_at';
+// Inserted DB row → CEXC (camelCase, identical to the hydrate map).
+function _cexcPush(row){
+  const k=row.exception_date;
+  (CEXC[k]||(CEXC[k]=[])).push({
+    id:row.id,unitId:row.unit_id||null,classId:row.class_id||null,exceptionDate:row.exception_date,kind:row.kind,
+    substituteInstructorId:row.substitute_instructor_id||null,reason:row.reason||null,
+    oneoffTime:row.oneoff_time?String(row.oneoff_time).slice(0,5):null,
+    oneoffUniform:row.oneoff_uniform||null,oneoffLevel:row.oneoff_level||null,
+    oneoffAudience:row.oneoff_audience||null,oneoffDurationMinutes:row.oneoff_duration_minutes||null,
+    createdBy:row.created_by||null
+  });
+}
+// The one instructor_override payload shape — the per-day cover sheet and the
+// class editor's "from now on" backfill both insert exactly this.
+function _overridePayload(unitId,classId,date,staffId){
+  return {unit_id:unitId,class_id:classId,exception_date:date,kind:'instructor_override',substitute_instructor_id:staffId,reason:null,oneoff_time:null,oneoff_uniform:null,oneoff_level:null,oneoff_audience:null,oneoff_duration_minutes:null};
+}
 async function _writeException(payload){
   if(S.exSaving)return null;
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue. Please try again.','error');return null;}
   S.exSaving=true;render();
   try{
-    const r=await cli.from('class_exceptions').insert(payload).select('id,unit_id,class_id,exception_date,kind,substitute_instructor_id,reason,oneoff_time,oneoff_uniform,oneoff_level,oneoff_audience,oneoff_duration_minutes,created_by,created_at').single();
+    const r=await cli.from('class_exceptions').insert(payload).select(_EXC_SELECT).single();
     if(r&&r.error){
       // Unique partial index enforces one 'closed' per (unit_id, exception_date).
       if(r.error.code==='23505'&&payload.kind==='closed')showSaveToast2('This day is already closed.','error');
@@ -20858,15 +20959,7 @@ async function _writeException(payload){
     }
     const row=r&&r.data;
     if(row){
-      const k=row.exception_date;
-      (CEXC[k]||(CEXC[k]=[])).push({
-        id:row.id,unitId:row.unit_id||null,classId:row.class_id||null,exceptionDate:row.exception_date,kind:row.kind,
-        substituteInstructorId:row.substitute_instructor_id||null,reason:row.reason||null,
-        oneoffTime:row.oneoff_time?String(row.oneoff_time).slice(0,5):null,
-        oneoffUniform:row.oneoff_uniform||null,oneoffLevel:row.oneoff_level||null,
-        oneoffAudience:row.oneoff_audience||null,oneoffDurationMinutes:row.oneoff_duration_minutes||null,
-        createdBy:row.created_by||null
-      });
+      _cexcPush(row);
       // B2b — toast now covers all four kinds (B2a only had closed/cancelled);
       // without this an override/oneoff write would wrongly toast "Class cancelled."
       showSaveToast2(payload.kind==='closed'?'Day closed.':payload.kind==='oneoff'?'Class added.':payload.kind==='instructor_override'?'Instructor updated.':'Class cancelled.');
@@ -21028,7 +21121,7 @@ async function instrOverrideConfirm(){
   const existing=(_exsForDay(cx.date,clsUnit)||[]).find(e=>e.kind==='instructor_override'&&e.classId===cx.classId);
   const ok=existing
     ? await _updateExceptionInstr(existing,staffId)
-    : !!(await _writeException({unit_id:clsUnit,class_id:cx.classId,exception_date:cx.date,kind:'instructor_override',substitute_instructor_id:staffId,reason:null,oneoff_time:null,oneoff_uniform:null,oneoff_level:null,oneoff_audience:null,oneoff_duration_minutes:null}));
+    : !!(await _writeException(_overridePayload(clsUnit,cx.classId,cx.date,staffId)));
   if(ok){S.cardEx=null;render();}
 }
 async function cardExRemoveOverride(){
