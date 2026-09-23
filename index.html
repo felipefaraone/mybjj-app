@@ -3782,6 +3782,57 @@ function _validateTrainingDates(bjjIso,joinIso){
 // tables and cannot collide, whereas the legacy ids are short strings ('nb',
 // 'mario') with no cross-table uniqueness guarantee — matching those blind could
 // hand a student's history to a staff member who happens to share a key.
+// ── Immediate-fix corrections supersede the grading they corrected ──────────
+// A mode-2 correction (savePromote :6486) records the SAME grading with the
+// right value, so the mistaken row must not keep standing as a milestone of its
+// own — the student's timeline showed a belt she never held. There is no link
+// column between the two rows (adding one is a schema change), and after the
+// date fix below they deliberately share a `date`, so a date match alone cannot
+// tell these two apart:
+//   an IMMEDIATE FIX  — wrong belt entered, corrected seconds later. The
+//                       grading happened; only the value was wrong. Collapse.
+//   a REAL DEMOTE     — the student held the belt for months and is moved back
+//                       down. Both events are true. Keep BOTH.
+// What separates them is wall-clock distance between the two RECORDS, and the
+// file already carries it: every row this app inserts is stamped
+// legacy_id='pl'+Date.now() (:6572/:6628/:6730), hydrated onto `id` (:16072).
+// That is an insertion timestamp, already fetched — no new column, no new fetch.
+// A row without that stamp (import, seed, student-declared) simply never
+// collapses: failing to hide is safe, hiding a real grading is not.
+const _CORRECTION_FIX_WINDOW_MS=15*60*1000;   // 15 min — "just entered", not "later that day"
+function _plStamp(p){
+  const m=/^pl(\d{10,})$/.exec(String((p&&p.id)||''));
+  return m?Number(m[1]):null;
+}
+// Keys (promotions PK, same expression the dedupe below uses) of the academy
+// promotions a correction annuls. At most ONE victim per correction: the latest
+// academy grading recorded BEFORE it — the same row _revertIdx (:5068) calls the
+// revertable one, so "what the correction corrects" has one answer here too.
+// Without that cap, a whole grading recorded on one date would collapse
+// wholesale, since every row on it shares the correction's date.
+function _supersededPromoIds(log,isSubject){
+  const out=Object.create(null);
+  const mine=(log||[]).filter(p=>p&&isSubject(p)&&_plStamp(p)!=null);
+  const corrections=mine.filter(p=>p.type==='correction');
+  if(!corrections.length)return out;
+  // source!=='declared' — a declared row is the student's own statement about
+  // their past, never the academy's to annul (same rule as _revertIdx :5068).
+  const gradings=mine.filter(p=>p.type!=='correction'&&p.source!=='declared')
+                     .sort((a,b)=>_plStamp(a)-_plStamp(b));
+  corrections.forEach(c=>{
+    const cs=_plStamp(c);
+    let victim=null;
+    for(let i=0;i<gradings.length;i++){
+      if(_plStamp(gradings[i])<cs)victim=gradings[i];else break;
+    }
+    if(!victim)return;
+    if(String(victim.date||'')!==String(c.date||''))return;          // not the grading it inherited
+    if(cs-_plStamp(victim)>_CORRECTION_FIX_WINDOW_MS)return;         // a later demote, not a fix
+    const k=victim._dbId||victim.id;
+    if(k!=null)out[k]=true;
+  });
+  return out;
+}
 function _jnyFromPromotions(subject){
   const s=subject;if(!s)return [];
   const isStaffRow=!!(s._dbId&&Array.isArray(STAFF)&&STAFF.some(x=>x&&x._dbId===s._dbId));
@@ -3807,16 +3858,19 @@ function _jnyFromPromotions(subject){
     :null;
   // MERGE both sides, never choose: promotions can in principle sit on both
   // rows, and picking one would hide the other half of the history.
+  // Subject match, lifted out of the filter so the supersede pass below can ask
+  // the same question of the CORRECTION rows the filter drops.
+  const isSubject=(p)=>!!p&&(isStaffRow
+    ? ((!!s._dbId&&p.staffId===s._dbId)||(!!linkedStuId&&p.studentId===linkedStuId))
+    : (!!s.id&&p.studentId===s.id));
+  const superseded=_supersededPromoIds(PROMOTION_LOG,isSubject);
   const seen=Object.create(null);
   const rows=(PROMOTION_LOG||[]).filter(p=>{
     if(!p)return false;
     // Corrections are fixes to miscadastred data, not achievements — dropped by
     // the same test the Wall feed uses (:7651).
     if(p.type==='correction')return false;
-    const match=isStaffRow
-      ? ((!!s._dbId&&p.staffId===s._dbId)||(!!linkedStuId&&p.studentId===linkedStuId))
-      : (!!s.id&&p.studentId===s.id);
-    if(!match)return false;
+    if(!isSubject(p))return false;
     // Dedupe on the promotion's own PK (_dbId is promotions.id; `id` falls back
     // to legacy_id and is not guaranteed unique). The OR above already visits
     // each row once, so this cannot fire on the linked-row merge — it is here
@@ -3825,6 +3879,8 @@ function _jnyFromPromotions(subject){
     // shifts the page boundary. Without it that promotion renders twice.
     const key=p._dbId||p.id;
     if(key==null)return true;
+    // Annulled by an immediate-fix correction — presentation only, the row stays.
+    if(superseded[key])return false;
     if(seen[key])return false;
     seen[key]=true;
     return true;
@@ -6716,13 +6772,41 @@ async function savePromote(skipDuplicateBeltConfirm){
   // never surface on the Wall or as the next "Revert last promotion"
   // target. After a reload they're hydrated with type='correction'
   // and the same filter at rPromoteModal/revertPromo skips them.
-  const correctionDate=new Date().toISOString().slice(0,10);
+  // A correction is NOT a new event: it is the same grading with the right
+  // value, so it INHERITS that grading's date. Dating it now() moved
+  // recompute_student_stats' MAX(date) marker to today, and every class the
+  // student had attended since the real grading fell behind the marker — a kid
+  // whose belt was backdated to 24 Aug and fixed twenty seconds later read 0
+  // classes instead of 10.
+  //
+  // The date is resolved, not re-derived. _revertTarget (:5070) is THE rule for
+  // "the academy promotion this student's last action touched": academy only
+  // (source!=='declared' — a declared row is the student's own statement and
+  // never moves the clock), corrections excluded (so a second correction still
+  // inherits from the original grading, not from the first fix), from_belt
+  // required. PROMOTION_LOG is date DESC and mode 1 unshifts, so in-session this
+  // is exactly the row just entered — including when it was back-dated behind an
+  // older marker.
+  // Fallbacks, in order:
+  //   s._lastMarkerDate — the mirror of recompute's MAX(date) over academy rows,
+  //     same rule enforced server-side. Covers what _revertTarget deliberately
+  //     skips: a mode-3 backfill (never pushed to PROMOTION_LOG, :6577) and an
+  //     imported initial-white row carrying from_belt NULL.
+  //   today — no prior academy grading exists at all, so there is no date to
+  //     inherit and nothing for a marker to regress.
+  const _corrTarget=(typeof _revertTarget==='function')?_revertTarget(s.id):null;
+  const correctionDate=(_corrTarget&&_corrTarget.date)
+    ? String(_corrTarget.date).slice(0,10)
+    : (s._lastMarkerDate?String(s._lastMarkerDate).slice(0,10):new Date().toISOString().slice(0,10));
   // Mirror recompute_student_stats' last_marker_date into memory so the
   // eligibility hint shows the months clock immediately instead of "date not
   // recorded" (it reads s._lastMarkerDate, and a full rehydrate is the only
   // other thing that refreshes it). recompute takes MAX(date) across the
-  // student's promotions, so mirror that: never move the anchor BACKWARDS,
-  // or a back-dated correction would clobber a more recent marker.
+  // student's promotions, so mirror that: never move the anchor BACKWARDS.
+  // correctionDate is now the INHERITED date, so this can only ever settle the
+  // anchor ON that date (when it was null or stale) — a correction never pushes
+  // the clock PAST the grading it corrects, and a later real grading keeps its
+  // own, more recent, marker.
   try{
     const _newMarker=(!s._lastMarkerDate||String(correctionDate)>String(s._lastMarkerDate))?correctionDate:s._lastMarkerDate;
     s._lastMarkerDate=_newMarker;
