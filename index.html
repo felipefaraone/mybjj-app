@@ -7862,12 +7862,29 @@ async function submitBugReport(){
     ?(window.location.pathname+(S.tab?('#'+S.tab):'')+(S.sub?('/'+S.sub):''))
     :(S.tab||'');
   const typeVal=String(S.bugReport.type||'').trim()||null;
+  // Involuntary sign-outs recorded on this device ride along with the report —
+  // this is the existing path for getting diagnostics off a member's phone, so
+  // nothing new is invented for it. Timestamps and booleans only (see
+  // _authTrailPush); no token material.
+  //
+  // Bounded to the same 1000 characters the composer's own counter advertises,
+  // because the bug_reports table is not in this repo and a length check on
+  // `text` cannot be ruled out. The MEMBER's text is never touched: the trail
+  // is appended only if it fits, and dropped entirely if it does not.
+  let textOut=txt;
+  try{
+    const _trail=_authTrailText();
+    if(_trail){
+      const _block='\n\n--- auth trail ---\n'+_trail;
+      if((textOut.length+_block.length)<=1000)textOut=textOut+_block;
+    }
+  }catch(_){}
   const payload={
     user_id:uid,
     role,
     unit_id:unitRow?unitRow._dbId:null,
     type:typeVal,
-    text:txt,
+    text:textOut,
     page_path:pagePath,
     user_agent:(typeof navigator!=='undefined'?navigator.userAgent:''),
     app_version:'v169'
@@ -13021,7 +13038,26 @@ function rReconnecting(){
 // Etapa 3 — doLogin demo helper deleted. Real auth lives entirely in
 // signInGoogle / signInMagic / signInWithEmail and the email-step
 // flow in rAuth.
-function logout(){S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.classAdd=null;/* drop the persisted tab state so the NEXT login starts on Classes; an in-session reload still restores it */_resetTabs();if(sb)sb.auth.signOut();render();}
+// TELLING THE TWO SIGN-OUTS APART.
+// supabase-js emits SIGNED_OUT both for a sign-out the user ASKED for and for
+// one that HAPPENED to them (a failed token refresh: dropped network, revoked
+// refresh token, a bad minute on the server). Only the first should take the
+// IndexedDB mirror with it. logout() is the app's one and only deliberate path
+// — it holds the file's sole sb.auth.signOut() call — so arming a flag here is
+// an honest signal rather than a guess about the event.
+//
+// The timer is the safety catch: if signOut() never produces an event (it was
+// called offline, say), the flag must not stay armed and mis-label the NEXT
+// sign-out — which could be the involuntary one this whole change exists to
+// survive. 10s is far longer than the local event takes and far shorter than
+// any plausible gap before an unrelated refresh failure.
+let _deliberateSignOut=false,_deliberateSignOutTimer=null;
+function _markDeliberateSignOut(){
+  _deliberateSignOut=true;
+  try{clearTimeout(_deliberateSignOutTimer);}catch(_){}
+  try{_deliberateSignOutTimer=setTimeout(function(){_deliberateSignOut=false;},10000);}catch(_){}
+}
+function logout(){_markDeliberateSignOut();S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.classAdd=null;/* drop the persisted tab state so the NEXT login starts on Classes; an in-session reload still restores it */_resetTabs();if(sb)sb.auth.signOut();render();}
 
 function friendlyAuthError(err){
   if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
@@ -13193,6 +13229,58 @@ const _authMirror=(function(){
     }
   };
 })();
+// -- Involuntary sign-out breadcrumb ----------------------------------------
+// This bug has been hard to pin down because the state at the moment of failure
+// is gone before anyone can look at it, and nobody can attach a debugger to a
+// member's phone. So the moment records itself.
+//
+// A DIAGNOSTIC, NOT TELEMETRY: the last 5 entries, in localStorage, nothing
+// sent anywhere on its own. It rides along on a bug report the member files
+// (submitBugReport :7842), which is the path the app already uses to get
+// diagnostics off a device.
+//
+// NO TOKEN MATERIAL, by construction. The mirror's raw session JSON is parsed
+// for exactly ONE field, `expires_at` — a unix timestamp — and even that is
+// reduced to a boolean before it is written. No access token, no refresh token,
+// no user id, no email, no fragment of any of them, ever reaches this array.
+const _AUTH_TRAIL_KEY='mybjj.authTrail',_AUTH_TRAIL_MAX=5;
+function _authTrailPush(reason){
+  // Fire-and-forget: the SIGNED_OUT handler must not wait on IndexedDB.
+  try{
+    const at=new Date().toISOString();
+    let ls=false;
+    try{const k=_authStorageKey();ls=!!(k&&localStorage.getItem(k));}catch(_){}
+    let online=null;
+    try{online=(typeof navigator!=='undefined'&&typeof navigator.onLine==='boolean')?navigator.onLine:null;}catch(_){}
+    Promise.resolve(_authMirror.get()).then(function(raw){
+      let mir=!!raw,exp=null;
+      if(raw){
+        try{
+          const v=JSON.parse(raw).expires_at;          // a number of seconds — never stored as-is
+          if(typeof v==='number')exp=(v*1000)<=Date.now();
+        }catch(_){}                                    // unparseable → exp stays null ("unknown")
+      }
+      let arr=[];
+      try{arr=JSON.parse(localStorage.getItem(_AUTH_TRAIL_KEY)||'[]');}catch(_){}
+      if(!Array.isArray(arr))arr=[];
+      arr.push({at:at,why:reason,ls:ls,mir:mir,exp:exp,on:online});
+      try{localStorage.setItem(_AUTH_TRAIL_KEY,JSON.stringify(arr.slice(-_AUTH_TRAIL_MAX)));}catch(_){}
+    }).catch(function(){});
+  }catch(_){}
+}
+// One compact line per entry, newest last. Read by submitBugReport so a report
+// from the field carries the last few involuntary sign-outs with it.
+function _authTrailText(){
+  try{
+    const arr=JSON.parse(localStorage.getItem(_AUTH_TRAIL_KEY)||'[]');
+    if(!Array.isArray(arr)||!arr.length)return '';
+    const b=function(v){return v===true?'1':(v===false?'0':'?');};
+    return arr.map(function(e){
+      return String(e&&e.at||'')+' '+String(e&&e.why||'')
+        +' ls='+b(e&&e.ls)+' mir='+b(e&&e.mir)+' exp='+b(e&&e.exp)+' on='+b(e&&e.on);
+    }).join('\n');
+  }catch(_){return '';}
+}
 // Read the live session out of localStorage and mirror it. Deferred by a
 // macrotask on purpose: called from inside the onAuthStateChange handler, it
 // returns instantly, so the handler's timing — and the boot ordering the Batch 9
@@ -13218,8 +13306,11 @@ function _mirrorSession(){
 // attempt the refresh itself. A mirror EXISTING is not a session being VALID: a
 // device left closed for weeks has a mirror whose refresh token is dead, and the
 // only thing that can tell us is the refresh attempt. When it fails, supabase-js
-// clears storage and emits SIGNED_OUT, the handler's _authMirror.clear() removes
-// the dead backup, and the user lands on the login screen cleanly.
+// clears storage and emits SIGNED_OUT, and the user lands on the login screen
+// cleanly. NOTE: as of the SIGNED_OUT change below, that failure no longer
+// clears the mirror — only an explicit logout() does. A dead mirror therefore
+// costs one wasted refresh per boot until the user signs in again, which is the
+// deliberate price for not destroying a LIVE session on a network blip.
 //
 // Returns why it finished, because the caller treats one case differently:
 //   'skipped'  - localStorage already had a session; nothing to do (normal boot)
@@ -13427,9 +13518,29 @@ async function bootAuth(){
       _mirrorSession();
     }
     else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();
-      // A real sign-out must take the backup with it, or Phase 2b would restore
-      // the session the user just deliberately ended.
-      _authMirror.clear();
+      // THE FIX. Only a sign-out the user ASKED for takes the backup with it.
+      //
+      // A failed token refresh emits SIGNED_OUT too, so the old unconditional
+      // clear() destroyed the backup using the very event the backup exists to
+      // survive — the defence disarmed itself on its own case.
+      //
+      // THE TRADE, weighed rather than defaulted. Keeping a mirror the server
+      // has genuinely revoked costs one wasted refresh attempt on the next
+      // boot, after which supabase-js clears storage, this handler fires again
+      // and the member lands on the login screen — exactly where they are
+      // today, one silent retry later. Clearing on a network blip costs a
+      // signed-in member their session permanently over a moment of bad
+      // reception on a train. Those are not the same size. The first is a
+      // recoverable few hundred milliseconds; the second is the bug being
+      // reported. So the mirror survives anything the user did not ask for.
+      if(_deliberateSignOut){
+        _deliberateSignOut=false;
+        try{clearTimeout(_deliberateSignOutTimer);}catch(_){}
+        _authMirror.clear();
+      }else{
+        // Mirror deliberately LEFT INTACT so the next boot can restore it.
+        _authTrailPush('involuntary_signout');
+      }
     }
     else if(ev==='USER_UPDATED'){
       // Fired when a self-service email change is confirmed. Reflect the
