@@ -8895,7 +8895,10 @@ function rCommunityWall(){
       // _ossControlHtml (which owns its own inline-flex + padding) is untouched.
       // shareWelcome keys on the STUDENTS legacy id, matching its own lookup.
       +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'
-        +_ossControlHtml(s._dbId)
+        // 'member' — s._dbId is a STUDENTS id, not a promotion id. Defaulting to
+        // 'promotion' sent toggle_oss looking for a promotion row with a student
+        // uuid, which failed "target not visible" behind a "Couldn't react" toast.
+        +_ossControlHtml(s._dbId,'member')
         +(canShareCard(s)?shareBtnHtml('event.stopPropagation();_shareCard(\'welcome\',\''+s.id+'\')'):'')
       +'</div>'
     +'</div>';
@@ -9235,9 +9238,15 @@ function _ossControlHtml(promoDbId,targetType){
     const overflow=count>3
       ?'<span style="font-size:12px;color:var(--text2);font-weight:500;font-family:Barlow,sans-serif">+'+(count-3)+'</span>'
       :'';
-    stackHtml='<div onclick="event.stopPropagation();openOssList(\'promotion\',\''+promoDbId+'\')" style="display:inline-flex;align-items:center;cursor:pointer;gap:4px"><div style="display:flex">'+avs+'</div>'+overflow+'</div>';
+    stackHtml='<div onclick="event.stopPropagation();openOssList(\''+_tt+'\',\''+promoDbId+'\')" style="display:inline-flex;align-items:center;cursor:pointer;gap:4px"><div style="display:flex">'+avs+'</div>'+overflow+'</div>';
   }
-  return '<div id="oss-slot-'+promoDbId+'" style="display:inline-flex;align-items:center;gap:8px;padding:0 12px 10px 14px">'+btn+stackHtml+'</div>';
+  // data-oss-type is what makes a REPAINT safe. _patchOssSlots re-renders a slot
+  // from its id alone, so without this the type defaulted back to 'promotion'
+  // and the welcome-card bug returned the moment a slot was patched rather than
+  // fully re-rendered. The element is the one thing every repaint path already
+  // holds, so the type rides on it instead of being threaded through
+  // _ensureWallReactions / the photo-signing pass as a new parameter.
+  return '<div id="oss-slot-'+promoDbId+'" data-oss-type="'+_tt+'" style="display:inline-flex;align-items:center;gap:8px;padding:0 12px 10px 14px">'+btn+stackHtml+'</div>';
 }
 // Surgical re-render of just the Oss controls. Replaces the render() calls
 // in _ensureWallReactions / toggleOss so a reactions load or a tap repaints
@@ -9247,7 +9256,13 @@ function _patchOssSlots(ids){
   if(!ids||!ids.length)return;
   ids.forEach(function(id){
     const el=document.getElementById('oss-slot-'+id);
-    if(el)el.outerHTML=_ossControlHtml(id);
+    // Read the type back off the element rather than threading it through every
+    // caller: toggleOss knows it, _ensureWallReactions has a MIXED id list and
+    // does not, and the photo-signing pass (:14549) scrapes ids straight out of
+    // the DOM. The element is the one place all three already agree on. Missing
+    // attribute falls through to _ossControlHtml's 'promotion' default, so a
+    // slot rendered by older cached markup still behaves exactly as before.
+    if(el)el.outerHTML=_ossControlHtml(id,el.getAttribute('data-oss-type'));
   });
 }
 async function _ensureWallReactions(ids){
@@ -9259,12 +9274,16 @@ async function _ensureWallReactions(ids){
   if(S.wallReactionsLoading)return;
   S.wallReactionsLoading=true;
   S.wallReactionsKey=key;
-  // 'post' joins 'promotion' here because the Wall now mixes both and they share
-  // ONE reaction store, one control and one toggle_oss call. Without this the
-  // pill on a post would render 0/unreacted on every load and only look right
-  // until the next refresh. target_id is a uuid on both sides, so merging them
-  // into one map cannot collide.
-  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post']).in('target_id',ids);
+  // 'post' and 'member' join 'promotion' here because the Wall mixes all three
+  // and they share ONE reaction store, one control and one toggle_oss call.
+  // Without this the pill on that card renders 0/unreacted on every load and
+  // only looks right until the next refresh. target_id is a uuid on every side,
+  // from three different tables, so merging them into one map cannot collide.
+  //
+  // 'member' was the missing one: welcome-card ids are already in `ids` (:8776),
+  // but this filter dropped their rows, so a welcome card's count came back as
+  // zero after every reload even once the tap itself worked.
+  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post','member']).in('target_id',ids);
   S.wallReactionsLoading=false;
   if(r&&r.error){
     console.warn('[mybjj] wall_reactions:',r.error);
