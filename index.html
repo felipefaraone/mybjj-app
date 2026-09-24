@@ -13281,6 +13281,38 @@ function _authTrailText(){
     }).join('\n');
   }catch(_){return '';}
 }
+// -- Is this error the server REJECTING us, or a request that never landed? --
+// Only the first is a sign-out. This runs AFTER the session resolved: the token
+// is valid, the mirror is intact, nothing signed anybody out. A failed RPC at
+// that point means the app could not finish loading, which is not the same
+// thing as "you are not logged in", and must not send a member to the login
+// screen.
+//
+// UNRECOGNISED ERRORS COUNT AS TRANSPORT. That is the deliberate bias: this
+// function is only ever consulted when we already know the session resolved,
+// so "unknown" is far more likely to be a dropped request than a revocation,
+// and the cost of being wrong is asymmetric — a wrongly-reconnecting user taps
+// Try again (or is auto-retried when they come back online, :13574) and has an
+// explicit "Sign in with a different account" escape hatch in front of them,
+// while a wrongly-signed-out user has lost their session for nothing.
+//
+// Reads the message only to CLASSIFY it. Nothing from the error is stored; the
+// breadcrumb records a boolean.
+function _isAuthRejection(err){
+  if(!err)return false;
+  const status=Number(err.status!=null?err.status:(err.statusCode!=null?err.statusCode:NaN));
+  if(status===401||status===403)return true;
+  if(Number.isFinite(status)&&status>=500)return false;   // server trouble is not a rejection
+  // PostgREST surfaces JWT problems as PGRST301 (expired) / PGRST302 (invalid).
+  if(/^PGRST30\d$/.test(String(err.code||'')))return true;
+  const m=String(err.message||'').toLowerCase();
+  if(m.includes('jwt')||m.includes('invalid token')||m.includes('token is expired')
+     ||m.includes('not authenticated')||m.includes('unauthorized')||m.includes('invalid claim')
+     ||m.includes('user not found'))return true;
+  // Everything else — 'failed to fetch', Safari's 'Load failed', timeouts,
+  // aborts, 5xx, and anything unrecognised — is treated as transport.
+  return false;
+}
 // Read the live session out of localStorage and mirror it. Deferred by a
 // macrotask on purpose: called from inside the onAuthStateChange handler, it
 // returns instantly, so the handler's timing — and the boot ordering the Batch 9
@@ -13416,6 +13448,10 @@ async function _resolveSessionWithRetry(c){
       // Preserve the old catch's behaviour: a FAILED read still surfaces its
       // message on the sign-in screen. A clean "no session" stays silent, as before.
       if(lastErr)S.authMsg=friendlyAuthError(lastErr);
+      // Involuntary: nobody asked for this. Distinguishes a clean "no token
+      // anywhere" from a session read that FAILED and found nothing — lastErr
+      // is recorded as a boolean in the reason, never as text.
+      _authTrailPush(lastErr?'no_stored_session_after_error':'no_stored_session');
       S.authState='unauthenticated';render();return;
     }
     if(attempt>=_AUTH_RETRY_MS.length){
@@ -13469,6 +13505,10 @@ async function bootAuth(){
     // re-firing the same error; surface a clear copy on the login
     // screen with the existing forgot-password reachable underneath.
     S.passwordRecovery=false;
+    // Involuntary, but explained on screen. Recorded because it is a route to
+    // the login screen that a member WILL report as "it logged me out", and the
+    // trail is what tells those two apart without a cable.
+    _authTrailPush('recovery_link_expired');
     S.authState='unauthenticated';
     S.authMsg='That recovery link has expired or already been used. Tap "Forgot password" to request a new one.';
     try{history.replaceState(null,'',location.pathname+location.search);}catch(_){}
@@ -13483,7 +13523,9 @@ async function bootAuth(){
   }
   const c=initSupabase();
   if(!c){
-    if(!S.passwordRecovery){S.authState='unauthenticated';render();}
+    // Involuntary: the client could not be constructed at all, so no session
+    // read was even attempted. The v573 recovery gate is untouched.
+    if(!S.passwordRecovery){_authTrailPush('no_supabase_client');S.authState='unauthenticated';render();}
     return;
   }
   // Listener attached BEFORE getSession (Batch 9 Fix A). The
@@ -13633,7 +13675,24 @@ async function onAuthed(){
     // flag already rendered it. `finally` still clears _onAuthedBusy, so the
     // post-save onAuthed at :17193 can run once the password is actually set.
     if(S.passwordRecovery){console.log('[mybjj] onAuthed: recovery began mid-flight, standing down');return;}
-    if(error){console.warn('[mybjj] claim_profile',error.message);S.authState='unauthenticated';S.authMsg=friendlyAuthError(error);render();return;}
+    // A FAILED CALL IS NOT A SIGN-OUT. This used to drop straight to the login
+    // screen, which is the likeliest explanation for the reported kick-outs:
+    // it fires with a perfectly valid session in hand, so signing back in
+    // works instantly and the member sees no pattern. One dropped request on a
+    // train did it.
+    if(error){
+      console.warn('[mybjj] claim_profile',error.message);
+      if(_isAuthRejection(error)){
+        // The server refused this identity. The login screen is correct.
+        _authTrailPush('claim_profile_rejected');
+        S.authState='unauthenticated';S.authMsg=friendlyAuthError(error);render();return;
+      }
+      // Could not reach the server. They ARE signed in — reuse the existing
+      // reconnecting card (:13017), whose Try again re-runs this very path via
+      // retryBootAuth, and which the 'online' listener retries automatically.
+      _authTrailPush('claim_profile_transport');
+      S.authState='reconnecting';render();return;
+    }
     S.profile=data;
     // Detect a Google OAuth identity. Its email is owned by Google and is
     // immutable from our app, so auth.updateUser({email}) changes only the
@@ -13702,7 +13761,18 @@ async function onAuthed(){
     if(data.status==='rejected') S.authState='rejected';
     else S.authState='pending';
     render();
-  }catch(e){console.warn('[mybjj] onAuthed',e);S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();}
+  }catch(e){
+    // Same rule as the claim_profile branch above: a throw on the way to
+    // loading the app is not evidence that the member is signed out.
+    console.warn('[mybjj] onAuthed',e);
+    if(_isAuthRejection(e)){
+      _authTrailPush('onauthed_rejected');
+      S.authMsg=friendlyAuthError(e);S.authState='unauthenticated';render();
+    }else{
+      _authTrailPush('onauthed_exception');
+      S.authState='reconnecting';render();
+    }
+  }
   finally{_onAuthedBusy=false;}
 }
 
