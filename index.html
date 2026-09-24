@@ -12427,6 +12427,10 @@ function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
 
 async function sendInvite(dispatch,chain){
+  // Set by either whitelist_upsert below (kid's parent, or adult). A refused
+  // whitelist write used to be a console.warn: the student was created, the
+  // screen said nothing, and it surfaced weeks later as "I cannot log in".
+  let _wlFailed=false;
   // dispatch: true → Save & invite (fires send-magic-link); false → Save only.
   // chain: when true (Save & add child path, adult only), the form is
   // immediately re-opened pre-filled with the just-saved adult's
@@ -12592,8 +12596,12 @@ async function sendInvite(dispatch,chain){
     // needed. Whitelist still fires for fresh emails (next-batch
     // claim_profile picks them up on first sign-in).
     if(!parentUserId){
-      const wl=await cli.from('whitelist').upsert({email:parentEmail,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
-      if(wl&&wl.error)console.warn('[mybjj] parent whitelist:',wl.error);
+      // whitelist_upsert (migration 131) — the table policy is owner-only, so a
+      // direct upsert is refused for an instructor (42501). The definer function
+      // accepts staff too, and RAISES on refusal instead of quietly not writing.
+      // invited_by is NOT passed: the function sets it from auth.uid().
+      const wl=await cli.rpc('whitelist_upsert',{p_email:parentEmail,p_role:'parent',p_unit_id:unitDbId});
+      if(wl&&wl.error){console.warn('[mybjj] parent whitelist:',wl.error);_wlFailed=true;}
       else console.log('[mybjj] parent whitelist OK');
     } else {
       console.log('[mybjj] parent whitelist skipped — user already exists');
@@ -12606,7 +12614,12 @@ async function sendInvite(dispatch,chain){
     //   3. otherwise                 → insert a fresh row
     // claim_profile auto-links by lower(email) on first sign-in
     // (supabase/28_phase8_kid_secondary_parent.sql:75-78, 138-141).
-    await cli.from('whitelist').upsert({email,role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'}).then(r=>r&&r.error?console.warn('[mybjj] whitelist invite:',r.error):console.log('[mybjj] whitelist invite OK'));
+    // whitelist_upsert (migration 131) — see the parent branch above. Awaited
+    // and checked rather than .then(warn): this is the write that decides
+    // whether the person can sign in at all.
+    const wlA=await cli.rpc('whitelist_upsert',{p_email:email,p_role:'student',p_unit_id:unitDbId});
+    if(wlA&&wlA.error){console.warn('[mybjj] whitelist invite:',wlA.error);_wlFailed=true;}
+    else console.log('[mybjj] whitelist invite OK');
     const emailLower=String(email||'').toLowerCase();
     const emailMatch=emailLower
       ?STUDENTS.find(s=>s.unit===unitLegacy&&String(s.email||'').toLowerCase()===emailLower)
@@ -12690,6 +12703,17 @@ async function sendInvite(dispatch,chain){
       closeSub();
     }
   };
+  // The student record is kept — it is the more valuable of the two writes, and
+  // a reported partial state beats losing it. But without a whitelist row the
+  // person cannot sign in by any path, and send-magic-link would refuse them
+  // server-side, so this replaces the success toast instead of being appended
+  // to it (and the dispatch below is skipped, so nothing clobbers the message).
+  if(_wlFailed){
+    showSaveToast2(fullName+' saved, but the invite failed. Try the invite again.','error',5000);
+    S._addForm={cc:'+61',parentCc:'+61'};
+    continueWithChain();
+    return;
+  }
   if(!dispatch){
     showSaveToast2(fullName+' added. They can sign in anytime by entering their email at mybjj-app.com.');
     S._addForm={cc:'+61',parentCc:'+61'};
@@ -14097,8 +14121,11 @@ async function executeChangeEmail(){
       const unitDbId=unit&&unit._dbId;
       const ur=await cli.from('students').update({email}).eq('legacy_id',target.id);
       if(ur&&ur.error){console.warn('[mybjj] add student email:',ur.error);return showErr(friendlyMutationError(ur.error)||ur.error.message||'Could not add email.');}
-      const w=await cli.from('whitelist').upsert({email,role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
-      if(w&&w.error){console.warn('[mybjj] student whitelist:',w.error);return showErr(friendlyMutationError(w.error)||w.error.message||'Could not add email.');}
+      // whitelist_upsert (migration 131) — staff-safe; invited_by set by the
+      // function. The students.email write above is NOT rolled back: the record
+      // is kept and the gap is reported.
+      const w=await cli.rpc('whitelist_upsert',{p_email:email,p_role:'student',p_unit_id:unitDbId});
+      if(w&&w.error){console.warn('[mybjj] student whitelist:',w.error);return showErr('Email saved, but the old one may still have access.');}
     }
     target.email=email;
     closeChangeEmail();
@@ -14152,14 +14179,18 @@ async function saveEmailEditor(dispatch){
     const r=await cli.from('students').update({parent_email:email}).eq('legacy_id',target.id);
     if(r&&r.error){console.warn('[mybjj] save parent_email:',r.error);return showSaveToast2(friendlyMutationError(r.error),'error');}
     target.parentEmail=email;
-    const w=await cli.from('whitelist').upsert({email,role:'parent',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
-    if(w&&w.error){console.warn('[mybjj] parent whitelist:',w.error);return showSaveToast2(friendlyMutationError(w.error),'error');}
+    // whitelist_upsert (migration 131) — staff-safe; invited_by set by the
+    // function. parent_email above is kept, not rolled back.
+    const w=await cli.rpc('whitelist_upsert',{p_email:email,p_role:'parent',p_unit_id:unitDbId});
+    if(w&&w.error){console.warn('[mybjj] parent whitelist:',w.error);return showSaveToast2('Email changed, but the old one may still have access.','error',5000);}
   } else {
     const r=await cli.from('students').update({email}).eq('legacy_id',target.id);
     if(r&&r.error){console.warn('[mybjj] save student email:',r.error);return showSaveToast2(friendlyMutationError(r.error),'error');}
     target.email=email;
-    const w=await cli.from('whitelist').upsert({email,role:'student',unit_id:unitDbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
-    if(w&&w.error){console.warn('[mybjj] student whitelist:',w.error);return showSaveToast2(friendlyMutationError(w.error),'error');}
+    // whitelist_upsert (migration 131) — staff-safe; invited_by set by the
+    // function. students.email above is kept, not rolled back.
+    const w=await cli.rpc('whitelist_upsert',{p_email:email,p_role:'student',p_unit_id:unitDbId});
+    if(w&&w.error){console.warn('[mybjj] student whitelist:',w.error);return showSaveToast2('Email changed, but the old one may still have access.','error',5000);}
   }
   closeEmailEditor();
   if(!dispatch){
@@ -20276,8 +20307,11 @@ async function saveEditStu(){
   if(isKids&&parent2Email&&s.unit){
     const unit=UNITS.find(u=>u.id===s.unit);
     if(unit&&unit._dbId){
-      const wl=await cli.from('whitelist').upsert({email:parent2Email,role:'parent',unit_id:unit._dbId,student_id:s._dbId,invited_by:S.profile&&S.profile.id},{onConflict:'email'});
-      if(wl&&wl.error)console.warn('[mybjj] parent2 whitelist:',wl.error);
+      // whitelist_upsert (migration 131). The ONLY call site that carries a
+      // student_id — kept, it is what ties the second parent to this kid.
+      // invited_by is NOT passed: the function sets it from auth.uid().
+      const wl=await cli.rpc('whitelist_upsert',{p_email:parent2Email,p_role:'parent',p_unit_id:unit._dbId,p_student_id:s._dbId});
+      if(wl&&wl.error){console.warn('[mybjj] parent2 whitelist:',wl.error);showSaveToast2('Saved, but the second parent could not be invited.','error',5000);}
     }
   }
 }
@@ -20660,11 +20694,30 @@ async function deleteStudent(sid){
   try{await cli.from('photo_approvals').delete().eq('student_id',s._dbId);}catch(e){console.warn('[mybjj] delete photos:',e);}
   const r=await cli.from('students').delete().eq('id',s._dbId);
   if(r&&r.error){console.warn('[mybjj] delete student:',r.error);showSaveToast2(friendlyMutationError(r.error),'error');return;}
-  if(s.email){try{await cli.from('whitelist').delete().eq('email',s.email);}catch(e){console.warn('[mybjj] delete whitelist:',e);}}
-  if(s.parentEmail){try{await cli.from('whitelist').delete().eq('email',s.parentEmail);}catch(e){console.warn('[mybjj] delete parent whitelist:',e);}}
+  // whitelist_remove (migration 131). This is the failure that mattered most:
+  // a refused delete left the email on the whitelist and that person could
+  // still sign in, with the screen reporting a clean delete. The students row
+  // is already gone and is NOT restored — the report is the fix.
+  const _wlLeft=[];
+  if(s.email){
+    try{const wr=await cli.rpc('whitelist_remove',{p_email:s.email});
+      if(wr&&wr.error){console.warn('[mybjj] delete whitelist:',wr.error);_wlLeft.push('their email');}
+    }catch(e){console.warn('[mybjj] delete whitelist:',e);_wlLeft.push('their email');}
+  }
+  if(s.parentEmail){
+    try{const wr=await cli.rpc('whitelist_remove',{p_email:s.parentEmail});
+      if(wr&&wr.error){console.warn('[mybjj] delete parent whitelist:',wr.error);_wlLeft.push('the parent email');}
+    }catch(e){console.warn('[mybjj] delete parent whitelist:',e);_wlLeft.push('the parent email');}
+  }
   const ix=STUDENTS.indexOf(s);if(ix>=0)STUDENTS.splice(ix,1);
   closeStudentProfile();
-  showSaveToast2(s.name+' deleted permanently.');
+  // One toast, not two: they stack at the same fixed position and would
+  // overwrite each other.
+  if(_wlLeft.length){
+    showSaveToast2('Deleted, but '+(_wlLeft.length>1?'their emails':_wlLeft[0])+' may still have access.','error',5000);
+  }else{
+    showSaveToast2(s.name+' deleted permanently.');
+  }
 }
 
 function addJny(sid){S.editJny={sid,idx:null,isNew:true};render();}
