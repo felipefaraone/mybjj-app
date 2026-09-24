@@ -13503,6 +13503,25 @@ async function onAuthed(){
   try{
     const c=initSupabase();
     const{data,error}=await c.rpc('claim_profile');
+    // THE post-await recheck. Every other gate in this file tests
+    // S.passwordRecovery BEFORE an await, which protects entry and not exit:
+    // this function was entered legitimately (no recovery yet), then yielded for
+    // a network round-trip, and recovery began inside that window. On the way
+    // out it went on to set S.loggedIn and render the app straight over the
+    // reset form the user was already looking at.
+    //
+    // claim_profile is the ONLY await in this function after which the flag can
+    // flip. Everything below it is synchronous through render(); getUser() and
+    // hydrateData() are deliberately not awaited, and getUser()'s .then only
+    // ever calls render(), which is itself gated on recovery at :12943.
+    //
+    // Checked ahead of `error` on purpose: if recovery started mid-flight, the
+    // claim_profile outcome is moot either way, and the error branch would
+    // otherwise stamp authState='unauthenticated' over an active recovery.
+    // Returning leaves the recovery shell exactly as it is — whoever set the
+    // flag already rendered it. `finally` still clears _onAuthedBusy, so the
+    // post-save onAuthed at :17193 can run once the password is actually set.
+    if(S.passwordRecovery){console.log('[mybjj] onAuthed: recovery began mid-flight, standing down');return;}
     if(error){console.warn('[mybjj] claim_profile',error.message);S.authState='unauthenticated';S.authMsg=friendlyAuthError(error);render();return;}
     S.profile=data;
     // Detect a Google OAuth identity. Its email is owned by Google and is
@@ -13534,10 +13553,29 @@ async function onAuthed(){
       // defence at render time, and _persistTabs holds off while S.hydrating
       // so a provisional correction is never written back.
       if(S.tab==='admin'&&!(typeof isStaffOrOwner==='function'&&isStaffOrOwner()))S.tab='class';
-      // If the user arrived via a reset-password link, jump straight
-      // into the Set Password sub-panel so they finish the recovery
-      // before doing anything else.
-      if(S.passwordRecovery){S.panelOpen=true;S.sub='setpwd';}
+      // REMOVED: `if(S.passwordRecovery){S.panelOpen=true;S.sub='setpwd';}`.
+      // It was the last trace of an earlier design in which onAuthed DID run
+      // during recovery and routed the user into the Set Password SUB-PANEL
+      // inside the app. The file implements the opposite design everywhere
+      // else — recovery means onAuthed does not run and the standalone shell
+      // owns the screen (render() :12943, _authSettled() :13279,
+      // _resolveSessionWithRetry :13304, _restoreFromMirror :13241, the
+      // SIGNED_IN and USER_UPDATED listeners :13419/:13442, and the
+      // PASSWORD_RECOVERY branch :13373, which pointedly does NOT call
+      // onAuthed) — and the completion path at :17193 states it outright: the
+      // shell "bypassed the normal onAuthed pass on load", which is why it has
+      // to kick onAuthed itself once the password is saved.
+      //
+      // It was also unreachable in effect. render()'s top gate returns the
+      // recovery shell before panelOpen/sub are ever read, so these two
+      // assignments set state nothing could display. The only way to arrive
+      // here with the flag true was the mid-flight race the guard above now
+      // closes — so keeping the line would only re-describe the bug.
+      //
+      // The genuinely-signed-in-when-recovery-begins case it looks like it
+      // serves is already handled: the flag flips, render() swaps to the
+      // recovery shell over the top of the app, and :17193 restores the app
+      // afterwards with the flag cleared. That path never needed onAuthed.
       // G14 — keep the splash up until hydrate has populated STAFF /
       // UNITS / STUDENTS. Without this the first render() runs with an
       // empty STAFF/UNITS, so isOwner() returns false even for Dev
