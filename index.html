@@ -3887,11 +3887,36 @@ function _jnyFromPromotions(subject){
   });
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
   return rows.map(p=>{
-    // Same two label shapes savePromote writes (:5723), built from the file's
-    // existing ordinal helper _ordSuffix (:7522). Black belt counts DEGREES.
-    const label=p.isNewBelt
+    // Same two label shapes savePromote writes (:6680), built from the file's
+    // existing ordinal helper _ordSuffix (:8509). Black belt counts DEGREES.
+    //
+    // FAULT 1 — "did this change belt?" is derived from the data, not read from
+    // is_new_belt. That column is a second source for a question from_belt and
+    // to_belt already answer, and it drifted: six backdated August gradings
+    // stored is_new_belt=false on rows that plainly changed belt, and a
+    // white->blue promotion rendered as "0th stripe". The property names are
+    // fromBelt / toBelt / toDeg — proved by the hydrate mapper (:16238-16241)
+    // and savePromote's in-session push (:6687), which agree.
+    //
+    // A NULL fromBelt is NOT "no change": it is an origin record with nothing to
+    // compare — an imported initial-white row, or a student-declared entry
+    // (saveJnyDeclare pushes fromBelt:null at :4202). Those fall through to the
+    // degree test, which is exactly what separates a declared BELT (to_deg 0)
+    // from a declared STRIPE (to_deg 2). So the derived branch reproduces
+    // is_new_belt's intent on every well-formed row without depending on it.
+    // is_new_belt stays in savePromote's payload; this just stops trusting it.
+    const _isBeltChange=!!p.fromBelt&&!!p.toBelt&&p.fromBelt!==p.toBelt;
+    //
+    // FAULT 2 — degree zero has no ordinal. "0th stripe" is not a thing and the
+    // expression must not be able to produce it even from bad data. Degree 0 on
+    // a non-belt-change row means the row carries no stripe, so it names the
+    // belt: true for the origin/declared case, true for a degenerate row, and
+    // it never invents a rank the student does not hold. Non-numeric or missing
+    // toDeg takes the same path rather than rendering "NaNth".
+    const _deg=Number(p.toDeg);
+    const label=(_isBeltChange||!Number.isFinite(_deg)||_deg<=0)
       ? beltLabel(p.toBelt)+' belt'
-      : (p.toDeg+_ordSuffix(p.toDeg)+(p.toBelt==='black'?' degree':' stripe'));
+      : (_deg+_ordSuffix(_deg)+(p.toBelt==='black'?' degree':' stripe'));
     // Precision decides how much of the date survives. 'day' and 'month' both
     // pass the ISO string through untouched — _fmtJnyDate renders either as
     // "Mon YYYY", so the day is simply never displayed and nothing has to be
