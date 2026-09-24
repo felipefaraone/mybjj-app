@@ -2403,7 +2403,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,rfAwaiting:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,webcam:null,cycleListAll:false,evDescOpen:{},evOpen:null,evWho:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,authBusyAction:null,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,rfAwaiting:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,webcam:null,cycleListAll:false,evDescOpen:{},evOpen:null,evWho:null,_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -13013,6 +13013,26 @@ function friendlyAuthError(err){
   else if(err.error) m=typeof err.error==='string'?err.error:(err.error.message||'');
   else m=String(err);
   const s=m.toLowerCase();
+  // A 429 on an auth email is a COOLDOWN, not a breakage. Supabase throttles
+  // per address and answers "For security purposes, you can only request this
+  // after 44 seconds" — which matches NONE of the rate-limit strings on the
+  // next line, so it fell through to "contact your academy admin" and sent a
+  // member to message the head instructor over a 44-second wait.
+  //
+  // The seconds are READ, never invented: used only when the regex matches and
+  // the value is finite and in a sane range (1..3600). A reworded message, a
+  // missing number or a nonsense value falls back to the generic wait line.
+  // err.status is checked too (AuthApiError carries 429), so a future rewording
+  // still lands here rather than back on "contact your academy admin".
+  const _cooldown=(err&&typeof err==='object'&&Number(err.status)===429)||s.includes('for security purposes');
+  if(_cooldown){
+    const _m=m.match(/after\s+(\d+)\s*seconds?/i);
+    const _n=_m?Number(_m[1]):NaN;
+    // Deliberately neutral about WHAT is being retried: this helper also serves
+    // the password path, where "another email" would be wrong.
+    if(Number.isFinite(_n)&&_n>0&&_n<=3600)return 'Please wait '+_n+' second'+(_n===1?'':'s')+' before trying again.';
+    return 'Please wait a minute before trying again.';
+  }
   if(s.includes('rate limit')||s.includes('over_email_send_rate_limit')||s.includes('too many requests')||s.includes('429')) return 'Too many sign-in attempts. Please wait a few minutes and try again.';
   if(s.includes('invalid email')||s.includes('invalid format')||s.includes('not a valid email')||s.includes('validation_failed')||s.includes('email address')&&s.includes('invalid')) return 'Please enter a valid email address.';
   if(s.includes('user not found')||s.includes('invalid login credentials')||s.includes('email not confirmed')||s.includes('not authorized')||s.includes('not allowed')) return "We couldn't sign you in. Check your email or contact your academy admin.";
@@ -16671,13 +16691,13 @@ async function signInMagic(){
   const c=initSupabase(); if(!c){S.authMsg=friendlyAuthError('network');render();return;}
   const email=(S.authEmail||'').trim().toLowerCase();
   if(!email||!/^\S+@\S+\.\S+$/.test(email)){S.authMsg='Please enter a valid email address.';render();return;}
-  S.authBusy=true;S.authMsg='';render();
+  S.authBusy=true;S.authBusyAction='magic';S.authMsg='';render();
   try{
     const{error}=await c.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
     if(error){console.warn('[mybjj] magic',error);S.authMsg=friendlyAuthError(error);}
     else{_rememberEmail(email);S.authState='magic-sent';S.authMsg='Check your inbox — we sent you a sign-in link.';}
   }catch(e){console.warn('[mybjj] magic',e);S.authMsg=friendlyAuthError(e);}
-  S.authBusy=false;render();
+  S.authBusy=false;S.authBusyAction=null;render();
 }
 
 // Phase 9 — password sign-in. The magic-link path is now triggered by
@@ -16754,7 +16774,12 @@ async function forgotPassword(){
   const email=(S.authEmail||'').trim().toLowerCase()
     || (prompt('Enter the email on your account:')||'').trim().toLowerCase();
   if(!email||!/^\S+@\S+\.\S+$/.test(email)){S.authMsg='Please enter a valid email address.';render();return;}
-  S.authBusy=true;S.authMsg='';render();
+  // authBusy alone is global to this screen — every button reads it, so it
+  // cannot say WHICH request is in flight. authBusyAction names the one that
+  // is, so only that button swaps its label while the rest just disable.
+  // Cleared unconditionally below, so a later click on another button can
+  // never inherit a stale label.
+  S.authBusy=true;S.authBusyAction='forgot';S.authMsg='';render();
   try{
     const{error}=await c.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
     if(error){console.warn('[mybjj] forgot password:',error);S.authMsg=friendlyAuthError(error);}
@@ -16764,7 +16789,7 @@ async function forgotPassword(){
       S.authMsg='Password reset link sent to '+email+'. Open it on this device to set a new password.';
     }
   }catch(e){console.warn('[mybjj] forgot password',e);S.authMsg=friendlyAuthError(e);}
-  S.authBusy=false;render();
+  S.authBusy=false;S.authBusyAction=null;render();
 }
 
 // Set-password sub-panel — used for first-time setup, "Change password"
@@ -17201,6 +17226,11 @@ function authHero(){
 
 function rAuth(){
   const busy=S.authBusy?'disabled':'';
+  // Label swap follows the file's submitting-button pattern (:4338 'Saving…',
+  // :8023 'Sending…', :7983, :9150): disable + say what it is doing. Keyed on
+  // authBusyAction so pressing "Sign in" cannot make "Forgot password?" claim
+  // to be sending.
+  const busyAction=S.authBusy?S.authBusyAction:null;
   const sent=S.authState==='magic-sent';
   const msg=S.authMsg&&!sent?`<div class="inv" style="margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${S.authMsg}</span></div>`:'';
   const GICON=`<svg width="14" height="14" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>`;
@@ -17233,9 +17263,9 @@ ${msg}
 </div>
 ${msg}
 <button onclick="signInWithEmail()" ${busy} style="${PRIMARY_STYLE};margin-top:14px">Sign in</button>
-<div style="text-align:center;margin-bottom:6px"><button onclick="forgotPassword()" style="${LINK_STYLE}">Forgot password?</button></div>
+<div style="text-align:center;margin-bottom:6px"><button onclick="forgotPassword()" ${busy} style="${LINK_STYLE}${busy?';opacity:.55;cursor:not-allowed':''}">${busyAction==='forgot'?'Sending…':'Forgot password?'}</button></div>
 <div style="height:1px;background:var(--border);margin:18px 0"></div>
-<button class="bout" onclick="useEmailLink()" ${busy} style="width:100%;margin-bottom:0">Email me a sign-in link instead</button>`;
+<button class="bout" onclick="useEmailLink()" ${busy} style="width:100%;margin-bottom:0">${busyAction==='magic'?'Sending…':'Email me a sign-in link instead'}</button>`;
 
   // Step 2B — no password yet. Magic-link primary; "Set up a password"
   // link still triggers a magic link, then the post-sign-in banner /
