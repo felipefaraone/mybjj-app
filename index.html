@@ -2403,7 +2403,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,webcam:null,cycleListAll:false,evDescOpen:{},evOpen:null,evWho:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsShown:5,evalDismissed:false,rq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,rfAwaiting:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,webcam:null,cycleListAll:false,evDescOpen:{},evOpen:null,evWho:null,_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -11202,6 +11202,9 @@ function rARosterListInner(){
   const rfBelt=S.rfBelt||'all';
   const rfNear=!!S.rfNear;
   const rfEligible=!!S.rfEligible&&canEditClassCounts();
+  // Gated in the SAME expression as the chip below, so the filter can never be
+  // stuck on for someone who has no chip to switch it off with.
+  const rfAwaiting=!!S.rfAwaiting&&isStaffOrOwner();
   const showInactive=!!S.rfInactive;
   // Hide inactive students by default. Toggling the "Show inactive"
   // chip surfaces them; the chip itself lives in the filter row below.
@@ -11219,6 +11222,7 @@ function rARosterListInner(){
   // 25/30 thresholds) no longer fed any UI as of this batch.
   if(rfNear)list=list.filter(s=>{const e=_egDisplay(s);return (e.pct||0)>=80;});
   if(rfEligible)list=list.filter(s=>{const e=getEligibilityStatus(s);return e&&e.status==='eligible';});
+  if(rfAwaiting)list=list.filter(_awaitingSignInRoster);
   if(q)list=list.filter(s=>s.name.toLowerCase().includes(q));
   list=[...list].sort((a,b)=>{
     // G9 Phase 1 consolidation — sort ranking sourced from
@@ -12168,6 +12172,7 @@ function _memberCounts(){
 }
 function rARoster(){
   const rfBelt=S.rfBelt||'all';
+  const rfAwaiting=!!S.rfAwaiting&&isStaffOrOwner();
   const rfNear=!!S.rfNear;
   const rfEligible=!!S.rfEligible&&canEditClassCounts();
   // Multi-unit — scope the count to the ACTIVE UNIT explicitly (same
@@ -12177,6 +12182,14 @@ function rARoster(){
   const _curU=UNITS.find(u=>u.name===S.unit);const _rUnit=_curU?_curU.id:null;
   const allAdults=STUDENTS.filter(s=>s.prog==='adult'&&(!_rUnit||s.unit===_rUnit));
   const allKids=STUDENTS.filter(s=>s.prog==='kids'&&(!_rUnit||s.unit===_rUnit));
+  // "Who is waiting" for the scope the roster is actually showing: active
+  // (unless Show inactive is on) + active unit + current segment. Deliberately
+  // NOT narrowed by belt / search / Near grad, so the number is a standing fact
+  // about the unit rather than a figure that moves as you type. rfEligible drops
+  // the segment split, so the count spans both progs exactly as the list does.
+  const _awScope=STUDENTS.filter(s=>(S.rfInactive||s._active!==false)&&(!_rUnit||s.unit===_rUnit));
+  const awaitingCount=(rfEligible?_awScope:_awScope.filter(s=>s.prog===(S.rseg==='kids'?'kids':'adult')))
+    .filter(_awaitingSignInRoster).length;
   const beltMap=S.rseg==='adult'?BA:BK;
   const beltOpts=Object.keys(beltMap);
   // v355+ — kids can hold an ADULT belt since the 16-bridge (v345/6). On the kids
@@ -12217,6 +12230,11 @@ function rARoster(){
     +'<button onclick="toggleRFNear()" style="'+chipBase+';background:'+(rfNear?'#1A5DAD15':'transparent')+';border-color:'+(rfNear?'var(--blue)':'var(--border)')+';color:'+(rfNear?'var(--blue)':'var(--text3)')+'">Near grad'+(rfNear?' ✕':'')+'</button>'
     +(canEditClassCounts()?'<button onclick="toggleRFEligible()" style="'+chipBase+';background:'+(rfEligible?'var(--green-bg)':'transparent')+';border-color:'+(rfEligible?'var(--green-text)':'var(--border)')+';color:'+(rfEligible?'var(--green-text)':'var(--text3)')+'">Eligible only'+(rfEligible?' ✕':'')+'</button>':'')
     +(canEditClassCounts()?'<button onclick="toggleRFInactive()" style="'+chipBase+';background:'+(S.rfInactive?'var(--amber-bg)':'transparent')+';border-color:'+(S.rfInactive?'var(--amber-border)':'var(--border)')+';color:'+(S.rfInactive?'var(--amber-text)':'var(--text3)')+'">Show inactive'+(S.rfInactive?' ✕':'')+'</button>':'')
+    // Same copy as the badge on the card ("Awaiting sign-in") and the same
+    // "Label (N)" count shape the Adults/Kids toggle uses below. A state, not an
+    // instruction: it answers "who is waiting", it does not offer to send.
+    // Shown at 0 too — "nobody is waiting" is the answer he is looking for.
+    +(isStaffOrOwner()?'<button onclick="toggleRFAwaiting()" style="'+chipBase+';background:'+(rfAwaiting?'#1A5DAD15':'transparent')+';border-color:'+(rfAwaiting?'var(--blue)':'var(--border)')+';color:'+(rfAwaiting?'var(--blue)':'var(--text3)')+'">Awaiting sign-in ('+awaitingCount+')'+(rfAwaiting?' ✕':'')+'</button>':'')
     +'</div>';
 
   const _mc=_memberCounts();const memCount=_mc.members;const totalReg=_mc.registered;
@@ -13906,11 +13924,38 @@ function waiverChip(s){
 // Staff tab keeps them together via inviteStatusRow below. Behaviour — labels,
 // onclick, stopPropagation, the canAct gate, the joined -> empty case — is
 // unchanged; only the packaging moved.
+// WHICH address and WHICH account answer for this person. A kid has no account
+// of their own — the parent's email and the parent's user id are the ones that
+// decide whether the family can sign in. Lifted verbatim out of _inviteParts so
+// the roster chip and the roster badge read the identical two fields; if these
+// ever diverge, both move together.
+function _inviteIdentity(target,kind){
+  const isParent=kind==='kidParent';
+  return {
+    email:isParent?target.parentEmail:target.email,
+    userId:isParent?target._parentUserId:target._userId
+  };
+}
+// THE "Awaiting sign-in" state: exactly the branch _inviteParts flags with
+// 'Awaiting sign-in' + [Send invite] — `if(userId){...} else if(email){`. Not
+// re-derived: same fields, same order, one function. A person with no email is
+// NOT awaiting (they are "No email", a different problem with a different fix).
+function _awaitingSignIn(target,kind){
+  const id=_inviteIdentity(target,kind);
+  return !id.userId&&!!id.email;
+}
+// The roster's own reading of it. s.prog decides the kind — the SAME expression
+// the roster card passes at :11333, so the chip counts precisely the cards that
+// show the badge.
+function _awaitingSignInRoster(s){
+  return !!s&&_awaitingSignIn(s,s.prog==='kids'?'kidParent':'student');
+}
 function _inviteParts(target,kind){
   const isParent=kind==='kidParent';
   const isStaff=kind==='staff';
-  const email=isParent?target.parentEmail:target.email;
-  const userId=isParent?target._parentUserId:target._userId;
+  const _id=_inviteIdentity(target,kind);
+  const email=_id.email;
+  const userId=_id.userId;
   const canAct=isStaffOrOwner();
   let flag='',action='';
   // inline-flex + gap so the send icon sits inside the button beside its label;
@@ -21774,6 +21819,8 @@ function setRfBeltChip(v){S.rfBelt=v||'all';render();}
 function toggleRFNear(){S.rfNear=!S.rfNear;render();}
 function toggleRFEligible(){S.rfEligible=!S.rfEligible;render();}
 function toggleRFInactive(){S.rfInactive=!S.rfInactive;render();}
+// Read-only filter — it narrows the roster and sends nothing.
+function toggleRFAwaiting(){S.rfAwaiting=!S.rfAwaiting;render();}
 function setRF(k,v){S[k]=v;render();}
 
 // Etapa 6 — drops legacy 'owner'/'admin' branches; in-memory role for
