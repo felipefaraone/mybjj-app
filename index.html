@@ -13349,6 +13349,12 @@ function _mirrorSession(){
 //   'restored' - mirror had a value, localStorage repopulated
 //   'empty'    - the read completed and there was no backup; CONFIRMED signed out
 //   'timeout'  - the read did not complete; we do NOT know whether a backup exists
+// SECOND CALLER as of v576: _attemptMirrorRescue below runs this MID-SESSION,
+// after an eviction, and needs no change to do it. Being deliberately dumb is
+// what makes it reusable — it reads a key, reads a blob, writes it back. The
+// one thing that could have been boot-only is _authStorageKey(), and it returns
+// its DERIVED key when localStorage is empty rather than only finding an
+// existing one, which is exactly the evicted case.
 // Measured cold open+get on a persisted DB is ~22ms (max 23ms across three
 // cold-process runs); the 1200ms ceiling is ~50x that, so it only ever fires on a
 // genuinely stuck IndexedDB rather than on a merely slow one.
@@ -13390,6 +13396,80 @@ async function _restoreFromMirror(){
     // Retrying would hit the same wall, so this is 'empty', not 'timeout'.
     try{console.debug('[mybjj] restore write:',e&&e.message||e);}catch(_){}
     return 'empty';
+  }
+}
+// -- v576. Use the mirror at the moment of the eviction, not just at boot -----
+// MEASURED, not guessed. The owner's iPhone recorded:
+//   {"why":"involuntary_signout","ls":false,"mir":true,"exp":false,"on":true}
+// localStorage empty, mirror present, token NOT expired, device online. iOS
+// evicted the storage out from under a RUNNING app; supabase-js saw an empty
+// slot and emitted SIGNED_OUT, and every later request went out as anon
+// ("permission denied for table ... GRANT SELECT TO anon").
+//
+// v574 stopped that event destroying the backup. The backup then sat in
+// IndexedDB, valid and unexpired, and nothing read it: Phase 2b only runs at
+// BOOT. This closes that gap — same restore, called at the moment it happens.
+//
+// THE LOOP TRAP. A rescue that fails can re-emit SIGNED_OUT, which would
+// rescue again, forever. Three things stop it, in order of principle:
+//   1. a DEAD mirror is CLEARED. If the blob restores but will not refresh, the
+//      backup is genuinely dead and deleting it removes the fuel. This is also
+//      what finally cleans up the "one wasted refresh per boot" that v574
+//      knowingly accepted as the price of not clearing on a network blip.
+//   2. _mirrorRescueBusy. The nested SIGNED_OUT that a failed refresh emits
+//      arrives while this is still running, and is refused re-entry.
+//   3. a 60s cooldown, so even an unforeseen shape cannot spin.
+let _mirrorRescueBusy=false,_mirrorRescueAt=0;
+const _MIRROR_RESCUE_COOLDOWN_MS=60000;
+// Claims the right to attempt, atomically (single-threaded, so the read and the
+// set cannot interleave). Named for the side effect rather than pretending to
+// be a predicate.
+function _claimMirrorRescue(){
+  if(_mirrorRescueBusy)return false;
+  if(_mirrorRescueAt&&(Date.now()-_mirrorRescueAt)<_MIRROR_RESCUE_COOLDOWN_MS)return false;
+  _mirrorRescueBusy=true;_mirrorRescueAt=Date.now();
+  return true;
+}
+async function _attemptMirrorRescue(){
+  let ok=false;
+  try{
+    const outcome=await _restoreFromMirror();
+    if(outcome!=='restored'){
+      // No usable backup. The login screen was always the right answer here.
+      _authTrailPush('mirror_rescue_'+outcome);       // empty | timeout | skipped
+      return;
+    }
+    const c=initSupabase();
+    if(!c){_authTrailPush('mirror_rescue_no_client');return;}
+    // The token is back in the slot supabase-js reads. getSession() re-reads
+    // storage rather than trusting a createClient-time cache (the measurement
+    // Phase 2b already depends on) and refreshes it if it is near expiry, so
+    // this is the step that proves the restored session is actually alive.
+    let session=null;
+    try{const r=await c.auth.getSession();session=(r&&r.data&&r.data.session)||null;}catch(_){}
+    if(!session){
+      // Restored but would not refresh: the backup is dead. Clear it — see
+      // loop-trap note 1 above.
+      _authTrailPush('mirror_rescue_dead');
+      try{await _authMirror.clear();}catch(_){}
+      return;
+    }
+    // Alive. Re-mirror the (possibly refreshed) token and bring the app back.
+    _authTrailPush('mirror_rescue_ok');
+    _mirrorSession();
+    ok=true;
+    await onAuthed();
+  }catch(e){
+    try{console.warn('[mybjj] mirror rescue',e);}catch(_){}
+    _authTrailPush('mirror_rescue_error');
+  }finally{
+    _mirrorRescueBusy=false;
+    // Every path that did not end in a live session lands on the login screen —
+    // the state the SIGNED_OUT handler had already prepared before we borrowed
+    // the screen. Skipped when ok, so onAuthed's own outcome (including v575's
+    // 'reconnecting') is never stomped; _authSettled() and the v573 recovery
+    // gate are both respected for the same reason.
+    if(!ok&&!_authSettled()&&!S.passwordRecovery){S.authState='unauthenticated';render();}
   }
 }
 // Auth already decided by something other than this loop (the SIGNED_IN
@@ -13580,8 +13660,20 @@ async function bootAuth(){
         try{clearTimeout(_deliberateSignOutTimer);}catch(_){}
         _authMirror.clear();
       }else{
-        // Mirror deliberately LEFT INTACT so the next boot can restore it.
+        // Mirror deliberately LEFT INTACT — and, as of v576, USED right now
+        // rather than only at the next boot.
         _authTrailPush('involuntary_signout');
+        if(_claimMirrorRescue()){
+          // Hold the splash instead of flashing the login form at someone we
+          // are about to sign back in: 'checking' is the one render branch
+          // that does not hideSplash() (:13018). Every exit from the rescue
+          // resolves this, so it cannot strand anyone here.
+          S.authState='checking';render();
+          // Deferred a macrotask for the same reason _mirrorSession is: let
+          // this handler unwind so supabase-js has finished emptying the
+          // storage slot before the restore writes into it.
+          setTimeout(function(){_attemptMirrorRescue();},0);
+        }
       }
     }
     else if(ev==='USER_UPDATED'){
