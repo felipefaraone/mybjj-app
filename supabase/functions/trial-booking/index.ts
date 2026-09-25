@@ -103,6 +103,15 @@ function str(v: unknown, max = 200): string {
   return (typeof v === "string" ? v : "").trim().slice(0, max);
 }
 
+// Tri-state on purpose: true / false / null, where null means "the client did
+// not tell us". STRICTLY a JSON boolean — "true", "1", 1 and null all read as
+// unanswered rather than being coerced. Coercion is how a malformed value turns
+// into a quiet `false`, and a quiet `false` is the exact bug being fixed here:
+// it is what recorded a child as an adult on every fallback booking.
+function boolOrNull(v: unknown): boolean | null {
+  return typeof v === "boolean" ? v : null;
+}
+
 // Title-case a person's name on the SERVER (the page is only an affordance):
 // trim, collapse internal whitespace, uppercase the first letter of each word and
 // lowercase the rest. Word boundaries include hyphen and apostrophe, so
@@ -444,6 +453,10 @@ Deno.serve(async (req) => {
   const referrerName = titleCase(str(payload.referrer_name, 120));
   const preferredDay = str(payload.preferred_day, 400);
   const kidName = titleCase(str(payload.kid_name, 120));
+  // "Who is this trial for?" — trial.html step 4 asks this as a required answer
+  // on EVERY route, including the "none of these times work" fallback. Resolved
+  // below, once the class (if any) has been validated.
+  const isKidClaim = boolOrNull(payload.is_kid);
 
   // Bring-a-friend (optional). A non-empty friend_name is the "requested" signal;
   // a stray friend_email/phone with no name is ignored (never blocks a booking).
@@ -483,6 +496,9 @@ Deno.serve(async (req) => {
   const clientTime = hhmm(str(payload.class_time, 8));
 
   let isKid = false;
+  // The chosen class's audience, kept as EVIDENCE for the resolution below —
+  // it no longer decides is_kid by itself.
+  let classAudience = "";
   let insertClassId: string | null = null;
   let insertClassDate: string | null = null;
   let insertClassTime: string | null = null;
@@ -530,9 +546,12 @@ Deno.serve(async (req) => {
       return bad("That class has already finished. Please pick a later class.", origin);
     }
 
-    // is_kid is DERIVED from the class, never taken from the client.
-    isKid = cls.audience === "Kids";
-    if (isKid && !kidName) return bad("Please add your child's name.", origin);
+    // WAS: `isKid = cls.audience === "Kids"` — is_kid derived from the class and
+    // never taken from the client. That was the right rule while nothing asked:
+    // a public endpoint should not trust a flag it never collected. The form now
+    // collects it as a required answer, so the client is no longer guessing —
+    // it is reporting what the parent said. Resolved after this block.
+    classAudience = String(cls.audience || "");
 
     insertClassId = cls.id;
     insertClassDate = classDate;
@@ -542,6 +561,43 @@ Deno.serve(async (req) => {
     // Fallback path ("None of these times work") — we only have free-text
     // availability. is_kid stays false (no class → no derived audience).
     if (!preferredDay) return bad("Please tell us when you're usually free.", origin);
+  }
+
+  // 2c. WHO IS THIS FOR — the answer decides, with one evidence-backed fallback.
+  //
+  // ABSENT OR MALFORMED (isKidClaim === null) splits on whether we have any
+  // evidence at all, because the two cases are not the same risk:
+  //   a class WAS picked  -> fall back to the class's audience. That is the old
+  //     behaviour and it is evidence from OUR database, not a guess. It keeps a
+  //     browser still running the pre-question trial.html booking successfully
+  //     (that page has no service worker, but an already-open tab holds the old
+  //     JS), and for a Kids class it is also correct.
+  //   NO class was picked -> refuse. The fallback path has nothing to derive
+  //     from, so defaulting is pure invention, and inventing `false` here is
+  //     precisely what wrote 17 children-or-adults into one bucket. Better a
+  //     retryable 400 than another silent adult. A reload picks up the new form
+  //     immediately, since trial.html is not service-worker cached.
+  if (isKidClaim === null) {
+    if (!insertClassId) {
+      return bad("Please tell us whether this trial is for an adult or a child, then try again.", origin);
+    }
+    isKid = classAudience === "Kids";
+  } else {
+    isKid = isKidClaim;
+  }
+
+  // kid_name follows the ANSWER, not the class — so the fallback path asks for
+  // it too, which it never did before.
+  if (isKid && !kidName) return bad("Please add your child's name.", origin);
+
+  // A child in an Adults class is STORABLE, never rejected: the academy puts
+  // teenagers in adult classes deliberately (14 and over train with adults), so
+  // this combination is frequently correct. Logged, not blocked — and the ops
+  // email already renders "(child)" off isKid, so the booking arrives labelled.
+  if (insertClassId && classAudience && isKid !== (classAudience === "Kids")) {
+    console.log(
+      `[trial-booking] answer/class mismatch — is_kid=${isKid}, class audience=${classAudience}; storing the answer`,
+    );
   }
 
   // 2b. Friend block applies ONLY to a concrete slot (insertClassId) — a friend

@@ -183,6 +183,16 @@
   input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,93,173,.12)}
   input.err,select.err,textarea.err{border-color:var(--red);box-shadow:0 0 0 3px rgba(192,57,43,.10)}
   textarea{min-height:84px;resize:vertical}
+  .whofor{margin:0 0 18px}
+  .whofor .wlab{display:block;font-size:14px;font-weight:700;color:var(--ink);margin-bottom:9px}
+  .whofor .wopts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .whofor button{appearance:none;-webkit-appearance:none;background:var(--card);border:1.5px solid var(--line);border-radius:var(--radius);padding:13px 12px;font:inherit;font-size:14.5px;font-weight:700;color:var(--ink);cursor:pointer;text-align:center;line-height:1.25}
+  .whofor button .wsub{display:block;font-size:12px;font-weight:500;color:var(--ink3);margin-top:3px}
+  .whofor button.on{border-color:var(--blue);background:var(--blue-tint);color:var(--blue)}
+  .whofor button.on .wsub{color:var(--blue)}
+  .whofor.err button{border-color:var(--red)}
+  .whonote{display:flex;gap:10px;background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;padding:11px 14px;margin:10px 0 0;font-size:13px;color:var(--blue-dark);line-height:1.45}
+  @media(max-width:420px){ .whofor .wopts{grid-template-columns:1fr} }
   .kidnote{display:flex;gap:10px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:13.5px;color:var(--amber);line-height:1.45}
   .kidnote svg{width:17px;height:17px;flex-shrink:0;margin-top:1px}
   .cf{margin:16px 0 4px;min-height:65px}
@@ -273,6 +283,27 @@
       <div class="lead"><h2 id="s4h">Your details</h2><p>This locks in your spot. The health check is the very last step.</p></div>
 
       <div class="formerr" id="formerr"></div>
+
+      <!-- WHO IS THIS FOR — the one question the form never asked. Both routes
+           into step 4 (a chosen slot, and the "none of these times work"
+           fallback) pass through here, so this is the single point that can ask
+           every booking. Deliberately NOT pre-selected: pre-filling it from the
+           chosen class would reproduce the exact bug, where a parent who picked
+           an Adults class for a child sails past an answer that was already
+           wrong. The wording carries the academy's own rule from renderKidsCards
+           (13 and under kids, 14 and over adults) instead of inventing one. -->
+      <div class="whofor" id="whofor">
+        <span class="wlab">Who is this trial for?<span class="req"> *</span></span>
+        <div class="wopts">
+          <button type="button" id="whoAdult" data-kid="0">An adult<span class="wsub">14 or over</span></button>
+          <button type="button" id="whoKid" data-kid="1">A child<span class="wsub">13 or under</span></button>
+        </div>
+        <!-- Shown only for child + Adults class. A warning, never a block: the
+             academy already puts teenagers in adult classes. -->
+        <div class="whonote" id="whonote" style="display:none">
+          <span>Noted — we'll check the class is right for their age and contact you if a Kids class suits better.</span>
+        </div>
+      </div>
 
       <div class="kidnote" id="kidnote" style="display:none">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -446,6 +477,10 @@
     typeCode: null, typeLabel: null, audience: null, duration: null,
     slot: null,        // {class_id,date,time,timeLabel,dayLabel}
     fallback: false,   // "none of these times work" path
+    // TRUE / FALSE once answered, null until then. THE source of truth for
+    // is_kid, the child-name field, the parent labels and the kidnote — none of
+    // which are inferred from the chosen class any more.
+    forKid: null,
     cfToken: "",
     cfRendered: false,
     booked: false      // guard against double-submit
@@ -908,9 +943,16 @@
   // STEP 4 — DETAILS
   // ============================================================================
   function applyDetailsMode(){
-    // kidMode ONLY when a real Kids class slot was chosen (the class decides it —
-    // there is no adult/kid toggle). The fallback path has no class → not kid.
-    var kidMode = (!state.fallback && state.audience==="Kids");
+    // kidMode now comes from the ANSWER, not from the class. Deriving it from
+    // the class produced adults out of children two ways: an Adults class picked
+    // for a child, and the fallback path, which has no class at all and so was
+    // is_kid=false by omission on every single booking.
+    var kidMode = (state.forKid===true);
+    // Both entry points into step 4 call this, and the user can go Back and
+    // return, so the buttons are painted FROM state rather than only by the
+    // click that set it.
+    $("whoAdult").classList.toggle("on", state.forKid===false);
+    $("whoKid").classList.toggle("on", state.forKid===true);
     $("kidField").style.display = kidMode ? "block" : "none";
     $("kidnote").style.display  = kidMode ? "flex" : "none";
     $("availField").style.display = state.fallback ? "block" : "none";
@@ -920,12 +962,28 @@
     if(state.fallback){ $("friendToggle").checked=false; }
     $("friendToggleRow").style.display = state.fallback ? "none" : "block";
     $("friendFields").style.display = (!state.fallback && $("friendToggle").checked) ? "block" : "none";
+    // Child + an Adults class is NOT automatically wrong — a 14-year-old
+    // training with adults is normal here (see renderKidsCards). So the answer
+    // is recorded and the mismatch is flagged, never blocked.
+    $("whonote").style.display = (kidMode && state.audience==="Adults") ? "flex" : "none";
     $("s4h").textContent = kidMode ? "Parent / guardian details" : "Your details";
     $("fnLab").innerHTML = (kidMode ? "Parent / guardian first name" : "First name") + '<span class="req"> *</span>';
     $("lnLab").innerHTML = (kidMode ? "Parent / guardian last name" : "Last name") + '<span class="req"> *</span>';
     $("emLab").innerHTML = (kidMode ? "Parent / guardian email" : "Email") + '<span class="req"> *</span>';
     $("phLab").innerHTML = (kidMode ? "Parent / guardian phone" : "Phone") + '<span class="req"> *</span>';
   }
+
+  // Answer sets state.forKid and re-runs applyDetailsMode, so the labels, the
+  // child-name field and the kidnote all follow the answer immediately.
+  ["whoAdult","whoKid"].forEach(function(id){
+    $(id).addEventListener("click", function(){
+      state.forKid = this.getAttribute("data-kid")==="1";
+      $("whoAdult").classList.toggle("on", state.forKid===false);
+      $("whoKid").classList.toggle("on", state.forKid===true);
+      $("whofor").classList.remove("err");
+      applyDetailsMode();
+    });
+  });
 
   // Reveal the friend fields when the "Bringing a friend?" box is ticked (same
   // display:none mechanism #kidField / #availField use).
@@ -968,12 +1026,15 @@
     $("formerr").style.display="none";
     ["first_name","last_name","email","phone","kid_name","avail","friend_name","friend_email","friend_phone"].forEach(function(id){ setErr(id,false); });
 
-    var kidMode = (!state.fallback && state.audience==="Kids");
+    var kidMode = (state.forKid===true);
+    $("whofor").classList.remove("err");
     // Friend block is "open" only with a real session AND the box ticked. Closed →
     // no friend validation, no friend fields sent.
     var friendOpen = !state.fallback && $("friendToggle").checked;
     var missing=[], badFormat=[];
 
+    // Unanswered is its own failure — it must never fall through to "adult".
+    if(state.forKid===null){ $("whofor").classList.add("err"); missing.push("who the trial is for"); }
     if(kidMode && !val("kid_name")){ setErr("kid_name",true); missing.push("child's name"); }
     if(state.fallback && !val("avail")){ setErr("avail",true); missing.push("your availability"); }
     if(!val("first_name")){ setErr("first_name",true); missing.push("first name"); }
@@ -1014,6 +1075,9 @@
       class_date: state.fallback ? "" : (state.slot ? state.slot.date : ""),
       class_time: state.fallback ? "" : (state.slot ? state.slot.time : ""),
       preferred_day: state.fallback ? val("avail") : "",
+      // is_kid now travels explicitly. NOTE: the trial-booking function derives
+      // is_kid from the class and does not read this field — see the report.
+      is_kid: kidMode,
       kid_name: kidMode ? val("kid_name") : "",
       friend_name: friendOpen ? val("friend_name") : "",
       friend_email: friendOpen ? val("friend_email") : "",
