@@ -13522,8 +13522,104 @@ async function _attemptMirrorRescue(){
     // the screen. Skipped when ok, so onAuthed's own outcome (including v575's
     // 'reconnecting') is never stomped; _authSettled() and the v573 recovery
     // gate are both respected for the same reason.
-    if(!ok&&!_authSettled()&&!S.passwordRecovery){S.authState='unauthenticated';render();}
+    if(!ok&&!_authSettled()&&!S.passwordRecovery){
+      S.authState='unauthenticated';render();
+      // The mirror could not save them. Rather than leave a form, offer the way
+      // back that needs no typing. Fire-and-forget: it re-renders if it acts.
+      _silentReauth();
+    }
   }
+}
+// -- v578 Part 2. Silent re-auth: never dead-end on a login form -------------
+// Part 1 removes ONE trigger. The class of failure survives: whenever the
+// session is genuinely gone and the stored refresh token is dead, the member
+// lands on a form and the only way back is typing an email. With 183 invitations
+// pending that is the difference between a blip and a support queue.
+//
+// Both call sites are structurally involuntary-only — the rescue's finally, and
+// the SIGNED_OUT else-branch — so this reads the v574 decision rather than
+// re-deciding it. A deliberate logout() takes the `if(_deliberateSignOut)` branch
+// and never reaches here.
+//
+// WHICH DOOR: the app CAN tell whether a member has a password. email_signin_state
+// is an existing RPC that advanceAuthStep (:17031) already calls for exactly this
+// question, returning 'has_password' / otherwise / 'not_authorized'. Reused as-is
+// — no new RPC, no new state.
+//   has_password -> straight to step 2A with the email locked in. The password
+//     field carries autocomplete="current-password", so the platform offers Face
+//     ID / keychain: one tap, no inbox, no app switch. Strictly better than an
+//     email, which is why it is tried first.
+//   otherwise    -> send a magic link automatically and say so.
+let _silentReauthBusy=false;
+// RATE LIMIT. Supabase allows one auth email per minute per address, and an
+// automatic request that fires on every kick would burn the member's own way
+// back in — the measured sequence had three sign-outs in 34 seconds, which would
+// have been three sends. One automatic send per address per 10 minutes, well
+// clear of the server's 60s, so an AUTOMATIC send can never be what trips it.
+// Manual "Send sign-in link" is untouched and still theirs to press (v571 now
+// reports the server's own countdown if it does trip).
+// Held in BOTH memory and localStorage: the persisted copy survives a reload,
+// the in-memory copy survives the storage eviction that causes some of these
+// sign-outs in the first place. Either one blocking is enough.
+let _autoMagicAt=0,_autoMagicFor='';
+const _AUTO_MAGIC_KEY='mybjj.autoReauthAt',_AUTO_MAGIC_WINDOW_MS=10*60*1000;
+function _claimAutoMagic(email){
+  const now=Date.now();
+  if(_autoMagicFor===email&&_autoMagicAt&&(now-_autoMagicAt)<_AUTO_MAGIC_WINDOW_MS)return false;
+  let rec=null;
+  try{rec=JSON.parse(localStorage.getItem(_AUTO_MAGIC_KEY)||'null');}catch(_){}
+  if(rec&&rec.email===email&&rec.at&&(now-Number(rec.at))<_AUTO_MAGIC_WINDOW_MS)return false;
+  _autoMagicFor=email;_autoMagicAt=now;
+  try{localStorage.setItem(_AUTO_MAGIC_KEY,JSON.stringify({email:email,at:now}));}catch(_){}
+  return true;
+}
+async function _silentReauth(){
+  // v573 owns the screen during a recovery — never speak over it.
+  if(S.passwordRecovery)return false;
+  if(_silentReauthBusy)return false;
+  const email=_rememberedEmail();
+  if(!email){_authTrailPush('reauth_no_email');return false;}
+  // Offline: nothing can be checked or sent, and claiming otherwise would be a
+  // lie. Falls through to the login screen, which the SIGNED_OUT handler has
+  // already pre-filled with this same remembered email.
+  try{if(typeof navigator!=='undefined'&&navigator.onLine===false){_authTrailPush('reauth_offline');return false;}}catch(_){}
+  const c=initSupabase();
+  if(!c){_authTrailPush('reauth_no_client');return false;}
+  _silentReauthBusy=true;
+  try{
+    let state=null;
+    try{const r=await c.rpc('email_signin_state',{p_email:email});if(!(r&&r.error))state=r&&r.data;}catch(_){}
+    if(state==='not_authorized'){_authTrailPush('reauth_not_authorized');return false;}
+    if(state==='has_password'){
+      S.authEmail=email;S.authHasPassword=true;S.authStep=2;
+      S.authState='unauthenticated';
+      S.authMsg='Your session expired — sign in to pick up where you left off.';
+      _authTrailPush('reauth_password_prompt');
+      render();return true;
+    }
+    if(state===null){_authTrailPush('reauth_state_unknown');return false;}
+    // No password on the account: the link is the only door, so send it.
+    if(!_claimAutoMagic(email)){
+      S.authEmail=email;S.authHasPassword=false;S.authStep=2;
+      S.authState='unauthenticated';
+      S.authMsg='We already emailed you a sign-in link — check your inbox, or send another below.';
+      _authTrailPush('reauth_magic_throttled');
+      render();return true;
+    }
+    // Reuse signInMagic — the one send path, with its own error handling and its
+    // own authBusy/authState contract. Only the copy is replaced afterwards, so
+    // the member is told WHY they are being emailed.
+    S.authEmail=email;S.authHasPassword=false;S.authStep=2;
+    await signInMagic();
+    if(S.authState==='magic-sent'){
+      S.authMsg='Your session expired. We\u2019ve emailed you a new sign-in link \u2014 open it on this device.';
+      _authTrailPush('reauth_magic_sent');
+      render();return true;
+    }
+    // signInMagic already surfaced the failure in S.authMsg; leave it visible.
+    _authTrailPush('reauth_magic_failed');
+    render();return true;
+  }finally{_silentReauthBusy=false;}
 }
 // Auth already decided by something other than this loop (the SIGNED_IN
 // listener, a manual retry, a sign-out). Deliberately does NOT treat
@@ -13726,6 +13822,11 @@ async function bootAuth(){
           // this handler unwind so supabase-js has finished emptying the
           // storage slot before the restore writes into it.
           setTimeout(function(){_attemptMirrorRescue();},0);
+        }else if(!_mirrorRescueBusy){
+          // Rescue refused by its 60s cooldown, not by being in flight — so no
+          // other attempt is coming and nothing else will offer a way back. (When
+          // it IS in flight, that attempt's own finally calls _silentReauth.)
+          _silentReauth();
         }
       }
     }
