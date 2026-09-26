@@ -337,6 +337,7 @@ interface StaffNotifyData {
   time: string | null;    // "6:00 AM"
   classLabel: string;
   friend?: string | null; // "<friend name> — invited by <booker>" when a friend also booked
+  existingLead?: boolean; // true when this added a class to a lead already on the list
 }
 
 // The SECOND email — an operational heads-up to the ops inbox: who, when, which
@@ -344,7 +345,10 @@ interface StaffNotifyData {
 // (it's never signed at booking time; Patricia sees that status in the app). Same
 // simple inline-styled grammar as buildTrialEmail. Pure — no I/O.
 function buildStaffNotifyEmail(d: StaffNotifyData): { subject: string; html: string; text: string } {
-  const subject = `New trial booking — ${d.firstName} ${d.lastName}` + (d.dayDate ? `, ${d.dayDate}` : "");
+  // An existing lead booking again is NOT a new person, and the ops inbox must
+  // not read as though it is — that is the whole failure being fixed.
+  const subject = (d.existingLead ? "Another trial class — " : "New trial booking — ") +
+    `${d.firstName} ${d.lastName}` + (d.dayDate ? `, ${d.dayDate}` : "");
 
   const nameLine = d.isKid
     ? `${d.kidName} (child) — booked by ${d.firstName} ${d.lastName}`
@@ -613,8 +617,172 @@ Deno.serve(async (req) => {
     // primary phone gets here (presence only). Noted in the report.
   }
 
-  // 3. Insert with the service role.
+  // 2d. ALREADY A LEAD? -------------------------------------------------------
+  // Every submission used to insert a row, so a person who booked, missed the
+  // class and booked again became TWO leads — one no_show, one booked, the phone
+  // in two formats, and the owner working that list saw two people. They were not
+  // making a second booking; they thought they were rebooking.
+  //
+  // public.trial_sessions already models one lead with N occurrences, and
+  // trialClasses (index.html:3459) already reads it. Nothing wrote sessions from
+  // the public form. This does.
+  //
+  // MATCH RULE — all of these, or it is a different lead:
+  //   unit_id      same academy. Trialling at both units is genuinely two leads.
+  //   email        equality on the value this function already normalised at the
+  //                top (str() trims, .toLowerCase()). eq() not ilike(): every row
+  //                this endpoint writes is already lowercased, and ilike would
+  //                give % and _ in an address wildcard meaning.
+  //   is_kid       a parent's own trial and their child's are different
+  //                PARTICIPANTS that share an inbox.
+  //   kid_name     for kids, same again — one email, two children, two leads.
+  //   NOT converted. They are a member; a fresh enquiry is a fresh thing.
   const nowISO = new Date().toISOString();
+  // A lapse is the office saying "this one went cold", not that the person
+  // stopped existing. Coming back inside a quarter is the same conversation and
+  // should keep its contact log and waiver; coming back after one is a new
+  // approach, and resurrecting a long-dead row would also quietly corrupt what
+  // "lapsed" measures. Age is taken from lapsed_at, falling back to booked_at
+  // when it is missing, because on ambiguity the duplicate is the worse outcome.
+  const RETURNING_LEAD_DAYS = 90;
+  type LeadRow = {
+    id: string; waiver_token: string | null; trial_status: string;
+    class_id: string | null; class_date: string | null; class_time: string | null;
+    phone: string | null; lapsed_at: string | null; booked_at: string | null;
+    kid_name: string | null;
+  };
+  let existingLead: LeadRow | null = null;
+  {
+    const { data: leadRows, error: leadErr } = await supabase
+      .from("trial_bookings")
+      .select("id, waiver_token, trial_status, class_id, class_date, class_time, phone, lapsed_at, booked_at, kid_name")
+      .eq("unit_id", unitRow.id)
+      .eq("email", email)
+      .eq("is_kid", isKid)
+      .neq("trial_status", "converted")
+      .order("booked_at", { ascending: false })
+      .limit(10);
+    if (leadErr) {
+      // Never fail a booking over the dedupe lookup — fall through and insert,
+      // which is exactly today's behaviour.
+      console.error("[trial-booking] lead lookup error:", leadErr.message);
+    } else {
+      const usable = (leadRows || []).filter((r) => {
+        if (isKid && titleCase(String(r.kid_name || "")) !== kidName) return false;
+        if (r.trial_status === "lapsed") {
+          const ref = r.lapsed_at || r.booked_at;
+          if (!ref) return true;
+          const age = Date.now() - new Date(String(ref)).getTime();
+          if (age > RETURNING_LEAD_DAYS * 86400000) return false;
+        }
+        return true;
+      });
+      existingLead = (usable[0] as LeadRow) || null;
+    }
+  }
+
+  // The id and token the rest of this function works from, whichever branch ran.
+  let bookingId: string;
+  let bookingToken: string | null;
+
+  if (existingLead) {
+    if (insertClassId) {
+      const { data: sessRows, error: sessErr } = await supabase
+        .from("trial_sessions")
+        .select("id, class_id, class_date")
+        .eq("trial_booking_id", existingLead.id);
+      if (sessErr) {
+        console.error("[trial-booking] session read error:", sessErr.message);
+        return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
+      }
+      const sessions = sessRows || [];
+
+      // ALREADY BOOKED INTO THIS EXACT OCCURRENCE. Say so — a submission that
+      // silently does nothing is worse than one that explains itself. Checked
+      // against sessions AND, when there are none, the legacy trio, because that
+      // trio IS their current booking.
+      const dupSession = sessions.some((s) =>
+        String(s.class_id) === insertClassId && String(s.class_date) === insertClassDate
+      );
+      const dupLegacy = sessions.length === 0 &&
+        existingLead.class_id === insertClassId && existingLead.class_date === insertClassDate;
+      if (dupSession || dupLegacy) {
+        return bad("You're already booked into that class. Check your email for the details, or pick a different time.", origin);
+      }
+
+      // LEGACY TRIO BACKFILL, and the reason this is not optional. trialClasses
+      // reads sessions the moment ANY exist and only falls back to
+      // trial_bookings.class_id/date/time when there are none. So attaching the
+      // first session to a lead that still carries the trio would make their
+      // ORIGINAL booking vanish from the card and the mat. Materialise the trio
+      // as a session first. Same move _doAddTrialSession makes (index.html:11972),
+      // including carrying attendance across from the scalar status.
+      if (sessions.length === 0 && existingLead.class_id && existingLead.class_date) {
+        const { error: backErr } = await supabase.from("trial_sessions").insert({
+          trial_booking_id: existingLead.id,
+          class_id: existingLead.class_id,
+          class_date: existingLead.class_date,
+          class_time: existingLead.class_time,
+          attended: existingLead.trial_status === "attended",
+        });
+        if (backErr) {
+          console.error("[trial-booking] legacy backfill error:", backErr.message);
+          return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
+        }
+      }
+
+      const { error: newSessErr } = await supabase.from("trial_sessions").insert({
+        trial_booking_id: existingLead.id,
+        class_id: insertClassId,
+        class_date: insertClassDate,
+        class_time: insertClassTime,
+        attended: false,
+      });
+      if (newSessErr) {
+        console.error("[trial-booking] session insert error:", newSessErr.message);
+        return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
+      }
+    }
+
+    // The lead row itself. Deliberately NOT a general overwrite.
+    const patch: Record<string, unknown> = {};
+    // no_show / lapsed describe a PAST class. The person now has a live upcoming
+    // one, and the card gates Convert on that scalar (index.html:11569), so
+    // leaving it stale recreates the "cannot convert a no_show" dead end by hand.
+    // lapsed_at is cleared with it — it timestamps an event that no longer
+    // stands. The missed class is not erased: it survives as its own session row
+    // with attended=false, which is a better place for a per-class fact than a
+    // row-level scalar. 'attended' is left alone — it is still true, and it does
+    // not block anything.
+    if (existingLead.trial_status === "no_show" || existingLead.trial_status === "lapsed") {
+      patch.trial_status = "booked";
+      patch.lapsed_at = null;
+    }
+    // DETAILS: fill gaps, never overwrite. The owner curates this list by hand,
+    // and a resubmission is not evidence the older value was wrong — the reported
+    // pair differed only in phone FORMAT, which is not new information. A blank
+    // field has nothing to protect, so it gets filled. Anything genuinely new
+    // still reaches the office in the staff email below, which carries what was
+    // submitted this time.
+    if (!existingLead.phone && phone) patch.phone = phone;
+    // The exception: availability on the fallback path. preferredDay is only
+    // non-empty when no class was chosen, and it is a statement about the future
+    // that supersedes the old one rather than competing with it.
+    if (preferredDay) patch.preferred_day = preferredDay;
+    if (Object.keys(patch).length) {
+      const { error: updErr } = await supabase.from("trial_bookings").update(patch).eq("id", existingLead.id);
+      if (updErr) console.error("[trial-booking] lead update error:", updErr.message);
+    }
+
+    console.log(
+      `[trial-booking] existing lead ${existingLead.id} (${existingLead.trial_status}) — ` +
+      (insertClassId ? "session added" : "availability updated") + ", no duplicate row created",
+    );
+    bookingId = existingLead.id;
+    bookingToken = existingLead.waiver_token;
+  } else {
+
+  // 3. Insert with the service role.
   const { data: inserted, error: insErr } = await supabase
     .from("trial_bookings")
     .insert({
@@ -640,6 +808,9 @@ Deno.serve(async (req) => {
     console.error("[trial-booking] insert error:", insErr?.message);
     return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
   }
+    bookingId = inserted.id;
+    bookingToken = inserted.waiver_token;
+  }
 
   // 4. Confirmation email — redundancy, NOT the critical path. The booking is
   //    already saved and the on-screen CTA works; sendTrialEmail never throws, so
@@ -647,7 +818,7 @@ Deno.serve(async (req) => {
   //    Build the waiver link EXACTLY as trial.html does (same t / k / n params) so
   //    the emailed link and the on-screen CTA are identical.
   const participant = isKid ? kidName : firstName;
-  let waiverLink = `${WAIVER_ORIGIN}/waiver.html?t=${encodeURIComponent(String(inserted.waiver_token || ""))}`;
+  let waiverLink = `${WAIVER_ORIGIN}/waiver.html?t=${encodeURIComponent(String(bookingToken || ""))}`;
   if (isKid) waiverLink += "&k=1";
   if (participant) waiverLink += `&n=${encodeURIComponent(participant)}`;
 
@@ -703,7 +874,7 @@ Deno.serve(async (req) => {
         class_time: insertClassTime,
         trial_status: "booked",
         booked_at: nowISO,
-        invited_by_booking_id: inserted.id,
+        invited_by_booking_id: bookingId,
       })
       .select("id, waiver_token")
       .single();
@@ -752,13 +923,14 @@ Deno.serve(async (req) => {
     time: insertClassTime ? fmt12(insertClassTime) : null,
     classLabel: emailClassLabel,
     friend: friendStaffLine, // one extra row when a friend also booked; null otherwise
+    existingLead: !!existingLead,
   });
   await sendTrialEmail(STAFF_NOTIFY_TO, staffMsg, email);
 
   // friend_ok is present ONLY when a friend was actually requested — so the page
   // can tell "no friend" (key absent → say nothing) apart from "friend failed"
   // (friend_ok:false → warn them). Omitted entirely on the no-friend path.
-  const resBody: Record<string, unknown> = { ok: true, waiver_token: inserted.waiver_token };
+  const resBody: Record<string, unknown> = { ok: true, waiver_token: bookingToken };
   if (friendActive) resBody.friend_ok = friendOk;
   return json(resBody, 200, origin);
 });
