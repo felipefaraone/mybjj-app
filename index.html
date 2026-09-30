@@ -2127,6 +2127,24 @@ let TT={0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
 let CEXC={};
 // Source of truth for "which exceptions apply on this date for this unit". The
 // fetch is unit-agnostic (RLS open); unit scoping happens here, at read time.
+// ONE answer to "has this occurrence ended?", for the two places that phrase the
+// empty state. The in-card `isEnded` at rClass is TODAY-only (isT && now>endMin),
+// so on a past day BOTH sites read "No check-ins yet" about a class that finished
+// weeks ago. A day before today has ended by definition; today falls through to
+// the same start+duration comparison isEnded uses. Deliberately scoped to the
+// COPY: rClass's own isEnded still drives the card styling and the Ended button,
+// and widening that would change behaviour beyond this fix.
+function _occEnded(dateKey,timeHHMM,durMin){
+  if(!dateKey)return false;
+  const today=dk(TODAY);
+  if(dateKey<today)return true;
+  if(dateKey>today)return false;
+  const m=String(timeHHMM||'').match(/^(\d{1,2}):(\d{2})/);
+  if(!m)return false;
+  const endMin=Number(m[1])*60+Number(m[2])+(Number(durMin)||60);
+  const n=new Date();
+  return (n.getHours()*60+n.getMinutes())>endMin;
+}
 function _exsForDay(dateKey,unitDbId){return (CEXC[dateKey]||[]).filter(e=>!unitDbId||e.unitId===unitDbId);}
 // _projClsRow — project a raw public.classes row (with joined
 // instructor staff) into the TT-shape entry every consumer expects.
@@ -2536,6 +2554,15 @@ let MY_STUDENT=null;
 let MY_KIDS=[];
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+// THE hydrate window, computed once at boot and used by BOTH the attendance and
+// the class_exceptions queries (they were two copies of the same expression, and
+// nothing guaranteed they stayed equal). Frozen on purpose rather than
+// recomputed per refetch: ATT_WIN_FROM is also the FLOOR that ensureDayLoaded
+// tests against, so it has to name the range that was actually fetched. If it
+// drifted at midnight, a day could test as "inside the window" while its rows
+// had never been loaded — the exact bug this change exists to remove.
+const ATT_WIN_FROM=dk(new Date(Date.now()-21*864e5));
+const ATT_WIN_TO=dk(new Date(Date.now()+14*864e5));
 // Curriculum cycle — maps a calendar date to the 1-based cycle week for a
 // unit. cycle_anchor_date is the Monday cycle week 1 begins on; after
 // cycleLengthWeeks weeks it loops back to week 1. Pure, no side effects.
@@ -3609,7 +3636,11 @@ function rAttsStaff(rows,cid){
     // Empty state — no going row, and NO divider rules (above or below): rules
     // around an empty state imply rows/sections that aren't there. Same
     // margin-top/padding-top so the vertical rhythm is unchanged.
-    return `<div style="margin-top:12px;padding-top:12px">${trialsHtml}<div style="text-align:center;padding:10px 0 4px;font-size:13px;color:var(--text3)">No check-ins yet</div>${footerNoRule}</div>`;
+    // Past tense once the class has ended — same helper the card-level empty
+    // state uses, so the two can no longer disagree. cid carries the date+time.
+    const _pc=_parseCID(cid);
+    const _noCI=(_pc&&_occEnded(_pc.date,_pc.time,null))?'No check-ins':'No check-ins yet';
+    return `<div style="margin-top:12px;padding-top:12px">${trialsHtml}<div style="text-align:center;padding:10px 0 4px;font-size:13px;color:var(--text3)">${_noCI}</div>${footerNoRule}</div>`;
   }
   if(!exp)return `<div class="divider" style="margin-top:12px;padding-top:12px">${trialsHtml}${goingRow}${footer}</div>`;
   const btnFor=(r,s)=>{
@@ -5729,9 +5760,24 @@ function rJnySection(s,sidKey){
 // days" — honest about the in-memory window. Full history sits behind
 // the "View all" button which opens rStuAttList and hits Supabase with
 // the chosen date range.
+// THE definition of "present in the last 21 days", for the two surfaces that
+// say it out loud (_stuAttSummary's "Last 21 days" teaser and rReconcileBadge's
+// "N confirmed in the last 21 days"). ATTENDANCE used to BE the last 21 days, so
+// both were true by accident; ensureDayLoaded can now merge August rows into the
+// same array, and two separate filters would have drifted the moment one of them
+// was floored and the other was not. The floor is computed from TODAY, not from
+// ATT_WIN_FROM: that constant is the boot HYDRATE window (a fetch range, frozen
+// at boot), which is a different question and would go stale in a long session.
+function _recentPresentRows(s){
+  if(!s||!s._dbId)return [];
+  const floor=dk(new Date(Date.now()-21*864e5));
+  return ATTENDANCE.filter(a=>a&&a.studentDbId===s._dbId&&a.status==='present'&&a.classDate>=floor);
+}
 function _stuAttSummary(s){
   if(!s||!s._dbId)return {recentCount:0,giCount:0,nogiCount:0,lastRow:null};
-  const rows=ATTENDANCE.filter(a=>a.studentDbId===s._dbId&&a.status==='present');
+  // Window owned by _recentPresentRows. Applied before the lastRow pick too, so
+  // "Last:" keeps meaning the last session in the window, exactly as it did.
+  const rows=_recentPresentRows(s);
   let recentCount=0,giCount=0,nogiCount=0;
   rows.forEach(a=>{
     recentCount++;
@@ -6384,7 +6430,11 @@ ${altLabel?`<div style="display:flex;flex-direction:column;gap:10px">
 // reflects reality. Belt-and-suspenders behind the DB trigger.
 function rReconcileBadge(s){
   if(!s||!s._dbId)return '';
-  const presentCount=ATTENDANCE.filter(a=>a.studentDbId===s._dbId&&a.status==='present').length;
+  // Same window as the badge's own copy says ("in the last 21 days"). Before the
+  // history merge this filter was unfloored and still true by accident; it is not
+  // any more. The mismatch rule below is unchanged, and a floored count can only
+  // make it HARDER to trip, which is the safe direction for a cache-staleness flag.
+  const presentCount=_recentPresentRows(s).length;
   // The cached total is global (all-time); ATTENDANCE only holds a
   // recent window. So we only flag mismatch when present-rows > cached
   // total (cache is provably stale). Equal or fewer is consistent
@@ -7088,6 +7138,13 @@ function _otherUnitCheckinsBanner(dayKey){
 }
 function rClass(){
   const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const isT=sk===dk(TODAY);const closed=dayClosure(sd);const me=S.me;
+  // Below the hydrate floor this day's rows are not in memory. Kick the week
+  // load (guarded by DAYCHUNKS, so re-rendering cannot refire it) and remember
+  // the state — every write affordance below is gated on it, because nothing may
+  // write to a day whose real rows are absent.
+  const _dayState=_dayLoadState(sk);
+  if(_dayState==='idle')ensureDayLoaded(sk);
+  const _dayReady=_dayState==='ready';
   // G12 — audience gate. Non-staff see only classes whose audience matches
   // their active programme (or 'All'). Staff (instructor + unit owner) are
   // exempt — they manage the full schedule.
@@ -7126,7 +7183,7 @@ function rClass(){
     return h*60+m;
   })();
   _maybePromoToast();
-  return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}</div>`:''}</div>
+  return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}${_dayReady?`<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}`:''}</div>`:''}</div>
   ${_otherUnitCheckinsBanner(sk)}
   ${closed?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${escHtml(closed.reason||'Academy closed')}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Regular classes cancelled</div></div></div>`:''}
   ${cls.length>0?'<div class="agenda">'+cls.map(c=>{
@@ -7241,10 +7298,21 @@ function rClass(){
     // rAtts / rAttsCountOnly both return '' when nobody is going yet, which left a
     // silent gap. Say so instead — future tense while the class can still be joined,
     // past tense once it has ended (same isEnded the check-in column above uses).
-    if(!attBlock)attBlock='<div class="divider" style="margin-top:12px;padding-top:12px"><span style="font-size:12px;color:var(--text3)">'+(isEnded?'No check-ins':'No check-ins yet')+'</span></div>';
+    if(!attBlock)attBlock='<div class="divider" style="margin-top:12px;padding-top:12px"><span style="font-size:12px;color:var(--text3)">'+(_occEnded(c.date,c.time,c.dur)?'No check-ins':'No check-ins yet')+'</span></div>';
     // Phase B2a — cancelled recurring class stays visible, dimmed, with a
     // CANCELLED pill. Reuses .card.ended's opacity (no CSS churn). The B1 fold
     // sets c._cancelled; the check-in column is left untouched (do-not-touch).
+    // Day not in memory: the roster block is replaced outright, which removes the
+    // per-class "+" add, mark present/absent and the whole footer with it — they
+    // live inside rAtts / rAttsStaff and are simply never emitted. The self
+    // check-in button and the staff kebab (cancel / change instructor / remove)
+    // are cleared separately below, since they are built outside attBlock.
+    if(!_dayReady){
+      attBlock=(_dayState==='error')
+        ?'<div class="divider" style="margin-top:12px;padding-top:12px"><div style="font-size:12px;color:var(--text3)">Couldn\u2019t load this day <button onclick="retryDayChunk(\''+sk+'\')" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:0 4px;text-transform:uppercase">Retry</button></div></div>'
+        :'<div class="divider" style="margin-top:12px;padding-top:12px">'+skelRows(3)+'</div>';
+      btn='';
+    }
     if(c._cancelled&&cc.indexOf('ended')<0)cc+=' ended';
     const cancelPill=c._cancelled?`<span style="display:inline-flex;align-items:center;background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;text-transform:uppercase">Cancelled</span>`:'';
     // Phase B2a/B2b — discreet staff kebab (⋯), STACKED above the check-in column
@@ -7252,7 +7320,7 @@ function rClass(){
     // recurring (cancel / change-instructor), cancelled (restore), overridden
     // (change/remove instructor), and one-off (remove). Recurring cards carry
     // classId; one-off cards carry _oneoff with a null classId.
-    const _exEligible=isStaffOrOwner()&&(c.classId||c._oneoff);
+    const _exEligible=_dayReady&&isStaffOrOwner()&&(c.classId||c._oneoff);
     const staffKebab=_exEligible?`<button onclick="event.stopPropagation();openCardEx('${escAttr(c.id)}','${escAttr(c.classId)}','${escAttr(c.date)}','${escAttr(c.time)}')" title="Class options" aria-label="Class options" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 4px;line-height:1;font-size:22px;letter-spacing:1px;height:22px">⋯</button>`:'';
     // Desktop agenda time column. Built here rather than from fmtT12(), whose
     // output is lowercase and space-less ("6:00am") and so can't be split into
@@ -16553,6 +16621,127 @@ function rPhotoQueue(){
 // if a cap is ever hit again, and the id tiebreaker makes paging stable (no
 // dupes/skips). Resolves to the same {data,error} shape the caller already
 // handles, so the downstream at.data/at.error branch is unchanged.
+// ── Row mappers. ONE each, shared by the boot hydrate and the on-demand history
+// load below, so the two can never drift into two different shapes. Property
+// names are exactly what every reader already uses (classDate / classId /
+// classTime / unitId / status / _dbId / classValue / classType / studentDbId).
+function _mapAttRow(r){
+  return {_dbId:r.id,unitId:r.unit_id||null,studentDbId:r.student_id,classId:r.class_id||null,
+    classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',
+    confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,
+    classValue:r.class_value!=null?Number(r.class_value):1};
+}
+function _mapExcRow(r){
+  return {id:r.id,unitId:r.unit_id||null,classId:r.class_id||null,exceptionDate:r.exception_date,kind:r.kind,
+    substituteInstructorId:r.substitute_instructor_id||null,reason:r.reason||null,
+    oneoffTime:r.oneoff_time?String(r.oneoff_time).slice(0,5):null,
+    oneoffUniform:r.oneoff_uniform||null,oneoffLevel:r.oneoff_level||null,
+    oneoffAudience:r.oneoff_audience||null,oneoffDurationMinutes:r.oneoff_duration_minutes||null,
+    createdBy:r.created_by||null};
+}
+// ── On-demand history for the Classes tab ───────────────────────────────────
+// hydrate loads a fixed -21/+14 window. The Classes tab reads ONLY the in-memory
+// stores, so every day below the floor rendered "No check-ins yet" over rows that
+// exist in the DB (Sat 5 Sep at Neutral Bay: 50 present rows, none shown) — and,
+// worse, the "+" add path stayed live on a day whose real rows were absent, so
+// re-adding an already-present student overwrote confirmed_by / confirmed_at /
+// class_value through the upsert.
+//
+// Loaded a WEEK at a time so swiping day by day costs one request per week, not
+// per day. Chunks sit on a fixed Monday grid, so the same week always resolves to
+// the same key whichever day you land on first.
+//
+// KEYED BY UNIT because attendance SELECT is unit-scoped by RLS for non-admin
+// staff: the same chunk holds different rows for NB and CD. It is also cleared
+// wholesale whenever ATTENDANCE is reassigned (see refetchUnitScopedData).
+let DAYCHUNKS={};
+// Bumped on EVERY DAYCHUNKS reset (see refetchUnitScopedData). An in-flight
+// ensureDayLoaded captures this before its await and re-checks it after; a
+// mismatch means the world it was loading for is gone, so it must not touch
+// anything. Without it, the loader's post-await code reads the module bindings
+// LIVE — ATTENDANCE, CEXC and DAYCHUNKS are all `let`, so `ATTENDANCE.push(...)`
+// after a reassignment pushes into the NEW array, i.e. a week of the OLD unit's
+// rows lands in the new unit's store, and `DAYCHUNKS[key]='loaded'` writes the
+// old unit's key straight back into the map that was just cleared.
+let DAYCHUNKS_GEN=0;
+function _chunkStartKey(dateKey){
+  const d=_parseISODate(dateKey);
+  if(!d)return null;
+  // Local midnight from PARTS (never new Date(iso), which is UTC and lands a day
+  // early in Sydney). setDate handles month/DST rollover in local time, so the
+  // key can never shift across a day boundary.
+  d.setDate(d.getDate()-((d.getDay()+6)%7));   // back to Monday
+  return dk(d);
+}
+function _chunkKey(startKey){
+  const u=UNITS.find(x=>x&&x.name===S.unit);
+  return ((u&&u._dbId)||'none')+'|'+startKey;
+}
+// 'ready' — inside the boot window, or this chunk is loaded. Anything else means
+// the day's rows are NOT in memory and nothing may be written to it.
+function _dayLoadState(dateKey){
+  if(!dateKey||dateKey>=ATT_WIN_FROM)return 'ready';
+  const st=DAYCHUNKS[_chunkKey(_chunkStartKey(dateKey))];
+  return st==='loaded'?'ready':(st||'idle');
+}
+function retryDayChunk(dateKey){
+  const k=_chunkKey(_chunkStartKey(dateKey));
+  delete DAYCHUNKS[k];
+  ensureDayLoaded(dateKey);
+  render();
+}
+async function ensureDayLoaded(dateKey){
+  if(!dateKey||dateKey>=ATT_WIN_FROM)return;          // inside the boot window
+  const startKey=_chunkStartKey(dateKey);
+  if(!startKey)return;
+  const key=_chunkKey(startKey);
+  if(DAYCHUNKS[key])return;                           // loading | loaded | error
+  const c=initSupabase();
+  if(!c)return;
+  const endD=_parseISODate(startKey);endD.setDate(endD.getDate()+6);
+  const endKey=dk(endD);
+  DAYCHUNKS[key]='loading';
+  // The world this load belongs to. Everything after the await is void if it
+  // moved on — no merge, no state write, no render. Leaving DAYCHUNKS untouched
+  // is what sends the day back to 'idle', so the next render refires the load
+  // against the unit that is actually active now.
+  const gen=DAYCHUNKS_GEN;
+  try{
+    const [at,ce]=await Promise.all([
+      _fetchAllAttendance(c,startKey,endKey),          // reuse: paginated + ordered
+      c.from('class_exceptions').select(_EXC_SELECT).gte('exception_date',startKey).lte('exception_date',endKey).order('exception_date',{ascending:true}).order('id',{ascending:true})
+    ]);
+    if(gen!==DAYCHUNKS_GEN)return;                    // superseded mid-flight
+    if((at&&at.error)||(ce&&ce.error)){
+      console.warn('[mybjj] day chunk:',(at&&at.error)||(ce&&ce.error));
+      DAYCHUNKS[key]='error';render();return;
+    }
+    // MERGE, never replace. A row already in ATTENDANCE is a local/optimistic/
+    // queued edit that has not round-tripped yet, and it wins. Local rows carry
+    // a 'local-...' _dbId which cannot collide with a uuid, so they are untouched.
+    const seen=Object.create(null);
+    for(const a of ATTENDANCE){if(a&&a._dbId!=null)seen[a._dbId]=true;}
+    for(const r of (at.data||[])){
+      if(!r||seen[r.id])continue;
+      seen[r.id]=true;
+      ATTENDANCE.push(_mapAttRow(r));
+    }
+    for(const r of (ce.data||[])){
+      if(!r||!r.exception_date)continue;
+      const arr=CEXC[r.exception_date]||(CEXC[r.exception_date]=[]);
+      if(arr.some(e=>e&&e.id===r.id))continue;
+      arr.push(_mapExcRow(r));
+    }
+    DAYCHUNKS[key]='loaded';
+    render();
+  }catch(e){
+    // Same guard on the failure path: a superseded load must not stamp 'error'
+    // on a chunk key belonging to a store that no longer exists.
+    if(gen!==DAYCHUNKS_GEN)return;
+    console.warn('[mybjj] day chunk:',e);
+    DAYCHUNKS[key]='error';render();
+  }
+}
 async function _fetchAllAttendance(c, fromDate, toDate){
   const PAGE = 1000;
   const COLS = 'id,unit_id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value';
@@ -16683,7 +16872,7 @@ async function refetchUnitScopedData(){
     _fetchAllPromotions(c),
     c.from('events').select('id,legacy_id,title,date,date_text,type,description,link,competing_legacy_ids,supporting_legacy_ids,unit_legacy_ids,unit_ids').order('date'),
     c.from('programme_weeks').select('id,legacy_id,week_index,week_start,unit_id,theme,color,programs,stand_up,ground,notes').order('week_start'),
-    _fetchAllAttendance(c,dk(new Date(Date.now()-21*864e5)),dk(new Date(Date.now()+14*864e5))),
+    _fetchAllAttendance(c,ATT_WIN_FROM,ATT_WIN_TO),
     // Etapa 5 — feedback hydrated from public.feedback. RLS scopes
     // rows automatically: staff of unit see every student's feedback;
     // students see their own; parents see their kid's. Each row is
@@ -16702,7 +16891,7 @@ async function refetchUnitScopedData(){
     // Phase B1 — class_exceptions for the SAME -21/+14 window as attendance.
     // Unit-agnostic fetch (RLS SELECT is open; unit filtering is done at read via
     // _exsForDay). No staff join — sub instructors resolve from STAFF in memory.
-    c.from('class_exceptions').select('id,unit_id,class_id,exception_date,kind,substitute_instructor_id,reason,oneoff_time,oneoff_uniform,oneoff_level,oneoff_audience,oneoff_duration_minutes,created_by,created_at').gte('exception_date',dk(new Date(Date.now()-21*864e5))).lte('exception_date',dk(new Date(Date.now()+14*864e5))).order('exception_date',{ascending:true}).order('id',{ascending:true}),
+    c.from('class_exceptions').select(_EXC_SELECT).gte('exception_date',ATT_WIN_FROM).lte('exception_date',ATT_WIN_TO).order('exception_date',{ascending:true}).order('id',{ascending:true}),
     // Phase B — trial_sessions (unlimited trial classes per person). Fetch ALL
     // rows (not scoped by trial id — the trial_bookings query runs concurrently in
     // this batch, so the ids aren't known yet); RLS scopes to staff/owner. Grouped
@@ -16810,14 +16999,7 @@ async function refetchUnitScopedData(){
     for(const r of ce.data){
       if(!r||!r.exception_date)continue;
       const k=r.exception_date;
-      (CEXC[k]||(CEXC[k]=[])).push({
-        id:r.id,unitId:r.unit_id||null,classId:r.class_id||null,exceptionDate:r.exception_date,kind:r.kind,
-        substituteInstructorId:r.substitute_instructor_id||null,reason:r.reason||null,
-        oneoffTime:r.oneoff_time?String(r.oneoff_time).slice(0,5):null,
-        oneoffUniform:r.oneoff_uniform||null,oneoffLevel:r.oneoff_level||null,
-        oneoffAudience:r.oneoff_audience||null,oneoffDurationMinutes:r.oneoff_duration_minutes||null,
-        createdBy:r.created_by||null
-      });
+      (CEXC[k]||(CEXC[k]=[])).push(_mapExcRow(r));
     }
   }else if(ce&&ce.error){console.warn('[mybjj] hydrate class_exceptions:',ce.error);}
   if(tr.data){
@@ -16896,7 +17078,14 @@ async function refetchUnitScopedData(){
     got=true;
   }else if(pw.error){console.warn('[mybjj] hydrate programme_weeks:',pw.error);SCHED=[];}
   if(at.data){
-    ATTENDANCE=at.data.map(r=>({_dbId:r.id,unitId:r.unit_id||null,studentDbId:r.student_id,classId:r.class_id||null,classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,classValue:r.class_value!=null?Number(r.class_value):1}));
+    ATTENDANCE=at.data.map(_mapAttRow);
+    // Any on-demand history merged into the old array was just discarded by that
+    // reassignment, so the chunk bookkeeping has to go with it or a chunk would
+    // still read 'loaded' for rows that are no longer in memory. This is also
+    // what makes a unit switch correct: pickUnit -> refetchUnitScopedData lands
+    // here, so switching away and back re-fetches rather than trusting a stale
+    // 'loaded'. See the note on DAYCHUNKS.
+    DAYCHUNKS={};DAYCHUNKS_GEN++;
     got=true;
   }else if(at.error)console.warn('[mybjj] hydrate attendance:',at.error);
   // Etapa 5 — group public.feedback rows by student_id and attach.
