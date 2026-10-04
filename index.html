@@ -1553,7 +1553,7 @@ async function saveSocialEditor(){
     }
   } else {
     const isSelf=!!(viewerId&&row._userId&&row._userId===viewerId);
-    const isParentOfKid=!!(viewerId&&row._parentUserId&&row._parentUserId===viewerId);
+    const isParentOfKid=isGuardianOfStu(row);
     if(isSelf||isParentOfKid){
       r=await cli.rpc('edit_student_self',{p_legacy_id:row.id,p_payload:{social_handles:out}});
     } else if(canEditClassCounts()){
@@ -1580,7 +1580,7 @@ function _canEditSocial(subj){
   if(subj.kind==='staff')return typeof canEditStaffRow==='function'?canEditStaffRow(subj.s):isOwner();
   const viewerId=S.profile&&S.profile.id;
   const isSelf=!!(viewerId&&subj.s._userId&&subj.s._userId===viewerId);
-  const isParentOfKid=!!(viewerId&&subj.s._parentUserId&&subj.s._parentUserId===viewerId);
+  const isParentOfKid=isGuardianOfStu(subj.s);
   return canEditClassCounts()||isSelf||isParentOfKid;
 }
 // Batch social-edit Fix 0 + Change 3 + 4 + 5 — SOCIAL card refactor:
@@ -2573,6 +2573,14 @@ let MY_STUDENT=null;
 // clause). Fetched ONCE at auth alongside loadMyStudent; NEVER rebuilt by
 // refetchUnitScopedData / the unit switch. Cleared on logout / SIGNED_OUT.
 let MY_KIDS=[];
+// Guardianship (Phase B1) — live rows of public.guardianships (migration 133):
+// {id, student_id, guardian_user_id, guardian_student_id, status, is_primary},
+// status in requested/pending/active. THE frontend source of truth for "who may
+// act for which kid" (myKidIds / isGuardianOfStu / parentChildren / loadMyKids).
+// RLS scopes it: staff and admins get every row, anyone else only their own.
+// Loaded once per hydrateData, refreshed by refreshGuardianships() after any write
+// that can change it; never on a unit switch. Cleared on logout / SIGNED_OUT.
+let GUARDIANSHIPS=[];
 
 function dk(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 // THE hydrate window, computed once at boot and used by BOTH the attendance and
@@ -5329,7 +5337,7 @@ function rStuProf(){
   // unit-match check when Camperdown lands.
   const viewerId=(S.profile&&S.profile.id)||null;
   const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
-  const isParentOfKid=!!(viewerId&&s._parentUserId&&s._parentUserId===viewerId);
+  const isParentOfKid=isGuardianOfStu(s);
   const isAdminViewer=isStaffOrOwner();
   const isPeer=!(isSelf||isParentOfKid||isAdminViewer);
   // Batch 3 follow-up — Community view = header + Journey only, for any
@@ -5341,7 +5349,7 @@ function rStuProf(){
   // Parent-on-own-kid (Option B): a parent viewing their own kid
   // bypasses the Community-collapse for kid-relevant data (Progress,
   // Attendance, Feedback) and gets the Edit Profile pencil. Same
-  // source of truth as isParentOfKid above — parent_user_id match —
+  // source of truth as isParentOfKid above — isGuardianOfStu —
   // plus a kid-program guard. Admin actions (Promote / +Class /
   // +Add Feedback) stay gated by canAdmin and remain hidden for a
   // parent who isn't staff.
@@ -12460,6 +12468,7 @@ async function convertKidAction(){
     S.convertKid=null;render();
     if(waiverWarn)showSaveToast2('Member created, but the health waiver could not be linked — ask an owner to do it','error');
     else showSaveToast2('Converted to member');
+    refreshGuardianships();   // Phase B1 — the insert wrote the legacy parent columns
   }catch(e){
     console.warn('[mybjj] convert kid:',e);
     if(S.convertKid)S.convertKid.busy=false;
@@ -12745,7 +12754,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -12930,6 +12939,9 @@ async function sendInvite(dispatch,chain){
     } else {
       console.log('[mybjj] parent whitelist skipped — user already exists');
     }
+    // Phase B1 — the insert/link above wrote the legacy parent columns; the 133
+    // trigger mirrored them into guardianships. Re-read.
+    if(saved)refreshGuardianships();
   } else {
     // Adult invite (Batch 8b base + 8b-fix field persistence). Always
     // whitelist; always materialise a students row. Dedup priority:
@@ -13302,7 +13314,7 @@ function _markDeliberateSignOut(){
   try{clearTimeout(_deliberateSignOutTimer);}catch(_){}
   try{_deliberateSignOutTimer=setTimeout(function(){_deliberateSignOut=false;},10000);}catch(_){}
 }
-function logout(){_markDeliberateSignOut();S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.classAdd=null;/* drop the persisted tab state so the NEXT login starts on Classes; an in-session reload still restores it */_resetTabs();if(sb)sb.auth.signOut();render();}
+function logout(){_markDeliberateSignOut();S.loggedIn=false;S.me=null;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.profile=null;MY_STUDENT=null;MY_KIDS=[];GUARDIANSHIPS=[];S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.classAdd=null;/* drop the persisted tab state so the NEXT login starts on Classes; an in-session reload still restores it */_resetTabs();if(sb)sb.auth.signOut();render();}
 
 function friendlyAuthError(err){
   if(!err) return 'Something went wrong. Please try again or contact your academy admin.';
@@ -13980,7 +13992,7 @@ async function bootAuth(){
       // be stale (and likely unrefreshable) within hours.
       _mirrorSession();
     }
-    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;MY_KIDS=[];S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();
+    else if(ev==='SIGNED_OUT'){S.profile=null;MY_STUDENT=null;MY_KIDS=[];GUARDIANSHIPS=[];S.me=null;S.loggedIn=false;S.panelOpen=false;S.sub=null;S.inboxOpen=false;S.authState='unauthenticated';S.authEmail=_rememberedEmail();S.authMsg='';S.passwordRecovery=false;S.authStep=1;S.authHasPassword=false;S.hasGoogleIdentity=false;render();
       // THE FIX. Only a sign-out the user ASKED for takes the backup with it.
       //
       // A failed token refresh emits SIGNED_OUT too, so the old unconditional
@@ -14400,45 +14412,104 @@ function avStaff(s,size){
 }
 function isParent(){return !!(S.me&&S.me.role==='parent');}
 function parentChildren(userId, studentDbId){
-  // John-case decoupling: kids resolve by `parent_user_id` match. The optional
-  // args drive the Children section on another user's profile (admin/staff
-  // viewing X → list X's kids).
+  // Guardianship (Phase B1): kids come from GUARDIANSHIPS live rows (active and
+  // pending) where guardian_user_id = userId OR guardian_student_id =
+  // studentDbId — no longer from the students parent columns.
   //
-  // SELF path = called with NO explicit args (both undefined): resolve the
-  // signed-in user's own kids by parent_user_id off S.profile.id, preserving
-  // every existing caller. The ADMIN/staff path passes X's (userId, studentDbId)
-  // explicitly and must NOT fall back to the signed-in user — that would list the
-  // VIEWER's kids under someone else's profile.
+  // SELF path = called with NO explicit args (both undefined): the signed-in
+  // user's own kids, by S.profile.id. The ADMIN/staff path passes X's (userId,
+  // studentDbId) explicitly and must NOT fall back to the signed-in user — that
+  // would list the VIEWER's kids under someone else's profile. studentDbId is
+  // the adult's STUDENT row id, which exists whether or not they ever logged in,
+  // so an invited-by-member guardian still lists their kids.
   const self=userId===undefined&&studentDbId===undefined;
   const uid=self?((S.profile&&S.profile.id)||null):(userId||null);
-  // The STRUCTURAL link keys off the adult's STUDENT row id (students.id =
-  // _dbId), which exists whether or not the adult has ever logged in — so the
-  // Children section resolves BEFORE the parent claims their account. It's passed
-  // in directly; never derive it from _userId (that lookup is empty for a
-  // non-logged-in adult, which was the bug this replaces).
   const sid=studentDbId||null;
   if(!uid && !sid) return [];
-  const local=uid?STUDENTS.filter(s=>s._parentUserId===uid&&s._active!==false):[];
-  // Structural match: kids whose parent_student_id / parent2_student_id points at
-  // the adult's students row. Union into the parent_user_id matches above, deduped
-  // by id.
-  if(sid){
-    const seen=new Set(local.map(k=>k.id));
-    for(const k of STUDENTS){
-      if(k._active!==false&&!seen.has(k.id)&&(k._parentStudentId===sid||k._parent2StudentId===sid)){
-        seen.add(k.id);local.push(k);
-      }
+  const want=new Set();
+  for(const g of GUARDIANSHIPS){
+    if(!g||(g.status!=='active'&&g.status!=='pending'))continue;
+    if((uid&&g.guardian_user_id===uid)||(sid&&g.guardian_student_id===sid))want.add(g.student_id);
+  }
+  if(!want.size)return [];
+  // Resolve against STUDENTS first (freshest, same-unit copy, in roster order).
+  // Only the SELF path may also resolve through the unit-independent MY_KIDS
+  // cache — a kid whose home unit differs from the active unit isn't in
+  // STUDENTS, and without this its switcher chip would vanish. The explicit
+  // path stays scoped to what that viewer can see. Active kids only, deduped.
+  const out=[],seen=new Set();
+  for(const k of STUDENTS){
+    if(k&&k._active!==false&&want.has(k._dbId)&&!seen.has(k.id)){seen.add(k.id);out.push(k);}
+  }
+  if(self){
+    for(const k of MY_KIDS){
+      if(k&&k._active!==false&&want.has(k._dbId)&&!seen.has(k.id)){seen.add(k.id);out.push(k);}
     }
   }
-  // Prefer the STUDENTS rows when present (freshest, same-unit copy). Only the
-  // SELF path (no explicit args) may fall back to the unit-independent MY_KIDS
-  // cache — when the active unit differs from the kid's home unit the kid isn't
-  // in STUDENTS, and without this its switcher chip would vanish. The explicit
-  // path (admin viewing X's kids) stays scoped to what that viewer can see.
-  if(self && !local.length && MY_KIDS.length){
-    return MY_KIDS.filter(k=>k._active!==false);
+  return out;
+}
+// ── Guardianship store (Phase B1) ─────────────────────────────────────────
+// Paginated like _fetchAllStudents: explicit order, 1000-row pages (PostgREST
+// cap), 10-page safety cap.
+async function _fetchAllGuardianships(c){
+  const PAGE=1000;
+  let all=[],from=0;
+  for(let page=0;page<10;page++){
+    const r=await c.from('guardianships')
+      .select('id,student_id,guardian_user_id,guardian_student_id,status,is_primary')
+      .in('status',['requested','pending','active'])
+      .order('id',{ascending:true})
+      .range(from,from+PAGE-1);
+    if(r&&r.error)return {data:null,error:r.error};
+    const rows=(r&&r.data)||[];
+    all=all.concat(rows);
+    if(rows.length<PAGE)break;
+    from+=PAGE;
   }
-  return local;
+  return {data:all,error:null};
+}
+async function loadGuardianships(){
+  const c=initSupabase();
+  if(!c||!S.profile||!S.profile.id){GUARDIANSHIPS=[];return;}
+  try{
+    const r=await _fetchAllGuardianships(c);
+    // A failed refetch keeps the last good copy: dropping it would empty every
+    // parent's switcher on a transient network error.
+    if(r.error){console.warn('[mybjj] guardianships:',r.error);return;}
+    GUARDIANSHIPS=r.data||[];
+  }catch(e){console.warn('[mybjj] guardianships ex:',e);}
+}
+// Re-read guardianships + the kids they resolve to, then render. Called after
+// every guardian RPC and after every write to the legacy parent columns (the
+// 133 sync trigger mirrors those into guardianships server-side). Open "People
+// with access" lists are marked stale so they reload in place.
+async function refreshGuardianships(){
+  await loadGuardianships();
+  await loadMyKids();
+  try{await resolveSignedUrls(MY_KIDS.map(k=>k.photoUrl));}catch(_){}
+  if(S._kidGuardians)for(const k in S._kidGuardians){if(S._kidGuardians[k])S._kidGuardians[k].stale=true;}
+  _renderKeepingDrafts();
+}
+// The signed-in user's kids: student_ids of ACTIVE rows where they are the guardian.
+function myKidIds(){
+  const uid=S.profile&&S.profile.id;
+  if(!uid)return [];
+  const out=[];
+  for(const g of GUARDIANSHIPS){
+    if(g&&g.status==='active'&&g.guardian_user_id===uid&&out.indexOf(g.student_id)<0)out.push(g.student_id);
+  }
+  return out;
+}
+// THE "viewer may act for this kid" check. Replaces every former
+// s._parentUserId === viewerId comparison.
+function isGuardianOfStu(s){
+  return !!(s&&s._dbId&&myKidIds().indexOf(s._dbId)>=0);
+}
+// Re-render without losing typed-but-uncaptured Edit Student fields: async
+// loads (People with access, refreshes) can land while the form is open.
+function _renderKeepingDrafts(){
+  if(S.sub==='editstu'&&typeof _captureEditStuTab==='function'){try{_captureEditStuTab();}catch(_){}}
+  render();
 }
 // Training parent = the signed-in user has their own students row by
 // user_id. Independent of which kid is active in the switcher — uses
@@ -14945,6 +15016,7 @@ async function saveEmailEditor(dispatch){
     const r=await cli.from('students').update({parent_email:email}).eq('legacy_id',target.id);
     if(r&&r.error){console.warn('[mybjj] save parent_email:',r.error);return showSaveToast2(friendlyMutationError(r.error),'error');}
     target.parentEmail=email;
+    refreshGuardianships();   // Phase B1 — legacy column written
     // whitelist_upsert (migration 131) — staff-safe; invited_by set by the
     // function. parent_email above is kept, not rolled back.
     const w=await cli.rpc('whitelist_upsert',{p_email:email,p_role:'parent',p_unit_id:unitDbId});
@@ -15258,7 +15330,7 @@ let _pinch=null;
 const _CROP_SIZE=320;
 function canUploadPhotoFor(s){
   if(isOwner()||isProfessor()||isCoach())return true;
-  if(s&&S.profile&&s._parentUserId===S.profile.id)return true;
+  if(isGuardianOfStu(s))return true;
   return false;
 }
 
@@ -17190,9 +17262,10 @@ async function loadMyStudent(){
     }:null;
   }catch(e){console.warn('[mybjj] loadMyStudent ex:',e);}
 }
-// Fetch the caller's linked kids, unit-independently. Mirrors loadMyStudent:
-// the students RLS grants SELECT on parent_user_id = auth.uid() with no unit
-// clause, so this returns every linked kid regardless of the active unit.
+// Fetch the caller's kids, unit-independently: the students whose id is in
+// myKidIds() (active guardianships, Phase B1). The students RLS grants SELECT on
+// id = any(guardian_student_ids()) with no unit clause (migration 133), so this
+// returns every kid regardless of the active unit.
 // Mapped into the SAME shape STUDENTS rows use so parentChildren()'s fallback,
 // the switcher chips, and myStudentRow()/doCI all consume them unchanged.
 // Runs ONCE per hydrate (auth path) — NOT on unit switch — so a unit change
@@ -17200,10 +17273,12 @@ async function loadMyStudent(){
 async function loadMyKids(){
   const c=initSupabase();
   if(!c||!S.profile||!S.profile.id){MY_KIDS=[];return;}
+  const ids=myKidIds();
+  if(!ids.length){MY_KIDS=[];return;}
   try{
     const{data,error}=await c.from('students')
       .select('id,legacy_id,user_id,parent_user_id,belt,degree,prog,initials,full_name,unit_id,photo_url,active,standing,hold_note')
-      .eq('parent_user_id',S.profile.id);
+      .in('id',ids);
     if(error){console.warn('[mybjj] loadMyKids:',error.message);return;}
     MY_KIDS=(data||[]).map(r=>({
       id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,
@@ -17276,6 +17351,8 @@ async function hydrateData(){
     // hydrate (auth path only — NOT on unit switch, which calls
     // refetchUnitScopedData directly), AFTER UNITS maps so unit resolves.
     await loadMyStudent();
+    // Guardianships first: loadMyKids resolves the kids from them.
+    await loadGuardianships();
     // Unit-independent kids cache — same one-shot auth-path treatment as
     // loadMyStudent so a linked kid stays visible + checkinable no matter
     // which unit the parent's dropdown is on. Never re-run on unit switch.
@@ -19788,6 +19865,33 @@ function openNotif(id){
   markRead(id);
   if(!n)return;
   const t=n.type;
+  const md=(n.metadata&&typeof n.metadata==='object')?n.metadata:{};
+  // Phase B1 — a guardian request lands staff on that kid's Guardian tab. A kid
+  // outside the loaded unit is not in STUDENTS: say so instead of opening a
+  // wrong profile. (Naming that unit would need a new fetch, and an
+  // instructor's RLS hides other units' students anyway.)
+  if(t==='guardian_request'){
+    S.inboxOpen=false;
+    if(!isStaffOrOwner()){render();return;}
+    const kid=md.student_id?STUDENTS.find(x=>x._dbId===md.student_id):null;
+    if(!kid){
+      showSaveToast2('This request is for a child at another unit. Switch to that unit to review it.','error',6000);
+      render();return;
+    }
+    S.viewStu=kid.id;
+    openEditStu(kid.id);
+    S.editStuTab='guardian';
+    render();return;
+  }
+  // Phase B1 — feedback / promotion about one of MY kids: make that kid the
+  // active profile first, so a parent with several kids lands on the right one.
+  if((t==='feedback_received'||t==='promotion')&&md.student_id&&myKidIds().indexOf(md.student_id)>=0){
+    const k=parentChildren().find(x=>x._dbId===md.student_id);
+    if(k&&S.parentChild!==k.id){
+      S.parentChild=k.id;
+      try{localStorage.setItem(_parentChildLsKey(),S.parentChild);}catch(_){}
+    }
+  }
   if(t==='feedback_received'){
     S.inboxOpen=false;S.tab='progress';S.ptab='feedback';render();return;
   }
@@ -20363,10 +20467,10 @@ function openEditStu(sid){
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
   const viewerId=S.profile&&S.profile.id;
   const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
-  // G14.1 — parent of kid can edit the linked student. edit_student_self
-  // RPC (migration 49) already authorises by user_id OR
-  // parent_user_id, so the save path lands cleanly.
-  const isParentOfKid=!!(viewerId&&s._parentUserId&&s._parentUserId===viewerId);
+  // G14.1 — a guardian of the kid can edit the linked student. edit_student_self
+  // authorises by user_id OR is_guardian_of(kid,'manage') (migration 133), so
+  // the save path lands cleanly.
+  const isParentOfKid=isGuardianOfStu(s);
   if(!canEditClassCounts()&&!isSelf&&!isParentOfKid)return;
   S.editStuFor=sid;S.editStuTab='basic';S.editStuDraft={};S.sub='editstu';
   // B2 — when invoked from inside the profile area (self / parent kid
@@ -20544,6 +20648,7 @@ async function clearStudentGuardian(sid){
     showSaveToast2('Could not clear guardian details.','error');render();return;
   }
   showSaveToast2('Guardian details cleared.');
+  refreshGuardianships();   // Phase B1 — legacy columns written
 }
 // B-edit — "Same as guardian" toggle on the Guardian tab. When ON,
 // copies guardian name/phone into emergency inputs so the parent
@@ -20570,8 +20675,10 @@ function _sameAsGuardian(btn){
     }else{
       const pname=document.getElementById('es-pname');
       const pphone=document.getElementById('es-pphone');
-      srcName=pname?pname.value:undefined;
-      srcPhone=pphone?pphone.value:undefined;
+      // Phase B1 — a non-staff guardian has no Primary contact inputs; copy the
+      // saved primary contact instead so the toggle still works for them.
+      srcName=pname?pname.value:(s?(s.parentName||''):undefined);
+      srcPhone=pphone?pphone.value:(s?(s.parentPhone||''):undefined);
     }
     if(ecn&&srcName!==undefined)ecn.value=srcName;
     if(ecp&&srcPhone!==undefined)ecp.value=srcPhone;
@@ -20910,7 +21017,12 @@ ${_staff?`<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="
       +guardianEmailRow
       +'</div>';
   }
-  const guardianTab=`<div class="slbl" style="margin-top:8px">Guardian</div>${guardianBody}
+  // Phase B1 — the legacy guardian block is now "Primary contact" and is staff
+  // only: a non-staff guardian's edits to it were never saved (edit_student_self
+  // ignores parent_* keys). Everyone who may see the tab as staff or guardian
+  // gets "People with access", read from kid_guardians.
+  const guardianTab=(_staff?`<div class="slbl" style="margin-top:8px">Primary contact</div>${guardianBody}`:'')
++_rPeopleWithAccess(s,_staff)+`
 <div class="slbl" style="margin-top:14px">Emergency contact</div>
 <div class="ef">
 <div class="erow"><div class="elbl">Same as guardian</div><button class="toggle" id="es-emsame" onclick="_sameAsGuardian(this)"></button></div>
@@ -21110,7 +21222,9 @@ async function saveEditStu(){
     // the FACT (a guardian exists), not the empty attributes. _isLinked is
     // scoped to rEditStu (render); read the same underlying condition here.
     const _linkedGuardian=!!s._parentStudentId;
-    if(!_linkedGuardian){
+    // Staff only: a non-staff guardian has no Primary contact inputs any more
+    // (and could never save them), so nothing is required of them here.
+    if(isAdminViewer&&!_linkedGuardian){
       if(!wasKids){
         // Moving INTO kids: a child's record without a guardian is not usable — the
         // task rule is name + email required (phone stays optional at conversion).
@@ -21166,7 +21280,7 @@ async function saveEditStu(){
   // parent rows.
   const viewerId=S.profile&&S.profile.id;
   const isSelf=!!(viewerId&&s._userId&&s._userId===viewerId);
-  const isParentOfKid=!!(viewerId&&s._parentUserId&&s._parentUserId===viewerId);
+  const isParentOfKid=isGuardianOfStu(s);
   if(isSelf||isParentOfKid){
     const payload={
       full_name:fullName,first_name:first,last_name:last,initials,
@@ -21202,6 +21316,8 @@ async function saveEditStu(){
   }
   const r=await cli.from('students').update(payload).eq('id',s._dbId);
   if(r&&r.error){console.warn('[mybjj] update student:',r.error);s.prog=_prevProg;s.belt=_prevBelt;showSaveToast2(friendlyMutationError(r.error),'error');render();return;}
+  // Phase B1 — a kid save rewrites the legacy parent columns; re-read guardianships.
+  if(isKids)refreshGuardianships();
   // Confirming re-fetch for the sensitive programme change — an RLS-filtered write
   // returns success-shaped-empty, so verify prog/belt actually landed and roll the
   // optimistic local change back if they didn't (belt system must never lie).
@@ -21235,6 +21351,246 @@ async function saveEditStu(){
 // students_write allows is_staff/is_admin in the same unit), immediate rather than
 // waiting for the whole-form Save, so the card + CHILDREN section update at once.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Phase B1 — "People with access" on the kids Guardian tab + the guardian RPCs
+// (migrations 134/135). kid_guardians returns every live row with email and
+// actions for staff, names + statuses only for a guardian. Cached per kid in
+// S._kidGuardians[kidDbId] = {loading, error, rows, stale}: skeleton until the
+// first answer, a retry line on error, never an empty state before data.
+// ---------------------------------------------------------------------------
+const _KG_STATUS={active:'Active',pending:'Invite pending',requested:'Requested'};
+function _kgErr(e){
+  // The guardian RPCs raise plain English (P0001): show it as written.
+  if(e&&e.code==='P0001'&&e.message)return e.message;
+  return friendlyMutationError(e);
+}
+async function loadKidGuardians(dbId){
+  if(!dbId)return;
+  S._kidGuardians=S._kidGuardians||{};
+  const prev=S._kidGuardians[dbId];
+  S._kidGuardians[dbId]={loading:true,error:null,rows:(prev&&prev.rows)||null,stale:false};
+  const cli=initSupabase();
+  let next;
+  if(!cli)next={loading:false,error:'Connection issue.',rows:null,stale:false};
+  else{
+    try{
+      const r=await cli.rpc('kid_guardians',{p_student:dbId});
+      next=(r&&r.error)
+        ?{loading:false,error:_kgErr(r.error),rows:null,stale:false}
+        :{loading:false,error:null,rows:(r&&r.data)||[],stale:false};
+    }catch(e){next={loading:false,error:(e&&e.message)||'Could not load.',rows:null,stale:false};}
+  }
+  S._kidGuardians[dbId]=next;
+  _renderKeepingDrafts();
+}
+function _kgPill(label,kind){
+  const tone={
+    green:'background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border)',
+    blue:'background:var(--blue-tint);color:var(--blue);border:1px solid var(--blue-mid)',
+    amber:'background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border)',
+    plain:'background:var(--input-bg);color:var(--text2);border:1px solid var(--border)'
+  }[kind]||'';
+  return '<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;padding:2px 8px;border-radius:4px;white-space:nowrap;'+tone+'">'+label+'</span>';
+}
+function _rPeopleWithAccess(s,staffView){
+  if(!s||!s._dbId)return '';
+  if(!staffView&&!isGuardianOfStu(s))return '';
+  const slot=(S._kidGuardians||{})[s._dbId]||null;
+  if(!slot||(slot.stale&&!slot.loading))loadKidGuardians(s._dbId);
+  const head='<div class="slbl" style="margin-top:14px">People with access</div>';
+  const kidSid=escHtml(s.id);
+  const btn='flex-shrink:0;padding:5px 10px;font-size:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:none;color:var(--text2)';
+  const busy=S._kgBusy||null;
+  let body;
+  if(!slot||(!slot.rows&&slot.loading)){
+    body='<div class="ef" style="padding:2px 14px">'+skelRows(2)+'</div>';
+  }else if(slot.error&&!slot.rows){
+    body='<div class="ef" style="padding:12px 14px;font-size:12.5px;color:var(--text2);display:flex;align-items:center;justify-content:space-between;gap:10px"><span>Couldn’t load who has access. '+escHtml(slot.error)+'</span>'
+      +'<button type="button" style="'+btn+'" onclick="loadKidGuardians(\''+escHtml(s._dbId)+'\')">Retry</button></div>';
+  }else if(!slot.rows.length){
+    body='<div class="ef" style="padding:12px 14px;font-size:12.5px;color:var(--text3)">No one has access yet.</div>';
+  }else{
+    body='<div class="ef">'+slot.rows.map(r=>{
+      const name=r.display_name||(staffView?r.email:null)||'Invited guardian';
+      const pill=_kgPill(_KG_STATUS[r.status]||r.status,r.status==='active'?'green':r.status==='pending'?'blue':'amber');
+      const prim=r.is_primary?' '+_kgPill('Primary','plain'):'';
+      const sub=[r.relationship||'',staffView&&r.email&&r.email!==name?r.email:''].filter(Boolean).map(escHtml).join(' · ');
+      const dis=busy?' disabled':'';
+      const gid=escHtml(r.id);
+      let actions='';
+      if(staffView){
+        if(r.status==='requested'){
+          actions='<button type="button" style="'+btn+';color:var(--blue);border-color:var(--blue)"'+dis+' onclick="kgDecide(\''+kidSid+'\',\''+gid+'\',true)">Approve</button>'
+            +'<button type="button" style="'+btn+'"'+dis+' onclick="kgDecide(\''+kidSid+'\',\''+gid+'\',false)">Decline</button>';
+        }else{
+          if(r.status==='pending'&&r.email)actions+='<button type="button" style="'+btn+'"'+dis+' onclick="kgSendInvite(\''+escHtml(s._dbId)+'\',\''+gid+'\')">Send invite</button>';
+          actions+='<button type="button" style="'+btn+';color:var(--red-text)"'+dis+' onclick="kgAskRemove(\''+kidSid+'\',\''+gid+'\')">Remove</button>';
+        }
+      }
+      return '<div class="erow" style="align-items:center;gap:10px;flex-wrap:wrap">'
+        +'<div style="flex:1;min-width:140px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:14px;color:var(--text);font-weight:600;overflow-wrap:anywhere">'+escHtml(name)+'</span>'+pill+prim+'</div>'
+        +(sub?'<div style="font-size:12px;color:var(--text3);margin-top:2px;overflow-wrap:anywhere">'+sub+'</div>':'')+'</div>'
+        +(actions?'<div style="display:flex;gap:6px;flex-wrap:wrap">'+actions+'</div>':'')
+        +'</div>';
+    }).join('')+'</div>';
+  }
+  const cta=staffView
+    ?'<button type="button" onclick="openGuardianSheet(\''+kidSid+'\',\'add\')" style="width:100%;margin-top:8px;background:none;border:1px solid var(--blue);color:var(--blue);border-radius:10px;padding:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">+ Add person</button>'
+    :'<button type="button" onclick="openGuardianSheet(\''+kidSid+'\',\'request\')" style="width:100%;margin-top:8px;background:none;border:1px solid var(--blue);color:var(--blue);border-radius:10px;padding:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Request access for someone</button>';
+  return head+body+cta;
+}
+function _kgRow(kidDbId,gid){
+  const slot=(S._kidGuardians||{})[kidDbId];
+  return (slot&&slot.rows||[]).find(r=>r.id===gid)||null;
+}
+async function kgDecide(kidSid,gid,approve){
+  const kid=STUDENTS.find(x=>x.id===kidSid);if(!kid||S._kgBusy)return;
+  const cli=initSupabase();if(!cli)return showSaveToast2('Connection issue','error');
+  S._kgBusy=gid;_renderKeepingDrafts();
+  let r;
+  try{r=await cli.rpc('guardian_request_decide',{p_id:gid,p_approve:!!approve});}
+  catch(e){r={error:e};}
+  S._kgBusy=null;
+  if(r&&r.error){showSaveToast2(_kgErr(r.error),'error');_renderKeepingDrafts();return;}
+  const st=r&&r.data&&r.data.status;
+  showSaveToast2(!approve?'Request declined.'
+    :st==='active'?'Approved. They have access now.'
+    :'Approved. Their invite is pending until they sign in.');
+  await refreshGuardianships();
+}
+function kgAskRemove(kidSid,gid){
+  const kid=STUDENTS.find(x=>x.id===kidSid);if(!kid)return;
+  const row=_kgRow(kid._dbId,gid);
+  const name=(row&&(row.display_name||row.email))||'this person';
+  const kidFirst=(kid.name||'').split(' ')[0]||'this child';
+  openConfirm({
+    title:escHtml('Remove '+name+'’s access to '+kidFirst+'?'),
+    message:escHtml('They lose access to '+kidFirst+' the next time the app loads. If they are also the primary contact on file, those details are cleared too.'),
+    dangerLabel:'Remove',
+    onConfirm:async()=>{
+      const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');throw new Error('no client');}
+      const r=await cli.rpc('guardian_revoke',{p_id:gid});
+      if(r&&r.error){showSaveToast2(_kgErr(r.error),'error');throw r.error;}
+      showSaveToast2(name+' no longer has access to '+kidFirst+'.');
+      refreshGuardianships();
+    }
+  });
+}
+// Invite pending: the EXISTING invite path (needs the whitelist row the API
+// already ensured). No second invite mechanism.
+function kgSendInvite(kidDbId,gid){
+  const row=_kgRow(kidDbId,gid);
+  if(!row||!row.email)return showSaveToast2('No email on this invite.','error');
+  confirmAndDispatchInvite(row.email);
+}
+// Add person (staff) / Request access (guardian) sheet — mounted at rApp level.
+function openGuardianSheet(kidSid,mode){
+  // Capture in-flight Edit Student fields before the sheet's render.
+  if(S.sub==='editstu'&&typeof _captureEditStuTab==='function'){try{_captureEditStuTab();}catch(_){}}
+  const isReq=mode==='request';
+  S.guardianSheet={kidSid,mode:isReq?'request':'add',step:isReq?'details':null,busy:false,err:'',name:'',email:'',rel:''};
+  render();
+  if(isReq)setTimeout(()=>{const el=document.getElementById('gs-name');if(el)el.focus();},20);
+}
+function closeGuardianSheet(){S.guardianSheet=null;_renderKeepingDrafts();}
+function guardianSheetDetails(){if(!S.guardianSheet)return;S.guardianSheet.step='details';render();setTimeout(()=>{const el=document.getElementById('gs-name');if(el)el.focus();},20);}
+function guardianSheetPickMember(){
+  if(!S.guardianSheet||!isStaffOrOwner())return;
+  const kidSid=S.guardianSheet.kidSid;
+  S.guardianSheet=null;
+  S.parentPicker={sid:kidSid,mode:'guardian'};
+  render();
+}
+function _gsReadInputs(){
+  const g=S.guardianSheet;if(!g)return;
+  const v=id=>{const el=document.getElementById(id);return el?String(el.value||''):'';};
+  g.name=v('gs-name');g.email=v('gs-email');g.rel=v('gs-rel');
+}
+async function submitGuardianSheet(){
+  const g=S.guardianSheet;if(!g||g.busy)return;
+  _gsReadInputs();
+  const kid=STUDENTS.find(x=>x.id===g.kidSid);
+  if(!kid||!kid._dbId){g.err='This child isn’t loaded. Close and try again.';render();return;}
+  const name=g.name.trim(),email=g.email.trim().toLowerCase(),rel=g.rel.trim();
+  let err='';
+  if(!email)err='Enter an email address.';
+  else if(email.length>254)err='Email is too long (254 characters max).';
+  else if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))err='Enter a valid email address.';
+  else if(name.length>80)err='Name is too long (80 characters max).';
+  else if(rel.length>40)err='Relationship is too long (40 characters max).';
+  if(err){g.err=err;render();return;}
+  const cli=initSupabase();if(!cli){g.err='Connection issue.';render();return;}
+  g.busy=true;g.err='';render();
+  const isReq=g.mode==='request';
+  let r;
+  try{
+    r=await cli.rpc(isReq?'guardian_request':'guardian_add',{p_student:kid._dbId,p_email:email,p_name:name||null,p_relationship:rel||null});
+  }catch(e){r={error:e};}
+  if(r&&r.error){
+    if(S.guardianSheet===g){g.busy=false;g.err=_kgErr(r.error);render();}
+    return;
+  }
+  const row=isReq?((Array.isArray(r.data)?r.data[0]:r.data)||{}):(r.data||{});
+  const who=name||email;
+  let msg;
+  if(isReq)msg=(row.status==='requested')?'Request sent. The academy will review it.':(who+' already has access or an invite.');
+  else msg=row.status==='active'?(who+' now has access.'):row.status==='pending'?(who+'’s invite is pending. Use Send invite to email a sign-in link.'):(who+' is already listed.');
+  S.guardianSheet=null;
+  showSaveToast2(msg);
+  await refreshGuardianships();
+}
+async function kgLinkMember(kidSid,adultDbId){
+  const kid=STUDENTS.find(x=>x.id===kidSid);if(!kid||!kid._dbId)return;
+  const adult=STUDENTS.find(x=>x._dbId===adultDbId);
+  S.parentPicker=null;_renderKeepingDrafts();
+  const cli=initSupabase();if(!cli)return showSaveToast2('Connection issue','error');
+  let r;
+  try{r=await cli.rpc('guardian_link_member',{p_student:kid._dbId,p_guardian_student:adultDbId});}
+  catch(e){r={error:e};}
+  if(r&&r.error){showSaveToast2(_kgErr(r.error),'error');return;}
+  const st=r&&r.data&&r.data.status;
+  const who=(adult&&adult.name)||'They';
+  showSaveToast2(st==='active'?(who+' now has access.'):st==='pending'?(who+' hasn’t signed in yet. Access starts when they do.'):(who+' is already listed.'));
+  await refreshGuardianships();
+}
+function rGuardianSheet(){
+  const g=S.guardianSheet;if(!g)return '';
+  const kid=STUDENTS.find(x=>x.id===g.kidSid);
+  if(!kid){return '';}
+  const isReq=g.mode==='request';
+  if(!isReq&&!isStaffOrOwner())return '';
+  const first=(kid.name||'').split(' ')[0]||'this child';
+  const busy=!!g.busy;
+  const close=busy?'':'closeGuardianSheet()';
+  const btnOut='width:100%;background:none;border:1px solid var(--border);border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text2);cursor:pointer';
+  const title=isReq?'Request access for someone':'Add person';
+  let inner;
+  if(!isReq&&!g.step){
+    inner='<div style="font-size:12.5px;color:var(--text2);margin-bottom:14px;line-height:1.45">Give someone access to '+escHtml(first)+'’s profile.</div>'
+      +'<button type="button" onclick="guardianSheetPickMember()" style="'+btnOut+';color:var(--blue);border-color:var(--blue);margin-bottom:10px">Pick an existing member</button>'
+      +'<button type="button" onclick="guardianSheetDetails()" style="'+btnOut+';margin-bottom:10px">Enter name and email</button>'
+      +'<button type="button" onclick="closeGuardianSheet()" style="'+btnOut+';border:none;color:var(--text3)">Cancel</button>';
+  }else{
+    const field=(id,label,val,type,ph,max)=>'<div class="erow"><div class="elbl">'+label+'</div><input class="einput" id="'+id+'" type="'+type+'"'+(type==='email'?' inputmode="email" autocapitalize="off"':'')+' maxlength="'+max+'" placeholder="'+ph+'" value="'+escHtml(val)+'" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-lpignore="true"'+(busy?' disabled':'')+'/></div>';
+    inner='<div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;line-height:1.45">'
+        +(isReq?'The academy reviews every request before anyone gets access to '+escHtml(first)+'.'
+               :'If this email already has an account, access starts now. Otherwise it’s an invite until they sign in.')+'</div>'
+      +'<div class="ef">'
+        +field('gs-name','Name',g.name,'text','Optional',80)
+        +field('gs-email','Email',g.email,'email','Required',254)
+        +field('gs-rel','Relationship',g.rel,'text','e.g. Mum, Grandparent',40)
+      +'</div>'
+      +(g.err?'<div style="font-size:12.5px;color:var(--red-text);margin:8px 2px 0;line-height:1.45">'+escHtml(g.err)+'</div>':'')
+      +'<div style="display:flex;gap:10px;margin-top:14px">'
+        +'<button type="button" class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeGuardianSheet()"'+(busy?' disabled':'')+'>Cancel</button>'
+        +'<button type="button" class="bblue" style="flex:1;padding:12px;opacity:'+(busy?'.6':'1')+'" onclick="submitGuardianSheet()"'+(busy?' disabled':'')+'>'+(busy?(isReq?'Sending…':'Adding…'):(isReq?'Send request':'Add'))+'</button>'
+      +'</div>';
+  }
+  return '<div class="cov" onclick="'+close+'" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:420px;width:100%;margin:0 auto;padding:22px">'
+    +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px">'+title+'</div>'
+    +inner
+    +'</div></div>';
+}
 function openParentPicker(kidSid){
   if(!isStaffOrOwner())return;
   _captureEditStuTab(); // preserve any in-flight Guardian-tab edits across the render
@@ -21269,6 +21625,7 @@ async function pickParentStudent(kidSid,adultDbId){
   const cli=initSupabase();if(!cli)return;
   const r=await cli.from('students').update({parent_student_id:adult._dbId}).eq('id',kid._dbId);
   if(r&&r.error){console.warn('[mybjj] link parent:',r.error);kid._parentStudentId=prev;showSaveToast2(friendlyMutationError(r.error),'error');render();}
+  else refreshGuardianships();   // Phase B1 — legacy column written
 }
 async function unlinkParentStudent(kidSid){
   if(!isStaffOrOwner())return;
@@ -21282,6 +21639,7 @@ async function unlinkParentStudent(kidSid){
   const cli=initSupabase();if(!cli)return;
   const r=await cli.from('students').update({parent_student_id:null}).eq('id',kid._dbId);
   if(r&&r.error){console.warn('[mybjj] unlink parent:',r.error);kid._parentStudentId=prev;showSaveToast2(friendlyMutationError(r.error),'error');render();}
+  else refreshGuardianships();   // Phase B1 — legacy column written
 }
 // Searchable picker of adult members in the kid's unit. Filters in memory (STUDENTS
 // is already loaded); scannable at ~100+ adults via the live name filter above.
@@ -21290,13 +21648,16 @@ function rParentPicker(){
   const kid=STUDENTS.find(x=>x.id===S.parentPicker.sid);
   if(!kid)return '';
   const first=(kid.name||'').split(' ')[0]||'this child';
+  // Phase B1 — the same picker adds a person with access (guardian_link_member)
+  // when opened from "Add person"; otherwise it links the Primary contact.
+  const _ppGuardian=S.parentPicker.mode==='guardian';
   const adults=STUDENTS
     .filter(a=>a.prog==='adult'&&a._active!==false&&a._dbId&&a._dbId!==kid._dbId&&a.unit===kid.unit)
     .slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const rows=adults.map(a=>{
     const key=(a.name||'').toLowerCase().replace(/&/g,'&amp;').replace(/"/g,'&quot;');
     const beltLbl=(BA[a.belt]||{}).label||'';
-    return '<div data-psearch="'+key+'" onclick="pickParentStudent(\''+escHtml(kid.id)+'\',\''+escHtml(a._dbId)+'\')" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer">'
+    return '<div data-psearch="'+key+'" onclick="'+(_ppGuardian?'kgLinkMember':'pickParentStudent')+'(\''+escHtml(kid.id)+'\',\''+escHtml(a._dbId)+'\')" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer">'
       +avStu(a,36)
       +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(a.name||'')+'</div>'+(beltLbl?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+beltLbl+'</div>':'')+'</div>'
       +'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>'
@@ -21304,8 +21665,8 @@ function rParentPicker(){
   }).join('');
   const emptyAll=adults.length?'':'<div style="padding:22px 12px;text-align:center;font-size:13px;color:var(--text3)">No adult members in this unit to link.</div>';
   return `<div class="cov" onclick="closeParentPicker()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:420px;width:100%;margin:0 auto;padding:18px;max-height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden">
-<div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">Link parent</div>
-<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Choose an adult member to link as ${escHtml(first)}’s parent.</div>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">${_ppGuardian?'Add person':'Link parent'}</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:12px">${_ppGuardian?('Choose a member to give access to '+escHtml(first)+'.'):('Choose an adult member to link as '+escHtml(first)+'’s parent.')}</div>
 <div style="position:relative;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="search" id="pp-search" placeholder="Search members…" oninput="filterParentPickerDom()" style="width:100%;padding:10px 12px 10px 34px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/></div>
 <div id="pp-list" style="overflow-y:auto;-webkit-overflow-scrolling:touch;margin-top:10px;border:1px solid var(--border);border-radius:10px">${rows}<div id="pp-empty" style="display:none;padding:22px 12px;text-align:center;font-size:13px;color:var(--text3)">No members match.</div>${emptyAll}</div>
 <button onclick="closeParentPicker()" style="margin-top:14px;flex-shrink:0;width:100%;background:none;border:1px solid var(--border);border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text2);cursor:pointer">Cancel</button>
@@ -22756,7 +23117,7 @@ function _swSafeToReload(){
     if(S.cropOpen||S.addStaff||S.removeStaffConfirm||S.emailEdit||S.changeEmail)return false;
     if(S.bugReport||S.cycleSetup||S.socialEdit||S.socialMore||S.addKidModal)return false;
     if(S.convertKid||S.rescheduleTrial||S.waiverSheet||S.editMe)return false;
-    if(S.photoMenu||S.photoLightbox||S.parentPicker)return false;
+    if(S.photoMenu||S.photoLightbox||S.parentPicker||S.guardianSheet)return false;
     // Mid-typing: never yank the page out from under an unsaved field.
     const ae=document.activeElement;
     if(ae){
