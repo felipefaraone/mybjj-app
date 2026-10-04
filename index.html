@@ -727,7 +727,7 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .tlchev{align-self:flex-start;margin-top:8px;display:inline-flex;flex-shrink:0;transition:transform .15s}
 .tlxfer{display:inline-block;background:var(--amber-bg);color:var(--amber-text);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;margin-top:4px;border:1px solid var(--amber-border)}
 @media(prefers-color-scheme:dark){.tlhere{color:#4d90e0}}
-.fbitem{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--sh)}.fbhdr{display:flex;align-items:center;gap:8px;margin-bottom:8px}.fbins{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text)}.fbdate{font-size:11px;color:var(--text3);margin-left:auto}.fbtxt{font-size:14px;color:var(--text2);line-height:1.55}
+.fbitem{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--sh)}.fbhdr{display:flex;align-items:center;gap:8px;margin-bottom:8px}.fbins{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text)}.fbdate{font-size:11px;color:var(--text3);margin-left:auto}.fbtxt{font-size:14px;color:var(--text2);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
 .fbta{width:100%;background:none;border:none;outline:none;font-family:'Barlow',sans-serif;font-size:14px;color:var(--text);padding:14px 16px;resize:none;min-height:80px;caret-color:var(--blue)}.fbta::placeholder{color:var(--text3)}
 .fbfoot{padding:8px 12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end}.fbsend{background:#1A5DAD;color:#fff;border:none;border-radius:7px;padding:6px 14px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
 .rsw{display:flex;gap:8px;margin-bottom:16px;align-items:stretch}.rseg{flex:1;height:var(--ctrl-h);box-sizing:border-box;padding:0 8px;border-radius:8px;border:1px solid var(--border);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;background:var(--card);color:var(--text2);text-align:center;display:inline-flex;align-items:center;justify-content:center;line-height:1}.rseg.active{background:#1A5DAD;color:#fff;border-color:var(--blue)}
@@ -4717,6 +4717,22 @@ function notifRelTime(ts){
 // payloads (admin free-text via send_admin_message; instructor names
 // flowing into feedback / promotion bodies). We don't trust either.
 function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+// Instructor feedback + Head Instructor Note text is stored raw (only .trim()ed
+// on save), so it can hold newlines and any character. The ONLY two ways it
+// reaches HTML:
+//  - _noteBodyHtml: full body. Escaped; line breaks are rendered by
+//    `white-space:pre-wrap` on .fbtxt, never by <br> injection. The template
+//    must put nothing between the opening tag and this string, or pre-wrap
+//    renders that whitespace too.
+//  - _noteExcerpt: single-line preview. Whitespace runs (newlines included)
+//    collapse to one space BEFORE the cut, then escape, so a cut never lands
+//    inside an entity.
+function _noteBodyHtml(text){return escHtml(String(text==null?'':text).trim());}
+function _noteExcerpt(text,n){
+  n=n||80;
+  const flat=String(text==null?'':text).replace(/\s+/g,' ').trim();
+  return escHtml(flat.length>n?flat.slice(0,n).trim()+'…':flat);
+}
 function rInbox(){
   const ur=UNREAD_COUNT|0;
   const IBACK=`<button class="sback" onclick="closeInbox()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button>`;
@@ -6142,13 +6158,12 @@ function _stuFbSummaryCard(s,opts){
       +addBtn
       +'</div>';
   }
-  const excerpt=String(latest.text||'');
-  const trimmed=excerpt.length>80?excerpt.slice(0,80).trim()+'…':excerpt;
+  const trimmed=_noteExcerpt(latest.text);
   const openArg=fromParent?',{fromParent:true}':'';
   const viewAll='<button onclick="openStuFbList(\''+s.id+'\''+openArg+')" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0">View all '+fb.length+' →</button>';
   return '<div class="slbl" style="margin-top:18px">Feedback</div>'
     +'<div class="card" style="padding:14px">'
-    +'<div style="font-size:12px;color:var(--text3)">Latest by <span style="color:var(--text);font-weight:600">'+latest.ins+'</span> · '+latest.date+'</div>'
+    +'<div style="font-size:12px;color:var(--text3)">Latest by <span style="color:var(--text);font-weight:600">'+escHtml(latest.ins)+'</span> · '+latest.date+'</div>'
     +'<div style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.5">'+trimmed+'</div>'
     +'<div style="margin-top:10px;display:flex;align-items:center;justify-content:flex-end;gap:10px">'+addBtn+viewAll+'</div>'
     +'</div>';
@@ -6175,7 +6190,7 @@ function rStuFbList(){
   const canAdd=canEditClassCounts();
   const fb=s.feedback||[];
   const empty=!fb.length?'<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No feedback yet.</div>':'';
-  const list=fb.map((f,i)=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+f.date+'</div>'+(canDeleteFeedback(f)?'<button onclick="deleteFeedback(\''+s.id+'\','+i+')" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>':'')+'</div></div><div class="fbtxt">'+f.text+'</div></div>').join('');
+  const list=fb.map((f,i)=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(f.ins)+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+f.date+'</div>'+(canDeleteFeedback(f)?'<button onclick="deleteFeedback(\''+s.id+'\','+i+')" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>':'')+'</div></div><div class="fbtxt">'+_noteBodyHtml(f.text)+'</div></div>').join('');
   const addBtn=canAdd?'<button onclick="openFbModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add feedback</button>':'';
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStuFbList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Feedback · '+s.name.split(' ')[0]+'</div></div>'
@@ -6277,12 +6292,11 @@ function _staffNotesSummaryCard(s,canAdmin){
       +addBtn
       +'</div>';
   }
-  const excerpt=String(latest.text||'');
-  const trimmed=excerpt.length>80?excerpt.slice(0,80).trim()+'…':excerpt;
+  const trimmed=_noteExcerpt(latest.text);
   const viewAll='<button onclick="openStaffNotesList(\''+s.id+'\')" style="background:none;border:none;color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;padding:0">View all '+notes.length+' →</button>';
   return '<div class="slbl" style="margin-top:18px">Head Instructor Notes</div>'
     +'<div class="card" style="padding:14px">'
-    +'<div style="font-size:12px;color:var(--text3)">Latest by <span style="color:var(--text);font-weight:600">'+(latest.author_name||'Unknown')+'</span> · '+_fmtNoteDate(latest.created_at)+'</div>'
+    +'<div style="font-size:12px;color:var(--text3)">Latest by <span style="color:var(--text);font-weight:600">'+escHtml(latest.author_name||'Unknown')+'</span> · '+_fmtNoteDate(latest.created_at)+'</div>'
     +'<div style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.5">'+trimmed+'</div>'
     +'<div style="margin-top:10px;display:flex;align-items:center;justify-content:flex-end;gap:10px">'+addBtn+viewAll+'</div>'
     +'</div>';
@@ -6312,7 +6326,7 @@ function rStaffNotesList(){
   const trashBtn=(noteId)=>noteId
     ? '<button onclick="askDeleteStaffNote(\''+escAttr(s.id)+'\',\''+escAttr(noteId)+'\')" title="Delete note" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center" onmouseover="this.style.color=\'var(--red-text)\'" onmouseout="this.style.color=\'var(--text3)\'">'+trashSvg+'</button>'
     : '';
-  const list=notes.map(n=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+(n.author_name||'Unknown')+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+_fmtNoteDate(n.created_at)+'</div>'+trashBtn(n.id)+'</div></div><div class="fbtxt">'+n.text+'</div></div>').join('');
+  const list=notes.map(n=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(n.author_name||'Unknown')+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+_fmtNoteDate(n.created_at)+'</div>'+trashBtn(n.id)+'</div></div><div class="fbtxt">'+_noteBodyHtml(n.text)+'</div></div>').join('');
   const addBtn='<button onclick="openStaffNoteModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add note</button>';
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+parseStaffName(s.name).split(' ')[0]+'</div></div>'
@@ -10478,7 +10492,7 @@ function rProgress(){
     // Layout unchanged — no .prog-pair, this branch has no Recent card to pair
     // with. It only gains the declare button.
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(_jnyFromPromotions(coachStu),coachStu)+_rDeclareBtn(coachStu)+'</div>';
-    var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+f.ins+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+f.text+'</div></div>';}).join('')+'</div>';
+    var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Private notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(f.ins)+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+_noteBodyHtml(f.text)+'</div></div>';}).join('')+'</div>';
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
   }
@@ -10568,7 +10582,7 @@ function rProgress(){
   // at all when there is none -- no empty "No feedback yet" card.
   var _fbArr=(stu.feedback||[]).slice().sort(function(a,b2){return String(b2.date||'').localeCompare(String(a.date||''));});
   var _latestFb=_fbArr[0]||null;
-  var feedbackCard=_latestFb?('<div class="slbl" style="margin-top:16px">From your instructors</div><div class="card"><div class="fbitem"><div class="fbhdr"><div class="fbins">'+_latestFb.ins+'</div><div class="fbdate">'+_latestFb.date+'</div></div><div class="fbtxt">'+_latestFb.text+'</div></div></div>'):'';
+  var feedbackCard=_latestFb?('<div class="slbl" style="margin-top:16px">From your instructors</div><div class="card"><div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(_latestFb.ins)+'</div><div class="fbdate">'+_latestFb.date+'</div></div><div class="fbtxt">'+_noteBodyHtml(_latestFb.text)+'</div></div></div>'):'';
   // MY BELT tab: hero (belt box + stat strip) -> YOUR TRAINING -> CLASS HISTORY
   // -> feedback. JOURNEY tab: timeline -> RECENT. Class history and Recent
   // swapped tabs here to match the approved mockup; both viewports get the same
@@ -18208,7 +18222,19 @@ function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
 async function pickUnit(u){
   // Multi-unit — the dropdown selection is now persisted server-side
   // (users.active_unit_id via set_active_unit) and drives an RLS-scoped
-  // refetch, because STUDENTS/STAFF/CLASSES carry no client unit filter.
+  // refetch, because the in-memory arrays carry no client unit filter.
+  // refetchUnitScopedData re-runs the whole hydrate batch, not just the roster:
+  //   STUDENTS (+ _safety from student_safety), STAFF (+ _units from
+  //   staff_units), CLASSES (+ rebuildTT), PROMOTION_LOG, EVENTS, SCHED
+  //   (programme_weeks), ATTENDANCE (boot window ATT_WIN_FROM..ATT_WIN_TO),
+  //   per-student .feedback, TRIALS (+ .sessions from trial_sessions),
+  //   VISITORS (visitor_students_for_unit), CEXC (class_exceptions, same
+  //   window as attendance) and POSTS, then warms signed photo URLs.
+  // Resets: VISITORS={} and CEXC={} every call. When attendance comes back,
+  // DAYCHUNKS={} and DAYCHUNKS_GEN++, which drops on-demand history so it
+  // is re-fetched for the new unit. On a fetch error most arrays keep their
+  // old contents; CLASSES, PROMOTION_LOG, EVENTS, SCHED, POSTS and .feedback
+  // are cleared instead.
   const unit=UNITS.find(x=>x.name===u);
   if(!unit||!unit._dbId||unit.active===false){showSaveToast2('Unit unavailable','error');return;}
   if(u===S.unit&&!S._unitSwitching){S.unitOpen=false;render();return;}
