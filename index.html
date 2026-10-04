@@ -761,6 +761,12 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .selwrap:hover>.selchev{color:var(--text2)}
 .selwrap>select:disabled{cursor:default}.selwrap>select:disabled+.selchev,.selwrap:hover>select:disabled+.selchev{opacity:.45;color:var(--text3)}
 .selwrap-block{display:flex;width:100%}.selwrap-block>select{flex:1;min-width:0;width:100%}
+/* A name that shares one row with other elements (badge, belt bar): ONE source,
+   _nameClipHtml(). Same pattern as the People card, staff list and switcher chips:
+   the span keeps its natural width (flex:0 1 auto, so a short name and the badge
+   beside it sit exactly as before), shrinks only when the row is full, and ends
+   in an ellipsis. CSS only, no measurement. */
+.namefade{min-width:0;flex:0 1 auto;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 /* Wall column cap — inert at phone widths, only bites on wide desktop, so the
    feed structure is identical in both viewports. */
 .feed{max-width:620px}
@@ -1268,6 +1274,12 @@ function _membershipOptions(selected){
 // isStaffOrOwner() keeps it off every student and parent surface.
 function isOnHoldVisible(s){
   return !!(s&&s.standing==='on_hold'&&isStaffOrOwner());
+}
+// See .namefade. Escapes the name once; the full name rides in a double-quoted
+// title attribute (escHtml escapes the double quote, so it is attribute-safe).
+function _nameClipHtml(name){
+  const n=String(name==null?'':name);
+  return '<span class="namefade" title="'+escHtml(n)+'">'+escHtml(n)+'</span>';
 }
 function holdBadge(s){
   if(!isOnHoldVisible(s))return '';
@@ -3564,7 +3576,7 @@ function _trialRosterRow(tr,first){
   // Mobile-first: the outer row wraps (name+badge group / actions group) so on a
   // narrow iPhone the buttons drop below the name instead of colliding with it.
   return '<div style="'+sep+'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'
-    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0"><span style="font-size:14px;font-weight:600;color:var(--text)">'+nm+'</span>'+waiverChip+'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0"><span style="font-size:14px;font-weight:600;color:var(--text)">'+escHtml(nm)+'</span>'+waiverChip+'</div>'
     +'<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">'+actions+'</div>'
   +'</div>';
 }
@@ -3734,7 +3746,7 @@ function rAttsStaff(rows,cid){
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
     const _firstRow=!_rowShown;_rowShown=true;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${s.name}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   // Bulk move — expanded only, so the collapsed card is untouched. Same
   // staff + isClassLocked gate markAllPresent uses (openAttMove re-checks both;
@@ -7463,7 +7475,7 @@ function rParentKidSwitcher(){
     const border=sel?'var(--blue)':'var(--border)';
     return '<button onclick="setParentChild(\''+k.id+'\')" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:24px;border:1.5px solid '+border+';background:'+bg+';cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:'+fg+'">'
       +avStu(k,24)
-      +'<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px">'+first+'</span>'
+      +'<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px">'+escHtml(first)+'</span>'
       +(sel?checkIcon:'')
       +'</button>';
   }).join('');
@@ -8639,7 +8651,7 @@ function rCommunityPeople(){
       +'<div style="display:flex;align-items:center;gap:12px;min-height:60px">'
         +av
         +'<div style="flex:1;min-width:0">'
-        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+displayName+'</div>'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(displayName)+'</div>'
         +'</div>'
         +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,isInstr?'adult':m.prog,'left',true)+'</div>'
       +'</div>'
@@ -9012,7 +9024,7 @@ function rCommunityWall(){
         +avStu(s,40)
         +'<div style="flex:1;min-width:0">'
           +'<div style="'+wEyebrow+'">New member</div>'
-          +'<div style="'+wName+'">'+s.name+'</div>'
+          +'<div style="'+wName+'">'+escHtml(s.name)+'</div>'
           +_wCongratsHtml
           +'<div style="'+wDate+'">'+wWhen+'</div>'
         +'</div>'
@@ -11514,8 +11526,11 @@ function rARosterListInner(){
     // rank here, matching the People and Wall cards.
     return '<div class="card rcard" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="rc-id">'+avStu(s,34)
-      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;flex-wrap:wrap">'+s.name+holdBadge(s)
-      +'<span style="margin-left:auto;flex-shrink:0;display:inline-flex">'+bb(s.belt,s.deg||0,s.prog,'left',true)+'</span></div>'
+      // One row, never wrapping: the name shrinks to an ellipsis (_nameClipHtml), the
+      // hold badge and the belt bar never shrink, the belt stays right-aligned.
+      // padding-left keeps a minimum gap when a long name reaches the belt.
+      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;flex-wrap:nowrap">'+_nameClipHtml(s.name)+(isOnHoldVisible(s)?'<span style="flex-shrink:0;display:inline-flex">'+holdBadge(s)+'</span>':'')
+      +'<span style="margin-left:auto;padding-left:8px;flex-shrink:0;display:inline-flex">'+bb(s.belt,s.deg||0,s.prog,'left',true)+'</span></div>'
       +(_showCtx?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div>':'')
       +statLine
       +(_flagsHtml?'<div class="rc-flags">'+_flagsHtml+'</div>':'')
@@ -11717,7 +11732,7 @@ function rTrialsBlock(){
       slotLine=_prefLine;
     }
     const metaBits=[t.email,t.phone].filter(Boolean);
-    const meta=metaBits.length?'<div style="font-size:11px;color:var(--text3);margin-top:6px;display:flex;flex-wrap:wrap;gap:2px 8px;word-break:break-word">'+metaBits.map((b,i)=>'<span>'+(i>0?'· ':'')+b+'</span>').join('')+'</div>':'';
+    const meta=metaBits.length?'<div style="font-size:11px;color:var(--text3);margin-top:6px;display:flex;flex-wrap:wrap;gap:2px 8px;word-break:break-word">'+metaBits.map((b,i)=>'<span>'+(i>0?'· ':'')+escHtml(b)+'</span>').join('')+'</div>':'';
     // Module 1 action side — per-trial state actions. Mark attended only
     // appears while still booked. Convert: adults are one click (they can log in
     // and fix their own profile); kids open a review form (Phase 4) because a kids
@@ -11787,7 +11802,7 @@ function rTrialsBlock(){
       :'';
     return '<div class="card">'
       +'<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">'
-      +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text)">'+displayName+'</span>'
+      +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text)">'+escHtml(displayName)+'</span>'
       +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+statusChip+waiverChip+kidChip+'</div>'
       +'</div>'
       +meta
@@ -12121,7 +12136,7 @@ function rRescheduleModal(){
   const _tail=_cur
     ?(addMode?'This keeps their current day and adds a second one.':'This replaces their current trial day.')
     :'They have no trial day set yet.';
-  const sub=_lead+'<b style="color:var(--text2)">'+esc(who)+'</b> — '+(t.isKid?'kids':'adult')+' classes. '+_tail;
+  const sub=_lead+'<b style="color:var(--text2)">'+escHtml(who)+'</b> — '+(t.isKid?'kids':'adult')+' classes. '+_tail;
   return `<div class="cov" onclick="closeRescheduleTrial()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:400px;width:100%;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
 <button onclick="closeRescheduleTrial()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">${title}</div>
@@ -12276,7 +12291,7 @@ function convertTrialToMember(trialDbId){
   if(t.isKid){showSaveToast2('Kid conversion coming soon','error');return;}
   openConfirm({
     title:'Convert to member?',
-    message:'Convert '+(t.name||'this trial')+' to a member? This creates a student record.',
+    message:'Convert '+escHtml(t.name||'this trial')+' to a member? This creates a student record.',
     dangerLabel:'Convert',
     onConfirm:()=>convertTrialToMemberAction(trialDbId)
   });
@@ -12366,7 +12381,9 @@ function closeConvertKid(){if(S.convertKid&&S.convertKid.busy)return;S.convertKi
 function rConvertKidModal(){
   if(!S.convertKid)return '';
   const st=S.convertKid;const busy=!!st.busy;
-  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  // Full HTML escape: "Booked as" puts the public form's kid name in TEXT context,
+  // where the old quote-only escape let markup through. Attribute-safe too.
+  const esc=v=>escHtml(v);
   // Kids belt system, in the order the academy uses. Default white.
   const beltKeys=['white','grey/white','grey','grey/black','yellow/white','yellow','orange','green'];
   const beltOpts=beltKeys.map(k=>'<option value="'+k+'" '+(k===st.belt?'selected':'')+'>'+((BK[k]||{label:k}).label)+'</option>').join('');
@@ -12631,7 +12648,7 @@ function rStaff(){
     const actions=(showEdit||showRemove)?'<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">'+editBtn+remBtn+'</div>':'';
     const emailLine=s.email?'<div style="font-size:11px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.email+'</div>':'';
     const inviteRow=inviteStatusRow(s,'staff');
-    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+beltSeg+unitSeg+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
+    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(s.name)+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+beltSeg+unitSeg+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
   }).join('');
   return header+rows;
 }
@@ -13070,7 +13087,7 @@ async function sendInvite(dispatch,chain){
 // 2200 keeps every existing caller's behaviour identical; longer values
 // are reserved for "you just did a thing that's worth confirming" cases
 // (e.g. instructor sending feedback to a student).
-function showSaveToast2(msg,type,duration){const t=document.createElement('div');const isErr=type==='error';const ms=(typeof duration==='number'&&duration>0)?duration:2200;t.innerHTML=(isErr?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>')+msg;t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(isErr?'#DC2626':'#1A5DAD')+';color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s;white-space:nowrap';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},ms);}
+function showSaveToast2(msg,type,duration){const t=document.createElement('div');const isErr=type==='error';const ms=(typeof duration==='number'&&duration>0)?duration:2200;t.innerHTML=(isErr?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>')+escHtml(String(msg==null?'':msg));t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(isErr?'#DC2626':'#1A5DAD')+';color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s;white-space:nowrap';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},ms);}
 
 function getPromoReady(){
   var unit=UNITS.find(function(u){return u.name===S.unit;});
@@ -19689,7 +19706,7 @@ function _classAddListHTML(){
       // holdBadge sits with the other chips and follows the same grammar (each
       // chip carries its own margin-left:6px). It informs the instructor; it does
       // NOT gate the row — an on-hold student is still addable.
-      +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+s.name+progChip+unitChip+holdBadge(s)+tag+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+escHtml(s.name)+progChip+unitChip+holdBadge(s)+tag+'</div>'
       +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt</div></div>'
       +'</div>';
   };

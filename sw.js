@@ -1,4 +1,4 @@
-const CACHE = 'mybjj-v584';
+const CACHE = 'mybjj-v585';
 const STATIC = [
   '/', '/index.html', '/manifest.json',
   '/icon-192.png', '/icon-512.png',
