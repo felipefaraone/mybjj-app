@@ -740,7 +740,27 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .miniseg button{border:none;background:var(--card);height:var(--ctrl-h);padding:0 18px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;color:var(--text2);cursor:pointer}
 .miniseg button.active{background:var(--blue);color:#fff}
 .miniseg button.disabled{opacity:.5;cursor:not-allowed}
-.mfilt-sel{height:var(--ctrl-h);border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text2);font-family:'Barlow',sans-serif;font-weight:600;font-size:13.5px;padding:0 14px;cursor:pointer;flex-shrink:0}
+.mfilt-sel{height:var(--ctrl-h);border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text2);font-family:'Barlow',sans-serif;font-weight:600;font-size:13.5px;padding:0 14px;cursor:pointer}.mfilt-wrap{flex-shrink:0;--selr:12px}
+/* Boxed <select>: ONE source, _selWrap() + _chevSvg(). The select keeps its own box (border,
+   radius, background, height, 14px left padding); the wrapper only positions the chevron and
+   carries the focus ring. Styling the arrow through background-image on the <select> failed on
+   macOS Safari (native arrow drawn on top), so: appearance:none + an absolutely positioned SVG
+   with pointer-events:none. Inline select paddings must spell out the 38px right side, since an
+   inline style beats the padding-right below. --selr = the select's border-radius, for the ring.
+   Borderless .esel row selects (label left, value right) are NOT wrapped. */
+.selwrap{position:relative;display:inline-flex;align-items:stretch;border-radius:var(--selr,10px)}
+.selwrap>select{-webkit-appearance:none!important;-moz-appearance:none!important;appearance:none!important;padding-right:38px}
+.selwrap>select:focus{outline:none}
+/* Ring follows the browser's own :focus-visible. Chrome counts a mouse click on a select as
+   focus-visible (like a text field), so the ring also shows on click there: accepted on purpose,
+   it is the platform's accessibility heuristic. No
+   :focus-within fallback on purpose (it would bring the tap ring back); without :has the
+   wrapper simply shows no ring. */
+.selwrap:has(>select:focus-visible){outline:2px solid var(--blue);outline-offset:2px}
+.selwrap>.selchev{position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text3)}
+.selwrap:hover>.selchev{color:var(--text2)}
+.selwrap>select:disabled{cursor:default}.selwrap>select:disabled+.selchev,.selwrap:hover>select:disabled+.selchev{opacity:.45;color:var(--text3)}
+.selwrap-block{display:flex;width:100%}.selwrap-block>select{flex:1;min-width:0;width:100%}
 /* Wall column cap — inert at phone widths, only bites on wide desktop, so the
    feed structure is identical in both viewports. */
 .feed{max-width:620px}
@@ -2041,12 +2061,20 @@ function _monthOptionsForCreate(monthsAhead){
   }
   return out;
 }
-// Shared styled <select> used by every month filter (Curriculum,
-// Events) AND the editor's Month picker — same markup, so the look
-// stays identical across roles and surfaces. Reads as a filter
-// control (regular weight, muted tone) — the previous batch's custom
-// chevron read worse than the native one, so appearance:none is back
-// off and the platform default arrow is what shows.
+// Boxed <select> helpers: the ONLY place a select chevron is drawn (see the
+// .selwrap CSS). _chevSvg is a single down chevron in currentColor, so its
+// tone comes from tokens, never a hex. _selWrap wraps a complete <select>
+// string; wrapStyle carries whatever sized the select as a flex/block item
+// (flex-shrink, width, margins) plus --selr when the radius isn't 10px.
+function _chevSvg(){
+  return '<svg class="selchev" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>';
+}
+function _selWrap(selectHtml,wrapClass,wrapStyle){
+  return '<span class="selwrap'+(wrapClass?' '+wrapClass:'')+'"'+(wrapStyle?' style="'+wrapStyle+'"':'')+'>'+selectHtml+_chevSvg()+'</span>';
+}
+// Shared styled <select> used by the Curriculum month filter AND the
+// editor's Month picker — same markup, so the look stays identical across
+// roles and surfaces. Reads as a filter control (regular weight, muted tone).
 //
 // `options` accepts the {key,label} shape produced by
 // _monthOptionsWithItems / _monthOptionsForCreate; the meta
@@ -2059,19 +2087,12 @@ function _monthSelectHTML(id,options,selKey,onchange){
     return '<option value="'+p.key+'"'+sel+'>'+p.label+suffix+'</option>';
   }).join('');
   const idAttr=id?' id="'+id+'"':'';
-  // Batch month-filter-chevron-3 — bulletproof cross-browser chevron
-  // via a wrapper + overlay. Styling a <select>'s indicator through
-  // background-image isn't reliable on macOS Safari (it kept drawing
-  // its native double-arrow on top of ours). The new pattern moves the
-  // control chrome (border/radius/bg) to a wrapper and renders the
-  // chevron as an absolutely-positioned <svg> with pointer-events:none.
-  // The <select> itself is appearance:none + transparent and fills the
-  // wrapper — so the chevron is a normal DOM element, identical in
-  // Chrome and Safari, light + dark.
-  const wrapStyle="position:relative;display:flex;align-items:stretch;width:100%;height:var(--ctrl-h);box-sizing:border-box;background-color:var(--bg);border:1px solid var(--border);border-radius:8px";
-  const selStyle="flex:1;width:100%;height:100%;background:transparent;border:none;padding:0 34px 0 12px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer;line-height:1;-webkit-appearance:none !important;-moz-appearance:none !important;appearance:none !important";
-  const chevSvg='<svg xmlns="http://www.w3.org/2000/svg" width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="#6b7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none"><polyline points="2 5 6 1 10 5"/><polyline points="2 9 6 13 10 9"/></svg>';
-  return '<div style="'+wrapStyle+'"><select'+idAttr+' onchange="'+onchange+'" style="'+selStyle+'">'+opts+'</select>'+chevSvg+'</div>';
+  // The wrapper + overlaid chevron pattern started here (macOS Safari drew
+  // its native double-arrow over a background-image chevron); it now lives
+  // in _selWrap. The box (border/radius/bg/height) moved from the wrapper
+  // back onto the <select>, so every boxed select is built the same way.
+  const selStyle="width:100%;height:var(--ctrl-h);box-sizing:border-box;background-color:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 38px 0 14px;font-family:Barlow,sans-serif;font-weight:500;font-size:13px;color:var(--text2);outline:none;cursor:pointer;line-height:1";
+  return _selWrap('<select'+idAttr+' onchange="'+onchange+'" style="'+selStyle+'">'+opts+'</select>','selwrap-block','--selr:8px');
 }
 // Etapa 3 — INS hardcoded instructor list deleted. Dropdowns now read
 // the hydrated STAFF array (filtered to active rows) and render each
@@ -4820,7 +4841,7 @@ function rAddStu(){
   const phoneCC=F.cc||'+61';
   const parentCC=F.parentCc||'+61';
   const v=(k)=>escAttr(F[k]==null?'':F[k]);
-  const ccSelect=(idAttr,handler,selected)=>'<select id="'+idAttr+'" onchange="'+handler+'" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none;min-width:72px">'+ccOptions.map(o=>'<option value="'+o.c+'" '+(o.c===selected?'selected':'')+'>'+o.l+'</option>').join('')+'</select>';
+  const ccSelect=(idAttr,handler,selected)=>_selWrap('<select id="'+idAttr+'" onchange="'+handler+'" style="flex:1 1 auto;background:none;border:1px solid var(--border);border-radius:6px;padding:5px 38px 5px 14px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none">'+ccOptions.map(o=>'<option value="'+o.c+'" '+(o.c===selected?'selected':'')+'>'+o.l+'</option>').join('')+'</select>','','--selr:6px;min-width:72px');
   const unitSel=UNITS.filter(u=>u.active).map(u=>'<option value="'+u.name+'" '+(u.name===(F.unit||S.unit)?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
   // Prefill banner — persistent header when openAddStudentForm passed
   // a parent_name (chained Save-&-add-child OR +Add child from another
@@ -8064,7 +8085,7 @@ function rCycleSetupModal(){
   const weekLabel=isSettings?'Current week':'Which week are you in this week?';
   const primaryLabel=isSettings?'Save':'Turn on cycle';
   const dis=st.busy?'disabled':'';
-  const selStyle='width:100%;background:var(--card);margin-bottom:14px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;color:var(--text)';
+  const selStyle='width:100%;background:var(--card);padding:11px 38px 11px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;color:var(--text)';
   const lblStyle='font-size:12px;color:var(--text3);margin-bottom:6px;font-weight:600';
   const dangerBlock=isSettings
     ?'<div style="border-top:1px solid var(--border);margin-top:18px;padding-top:16px"><button class="bsm" onclick="turnOffCycle()" '+dis+' style="width:100%;padding:12px;border-radius:10px;font-size:14px;color:var(--red-text);border:1px solid var(--red-border);background:transparent;cursor:pointer">Turn off cycle (back to month view)</button></div>'
@@ -8074,9 +8095,9 @@ function rCycleSetupModal(){
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;padding-right:40px">${title}</div>
 <div style="font-size:13px;color:var(--text3);margin-bottom:16px;line-height:1.4">${caption}</div>
 <div style="${lblStyle}">${weekLabel}</div>
-<select id="cyc-week" class="einput" ${dis} style="${selStyle}">${weekOpts}</select>
+${_selWrap(`<select id="cyc-week" class="einput" ${dis} style="${selStyle}">${weekOpts}</select>`,'selwrap-block','margin-bottom:14px')}
 <div style="${lblStyle}">Cycle length</div>
-<select id="cyc-len" class="einput" ${dis} style="${selStyle}">${lenSel}</select>
+${_selWrap(`<select id="cyc-len" class="einput" ${dis} style="${selStyle}">${lenSel}</select>`,'selwrap-block','margin-bottom:14px')}
 <div style="display:flex;gap:10px;margin-top:6px">
 <button class="bsm" style="flex:1;padding:12px;border-radius:10px;font-size:14px" onclick="closeCycleSetup()" ${dis}>Cancel</button>
 <button class="bblue" style="flex:1;padding:12px;opacity:${st.busy?'.6':'1'}" onclick="saveCycleSetup()" ${dis}>${st.busy?'Saving…':primaryLabel}</button>
@@ -8107,12 +8128,12 @@ function rBugReportModal(){
 <button onclick="closeBugReport()" aria-label="Close" ${st.busy?'disabled':''} style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;padding-right:40px">Send feedback</div>
 <div style="font-size:13px;color:var(--text3);margin-bottom:14px;line-height:1.4">Tell us what's working, what isn't, or what you'd like to see.</div>
-<select class="einput" onchange="_onBugReportType(this)" style="width:100%;background:var(--card);margin-bottom:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;color:var(--text)">
+${_selWrap(`<select class="einput" onchange="_onBugReportType(this)" style="width:100%;background:var(--card);padding:11px 38px 11px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;color:var(--text)">
 <option value="" ${!st.type?'selected':''}>Type (optional)</option>
 ${typeOpt('bug','Bug')}
 ${typeOpt('suggestion','Suggestion')}
 ${typeOpt('question','Question')}
-</select>
+</select>`,'selwrap-block','margin-bottom:10px')}
 <textarea id="br-text" rows="5" maxlength="1000" placeholder="Describe what happened or what you'd like to see..." oninput="_onBugReportInput(this)" onkeydown="if(event.key==='Escape')closeBugReport()" style="width:100%;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:inherit;font-size:14px;color:var(--text);resize:vertical;line-height:1.5;box-sizing:border-box">${esc(st.text)}</textarea>
 <div id="br-counter" style="font-size:12px;color:${counterColor};margin-top:4px;text-align:right">${initLen} / 1000</div>
 <div style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.4">Your name, role, and current screen are included automatically.</div>
@@ -8555,16 +8576,16 @@ function rCommunityPeople(){
         :'<button class="disabled" aria-disabled="true">Kids</button>')
     +'</div>'
     +(segment==='adult'
-      ?'<select class="mfilt-sel" onchange="setMembersType(this.value)">'
+      ?_selWrap('<select class="mfilt-sel" onchange="setMembersType(this.value)">'
         +_selOpt('all','All roles',typeFilter)
         +_selOpt('students','Students',typeFilter)
         +_selOpt('instructors','Instructors',typeFilter)
-      +'</select>'
+      +'</select>','mfilt-wrap')
       :'')
-    +'<select class="mfilt-sel" onchange="setMembersBelt(this.value)">'
+    +_selWrap('<select class="mfilt-sel" onchange="setMembersBelt(this.value)">'
       +_selOpt('all','All belts',beltFilter)
       +validBelts.map(b=>_selOpt(b,b.charAt(0).toUpperCase()+b.slice(1),beltFilter)).join('')
-    +'</select>'
+    +'</select>','mfilt-wrap')
   +'</div>';
   // searchHtml sits OUTSIDE both wrappers — one search input for both viewports.
   const filterZone='<div class="mfilt-mobile">'+filterBlock+'</div>'+'<div class="mfilt-desktop">'+desktopBar+'</div>'+searchHtml;
@@ -22110,7 +22131,7 @@ function rCardExSheet(){
       // Substitute picker — active staff for the CLASS's unit, keyed by staff.id
       // (value=s._dbId, the FK target for substitute_instructor_id), Dev Admin
       // excluded (a substitute is a real person who taught).
-      body=`<select id="ex-instr" class="esel" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:10px;padding:11px 12px;margin-bottom:18px;background:var(--bg);color:var(--text);font-family:Barlow,sans-serif;font-size:14px"><option value="" disabled ${overrideRow?'':'selected'}>Pick instructor</option>${_exInstructorOptions(clsUnit,overrideRow?overrideRow.substituteInstructorId:null)}</select><div style="display:flex;gap:10px">${keepBtn('Cancel','cardExMenu()')}<button style="flex:1;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="instrOverrideConfirm()" ${busy?'disabled':''}>${busy?'Working…':'Save'}</button></div>`;
+      body=`${_selWrap(`<select id="ex-instr" class="esel" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:10px;padding:12px 38px 12px 14px;background:var(--bg);color:var(--text);font-family:Barlow,sans-serif;font-size:14px"><option value="" disabled ${overrideRow?'':'selected'}>Pick instructor</option>${_exInstructorOptions(clsUnit,overrideRow?overrideRow.substituteInstructorId:null)}</select>`,'selwrap-block','margin-bottom:18px')}<div style="display:flex;gap:10px">${keepBtn('Cancel','cardExMenu()')}<button style="flex:1;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;cursor:pointer" onclick="instrOverrideConfirm()" ${busy?'disabled':''}>${busy?'Working…':'Save'}</button></div>`;
     }else if(isCancelled){
       body=menuBtn('Restore this class','cardExStep()','var(--blue)','var(--blue-mid)');
     }else{
