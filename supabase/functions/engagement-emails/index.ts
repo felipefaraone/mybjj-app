@@ -1,21 +1,27 @@
 // supabase/functions/engagement-emails/index.ts
 //
 // Engagement emails ENGINE (migration 137). Builds the monthly training recap
-// for every eligible student and, ONLY when asked, sends it. Nothing schedules
-// this function: it runs when someone calls it with the shared secret.
+// and, ONLY when asked, sends it. Nothing schedules this function: it runs when
+// someone calls it with the shared secret.
 //
 //   POST { kind: "monthly_recap", period: "YYYY-MM", send?: false|true, limit?: n }
 //   header x-engagement-secret: <ENGAGEMENT_SECRET>
 //
-// send:false (DEFAULT) — a dry run. Writes NOTHING. Returns the counts, the full
-//   recipient list (student, recipient, number) and three fully rendered sample
-//   emails: an adult, a kid with guardians, and someone with zero classes.
-// send:true — sends through Resend the same way trial-booking does, records every
-//   attempt in public.email_sends, skips anything already sent (or skipped) for
-//   this kind + period + student + recipient, and stops after the daily cap
-//   (EMAIL_DAILY_CAP, default 90; a smaller `limit` wins). A second run the next
-//   day continues where this one stopped. A row left 'failed' (a Resend error, or
-//   a run that died mid-send) is retried by the next run.
+// ONE EMAIL PER RECIPIENT ADDRESS per kind + period. A parent with three kids,
+// or an adult who trains and has kids, gets one email listing each student with
+// their own number (themselves first, then kids by first name). Students at zero
+// classes are left out; an address whose students are all at zero gets nothing.
+//
+// send:false (DEFAULT) — a dry run. Writes NOTHING. Returns the counts (emails =
+//   addresses, students covered), every address with its students, and rendered
+//   samples (one of them an address with two or more kids).
+// send:true — sends through Resend the same way trial-booking does. Every student
+//   in a sent email gets its own email_sends row (same status, same sent_at), so
+//   an address emailed for this period is never emailed again for it — not even
+//   when another student becomes eligible for it later (the dry run reports that
+//   as already_done). The daily cap counts EMAILS (EMAIL_DAILY_CAP, default 90;
+//   a smaller `limit` wins); a second run continues where this one stopped. A
+//   failed send (Resend error, or a run that died mid-send) is retried.
 //
 // kind "mia" is not implemented yet (the rule is still to come): 400.
 //
@@ -123,36 +129,48 @@ function monthBounds(period: string): { from: string; to: string; label: string 
 }
 
 // ---- template ---------------------------------------------------------------------
-// =============================== PLACEHOLDER COPY ===============================
-// The head instructor is writing the real wording. Everything inside
-// recapCopy() is a stand-in; the layout below it (header, card, footer,
-// unsubscribe) is the part that stays.
-// =================================================================================
-function recapCopy(d: RecapData): { subject: string; greeting: string; line: string } {
-  const times = d.n === 1 ? "1 time" : `${d.n} times`;
-  if (d.isKid) {
-    return {
-      subject: `${d.firstName}'s training in ${d.monthLabel}`,
-      greeting: d.recipientName ? `Hi ${d.recipientName},` : "Hi there,",
-      line: `${d.firstName} trained ${times} in ${d.monthLabel}.`,
-    };
-  }
-  return {
-    subject: `Your training in ${d.monthLabel}`,
-    greeting: d.firstName ? `Hi ${d.firstName},` : "Hi there,",
-    line: `You trained ${times} in ${d.monthLabel}.`,
-  };
+// ONE email per recipient address: it lists every student that address receives
+// for, each with their own number. The recipient themselves first (when they are
+// one of the students), then each kid by first name, kids sorted by first name.
+// Students with zero classes are not in `lines` at all (the caller drops them).
+interface RecapLine {
+  self: boolean;     // the recipient IS this student (an adult's own address)
+  first: string;     // the student's first name
+  n: number;         // classes in the month (> 0)
 }
-// ============================ END PLACEHOLDER COPY ============================
-
 interface RecapData {
-  isKid: boolean;
-  firstName: string;      // the student's first name
-  recipientName: string;  // guardian display name (kids), "" if unknown
-  n: number;
-  monthLabel: string;     // "October"
+  lines: RecapLine[];     // ordered: self first, then kids by first name
+  recipientName: string;  // guardian's first name when known, "" otherwise
+  monthLabel: string;     // "September"
   unsubscribeUrl: string | null;
 }
+
+// =============================== PLACEHOLDER COPY ===============================
+// The head instructor is writing the real wording. Everything inside
+// recapCopy() is a stand-in; the layout in renderRecap (header, card, footer,
+// unsubscribe) is the part that stays.
+// =================================================================================
+function recapCopy(d: RecapData): { subject: string; greeting: string; lines: string[] } {
+  const times = (n: number) => (n === 1 ? "1 time" : `${n} times`);
+  const self = d.lines.find((l) => l.self);
+  const others = d.lines.filter((l) => !l.self);
+  // Subject: about you when you are one of the students; else the kid, or the family.
+  const subject = self
+    ? `Your training in ${d.monthLabel}`
+    : others.length === 1
+    ? `${others[0].first}'s training in ${d.monthLabel}`
+    : `Your family's training in ${d.monthLabel}`;
+  const greeting = self && self.first
+    ? `Hi ${self.first},`
+    : d.recipientName ? `Hi ${d.recipientName},` : "Hi there,";
+  // The month goes on the first line only.
+  const lines = d.lines.map((l, i) => {
+    const month = i === 0 ? ` in ${d.monthLabel}` : "";
+    return l.self ? `You trained ${times(l.n)}${month}.` : `${l.first} trained ${times(l.n)}${month}.`;
+  });
+  return { subject, greeting, lines };
+}
+// ============================ END PLACEHOLDER COPY ============================
 
 // Same simple inline-styled grammar as trial-booking's emails (no external CSS,
 // fonts or images). Every interpolated value goes through escHtml.
@@ -164,7 +182,7 @@ export function renderRecap(d: RecapData): { subject: string; html: string; text
     "",
     c.greeting,
     "",
-    c.line,
+    ...c.lines,
     "",
     "See you on the mats,",
     "MyBJJ",
@@ -172,12 +190,15 @@ export function renderRecap(d: RecapData): { subject: string; html: string; text
     "You're getting this because you train at MyBJJ (or a child you look after does).",
     unsub ? `Don't want these emails? Unsubscribe: ${unsub}` : "",
   ].join("\n");
+  const linesHtml = c.lines
+    .map((l, i) => `<p style="font-size:18px;font-weight:700;color:#16202b;line-height:1.5;margin:${i ? "8px" : "0"} 0 0">${escHtml(l)}</p>`)
+    .join("");
   const html = `<div style="margin:0;padding:0;background:#f5f7fa">
   <div style="max-width:560px;margin:0 auto;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;color:#16202b">
     <div style="background:#124680;border-bottom:3px solid #1A5DAD;border-radius:10px 10px 0 0;padding:14px 18px;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:.5px">MyBJJ</div>
     <div style="background:#ffffff;border:1px solid #e1e7ee;border-top:none;border-radius:0 0 10px 10px;padding:18px 18px 20px;margin:0 0 22px">
       <p style="font-size:16px;margin:0 0 12px">${escHtml(c.greeting)}</p>
-      <p style="font-size:18px;font-weight:700;color:#16202b;line-height:1.5;margin:0">${escHtml(c.line)}</p>
+      ${linesHtml}
     </div>
     <p style="font-size:14px;color:#5a6a78;line-height:1.6;margin:0;border-top:1px solid #e1e7ee;padding-top:16px">
       See you on the mats,<br>
@@ -279,128 +300,189 @@ Deno.serve(async (req) => {
   } catch (e) {
     return json({ error: "read failed", detail: e instanceof Error ? e.message : String(e) }, 500);
   }
-  const doneKey = (sid: string, email: string) => sid + "|" + normEmail(email);
-  const prior = new Map<string, SendRow>();
-  for (const r of done) if (r.student_id) prior.set(doneKey(r.student_id, r.recipient_email), r);
-
-  // Group the candidate rows by student (one row per recipient; a null email
-  // means the student has nobody to send to).
-  type Stu = { id: string; name: string; first: string; isKid: boolean; n: number;
-    recipients: { email: string; name: string; isGuardian: boolean }[] };
-  const students = new Map<string, Stu>();
+  // ---- Group by RECIPIENT ADDRESS: one email per address per kind + period ----
+  type Who = { id: string; name: string; first: string; isKid: boolean; n: number; self: boolean };
+  type Addr = { email: string; guardianName: string; students: Who[] };
+  const addrs = new Map<string, Addr>();
+  const studentIds = new Set<string>();
+  const withRecipient = new Set<string>();
+  const nOf = new Map<string, number>();
   for (const c of cands) {
-    let s = students.get(c.student_id);
-    if (!s) {
-      s = { id: c.student_id, name: c.student_name, first: c.first_name, isKid: !!c.is_kid, n: Number(c.n) || 0, recipients: [] };
-      students.set(c.student_id, s);
+    studentIds.add(c.student_id);
+    nOf.set(c.student_id, Number(c.n) || 0);
+    if (!c.email) continue;
+    withRecipient.add(c.student_id);
+    const e = normEmail(c.email);
+    let a = addrs.get(e);
+    if (!a) { a = { email: e, guardianName: "", students: [] }; addrs.set(e, a); }
+    if (c.is_guardian && !a.guardianName && c.display_name) a.guardianName = c.display_name;
+    if (!a.students.some((x) => x.id === c.student_id)) {
+      a.students.push({ id: c.student_id, name: c.student_name, first: c.first_name || "", isKid: !!c.is_kid,
+        n: Number(c.n) || 0, self: !c.is_guardian });
     }
-    if (c.email) s.recipients.push({ email: normEmail(c.email), name: c.display_name || "", isGuardian: !!c.is_guardian });
   }
-  const list = [...students.values()];
-  const noRecipient = list.filter((s) => !s.recipients.length);
+  // Order inside an email: the recipient's own record first, then the rest by
+  // first name. (Two "self" records on one address is rare: the first is "you",
+  // any other is listed by name.)
+  for (const a of addrs.values()) {
+    a.students.sort((x, y) => (x.self === y.self ? 0 : x.self ? -1 : 1) || x.first.localeCompare(y.first) || x.id.localeCompare(y.id));
+    let seenSelf = false;
+    for (const w of a.students) { if (w.self) { if (seenSelf) w.self = false; else seenSelf = true; } }
+  }
+  const addrList = [...addrs.values()].sort((x, y) => x.email.localeCompare(y.email));
+  const noRecipient = [...studentIds].filter((id) => !withRecipient.has(id));
+  const studentName = new Map<string, string>(cands.map((c) => [c.student_id, c.student_name]));
+
+  // What the log says about each address for this kind + period.
+  //   sent    -> the address was emailed: NEVER email it again this period, even
+  //              if another student has become eligible for it since.
+  //   skipped -> every student it had was at zero classes: done as well.
+  //   failed  -> a send error or a run that died mid-send: retried.
+  const priorByAddr = new Map<string, SendRow[]>();
+  for (const r of done) {
+    const e = normEmail(r.recipient_email);
+    (priorByAddr.get(e) || priorByAddr.set(e, []).get(e)!).push(r);
+  }
+  const addrState = (e: string): "sent" | "skipped" | "failed" | "new" => {
+    const rows = priorByAddr.get(e) || [];
+    if (rows.some((r) => r.status === "sent")) return "sent";
+    if (rows.some((r) => r.status === "failed")) return "failed";
+    if (rows.length && rows.every((r) => r.status === "skipped")) return "skipped";
+    return "new";
+  };
 
   const firstWord = (s: string) => String(s || "").trim().split(/\s+/)[0] || "";
-  const build = async (s: Stu, r: { email: string; name: string }) =>
+  const included = (a: Addr) => a.students.filter((w) => w.n > 0);
+  const build = async (a: Addr) =>
     renderRecap({
-      isKid: s.isKid, firstName: s.first, recipientName: firstWord(r.name), n: s.n,
-      monthLabel: bounds.label, unsubscribeUrl: await unsubUrl(r.email, kind),
+      lines: included(a).map((w) => ({ self: w.self, first: w.first, n: w.n })),
+      recipientName: firstWord(a.guardianName),
+      monthLabel: bounds.label,
+      unsubscribeUrl: await unsubUrl(a.email, kind),
     });
+
+  const studentCounts = {
+    eligible_students: studentIds.size,
+    students_with_classes: [...nOf.values()].filter((n) => n > 0).length,
+    students_with_zero_classes: [...nOf.values()].filter((n) => n === 0).length,
+    students_without_recipient: noRecipient.length,
+  };
 
   // ---------------- DRY RUN: write nothing ----------------
   if (!send) {
     const recipients: unknown[] = [];
-    let wouldSend = 0, zero = 0, already = 0;
-    for (const s of list) {
-      for (const r of s.recipients) {
-        const p = prior.get(doneKey(s.id, r.email));
-        let action: string;
-        if (p && (p.status === "sent" || p.status === "skipped")) { action = "already_" + p.status; already++; }
-        else if (s.n === 0) { action = "skip_zero_classes"; zero++; }
-        else { action = p ? "would_retry" : "would_send"; wouldSend++; }
-        recipients.push({ student: s.name, student_id: s.id, kid: s.isKid, recipient: r.email, guardian: r.isGuardian, number: s.n, action });
-      }
+    let emailsToSend = 0, studentsCovered = 0, allZero = 0, already = 0;
+    for (const a of addrList) {
+      const st = addrState(a.email);
+      const inc = included(a);
+      let action: string;
+      if (st === "sent" || st === "skipped") { action = "already_done"; already++; }
+      else if (!inc.length) { action = "no_email_all_zero_classes"; allZero++; }
+      else { action = st === "failed" ? "would_retry" : "would_send"; emailsToSend++; studentsCovered += inc.length; }
+      const loggedIds = new Set((priorByAddr.get(a.email) || []).map((r) => r.student_id));
+      recipients.push({
+        recipient: a.email,
+        action,
+        subject: inc.length ? (await build(a)).subject : null,
+        students: a.students.map((w) => ({
+          student: w.name, student_id: w.id, kid: w.isKid, self: w.self, number: w.n, in_email: w.n > 0,
+          ...(action === "already_done" && !loggedIds.has(w.id) ? { note: "became eligible after this address was emailed; not sent again" } : {}),
+        })),
+      });
     }
-    const pick = (f: (s: Stu) => boolean) => list.find((s) => s.recipients.length && f(s));
-    const sampleStudents: [string, Stu | undefined][] = [
-      ["adult", pick((s) => !s.isKid && s.n > 0)],
-      ["kid_with_guardians", pick((s) => s.isKid && s.n > 0 && s.recipients.some((r) => r.isGuardian))],
-      ["zero_classes", pick((s) => s.n === 0)],
+    const sendable = addrList.filter((a) => addrState(a.email) !== "sent" && addrState(a.email) !== "skipped" && included(a).length);
+    const pick = (f: (a: Addr) => boolean) => sendable.find(f) || addrList.find((a) => included(a).length && f(a));
+    const sampleAddrs: [string, Addr | undefined][] = [
+      ["self_only", pick((a) => included(a).length === 1 && included(a)[0].self)],
+      ["self_and_kids", pick((a) => included(a).some((w) => w.self) && included(a).length >= 2)],
+      ["two_or_more_kids", pick((a) => !included(a).some((w) => w.self) && included(a).length >= 2)],
+      ["one_kid", pick((a) => !included(a).some((w) => w.self) && included(a).length === 1)],
     ];
     const samples = [];
-    for (const [label, s] of sampleStudents) {
-      if (!s) { samples.push({ sample: label, missing: "no student in this period fits" }); continue; }
-      const r = s.recipients[0];
-      samples.push({ sample: label, to: r.email, ...(await build(s, r)) });
+    for (const [label, a] of sampleAddrs) {
+      if (!a) { samples.push({ sample: label, missing: "no address in this period fits" }); continue; }
+      samples.push({ sample: label, to: a.email, ...(await build(a)) });
     }
     return json({
       mode: "dry_run", kind, period, wrote: "nothing",
       cap_per_run: cap,
       counts: {
-        eligible_students: list.length,
-        students_with_classes: list.filter((s) => s.n > 0).length,
-        students_with_zero_classes: list.filter((s) => s.n === 0).length,
-        students_without_recipient: noRecipient.length,
-        emails_to_send: wouldSend,
-        zero_class_recipients: zero,
+        ...studentCounts,
+        addresses: addrList.length,
+        emails_to_send: emailsToSend,
+        students_covered: studentsCovered,
+        addresses_all_zero_classes: allZero,
         already_done: already,
       },
       warnings: Deno.env.get("EMAIL_UNSUB_SECRET") ? [] : ["EMAIL_UNSUB_SECRET not set: samples have no unsubscribe link, and send:true will refuse"],
-      students_without_recipient: noRecipient.map((s) => ({ student: s.name, student_id: s.id, kid: s.isKid })),
+      students_without_recipient: noRecipient.map((id) => ({ student: studentName.get(id) || "", student_id: id })),
       recipients,
       samples,
     }, 200);
   }
 
   // ---------------- SEND ----------------
-  let sent = 0, failed = 0, skippedZero = 0, already = 0, remaining = 0, attempts = 0, lostClaim = 0;
+  // The cap counts EMAILS (addresses). Every student in a sent email gets its own
+  // email_sends row (same status, same sent_at), so no later run re-sends any of
+  // them or sends that address a second email for this period.
+  let sent = 0, failed = 0, allZero = 0, already = 0, remaining = 0, attempts = 0, lostClaim = 0, studentsCovered = 0;
   const failures: unknown[] = [];
-  const nowIso = () => new Date().toISOString();
-  for (const s of list) {
-    for (const r of s.recipients) {
-      const p = prior.get(doneKey(s.id, r.email));
-      if (p && (p.status === "sent" || p.status === "skipped")) { already++; continue; }
-      if (s.n === 0) {
-        // Recorded, never emailed. Doesn't count toward the cap.
-        const { error } = await supabase.from("email_sends").insert({
-          kind, period_key: period, student_id: s.id, recipient_email: r.email, status: "skipped", error: "zero classes",
+  const priorRow = (sid: string, e: string) => (priorByAddr.get(e) || []).find((r) => r.student_id === sid);
+  for (const a of addrList) {
+    const st = addrState(a.email);
+    if (st === "sent" || st === "skipped") { already++; continue; }
+    const inc = included(a);
+    if (!inc.length) {
+      // Every student at zero: no email; recorded so the dry run shows it done.
+      for (const w of a.students) {
+        await supabase.from("email_sends").insert({
+          kind, period_key: period, student_id: w.id, recipient_email: a.email, status: "skipped", error: "zero classes",
         });
-        if (!error) skippedZero++;
-        continue;
       }
-      if (attempts >= cap) { remaining++; continue; }
-      // CLAIM before sending, so two overlapping runs can't both send: insert a
-      // row (or re-take a 'failed' one); losing the race means someone else has it.
-      let rowId: string | null = null;
+      allZero++;
+      continue;
+    }
+    if (attempts >= cap) { remaining++; continue; }
+    // CLAIM every included student's row before sending (insert, or re-take a
+    // 'failed' one). If any of them is held by another run, leave the address.
+    const rowIds: string[] = [];
+    let claimed = true;
+    for (const w of inc) {
+      const p = priorRow(w.id, a.email);
+      let id: string | null = null;
       if (p) {
         const { data, error } = await supabase.from("email_sends")
           .update({ status: "failed", error: "sending", sent_at: null })
           .eq("id", p.id).eq("status", "failed").select("id");
-        if (!error && data && data.length) rowId = data[0].id;
+        if (!error && data && data.length) id = data[0].id;
       } else {
         const { data, error } = await supabase.from("email_sends").insert({
-          kind, period_key: period, student_id: s.id, recipient_email: r.email, status: "failed", error: "sending",
+          kind, period_key: period, student_id: w.id, recipient_email: a.email, status: "failed", error: "sending",
         }).select("id");
-        if (!error && data && data.length) rowId = data[0].id;
+        if (!error && data && data.length) id = data[0].id;
       }
-      if (!rowId) { lostClaim++; continue; }
-      attempts++;
-      const res = await sendViaResend(r.email, await build(s, r));
-      if (res.ok) {
-        sent++;
-        await supabase.from("email_sends").update({ status: "sent", error: null, sent_at: nowIso() }).eq("id", rowId);
-      } else {
-        failed++;
-        failures.push({ student: s.name, recipient: r.email, error: res.error });
-        await supabase.from("email_sends").update({ status: "failed", error: res.error || "send failed" }).eq("id", rowId);
-      }
+      if (!id) { claimed = false; break; }
+      rowIds.push(id);
     }
+    if (!claimed) { lostClaim++; continue; }   // rows we did take stay 'failed' -> retried next run
+    attempts++;
+    const res = await sendViaResend(a.email, await build(a));
+    const at = new Date().toISOString();
+    for (const id of rowIds) {
+      await supabase.from("email_sends")
+        .update(res.ok ? { status: "sent", error: null, sent_at: at } : { status: "failed", error: res.error || "send failed" })
+        .eq("id", id);
+    }
+    if (res.ok) { sent++; studentsCovered += inc.length; }
+    else { failed++; failures.push({ recipient: a.email, students: inc.map((w) => w.name), error: res.error }); }
   }
   return json({
     mode: "send", kind, period, cap_per_run: cap,
-    sent, failed, skipped_zero_classes: skippedZero, already_done: already,
+    emails_sent: sent, emails_failed: failed, students_covered: studentsCovered,
+    addresses_all_zero_classes: allZero, already_done: already,
     remaining, claimed_by_another_run: lostClaim,
     students_without_recipient: noRecipient.length,
     failures,
-    next: remaining > 0 ? "Run again (e.g. tomorrow) to continue; already-sent addresses are skipped." : "Done for this period.",
+    next: remaining > 0 ? "Run again (e.g. tomorrow) to continue; addresses already emailed are skipped." : "Done for this period.",
   }, 200);
 });
