@@ -11892,11 +11892,15 @@ function trialPresent(trialDbId){
 }
 // No show → no_show. Mirrors markTrialAttended exactly (confirming re-fetch, since
 // an RLS-filtered no-op returns success-shaped-empty). Reuses lapsed_at as the
-// timestamp — no new column. The lead STAYS in the list (rTrialsBlock): a no-show
+// timestamp. The lead STAYS in the list (rTrialsBlock): a no-show
 // is precisely the person the office should be calling.
+// no_show_by / no_show_marked_at (migration 139) record that a PERSON marked it:
+// the no-show follow-up emails start only when no_show_by is set, so the
+// automatic overnight no_show (which never writes them) sends nothing.
 async function markTrialNoShow(trialDbId){
   const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
-  const upd=await cli.from('trial_bookings').update({trial_status:'no_show',lapsed_at:new Date().toISOString()}).eq('id',trialDbId);
+  const nowIso=new Date().toISOString();
+  const upd=await cli.from('trial_bookings').update({trial_status:'no_show',lapsed_at:nowIso,no_show_by:(S.profile&&S.profile.id)||null,no_show_marked_at:nowIso}).eq('id',trialDbId);
   if(upd&&upd.error){showSaveToast2(friendlyMutationError(upd.error),'error');return;}
   const chk=await cli.from('trial_bookings').select('id,trial_status,lapsed_at').eq('id',trialDbId).single();
   if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');return;}
@@ -11925,11 +11929,13 @@ async function markTrialNoShow(trialDbId){
 //     one is holding a real record of a real mark, and an undo of a no-show is not
 //     licence to delete attendance history. For the reported case it is NULL
 //     either way, since these leads were never marked attended.
+//   no_show_by / no_show_marked_at → null (migration 139): the no-show emails
+//     stop with the no-show they were following up.
 // Nothing here touches whatever sets no_show automatically — this only edits the
 // row after the fact, so the process is free to act again.
 async function undoTrialNoShow(trialDbId){
   const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');return;}
-  const upd=await cli.from('trial_bookings').update({trial_status:'booked',lapsed_at:null}).eq('id',trialDbId);
+  const upd=await cli.from('trial_bookings').update({trial_status:'booked',lapsed_at:null,no_show_by:null,no_show_marked_at:null}).eq('id',trialDbId);
   if(upd&&upd.error){showSaveToast2(friendlyMutationError(upd.error),'error');return;}
   const chk=await cli.from('trial_bookings').select('id,trial_status,lapsed_at').eq('id',trialDbId).single();
   if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');return;}

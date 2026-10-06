@@ -6,7 +6,7 @@
 // security scanners open links in emails by themselves; a GET here records
 // nothing — it is refused with 405).
 //
-//   POST {"email": "...", "kind": "monthly_recap|mia|all", "sig": "<hex>"}
+//   POST {"email": "...", "kind": "monthly_recap|mia|trial|all", "sig": "<hex>"}
 //   -> 200 {"ok": true}            opt-out stored (idempotent)
 //   -> 400 {"ok": false, "error"}  bad body or signature
 //   -> 403                         a browser call from any origin but the site
@@ -23,7 +23,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Only the public site may call this from a browser.
 const ALLOWED_ORIGINS = ["https://mybjj-app.com"];
-const KINDS = new Set(["monthly_recap", "mia", "all"]);
+const KINDS = new Set(["monthly_recap", "mia", "trial", "all"]);   // trial: migration 139
 
 // Same shape as trial-booking: echo an allowed origin, else the first allowed one
 // (which the browser then refuses for any other origin).
