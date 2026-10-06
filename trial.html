@@ -320,7 +320,8 @@
       </div>
 
       <div class="formgrid">
-        <label class="field full" id="kidField" style="display:none"><span class="lab" id="kidLab">Child's full name<span class="req"> *</span></span><input type="text" id="kid_name" autocomplete="off" /></label>
+        <label class="field" id="kidFirstField" style="display:none"><span class="lab">Child's first name<span class="req"> *</span></span><input type="text" id="kid_first" autocomplete="off" /></label>
+        <label class="field" id="kidLastField" style="display:none"><span class="lab">Child's last name<span class="req"> *</span></span><input type="text" id="kid_last" autocomplete="off" /></label>
         <label class="field" id="availField" style="display:none;grid-column:1/-1"><span class="lab">When are you usually free?<span class="req"> *</span></span><textarea id="avail" placeholder="e.g. Weekday evenings after 6, or Saturday mornings"></textarea></label>
         <label class="field"><span class="lab" id="fnLab">First name<span class="req"> *</span></span><input type="text" id="first_name" autocomplete="given-name" /></label>
         <label class="field"><span class="lab" id="lnLab">Last name<span class="req"> *</span></span><input type="text" id="last_name" autocomplete="family-name" /></label>
@@ -593,6 +594,26 @@
     bar.innerHTML = bits.length ? "<b>"+bits.join(" · ")+"</b>" : '<span class="muted">Choose your free trial</span>';
   }
 
+  // ---- auto-advance (single-choice steps 1-3) ----
+  // A real tap on a unit card, class card or time slot selects it AND, after a
+  // short pause (so the selected state is seen), does exactly what that step's
+  // Continue button does. Only trusted clicks schedule it (a keyboard Enter/Space
+  // on these <button>s is a trusted click too), so re-rendering a step — Back,
+  // the kids age filter, the ?unit= pre-selection, reflecting a prior pick —
+  // can never advance. One pending advance at a time: the last tap wins. go()
+  // cancels it, and each advance re-checks it is still on its own step.
+  var ADVANCE_MS = 250;
+  var _advanceTimer = null;
+  function cancelAdvance(){ if(_advanceTimer){ clearTimeout(_advanceTimer); _advanceTimer=null; } }
+  function scheduleAdvance(fromStep, fn){
+    cancelAdvance();
+    _advanceTimer = setTimeout(function(){
+      _advanceTimer = null;
+      if(!$("s"+fromStep).classList.contains("on")) return;
+      fn();
+    }, ADVANCE_MS);
+  }
+
   // ---- step navigation ----
   function setStepper(n){
     [1,2,3,4,5].forEach(function(i){
@@ -609,6 +630,7 @@
     window.scrollTo({ top:0, behavior:"smooth" });
   }
   function go(n){
+    cancelAdvance();
     paintSummary(); setStepper(n); show(n);
     // Step 5: the wizard is done — drop the summary rail (desktop) and the
     // compact bar (mobile) so the health-check CTA is the only thing on screen.
@@ -660,9 +682,11 @@
       return '<button type="button" class="unitcard" data-uid="'+esc(u.id)+'">'+pinSvg()+'<div><div class="nm">'+esc(u.name)+'</div>'+addr+'</div></button>';
     }).join("");
     Array.prototype.forEach.call($("unitWrap").querySelectorAll(".unitcard"), function(btn){
-      btn.addEventListener("click", function(){
+      btn.addEventListener("click", function(e){
         var uid=btn.getAttribute("data-uid");
         selectUnit(state.units.filter(function(x){return x.id===uid;})[0], false);
+        // Same as c1, after the pause.
+        if(e && e.isTrusted) scheduleAdvance(1, function(){ if(!state.unit) return; buildClasses(); go(2); });
       });
     });
   }
@@ -711,7 +735,7 @@
     }
 
     function onCardClick(btn){
-      return function(){
+      return function(e){
         state.audience = btn.getAttribute("data-aud");
         state.typeCode = btn.getAttribute("data-tc");
         state.typeLabel = btn.getAttribute("data-tl");
@@ -721,6 +745,8 @@
         btn.classList.add("on");
         $("c2").disabled=false;
         paintSummary();
+        // Same as c2, after the pause.
+        if(e && e.isTrusted) scheduleAdvance(2, function(){ if(!state.typeCode) return; buildSlots(); go(3); });
       };
     }
     function bindCards(root){
@@ -908,6 +934,7 @@
     // (state.slot's day if in-month, else its first session). Never touches state.slot.
     Array.prototype.forEach.call($("slotWrap").querySelectorAll(".calnav[data-nav]"), function(nav){
       nav.addEventListener("click", function(){
+        cancelAdvance();   // browsing the calendar is not a decision
         if(nav.getAttribute("data-nav")==="prev"){ if(!hasPrev)return; _calM--; if(_calM<0){_calM=11;_calY--;} }
         else{ if(!hasNext)return; _calM++; if(_calM>11){_calM=0;_calY++;} }
         var di=_dayIdxInMonth(_calY,_calM); if(di>=0) _activeDay=di;
@@ -918,13 +945,14 @@
     // are divs and never match. Does NOT touch state.slot.
     Array.prototype.forEach.call($("slotWrap").querySelectorAll(".calcell[data-dayidx]"), function(cell){
       cell.addEventListener("click", function(){
+        cancelAdvance();   // browsing the calendar is not a decision
         _activeDay = parseInt(cell.getAttribute("data-dayidx"),10) || 0;
         renderMonth();
       });
     });
     // Slot pick — unchanged contract: sets state.slot, .on highlight, enables c3, paintSummary.
     Array.prototype.forEach.call($("slotWrap").querySelectorAll(".slot"), function(btn){
-      btn.addEventListener("click", function(){
+      btn.addEventListener("click", function(e){
         state.fallback=false;
         state.slot = {
           class_id: btn.getAttribute("data-cid"),
@@ -937,6 +965,8 @@
         btn.classList.add("on");
         $("c3").disabled=false;
         paintSummary();
+        // Same as c3, after the pause.
+        if(e && e.isTrusted) scheduleAdvance(3, function(){ if(!state.slot||state.fallback) return; applyDetailsMode(); go(4); });
       });
     });
   }
@@ -962,7 +992,8 @@
     // click that set it.
     $("whoAdult").classList.toggle("on", state.forKid===false);
     $("whoKid").classList.toggle("on", state.forKid===true);
-    $("kidField").style.display = kidMode ? "block" : "none";
+    $("kidFirstField").style.display = kidMode ? "block" : "none";
+    $("kidLastField").style.display  = kidMode ? "block" : "none";
     $("kidnote").style.display  = kidMode ? "flex" : "none";
     $("availField").style.display = state.fallback ? "block" : "none";
     // Bring-a-friend — only when there's a real session (never on the fallback
@@ -995,7 +1026,7 @@
   });
 
   // Reveal the friend fields when the "Bringing a friend?" box is ticked (same
-  // display:none mechanism #kidField / #availField use).
+  // display:none mechanism #kidFirstField / #availField use).
   $("friendToggle").addEventListener("change", function(){
     $("friendFields").style.display = this.checked ? "block" : "none";
   });
@@ -1028,26 +1059,60 @@
   // Australian phone — SAME rule as waiver.html. Strip spaces/dashes/parens first.
   function validAUPhone(raw){ var d=(raw||"").replace(/[\s\-()]/g,""); return /^(\+?61|0)[2-478]\d{8}$/.test(d); }
 
+  // ONE name rule for the child's first + last name and the adult's first + last
+  // name: trimmed, required, at least one letter, no digits; only Unicode letters
+  // and marks, space, hyphen, straight/curly apostrophe and full stop; 80 max
+  // (the trial-booking function caps first/last names at 80).
+  // Returns "" when valid, else "missing" | "letters" | "long".
+  var NAME_MAX = 80;
+  var NAME_OK_RE = /^[\p{L}\p{M} '\u2019.\-]+$/u;
+  function nameIssue(raw){
+    var v = String(raw==null?"":raw).trim();
+    if(!v) return "missing";
+    if(v.length > NAME_MAX) return "long";
+    if(/\d/.test(v) || !/\p{L}/u.test(v) || !NAME_OK_RE.test(v)) return "letters";
+    return "";
+  }
+  // The child's name as ONE string for kid_name: "First Last", single-spaced.
+  // The payload, the database and the trial-booking function keep one field.
+  function kidFullName(){ return (val("kid_first")+" "+val("kid_last")).replace(/\s+/g," ").trim(); }
+  var KID_NAME_MAX = 120;   // the trial-booking function truncates kid_name at 120
+
   function showFormErr(msg){ var b=$("formerr"); b.textContent=msg; b.style.display="block"; b.scrollIntoView({behavior:"smooth",block:"center"}); }
 
   $("bookBtn").addEventListener("click", function(){
     if(state.booked) return;
     $("formerr").style.display="none";
-    ["first_name","last_name","email","phone","kid_name","avail","friend_name","friend_email","friend_phone"].forEach(function(id){ setErr(id,false); });
+    ["first_name","last_name","email","phone","kid_first","kid_last","avail","friend_name","friend_email","friend_phone"].forEach(function(id){ setErr(id,false); });
 
     var kidMode = (state.forKid===true);
     $("whofor").classList.remove("err");
     // Friend block is "open" only with a real session AND the box ticked. Closed →
     // no friend validation, no friend fields sent.
     var friendOpen = !state.fallback && $("friendToggle").checked;
-    var missing=[], badFormat=[];
+    var missing=[], badFormat=[], badName=[], longName=[];
+    // Every name field goes through nameIssue(); each problem names its field.
+    function checkName(id, label){
+      var issue = nameIssue(val(id));
+      if(!issue) return;
+      setErr(id,true);
+      if(issue==="missing") missing.push(label);
+      else if(issue==="long") longName.push(label+" ("+NAME_MAX+" characters max)");
+      else badName.push(label);
+    }
 
     // Unanswered is its own failure — it must never fall through to "adult".
     if(state.forKid===null){ $("whofor").classList.add("err"); missing.push("who the trial is for"); }
-    if(kidMode && !val("kid_name")){ setErr("kid_name",true); missing.push("child's name"); }
+    if(kidMode){
+      checkName("kid_first", "child's first name");
+      checkName("kid_last",  "child's last name");
+      if(!nameIssue(val("kid_first")) && !nameIssue(val("kid_last")) && kidFullName().length > KID_NAME_MAX){
+        setErr("kid_first",true); setErr("kid_last",true); longName.push("child's first and last name together ("+KID_NAME_MAX+" characters max)");
+      }
+    }
     if(state.fallback && !val("avail")){ setErr("avail",true); missing.push("your availability"); }
-    if(!val("first_name")){ setErr("first_name",true); missing.push("first name"); }
-    if(!val("last_name")){ setErr("last_name",true); missing.push("last name"); }
+    checkName("first_name", kidMode ? "parent's first name" : "first name");
+    checkName("last_name",  kidMode ? "parent's last name"  : "last name");
     if(!val("email")){ setErr("email",true); missing.push("email"); }
     else if(!EMAIL_RE.test(val("email"))){ setErr("email",true); badFormat.push("a valid email address"); }
     if(!val("phone")){ setErr("phone",true); missing.push("phone"); }
@@ -1063,9 +1128,11 @@
       }
     }
 
-    if(missing.length || badFormat.length){
+    if(missing.length || badFormat.length || badName.length || longName.length){
       var parts=[];
       if(missing.length) parts.push("Please fill in: "+missing.join(", ")+".");
+      if(badName.length) parts.push("Use letters only (no numbers or symbols) in: "+badName.join(", ")+".");
+      if(longName.length) parts.push("Please shorten: "+longName.join(", ")+".");
       if(badFormat.length) parts.push("Please enter "+badFormat.join(" and ")+".");
       showFormErr(parts.join(" ")); return;
     }
@@ -1087,7 +1154,7 @@
       // is_kid now travels explicitly. NOTE: the trial-booking function derives
       // is_kid from the class and does not read this field — see the report.
       is_kid: kidMode,
-      kid_name: kidMode ? val("kid_name") : "",
+      kid_name: kidMode ? kidFullName() : "",
       friend_name: friendOpen ? val("friend_name") : "",
       friend_email: friendOpen ? val("friend_email") : "",
       friend_phone: friendOpen ? val("friend_phone") : ""
@@ -1166,7 +1233,7 @@
     // CTA → /waiver.html?t=<token> (+ k / n so waiver.html can prefill). Title-case
     // the participant name so &n= matches the emailed link (EF normalises the same
     // way) — same person, same casing in the waiver, whichever button they press.
-    var participant = titleCase(kidMode ? val("kid_name") : val("first_name"));
+    var participant = titleCase(kidMode ? kidFullName() : val("first_name"));
     var href = "/waiver.html?t=" + encodeURIComponent(token || "");
     if(kidMode) href += "&k=1";
     if(participant) href += "&n=" + encodeURIComponent(participant);
