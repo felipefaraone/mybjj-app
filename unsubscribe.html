@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Email preferences — myBJJ</title>
+<meta name="robots" content="noindex" />
+<meta name="referrer" content="no-referrer" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+<!--
+  Unsubscribe page for the engagement emails (migration 137).
+  Opening this page changes NOTHING: email security scanners open links in
+  emails on their own, so the only thing that records an opt-out is a person
+  pressing a button, which POSTs {email, kind, sig} to the email-unsubscribe
+  Edge Function. The link carries sig (for its own kind) and sig_all (for
+  "stop all"), both signed by engagement-emails. No service worker, no
+  third-party scripts.
+-->
+<style>
+  :root{
+    --blue:#1A5DAD; --blue-dark:#124680; --blue-tint:#eef4fb; --blue-mid:#7ba4d3;
+    --ink:#16202b; --ink2:#5a6a78; --ink3:#93a0ac;
+    --line:#e1e7ee; --bg:#f5f7fa; --card:#fff;
+    --green:#1e7d47; --green-bg:#e8f6ee; --green-border:#bfe5cf;
+    --red:#c0392b; --red-bg:#fdecea;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--ink);font-family:'Barlow',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  body{line-height:1.5}
+  .wrap{max-width:560px;margin:0 auto;padding:0 18px}
+  .hdr{background:var(--blue-dark);border-bottom:3px solid var(--blue)}
+  .hdr .wrap{display:flex;align-items:center;height:64px;gap:11px}
+  .brand{display:flex;align-items:center;gap:11px;text-decoration:none}
+  .brand img{width:40px;height:40px;border-radius:50%;background:var(--card);object-fit:contain;flex-shrink:0}
+  .brand span{font-family:'Barlow Condensed';font-weight:700;font-size:21px;letter-spacing:1px;text-transform:uppercase;color:var(--card)}
+  main{padding:28px 0 48px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 20px}
+  h1{font-family:'Barlow Condensed';font-weight:700;font-size:26px;letter-spacing:.3px;text-transform:uppercase;color:var(--ink);line-height:1.15;margin-bottom:10px}
+  .lead{font-size:15px;color:var(--ink2);margin-bottom:6px}
+  .addr{font-size:16px;font-weight:600;color:var(--ink);word-break:break-all;margin-bottom:20px}
+  .btn{display:block;width:100%;border:none;border-radius:10px;padding:16px;font-family:'Barlow Condensed';font-weight:700;font-size:16px;letter-spacing:.7px;text-transform:uppercase;cursor:pointer;transition:.14s;text-align:center}
+  .btn.primary{background:var(--blue);color:var(--card)}
+  .btn.primary:hover:not(:disabled){background:var(--blue-dark)}
+  .btn.ghost{background:none;color:var(--blue);border:1.5px solid var(--blue-mid);margin-top:12px}
+  .btn.ghost:hover:not(:disabled){background:var(--blue-tint)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .note{font-size:13px;color:var(--ink3);margin-top:16px}
+  .msg{border-radius:10px;padding:14px 16px;font-size:15px;font-weight:600}
+  .msg.ok{background:var(--green-bg);border:1px solid var(--green-border);color:var(--green)}
+  .msg.err{background:var(--red-bg);border:1px solid var(--red);color:var(--red);margin-top:14px;font-weight:500}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+<header class="hdr"><div class="wrap">
+  <a class="brand" href="https://mybjj.com.au"><img src="/icon-192.png" alt="myBJJ" /><span>myBJJ</span></a>
+</div></header>
+
+<main><div class="wrap"><div class="card">
+  <!-- A link that is missing or malformed: say so, offer nothing to press. -->
+  <div id="bad" hidden>
+    <h1>Link not complete</h1>
+    <p class="lead">This unsubscribe link is missing something. Reply to any of our emails and we'll take you off the list.</p>
+  </div>
+
+  <div id="ask" hidden>
+    <h1>Email preferences</h1>
+    <p class="lead" id="what">Stop these emails for:</p>
+    <p class="addr" id="addr"></p>
+    <button type="button" class="btn primary" id="stopThis">Stop these emails</button>
+    <button type="button" class="btn ghost" id="stopAll" hidden>Stop all emails from MyBJJ</button>
+    <div class="msg err" id="err" role="alert" hidden></div>
+    <p class="note">Nothing changes until you press a button.</p>
+  </div>
+
+  <div id="done" hidden>
+    <div class="msg ok" role="status">Done. You won't get these emails anymore.</div>
+    <p class="note" id="doneAddr"></p>
+  </div>
+</div></div></main>
+
+<script>
+(function(){
+  // The function that records an opt-out. It accepts only this site's origin.
+  var ENDPOINT = "https://dcilltzgegqsrgatskhz.supabase.co/functions/v1/email-unsubscribe";
+  var KIND_LABEL = {
+    monthly_recap: "the monthly training updates",
+    mia: "the check-in emails",
+    all: "all emails from MyBJJ"
+  };
+  function $(id){ return document.getElementById(id); }
+
+  var q = new URLSearchParams(location.search);
+  var email  = (q.get("email") || "").trim().toLowerCase();
+  var kind   = q.get("kind") || "";
+  var sig    = (q.get("sig") || "").toLowerCase();
+  var sigAll = (q.get("sig_all") || "").toLowerCase();
+  var HEX64 = /^[0-9a-f]{64}$/;
+
+  // Shape check only (the function checks the signature). Page load sends nothing.
+  if(!email || email.length > 320 || !KIND_LABEL.hasOwnProperty(kind) || !HEX64.test(sig)){
+    $("bad").hidden = false;
+    return;
+  }
+  $("what").textContent = "Stop " + KIND_LABEL[kind] + " for:";
+  $("addr").textContent = email;            // textContent: never parsed as HTML
+  $("stopThis").textContent = (kind === "all") ? "Stop all emails from MyBJJ" : "Stop these emails";
+  if(kind !== "all" && HEX64.test(sigAll)) $("stopAll").hidden = false;
+  $("ask").hidden = false;
+
+  var busy = false;
+  function stop(k, s){
+    if(busy) return;
+    busy = true;
+    $("err").hidden = true;
+    $("stopThis").disabled = true; $("stopAll").disabled = true;
+    fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: email, kind: k, sig: s })
+    })
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ return { ok: r.ok, d: d }; }); })
+    .then(function(res){
+      if(res.ok && res.d && res.d.ok){
+        $("ask").hidden = true;
+        $("doneAddr").textContent = email;
+        $("done").hidden = false;
+        return;
+      }
+      fail((res.d && res.d.error) ? res.d.error : "That didn't work. Please try again, or reply to any of our emails and we'll take you off the list.");
+    })
+    .catch(function(){ fail("Couldn't reach us. Check your connection and try again."); });
+  }
+  function fail(msg){
+    busy = false;
+    $("stopThis").disabled = false; $("stopAll").disabled = false;
+    $("err").textContent = msg;
+    $("err").hidden = false;
+  }
+  $("stopThis").addEventListener("click", function(){ stop(kind, sig); });
+  $("stopAll").addEventListener("click", function(){ stop("all", sigAll); });
+})();
+</script>
+</body>
+</html>
