@@ -201,6 +201,13 @@
   .whofor button.on .wsub{color:var(--blue)}
   .whofor.err button{border-color:var(--red)}
   .whonote{display:flex;gap:10px;background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;padding:11px 14px;margin:10px 0 0;font-size:13px;color:var(--blue-dark);line-height:1.45}
+  /* Child's date of birth: one group of three short numeric inputs. */
+  .dobfield{grid-column:1/-1}
+  .dobfield .lab{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:6px}
+  .dobfield .req{color:var(--red)}
+  .dobrow{display:grid;grid-template-columns:1fr 1fr 1.5fr;gap:10px;max-width:340px}
+  .dobrow label{display:block}
+  .dobrow .sub{display:block;font-size:12px;color:var(--ink3);margin-bottom:4px}
   @media(max-width:420px){ .whofor .wopts{grid-template-columns:1fr} }
   .kidnote{display:flex;gap:10px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:13.5px;color:var(--amber);line-height:1.45}
   .kidnote svg{width:17px;height:17px;flex-shrink:0;margin-top:1px}
@@ -322,6 +329,15 @@
       <div class="formgrid">
         <label class="field" id="kidFirstField" style="display:none"><span class="lab">Child's first name<span class="req"> *</span></span><input type="text" id="kid_first" autocomplete="off" /></label>
         <label class="field" id="kidLastField" style="display:none"><span class="lab">Child's last name<span class="req"> *</span></span><input type="text" id="kid_last" autocomplete="off" /></label>
+        <div class="dobfield" id="kidDobField" style="display:none" role="group" aria-labelledby="kidDobLab">
+          <span class="lab" id="kidDobLab">Child's date of birth<span class="req"> *</span></span>
+          <div class="dobrow">
+            <label><span class="sub">Day</span><input type="text" id="kid_dob_d" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="DD" /></label>
+            <label><span class="sub">Month</span><input type="text" id="kid_dob_m" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="MM" /></label>
+            <label><span class="sub">Year</span><input type="text" id="kid_dob_y" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="YYYY" /></label>
+          </div>
+          <div class="whonote" id="dobnote" style="display:none"><span id="dobnoteTx"></span></div>
+        </div>
         <label class="field" id="availField" style="display:none;grid-column:1/-1"><span class="lab">When are you usually free?<span class="req"> *</span></span><textarea id="avail" placeholder="e.g. Weekday evenings after 6, or Saturday mornings"></textarea></label>
         <label class="field"><span class="lab" id="fnLab">First name<span class="req"> *</span></span><input type="text" id="first_name" autocomplete="given-name" /></label>
         <label class="field"><span class="lab" id="lnLab">Last name<span class="req"> *</span></span><input type="text" id="last_name" autocomplete="family-name" /></label>
@@ -458,6 +474,10 @@
   };
   // Specific (type_code, audience) pair wins; plain type_code is the fallback.
   function copyFor(tc, aud){ return COPY[tc+":"+aud] || COPY[tc] || null; }
+  // Age range of a class, from the COPY min/max (the single source); null when
+  // the class has none (adult classes). Used by the step-2 age filter and the
+  // step-4 date-of-birth note.
+  function ageRangeFor(tc, aud){ var c=copyFor(tc,aud); return (c && c.min!=null && c.max!=null) ? {min:c.min, max:c.max} : null; }
   // Step-2 "How old is your child?" filter value — display-only, never sent/stored.
   var kidsAgeFilter = "";
 
@@ -712,7 +732,7 @@
 
     // Age range for a kids item, from the COPY min/max (the single source). null
     // when the entry has no range (a future kids type — then never age-filtered).
-    function kidsRange(it){ var c=copyFor(it.type_code,it.audience); return (c && c.min!=null && c.max!=null) ? {min:c.min, max:c.max} : null; }
+    function kidsRange(it){ return ageRangeFor(it.type_code, it.audience); }
 
     function cardHtml(it){
       var c = copyFor(it.type_code, it.audience);
@@ -994,6 +1014,8 @@
     $("whoKid").classList.toggle("on", state.forKid===true);
     $("kidFirstField").style.display = kidMode ? "block" : "none";
     $("kidLastField").style.display  = kidMode ? "block" : "none";
+    $("kidDobField").style.display   = kidMode ? "block" : "none";
+    updateDobNote();
     $("kidnote").style.display  = kidMode ? "flex" : "none";
     $("availField").style.display = state.fallback ? "block" : "none";
     // Bring-a-friend — only when there's a real session (never on the fallback
@@ -1078,19 +1100,65 @@
   function kidFullName(){ return (val("kid_first")+" "+val("kid_last")).replace(/\s+/g," ").trim(); }
   var KID_NAME_MAX = 120;   // the trial-booking function truncates kid_name at 120
 
+  // ONE check for the child's date of birth: complete, a real date, not in the
+  // future, aged 2 to 17 today (the booking date — the trial-booking function
+  // applies the same rule in Sydney time). Returns {issue, iso, age}; issue is
+  // "" when valid, else "missing" | "incomplete" | "invalid" | "future" | "age".
+  var KID_MIN_AGE = 2, KID_MAX_AGE = 17;
+  function ageOn(iso, onDate){
+    var b=iso.split("-").map(Number), t=onDate.split("-").map(Number);
+    var a=t[0]-b[0]; if(t[1]<b[1] || (t[1]===b[1] && t[2]<b[2])) a--;
+    return a;
+  }
+  function kidDobCheck(){
+    var d=val("kid_dob_d"), m=val("kid_dob_m"), y=val("kid_dob_y");
+    if(!d && !m && !y) return { issue:"missing" };
+    if(!/^\d{1,2}$/.test(d) || !/^\d{1,2}$/.test(m) || !/^\d{4}$/.test(y)) return { issue:"incomplete" };
+    var dn=+d, mn=+m, yn=+y;
+    var t=new Date(Date.UTC(yn, mn-1, dn));
+    if(mn<1 || mn>12 || t.getUTCFullYear()!==yn || t.getUTCMonth()!==mn-1 || t.getUTCDate()!==dn) return { issue:"invalid" };
+    var iso = yn+"-"+String(mn).padStart(2,"0")+"-"+String(dn).padStart(2,"0");
+    var today = sydneyNow().dateStr;
+    if(iso > today) return { issue:"future" };
+    var age = ageOn(iso, today);
+    if(age < KID_MIN_AGE || age > KID_MAX_AGE) return { issue:"age" };
+    return { issue:"", iso:iso, age:age };
+  }
+  // Non-blocking: when the child's age on the session date (today on the "none
+  // of these times work" path) is outside the picked class's range, say so.
+  function updateDobNote(){
+    var note=$("dobnote"); if(!note) return;
+    var show=false;
+    if(state.forKid===true){
+      var dc=kidDobCheck();
+      var r=state.typeCode ? ageRangeFor(state.typeCode, state.audience) : null;
+      if(!dc.issue && r){
+        var onDate=(!state.fallback && state.slot) ? state.slot.date : sydneyNow().dateStr;
+        var a=ageOn(dc.iso, onDate);
+        if(a<r.min || a>r.max){
+          $("dobnoteTx").textContent="This class is for ages "+r.min+" to "+r.max+". The academy will check and get in touch if another class suits better.";
+          show=true;
+        }
+      }
+    }
+    note.style.display = show ? "flex" : "none";
+  }
+  ["kid_dob_d","kid_dob_m","kid_dob_y"].forEach(function(id){ $(id).addEventListener("input", updateDobNote); });
+
   function showFormErr(msg){ var b=$("formerr"); b.textContent=msg; b.style.display="block"; b.scrollIntoView({behavior:"smooth",block:"center"}); }
 
   $("bookBtn").addEventListener("click", function(){
     if(state.booked) return;
     $("formerr").style.display="none";
-    ["first_name","last_name","email","phone","kid_first","kid_last","avail","friend_name","friend_email","friend_phone"].forEach(function(id){ setErr(id,false); });
+    ["first_name","last_name","email","phone","kid_first","kid_last","kid_dob_d","kid_dob_m","kid_dob_y","avail","friend_name","friend_email","friend_phone"].forEach(function(id){ setErr(id,false); });
 
     var kidMode = (state.forKid===true);
     $("whofor").classList.remove("err");
     // Friend block is "open" only with a real session AND the box ticked. Closed →
     // no friend validation, no friend fields sent.
     var friendOpen = !state.fallback && $("friendToggle").checked;
-    var missing=[], badFormat=[], badName=[], longName=[];
+    var missing=[], badFormat=[], badName=[], longName=[], dobProblem="";
+    var dobCheck = kidMode ? kidDobCheck() : { issue:"", iso:"" };
     // Every name field goes through nameIssue(); each problem names its field.
     function checkName(id, label){
       var issue = nameIssue(val(id));
@@ -1108,6 +1176,16 @@
       checkName("kid_last",  "child's last name");
       if(!nameIssue(val("kid_first")) && !nameIssue(val("kid_last")) && kidFullName().length > KID_NAME_MAX){
         setErr("kid_first",true); setErr("kid_last",true); longName.push("child's first and last name together ("+KID_NAME_MAX+" characters max)");
+      }
+      if(dobCheck.issue){
+        ["kid_dob_d","kid_dob_m","kid_dob_y"].forEach(function(id){ setErr(id,true); });
+        if(dobCheck.issue==="missing") missing.push("child's date of birth");
+        else dobProblem = {
+          incomplete: "Please enter the child's date of birth as day, month and year (e.g. 07 03 2016).",
+          invalid:    "The child's date of birth isn't a real date. Please check it.",
+          future:     "The child's date of birth can't be in the future.",
+          age:        "Children's trials are for ages "+KID_MIN_AGE+" to "+KID_MAX_AGE+". Please check the child's date of birth."
+        }[dobCheck.issue];
       }
     }
     if(state.fallback && !val("avail")){ setErr("avail",true); missing.push("your availability"); }
@@ -1128,9 +1206,10 @@
       }
     }
 
-    if(missing.length || badFormat.length || badName.length || longName.length){
+    if(missing.length || badFormat.length || badName.length || longName.length || dobProblem){
       var parts=[];
       if(missing.length) parts.push("Please fill in: "+missing.join(", ")+".");
+      if(dobProblem) parts.push(dobProblem);
       if(badName.length) parts.push("Use letters only (no numbers or symbols) in: "+badName.join(", ")+".");
       if(longName.length) parts.push("Please shorten: "+longName.join(", ")+".");
       if(badFormat.length) parts.push("Please enter "+badFormat.join(" and ")+".");
@@ -1155,6 +1234,8 @@
       // is_kid from the class and does not read this field — see the report.
       is_kid: kidMode,
       kid_name: kidMode ? kidFullName() : "",
+      // YYYY-MM-DD, child bookings only (migration 136).
+      kid_dob: kidMode ? (dobCheck.iso || "") : "",
       friend_name: friendOpen ? val("friend_name") : "",
       friend_email: friendOpen ? val("friend_email") : "",
       friend_phone: friendOpen ? val("friend_phone") : ""

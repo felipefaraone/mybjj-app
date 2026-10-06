@@ -138,6 +138,39 @@ function sydneyTodayStr(): string {
   }).format(new Date());
 }
 
+// Child's date of birth (migration 136). Accepts 'YYYY-MM-DD' only; it must be a
+// real calendar date, not after `todayStr`, and the child aged 2 to 17 on that
+// day (the booking date, Sydney). Pure, so it is testable without the runtime.
+// Returns the canonical date and the age, or the message to send back.
+const KID_MIN_AGE = 2;
+const KID_MAX_AGE = 17;
+function ageOn(dob: string, onDate: string): number {
+  const [by, bm, bd] = dob.split("-").map(Number);
+  const [ty, tm, td] = onDate.split("-").map(Number);
+  let age = ty - by;
+  if (tm < bm || (tm === bm && td < bd)) age--;
+  return age;
+}
+function checkKidDob(raw: string, todayStr: string): { dob: string; age: number } | { error: string } {
+  if (!DATE_RE.test(raw)) return { error: "Please enter your child's date of birth as day, month and year." };
+  const [y, m, d] = raw.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== m - 1 || t.getUTCDate() !== d) {
+    return { error: "Your child's date of birth isn't a real date. Please check it." };
+  }
+  if (raw > todayStr) return { error: "Your child's date of birth can't be in the future." };
+  const age = ageOn(raw, todayStr);
+  if (age < KID_MIN_AGE || age > KID_MAX_AGE) {
+    return { error: `Children's trials are for ages ${KID_MIN_AGE} to ${KID_MAX_AGE}. Please check your child's date of birth.` };
+  }
+  return { dob: raw, age };
+}
+// 'YYYY-MM-DD' -> "12 Mar 2016" (calendar date, timezone-independent).
+function fmtDob(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return d + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m - 1] + " " + y;
+}
+
 // Weekday (0=Sun..6=Sat) for a 'YYYY-MM-DD' calendar date, timezone-independent.
 function weekdayOf(dateStr: string): number {
   return new Date(dateStr + "T00:00:00Z").getUTCDay();
@@ -332,6 +365,7 @@ interface StaffNotifyData {
   preferredDay: string;   // fallback path only (no concrete slot)
   isKid: boolean;
   kidName: string;
+  kidDob?: string | null;  // "12 Mar 2016 (age 7)" when given; child bookings only
   unitName: string;
   dayDate: string | null; // formatted "Wednesday 15 Jul"; null on the fallback path
   time: string | null;    // "6:00 AM"
@@ -359,6 +393,7 @@ function buildStaffNotifyEmail(d: StaffNotifyData): { subject: string; html: str
 
   const rows: Array<[string, string]> = [
     ["Name", nameLine],
+    ...(d.isKid && d.kidDob ? [["Date of birth", d.kidDob] as [string, string]] : []),
     ["When", whenLine],
     ["Unit", d.unitName],
     ["Contact", `${d.email} · ${d.phone}`],
@@ -594,6 +629,22 @@ Deno.serve(async (req) => {
   // it too, which it never did before.
   if (isKid && !kidName) return bad("Please add your child's name.", origin);
 
+  // Child's date of birth (migration 136). Read ONLY for a child booking; ignored
+  // otherwise. OPTIONAL here on purpose: a trial.html still open from before the
+  // field existed must keep booking during the rollout — trial.html is what makes
+  // it required. When present it must be valid, checked before anything is written.
+  let kidDob: string | null = null;
+  let kidAge: number | null = null;
+  if (isKid) {
+    const rawDob = str(payload.kid_dob, 10);
+    if (rawDob) {
+      const chk = checkKidDob(rawDob, sydneyTodayStr());
+      if ("error" in chk) return bad(chk.error, origin);
+      kidDob = chk.dob;
+      kidAge = chk.age;
+    }
+  }
+
   // A child in an Adults class is STORABLE, never rejected: the academy puts
   // teenagers in adult classes deliberately (14 and over train with adults), so
   // this combination is frequently correct. Logged, not blocked — and the ops
@@ -650,12 +701,13 @@ Deno.serve(async (req) => {
     class_id: string | null; class_date: string | null; class_time: string | null;
     phone: string | null; lapsed_at: string | null; booked_at: string | null;
     kid_name: string | null;
+    kid_dob: string | null;
   };
   let existingLead: LeadRow | null = null;
   {
     const { data: leadRows, error: leadErr } = await supabase
       .from("trial_bookings")
-      .select("id, waiver_token, trial_status, class_id, class_date, class_time, phone, lapsed_at, booked_at, kid_name")
+      .select("id, waiver_token, trial_status, class_id, class_date, class_time, phone, lapsed_at, booked_at, kid_name, kid_dob")
       .eq("unit_id", unitRow.id)
       .eq("email", email)
       .eq("is_kid", isKid)
@@ -765,6 +817,9 @@ Deno.serve(async (req) => {
     // still reaches the office in the staff email below, which carries what was
     // submitted this time.
     if (!existingLead.phone && phone) patch.phone = phone;
+    // Child's date of birth: same fill-a-gap rule — set when the lead has none,
+    // never overwrite a stored one (migration 136).
+    if (isKid && kidDob && !existingLead.kid_dob) patch.kid_dob = kidDob;
     // The exception: availability on the fallback path. preferredDay is only
     // non-empty when no class was chosen, and it is a statement about the future
     // that supersedes the old one rather than competing with it.
@@ -795,6 +850,7 @@ Deno.serve(async (req) => {
       preferred_day: preferredDay || null,
       is_kid: isKid,
       kid_name: isKid ? kidName : null,
+      kid_dob: isKid ? kidDob : null,
       class_id: insertClassId,
       class_date: insertClassDate,
       class_time: insertClassTime,
@@ -918,6 +974,7 @@ Deno.serve(async (req) => {
     preferredDay,
     isKid,
     kidName,
+    kidDob: kidDob ? `${fmtDob(kidDob)} (age ${kidAge})` : null,
     unitName: unitRow.name,
     dayDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
     time: insertClassTime ? fmt12(insertClassTime) : null,
