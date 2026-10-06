@@ -30,6 +30,8 @@
 // Deno / Supabase Edge runtime.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { renderTrialEmail, trialUnsubUrl, TRIAL_FROM } from "../_shared/trial_emails.ts";
+import { unitAddressLine } from "../_shared/unit_address.ts";
 
 // ---- config -----------------------------------------------------------------
 
@@ -264,96 +266,10 @@ function escHtml(s: string): string {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }
 
-interface EmailData {
-  firstName: string;
-  classLabel: string;
-  unitName: string;
-  dayDate: string | null;   // "Wednesday 15 Jul", null on the flexible-time fallback
-  time: string | null;      // "6:00 AM"
-  address: string | null;   // full street line, null when the unit has none
-  mapsUrl: string | null;   // Google Maps link for the address, null when no address
-  phone: string | null;
-  waiverLink: string;
-}
-
-// Build the plain confirmation email (subject + html + text). Pure — no I/O.
-function buildTrialEmail(d: EmailData): { subject: string; html: string; text: string } {
-  const unitFull = "myBJJ " + d.unitName;
-  const subject = d.dayDate
-    ? `You're booked — ${d.classLabel} at ${unitFull}, ${d.dayDate}`
-    : `You're booked at ${unitFull} — complete your health check`;
-
-  // Session block lines — the address is handled separately (it becomes a Maps
-  // link / gets its own URL line), so it is NOT in this shared list.
-  const sessionLines: string[] = [];
-  if (d.dayDate && d.time) sessionLines.push(`${d.dayDate}, ${d.time}`);
-  sessionLines.push(`${d.classLabel} · ${unitFull}`);
-  if (!d.dayDate) sessionLines.push("We'll confirm your class time with you shortly.");
-
-  const signoff = d.phone ? `${unitFull} · ${d.phone}` : unitFull;
-  const trialUrl = `${WAIVER_ORIGIN}/trial.html`;
-
-  // ---- text ----
-  // Address (when present) prints as the line itself + the Maps URL on its own
-  // line below. No address → neither line, never a blank one.
-  const text = [
-    `Hi ${d.firstName},`,
-    ``,
-    `You're booked in. Here are the details:`,
-    ``,
-    ...sessionLines,
-    ...(d.address ? [d.address, d.mapsUrl!] : []),
-    ``,
-    `Complete your health check — it takes about three minutes, and it must be done before you train:`,
-    d.waiverLink,
-    ``,
-    `Before you arrive:`,
-    `- Arrive 10 minutes early so we can show you around.`,
-    `- Wear a t-shirt and shorts. No jewellery.`,
-    `- We'll lend you everything else — you don't need to buy anything.`,
-    ``,
-    `Bring a friend — their first class is free too.`,
-    `Send them here: ${trialUrl}`,
-    ``,
-    `See you on the mats,`,
-    signoff,
-    `You can just reply to this email if you need anything.`,
-  ].join("\n");
-
-  // ---- html (simple, inline-styled; no external CSS / fonts / images) ----
-  const sessionHtml = sessionLines
-    .map((l, i) => `<div style="font-size:${i === 0 && d.dayDate ? "18px;font-weight:700" : "15px"};color:#16202b;line-height:1.5">${escHtml(l)}</div>`)
-    .join("");
-  // Address as a real Google Maps link (omitted entirely when there is no address).
-  const addrHtml = d.address
-    ? `<div style="font-size:15px;line-height:1.5;margin-top:2px"><a href="${escHtml(d.mapsUrl!)}" style="color:#1A5DAD;text-decoration:underline">${escHtml(d.address)}</a></div>`
-    : "";
-
-  const html = `<div style="margin:0;padding:0;background:#f5f7fa">
-  <div style="max-width:560px;margin:0 auto;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;color:#16202b">
-    <p style="font-size:16px;margin:0 0 16px">Hi ${escHtml(d.firstName)}, you're booked in.</p>
-    <div style="background:#ffffff;border:1px solid #e1e7ee;border-radius:10px;padding:16px 18px;margin:0 0 22px">
-      ${sessionHtml}${addrHtml}
-    </div>
-    <a href="${escHtml(d.waiverLink)}" style="display:block;background:#1A5DAD;color:#ffffff;text-decoration:none;text-align:center;font-size:17px;font-weight:700;padding:15px 20px;border-radius:10px">Complete your health check</a>
-    <p style="font-size:13.5px;color:#5a6a78;margin:10px 0 24px;text-align:center">It takes about three minutes, and it must be done before you train.</p>
-    <p style="font-size:15px;font-weight:700;color:#16202b;margin:0 0 6px">Before you arrive</p>
-    <p style="font-size:14.5px;color:#5a6a78;line-height:1.7;margin:0 0 22px">
-      Arrive 10 minutes early so we can show you around.<br>
-      Wear a t-shirt and shorts. No jewellery.<br>
-      We'll lend you everything else — you don't need to buy anything.
-    </p>
-    <p style="font-size:14.5px;color:#16202b;margin:0 0 22px">Bring a friend — their first class is free too.<br>Send them here: <a href="${escHtml(trialUrl)}" style="color:#1A5DAD;text-decoration:underline">${escHtml(trialUrl)}</a></p>
-    <p style="font-size:14px;color:#5a6a78;line-height:1.6;margin:0;border-top:1px solid #e1e7ee;padding-top:16px">
-      See you on the mats,<br>
-      <strong style="color:#16202b">${escHtml(signoff)}</strong><br>
-      You can just reply to this email if you need anything.
-    </p>
-  </div>
-</div>`;
-
-  return { subject, html, text };
-}
+// The lead's confirmation is EMAIL 1 of the trial sequence (adult or kids
+// stream), built by the shared template in ../_shared/trial_emails.ts — the same
+// module the trial-emails function uses for emails 2 onwards. It keeps the
+// health-check button exactly as before, right after the trial details.
 
 interface StaffNotifyData {
   firstName: string;
@@ -377,7 +293,7 @@ interface StaffNotifyData {
 // The SECOND email — an operational heads-up to the ops inbox: who, when, which
 // class, how they heard, kid-or-not. Scannable, no marketing, and NO waiver line
 // (it's never signed at booking time; Patricia sees that status in the app). Same
-// simple inline-styled grammar as buildTrialEmail. Pure — no I/O.
+// simple inline-styled grammar as the lead's confirmation. Pure — no I/O.
 function buildStaffNotifyEmail(d: StaffNotifyData): { subject: string; html: string; text: string } {
   // An existing lead booking again is NOT a new person, and the ops inbox must
   // not read as though it is — that is the whole failure being fixed.
@@ -423,7 +339,7 @@ function buildStaffNotifyEmail(d: StaffNotifyData): { subject: string; html: str
 // dead Resend must not cost the booking. `replyTo` defaults to REPLY_TO so the lead
 // email call is unchanged; the staff notify passes the LEAD's address so a reply
 // reaches the person, not the shared inbox.
-async function sendTrialEmail(to: string, msg: { subject: string; html: string; text: string }, replyTo: string = REPLY_TO): Promise<void> {
+async function sendTrialEmail(to: string, msg: { subject: string; html: string; text: string }, replyTo: string = REPLY_TO, from: string = FROM): Promise<void> {
   const key = Deno.env.get("RESEND_API_KEY");
   if (!key) {
     console.error("[trial-booking] RESEND_API_KEY not set — email skipped");
@@ -434,7 +350,7 @@ async function sendTrialEmail(to: string, msg: { subject: string; html: string; 
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify({
-        from: FROM,
+        from,
         to: [to],
         reply_to: replyTo,
         subject: msg.subject,
@@ -878,26 +794,28 @@ Deno.serve(async (req) => {
   if (isKid) waiverLink += "&k=1";
   if (participant) waiverLink += `&n=${encodeURIComponent(participant)}`;
 
-  const addressLine = unitRow.address
-    ? unitRow.address + (unitRow.city ? ", " + unitRow.city : "")
-    : null;
-  // Same Google Maps link the step-5 screen builds — query is the full address line.
-  const mapsUrl = addressLine
-    ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addressLine)
-    : null;
-  const msg = buildTrialEmail({
+  // The unit's address line: the address as stored, trimmed, no city appended
+  // (_shared/unit_address.ts). The shared template builds the Maps link from it,
+  // the same query trial.html's step 5 uses.
+  const addressLine = unitAddressLine(unitRow.address);
+  // EMAIL 1 of the trial sequence: kids stream (to the parent, about the child)
+  // or adult stream. The unsubscribe footer is left off only when
+  // EMAIL_UNSUB_SECRET is missing: a confirmation is never held back for it.
+  const msg = renderTrialEmail("1", isKid ? "kids" : "adult", {
     firstName,
-    classLabel: emailClassLabel,
-    unitName: unitRow.name,
-    dayDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
-    time: insertClassTime ? fmt12(insertClassTime) : null,
-    address: addressLine,
-    mapsUrl,
-    phone: unitRow.phone || null,
+    childFirstName: isKid ? (kidName.split(/\s+/)[0] || "") : "",
+    location: unitRow.name,
+    className: insertClassDate ? emailClassLabel : null,
+    trialDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
+    trialTime: insertClassTime ? fmt12(insertClassTime) : null,
+    addressLine,
+    unitLegacyId: null,      // email 1 has no booking button
+    unitPhone: unitRow.phone || null,
     waiverLink,
+    unsubscribeUrl: await trialUnsubUrl(Deno.env.get("EMAIL_UNSUB_SECRET"), email),
   });
   // Awaited so the edge runtime doesn't tear down the isolate mid-send.
-  await sendTrialEmail(email, msg);
+  await sendTrialEmail(email, msg, REPLY_TO, TRIAL_FROM);
 
   // ---- Bring a friend: a SECOND real booking (own row, own waiver_token). ----
   // FAILURE-ISOLATED: unreachable unless the primary already returned `inserted`
@@ -939,24 +857,26 @@ Deno.serve(async (req) => {
     } else {
       friendOk = true;
       friendStaffLine = `${friendFirst}${friendLast ? " " + friendLast : ""} — invited by ${firstName} ${lastName}`;
-      // Friend confirmation email — only when they gave an email. Reuse
-      // buildTrialEmail with the friend's OWN waiver token; no k=1 (a friend is
+      // Friend confirmation email — only when they gave an email. Email 1
+      // (adult stream) with the friend's OWN waiver token; no k=1 (a friend is
       // booked as an adult, is_kid:false).
       if (friendEmail) {
         let friendWaiverLink = `${WAIVER_ORIGIN}/waiver.html?t=${encodeURIComponent(String(friendRow.waiver_token || ""))}`;
         if (friendFirst) friendWaiverLink += `&n=${encodeURIComponent(friendFirst)}`;
-        const friendMsg = buildTrialEmail({
+        const friendMsg = renderTrialEmail("1", "adult", {
           firstName: friendFirst,
-          classLabel: emailClassLabel,
-          unitName: unitRow.name,
-          dayDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
-          time: insertClassTime ? fmt12(insertClassTime) : null,
-          address: addressLine,
-          mapsUrl,
-          phone: unitRow.phone || null,
+          childFirstName: "",
+          location: unitRow.name,
+          className: insertClassDate ? emailClassLabel : null,
+          trialDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
+          trialTime: insertClassTime ? fmt12(insertClassTime) : null,
+          addressLine,
+          unitLegacyId: null,      // email 1 has no booking button
+          unitPhone: unitRow.phone || null,
           waiverLink: friendWaiverLink,
+          unsubscribeUrl: await trialUnsubUrl(Deno.env.get("EMAIL_UNSUB_SECRET"), friendEmail),
         });
-        await sendTrialEmail(friendEmail, friendMsg);
+        await sendTrialEmail(friendEmail, friendMsg, REPLY_TO, TRIAL_FROM);
       }
     }
   }

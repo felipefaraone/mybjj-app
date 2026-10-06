@@ -521,6 +521,10 @@
   function val(id){ var e=$(id); return (e&&e.value||"").trim(); }
   function setErr(id,on){ var e=$(id); if(e) e.classList.toggle("err",!!on); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  // THE unit address line on this page (cards + step 5 + its Maps query): the
+  // address as stored, trimmed. units.address is already the full address; city
+  // is NOT appended. Same rule as supabase/functions/_shared/unit_address.ts.
+  function unitAddressLine(u){ return String((u && u.address) || "").trim(); }
   // Title-case a name — SAME rule as the Edge Function's titleCase (trim, collapse
   // whitespace, uppercase the first letter of each word, hyphen/apostrophe as word
   // boundaries). Deliberately duplicated across page + EF: separate runtimes, not
@@ -696,9 +700,10 @@
     if(!list.length){ $("unitWrap").className=""; $("unitWrap").innerHTML='<div class="emptynote">No classes are published right now. Please call us on 0406 456 766 and we\'ll book you in.</div>'; return; }
     $("unitWrap").className="cards";
     $("unitWrap").innerHTML = list.map(function(u){
-      // Address line only when there IS an address; city appended if present. A
-      // unit with a null address renders with no line at all (no empty row).
-      var addr = u.address ? '<div class="ad">'+esc(u.address)+'</div>' : "";
+      // Address line only when there IS an address (unitAddressLine). A unit
+      // with a null address renders with no line at all (no empty row).
+      var line = unitAddressLine(u);
+      var addr = line ? '<div class="ad">'+esc(line)+'</div>' : "";
       return '<button type="button" class="unitcard" data-uid="'+esc(u.id)+'">'+pinSvg()+'<div><div class="nm">'+esc(u.name)+'</div>'+addr+'</div></button>';
     }).join("");
     Array.prototype.forEach.call($("unitWrap").querySelectorAll(".unitcard"), function(btn){
@@ -1302,14 +1307,14 @@
     }
     $("bk_what").textContent = state.typeLabel + " · " + state.unit.name;
     var u = state.unit || {};
-    var addr = u.address ? (u.address + (u.city ? ", " + u.city : "")) : "";
+    var addr = unitAddressLine(u);
     var addrEl = $("bk_addr");
     if(addr){
       // Address opens Google Maps (same treatment as the confirmation email).
       var mapsUrl = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addr);
       addrEl.innerHTML = '<a href="'+esc(mapsUrl)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+esc(addr)+'</a>';
       addrEl.style.display="";
-    } else { addrEl.textContent=""; addrEl.style.display="none"; }   // Camperdown has no address
+    } else { addrEl.textContent=""; addrEl.style.display="none"; }   // a unit with no address
 
     // CTA → /waiver.html?t=<token> (+ k / n so waiver.html can prefill). Title-case
     // the participant name so &n= matches the emailed link (EF normalises the same

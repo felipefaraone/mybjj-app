@@ -5,6 +5,9 @@
 // someone calls it with the shared secret.
 //
 //   POST { kind: "monthly_recap", period: "YYYY-MM", send?: false|true, limit?: n }
+//   POST { test_to: "<one address>", period?: "YYYY-MM" }   TEST SEND: the four
+//        samples with fixture data to that address, subjects "[TEST] …"; touches
+//        no table and ignores the daily cap.
 //   header x-engagement-secret: <ENGAGEMENT_SECRET>
 //
 // ONE EMAIL PER RECIPIENT ADDRESS per kind + period. A parent with three kids,
@@ -46,6 +49,8 @@
 // leave it unset in production.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { renderLayout, type LayoutBlock } from "../_shared/email_layout.ts";
+import { parseTestTo, sleep, TEST_SEND_GAP_MS, TEST_SUBJECT_PREFIX } from "../_shared/test_to.ts";
 
 // ---- config -------------------------------------------------------------------
 // Same verified Resend domain and reply-to as trial-booking; sender name "MyBJJ".
@@ -63,11 +68,6 @@ function json(body: unknown, status: number) {
     status,
     headers: { "content-type": "application/json" },
   });
-}
-
-function escHtml(s: unknown): string {
-  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }
 
 // Constant-time string compare (secret header, HMAC signatures).
@@ -172,8 +172,8 @@ function recapCopy(d: RecapData): { subject: string; greeting: string; lines: st
 }
 // ============================ END PLACEHOLDER COPY ============================
 
-// Same simple inline-styled grammar as trial-booking's emails (no external CSS,
-// fonts or images). Every interpolated value goes through escHtml.
+// The plain text is built here; the HTML is the shared layout, which escapes
+// every value.
 export function renderRecap(d: RecapData): { subject: string; html: string; text: string } {
   const c = recapCopy(d);
   const unsub = d.unsubscribeUrl || "";
@@ -190,27 +190,20 @@ export function renderRecap(d: RecapData): { subject: string; html: string; text
     "You're getting this because you train at MyBJJ (or a child you look after does).",
     unsub ? `Don't want these emails? Unsubscribe: ${unsub}` : "",
   ].join("\n");
-  const linesHtml = c.lines
-    .map((l, i) => `<p style="font-size:18px;font-weight:700;color:#16202b;line-height:1.5;margin:${i ? "8px" : "0"} 0 0">${escHtml(l)}</p>`)
-    .join("");
-  const html = `<div style="margin:0;padding:0;background:#f5f7fa">
-  <div style="max-width:560px;margin:0 auto;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;color:#16202b">
-    <div style="background:#124680;border-bottom:3px solid #1A5DAD;border-radius:10px 10px 0 0;padding:14px 18px;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:.5px">MyBJJ</div>
-    <div style="background:#ffffff;border:1px solid #e1e7ee;border-top:none;border-radius:0 0 10px 10px;padding:18px 18px 20px;margin:0 0 22px">
-      <p style="font-size:16px;margin:0 0 12px">${escHtml(c.greeting)}</p>
-      ${linesHtml}
-    </div>
-    <p style="font-size:14px;color:#5a6a78;line-height:1.6;margin:0;border-top:1px solid #e1e7ee;padding-top:16px">
-      See you on the mats,<br>
-      <strong style="color:#16202b">MyBJJ</strong>
-    </p>
-    <p style="font-size:12px;color:#93a0ac;line-height:1.6;margin:14px 0 0">
-      You're getting this because you train at MyBJJ (or a child you look after does).${unsub
-        ? `<br><a href="${escHtml(unsub)}" style="color:#5a6a78;text-decoration:underline">Unsubscribe from these emails</a>`
-        : ""}
-    </p>
-  </div>
-</div>`;
+  // HTML: the shared layout (_shared/email_layout.ts). No button: this email has
+  // no call to action.
+  const html = renderLayout({
+    subject: c.subject,
+    blocks: [
+      { t: "p", parts: [c.greeting] },
+      ...c.lines.map((l): LayoutBlock => ({ t: "stat", text: l })),
+      { t: "sign", lines: ["See you on the mats,", "MyBJJ"] },
+    ],
+    footer: {
+      why: "You're getting this because you train at MyBJJ (or a child you look after does).",
+      unsubscribeUrl: unsub || null,
+    },
+  });
   return { subject: c.subject, html, text };
 }
 
@@ -268,6 +261,36 @@ Deno.serve(async (req) => {
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "bad_json" }, 400); }
+
+  // TEST SEND: the four recap samples with FIXTURE data (never real students) to
+  // ONE address, subjects "[TEST] …". Reads and writes nothing in the database;
+  // no daily cap. Month: `period` when given and valid, else last month.
+  if (body.test_to !== undefined) {
+    const to = parseTestTo(body.test_to);
+    if (!to) return json({ error: "test_to must be one valid email address" }, 400);
+    const last = new Date(sydneyTodayStr() + "T00:00:00Z"); last.setUTCDate(0);
+    const label = monthBounds(String(body.period || ""))?.label || MONTHS[last.getUTCMonth()];
+    const fixtures: [string, RecapLine[], string][] = [
+      ["self_only", [{ self: true, first: "Sam", n: 8 }], ""],
+      ["self_and_kids", [{ self: true, first: "Sam", n: 8 }, { self: false, first: "Alex", n: 5 }, { self: false, first: "Charlotte", n: 6 }], ""],
+      ["two_or_more_kids", [{ self: false, first: "Kira", n: 2 }, { self: false, first: "Max", n: 3 }], "Jo"],
+      ["one_kid", [{ self: false, first: "Mia", n: 1 }], "Jo"],
+    ];
+    const results = [];
+    for (const [sample, lines, recipientName] of fixtures) {
+      if (results.length) await sleep(TEST_SEND_GAP_MS);
+      const msg = renderRecap({ lines, recipientName, monthLabel: label, unsubscribeUrl: await unsubUrl(to, "monthly_recap") });
+      const subject = TEST_SUBJECT_PREFIX + msg.subject;
+      const r = await sendViaResend(to, { ...msg, subject });
+      results.push({ sample, subject, ok: r.ok, ...(r.ok ? {} : { error: r.error }) });
+    }
+    return json({
+      mode: "test", to, wrote: "nothing",
+      sent: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length,
+      warnings: Deno.env.get("EMAIL_UNSUB_SECRET") ? [] : ["EMAIL_UNSUB_SECRET not set: no unsubscribe link in the test emails"],
+      results,
+    }, 200);
+  }
 
   const kind = String(body.kind || "");
   if (kind === "mia") return json({ error: "not configured yet" }, 400);
