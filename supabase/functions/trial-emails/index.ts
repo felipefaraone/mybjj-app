@@ -32,7 +32,10 @@
 // budget for the Sydney day. This function counts every email already sent today
 // by ANY kind (email_sends rows with sent_at since Sydney midnight; a monthly
 // email to one address is one email however many students it lists) and sends at
-// most what is left (a smaller `limit` wins). Whatever it doesn't send stays due
+// most what is left (a smaller `limit` wins), and never more than
+// MAX_EMAILS_PER_RUN (60). Sends are paced at 2 a second with 429 retries
+// (_shared/resend_send.ts), and a run stops starting new sends after 100 s so it
+// answers inside the 150 s request timeout. Whatever it doesn't send stays due
 // and goes on the next hourly run, unless it passes the 2-day limit.
 //
 // Secrets: ENGAGEMENT_SECRET, EMAIL_UNSUB_SECRET (required to send),
@@ -45,7 +48,9 @@ import {
   type Code, type Stream, CODES, classLabel, fmt12, fmtDayDate, renderTrialEmail,
   trialUnsubUrl, TRIAL_FROM, TRIAL_REPLY_TO,
 } from "../_shared/trial_emails.ts";
-import { parseTestTo, sleep, TEST_SEND_GAP_MS, TEST_SUBJECT_PREFIX } from "../_shared/test_to.ts";
+import { parseTestTo, TEST_SUBJECT_PREFIX } from "../_shared/test_to.ts";
+import { createPacedSender, MAX_EMAILS_PER_RUN, type SendResult } from "../_shared/resend_send.ts";
+type PacedSender = ReturnType<typeof createPacedSender>;
 import { unitAddressLine } from "../_shared/unit_address.ts";
 
 const SYDNEY_TZ = "Australia/Sydney";
@@ -78,25 +83,10 @@ function sydneyMidnight(now: Date): Date {
   return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day) - offset);
 }
 
-async function sendViaResend(to: string, msg: { subject: string; html: string; text: string }):
-  Promise<{ ok: boolean; error?: string }> {
-  const key = Deno.env.get("RESEND_API_KEY");
-  if (!key) return { ok: false, error: "RESEND_API_KEY not set" };
-  const url = Deno.env.get("RESEND_API_URL") || "https://api.resend.com/emails";
-  try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: TRIAL_FROM, to: [to], reply_to: TRIAL_REPLY_TO, subject: msg.subject, html: msg.html, text: msg.text }),
-    });
-    if (!r.ok) {
-      const body = await r.text().catch(() => "<no body>");
-      return { ok: false, error: `HTTP ${r.status}: ${body.slice(0, 300)}` };
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
+// Every request goes through the paced sender (_shared/resend_send.ts): 2 a
+// second, 429s waited out and retried. Same from / reply_to / body as before.
+function sendViaResend(sender: PacedSender, to: string, msg: { subject: string; html: string; text: string }): Promise<SendResult> {
+  return sender.send({ from: TRIAL_FROM, to: [to], reply_to: TRIAL_REPLY_TO, subject: msg.subject, html: msg.html, text: msg.text });
 }
 
 // deno-lint-ignore no-explicit-any
@@ -150,6 +140,7 @@ async function render(c: Cand, code: Code = c.code, stream: Stream = c.stream) {
 }
 
 Deno.serve(async (req) => {
+  const requestStart = Date.now();
   // 1. Shared secret. Unset secret = nobody gets in (fail closed).
   const expected = Deno.env.get("ENGAGEMENT_SECRET") || "";
   const given = req.headers.get("x-engagement-secret") || "";
@@ -180,6 +171,7 @@ Deno.serve(async (req) => {
       units[st] = u;
     }
     const results = [];
+    const testSender = createPacedSender();
     for (const stream of ["adult", "kids"] as Stream[]) {
       const u = units[stream]!;
       const lead: Cand = {
@@ -188,10 +180,9 @@ Deno.serve(async (req) => {
         unit_address: u.address, unit_city: null, unit_phone: u.phone ? String(u.phone).trim() || null : null,
       };
       for (const code of CODES) {
-        if (results.length) await sleep(TEST_SEND_GAP_MS);
         const msg = await render(lead, code, stream);
         const subject = TEST_SUBJECT_PREFIX + msg.subject;
-        const r = await sendViaResend(to, { ...msg, subject });
+        const r = await sendViaResend(testSender, to, { ...msg, subject });
         results.push({ stream, code, subject, ok: r.ok, ...(r.ok ? {} : { error: r.error }) });
       }
     }
@@ -240,7 +231,9 @@ Deno.serve(async (req) => {
   // Emails already sent today, all kinds: one per (address, sent_at). A monthly
   // email writes one row per student it covers, all with the same sent_at.
   const emailsSentToday = new Set(sentToday.map((r) => String(r.recipient_email).toLowerCase() + "|" + new Date(r.sent_at).getTime())).size;
-  const budget = Math.max(0, Math.min(reqLimit == null ? Infinity : reqLimit, envCap - emailsSentToday));
+  // What this run may send: the daily cap's remainder, a smaller `limit`, and at
+  // most MAX_EMAILS_PER_RUN so the run ends inside the 150 s request timeout.
+  const budget = Math.max(0, Math.min(reqLimit == null ? Infinity : reqLimit, envCap - emailsSentToday, MAX_EMAILS_PER_RUN));
 
   // One email per session per run: the latest due code goes, earlier ones are superseded.
   const bySession = new Map<string, Cand[]>();
@@ -286,7 +279,7 @@ Deno.serve(async (req) => {
     }
     return json({
       mode: "dry_run", wrote: "nothing", now: now.toISOString(),
-      daily_cap: envCap, emails_sent_today_all_kinds: emailsSentToday, budget_this_run: budget,
+      daily_cap: envCap, emails_sent_today_all_kinds: emailsSentToday, max_per_run: MAX_EMAILS_PER_RUN, budget_this_run: budget,
       counts: {
         due: cands.length,
         would_send: Math.min(budget, toSend.length),
@@ -323,13 +316,20 @@ Deno.serve(async (req) => {
   for (const { cand, by } of superseded) {
     if (await claim(cand, "skipped", `superseded by ${by}`)) skipped++; else lostClaim++;
   }
-  let attempts = 0;
+  let attempts = 0, deferred = 0, retries429 = 0;
+  let stopReason: string | null = null;
+  const sender = createPacedSender(requestStart);
   for (const c of toSend) {
     if (attempts >= budget) { overCap++; continue; }
+    // Out of run time, or Resend said stop: leave it unclaimed; still due next run.
+    if (!stopReason && !sender.canStartAnother()) stopReason = "run time budget reached";
+    if (stopReason) { deferred++; continue; }
     const id = await claim(c, "failed", "sending");
     if (!id) { lostClaim++; continue; }
     attempts++;
-    const res = await sendViaResend(c.recipient, await render(c));
+    const res = await sendViaResend(sender, c.recipient, await render(c));
+    retries429 += Math.max(0, res.attempts - 1);
+    if (res.stop) stopReason = "Resend rate limit: " + (res.error || "429");
     await supabase.from("email_sends")
       .update(res.ok ? { status: "sent", error: null, sent_at: new Date().toISOString() } : { status: "failed", error: res.error || "send failed" })
       .eq("id", id);
@@ -341,6 +341,8 @@ Deno.serve(async (req) => {
     daily_cap: envCap, emails_sent_today_before_run: emailsSentToday, budget_this_run: budget,
     emails_sent: sent, emails_failed: failed, skipped_superseded: skipped,
     over_daily_cap: overCap, claimed_by_another_run: lostClaim,
+    max_per_run: MAX_EMAILS_PER_RUN, deferred_to_next_run: deferred, stopped: stopReason,
+    retries_after_429: retries429, run_ms: sender.elapsedMs(),
     failures,
   }, 200);
 });

@@ -16,6 +16,4 @@ export function parseTestTo(v: unknown): string | null {
 }
 
 export const TEST_SUBJECT_PREFIX = "[TEST] ";
-// Resend allows about 2 requests a second; a test sends up to 18 in a row.
-export const TEST_SEND_GAP_MS = 600;
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Test sends are paced by the same sender as real batches (_shared/resend_send.ts).
