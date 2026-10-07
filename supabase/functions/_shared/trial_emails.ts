@@ -18,6 +18,7 @@
 
 import { escHtml, renderLayout, type LayoutBlock } from "./email_layout.ts";
 import { unitMapsUrl } from "./unit_address.ts";
+import { unsubLink } from "./unsub_link.ts";
 export { escHtml };
 
 // ---- links ------------------------------------------------------------------------
@@ -34,7 +35,7 @@ export const MEMBERSHIP_URL = "https://mybjj.com.au/aboutus/";
 // back when the new site has a membership page.
 export const MEMBERSHIP_BUTTON_LABEL = "LEARN MORE ABOUT myBJJ";
 export const TRIAL_PAGE = "https://mybjj-app.com/trial.html";
-export const UNSUB_PAGE = "https://mybjj-app.com/unsubscribe.html";
+export { UNSUB_PAGE } from "./unsub_link.ts";
 // Sender for every trial email (email 1 from trial-booking included).
 export const TRIAL_FROM = "MyBJJ <noreply@mybjj-app.com>";
 export const TRIAL_REPLY_TO = "info@mybjj.com.au";
@@ -71,22 +72,9 @@ export function classLabel(type: string, audience: string): string {
 export const mapsUrlFor = unitMapsUrl;
 
 // ---- unsubscribe (same signing rule as engagement-emails / email-unsubscribe) ------
-async function hmacHex(secret: string, message: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-export async function trialUnsubUrl(secret: string | undefined | null, email: string): Promise<string | null> {
-  if (!secret || !email) return null;
-  const e = String(email).trim().toLowerCase();
-  const q = new URLSearchParams({
-    email: e, kind: "trial",
-    sig: await hmacHex(secret, e + "|trial"),
-    sig_all: await hmacHex(secret, e + "|all"),
-  });
-  return `${UNSUB_PAGE}?${q.toString()}`;
+// Kind 'trial'; the signer is shared (_shared/unsub_link.ts).
+export function trialUnsubUrl(secret: string | undefined | null, email: string): Promise<string | null> {
+  return unsubLink(secret, email, "trial");
 }
 
 // ---- the emails ---------------------------------------------------------------------
