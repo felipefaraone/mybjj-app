@@ -23223,7 +23223,51 @@ function applySwUpdate(){
   // control. No reload here — avoids racing the SW handoff.
 }
 
+// ---------------------------------------------------------------------------
+// WHICH CACHE THIS PAGE RUNS ON (sw.js PART 2, v588). The worker must never delete
+// the cache a live page still loads its assets from — the 26 Sep / 4 Oct sign-out.
+// It cannot see that by itself on iOS, so the page tells it: once at start-up we
+// ask the controller (the worker that served this page's navigation) for its
+// CACHE and keep that name for the life of the page; on every return to the
+// foreground we post it again, which re-teaches a worker iOS stopped meanwhile.
+// If our own cache is ever gone at runtime, that is the failure this exists to
+// prevent: leave a breadcrumb (cache name only — no token material).
+// ---------------------------------------------------------------------------
+let _swMyCache=null;              // e.g. 'mybjj-v588', learnt from the load-time controller
+let _swLoadController=null;       // navigator.serviceWorker.controller at start-up
+let _swCacheMissingLogged=false;  // one breadcrumb per page life
+function _swHello(){
+  try{
+    const c=navigator.serviceWorker&&navigator.serviceWorker.controller;
+    if(!c)return;
+    const ch=new MessageChannel();
+    ch.port1.onmessage=function(e){
+      const d=e&&e.data||{};
+      // Adopt a name only from the worker that served this page's navigation.
+      if(!_swMyCache&&typeof d.cache==='string'&&navigator.serviceWorker.controller===_swLoadController)_swMyCache=d.cache;
+      _swCheckOwnCache();
+    };
+    c.postMessage({type:'CLIENT_HELLO',cache:_swMyCache},[ch.port2]);
+  }catch(_){}
+}
+function _swCheckOwnCache(){
+  try{
+    if(!_swMyCache||_swCacheMissingLogged||!window.caches)return;
+    caches.has(_swMyCache).then(function(ok){
+      if(ok||_swCacheMissingLogged)return;
+      _swCacheMissingLogged=true;
+      _authTrailPush('sw_cache_missing '+_swMyCache);
+    }).catch(function(){});
+  }catch(_){}
+}
 if('serviceWorker' in navigator){
+  try{
+    _swLoadController=navigator.serviceWorker.controller;
+    _swHello();
+    document.addEventListener('visibilitychange',function(){
+      if(document.visibilityState==='visible')_swHello();
+    });
+  }catch(_){}
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then((reg)=>{
       console.log('[mybjj] SW registered');
