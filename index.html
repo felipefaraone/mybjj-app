@@ -2463,7 +2463,7 @@ const _sydneyStr=new Date().toLocaleDateString('en-CA',{timeZone:'Australia/Sydn
 // to gate the writes defensively.
 const TOMORROW=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
 let IDC=300;
-const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,authBusyAction:null,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsShown:5,evalDismissed:false,rq:'',tq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,rfAwaiting:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,webcam:null,cycleListAll:false,evDescOpen:{},evOpen:null,evWho:null,_unitSwitching:false};
+const S={loggedIn:false,me:null,authState:'checking',authEmail:'',authMsg:'',authBusy:false,authBusyAction:null,profile:null,tab:'class',selDay:null,ci:{},pconf:{},pabs:{},atab:'roster',ptab:'rank',rseg:'adult',panelOpen:false,sub:null,unitOpen:false,unit:'Neutral Bay',inboxOpen:false,expanded:{},notif:{feedback:true,promotions:true,announcements:true},naud:'all_unit',naSending:false,cdel:null,editCls:null,editDow:null,addCls:false,_cet:null,_cea:null,presUnit:'Neutral Bay',viewStu:null,addFb:null,_addProg:'adult',_addTransfer:'new',_addCC:'+61',editJny:null,_editUnit:null,_deleteConfirm:null,editWeek:false,sweek:null,schedMode:'curriculum',schedPeriod:null,eventsShown:5,evalDismissed:false,rq:'',tq:'',rfUnit:'all',rfBelt:'all',rfNear:false,rfIns:'all',viewStaff:null,editEv:null,addEv:false,editCounts:null,rfEligible:false,rfAwaiting:false,rfOnHold:false,cropOpen:false,photoQueue:null,photoQueueLoading:false,addStaff:false,editStaff:null,removeStaffConfirm:null,shareFallback:null,parentChild:null,membersBelt:'all',commTab:'wall',wallShown:5,wallReactions:null,wallReactionsKey:null,wallReactionsLoading:false,ossList:null,clsSaving:false,markP:null,editStuFor:null,editStuTab:'basic',parentPicker:null,transferPick:null,editStaffTab:'basic',editStaffDraft:null,showAllJourney:false,showAllLapsed:false,stuAttList:null,progressAtt:null,classHistory:null,stuFbList:null,staffNotesList:null,profileOrigin:null,memberQuery:'',staffNoteModalFor:null,confirm:null,hydrating:false,addKidModal:false,profileAreaOpen:false,profileSubject:'me',editMe:null,socialEdit:null,photoMenu:null,photoLightbox:null,attMove:null,promoteForm:null,profilePrev:null,reschedWeek:0,reschedAddMode:false,reschedMoveFrom:null,bugReport:null,_addStuReturnTo:null,_editStuReturnTo:null,_teachingStats:{},_teachingRecent:{},pcInfo:false,postCompose:null,jnyDeclare:null,webcam:null,cycleListAll:false,evDescOpen:{},evOpen:null,evWho:null,_unitSwitching:false};
 // ---- Tab persistence -------------------------------------------------------
 // sessionStorage, NOT localStorage, and not a mix. A refresh is accidental —
 // losing your place is a bug. Opening the app fresh is intentional and should
@@ -11398,6 +11398,7 @@ function rARosterListInner(){
   // Gated in the SAME expression as the chip below, so the filter can never be
   // stuck on for someone who has no chip to switch it off with.
   const rfAwaiting=!!S.rfAwaiting&&isStaffOrOwner();
+  const rfOnHold=!!S.rfOnHold&&isStaffOrOwner();    // same gate as its chip
   const showInactive=!!S.rfInactive;
   // Hide inactive students by default. Toggling the "Show inactive"
   // chip surfaces them; the chip itself lives in the filter row below.
@@ -11416,6 +11417,7 @@ function rARosterListInner(){
   if(rfNear)list=list.filter(s=>{const e=_egDisplay(s);return (e.pct||0)>=80;});
   if(rfEligible)list=list.filter(s=>{const e=getEligibilityStatus(s);return e&&e.status==='eligible';});
   if(rfAwaiting)list=list.filter(_awaitingSignInRoster);
+  if(rfOnHold)list=list.filter(isOnHoldVisible);
   if(q)list=list.filter(s=>s.name.toLowerCase().includes(q));
   list=[...list].sort((a,b)=>{
     // G9 Phase 1 consolidation — sort ranking sourced from
@@ -12640,6 +12642,7 @@ function _memberCounts(){
 function rARoster(){
   const rfBelt=S.rfBelt||'all';
   const rfAwaiting=!!S.rfAwaiting&&isStaffOrOwner();
+  const rfOnHold=!!S.rfOnHold&&isStaffOrOwner();
   const rfNear=!!S.rfNear;
   const rfEligible=!!S.rfEligible&&canEditClassCounts();
   // Multi-unit — scope the count to the ACTIVE UNIT explicitly (same
@@ -12655,8 +12658,11 @@ function rARoster(){
   // about the unit rather than a figure that moves as you type. rfEligible drops
   // the segment split, so the count spans both progs exactly as the list does.
   const _awScope=STUDENTS.filter(s=>(S.rfInactive||s._active!==false)&&(!_rUnit||s.unit===_rUnit));
-  const awaitingCount=(rfEligible?_awScope:_awScope.filter(s=>s.prog===(S.rseg==='kids'?'kids':'adult')))
-    .filter(_awaitingSignInRoster).length;
+  const _awSeg=rfEligible?_awScope:_awScope.filter(s=>s.prog===(S.rseg==='kids'?'kids':'adult'));
+  const awaitingCount=_awSeg.filter(_awaitingSignInRoster).length;
+  // Same scope and segment as awaitingCount; on hold is isOnHoldVisible, the one
+  // rule the card badge and the class tally use.
+  const onHoldCount=_awSeg.filter(isOnHoldVisible).length;
   const beltMap=S.rseg==='adult'?BA:BK;
   const beltOpts=Object.keys(beltMap);
   // v355+ — kids can hold an ADULT belt since the 16-bridge (v345/6). On the kids
@@ -12702,6 +12708,9 @@ function rARoster(){
     // instruction: it answers "who is waiting", it does not offer to send.
     // Shown at 0 too — "nobody is waiting" is the answer he is looking for.
     +(isStaffOrOwner()?'<button onclick="toggleRFAwaiting()" style="'+chipBase+';background:'+(rfAwaiting?'#1A5DAD15':'transparent')+';border-color:'+(rfAwaiting?'var(--blue)':'var(--border)')+';color:'+(rfAwaiting?'var(--blue)':'var(--text3)')+'">Awaiting sign-in ('+awaitingCount+')'+(rfAwaiting?' ✕':'')+'</button>':'')
+    // Mirrors Awaiting sign-in: same scope, shown at 0 too, staff only. Amber,
+    // like the ON HOLD badge it filters for.
+    +(isStaffOrOwner()?'<button onclick="toggleRFOnHold()" style="'+chipBase+';background:'+(rfOnHold?'var(--amber-bg)':'transparent')+';border-color:'+(rfOnHold?'var(--amber-border)':'var(--border)')+';color:'+(rfOnHold?'var(--amber-text)':'var(--text3)')+'">On hold ('+onHoldCount+')'+(rfOnHold?' ✕':'')+'</button>':'')
     +'</div>';
 
   const _mc=_memberCounts();const memCount=_mc.members;const totalReg=_mc.registered;
@@ -23198,6 +23207,8 @@ function toggleRFEligible(){S.rfEligible=!S.rfEligible;render();}
 function toggleRFInactive(){S.rfInactive=!S.rfInactive;render();}
 // Read-only filter — it narrows the roster and sends nothing.
 function toggleRFAwaiting(){S.rfAwaiting=!S.rfAwaiting;render();}
+// Read-only filter, like Awaiting sign-in.
+function toggleRFOnHold(){S.rfOnHold=!S.rfOnHold;render();}
 function setRF(k,v){S[k]=v;render();}
 
 // Etapa 6 — drops legacy 'owner'/'admin' branches; in-memory role for
