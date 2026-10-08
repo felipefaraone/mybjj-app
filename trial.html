@@ -356,11 +356,38 @@
         <label class="field full" id="referrerRow" style="display:none"><span class="lab">What is their name?</span><input type="text" id="referrer_name" autocomplete="off" /></label>
         <label class="field full" id="friendToggleRow" style="display:none"><span style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--ink2)"><input type="checkbox" id="friendToggle" style="width:17px;height:17px;flex-shrink:0;accent-color:var(--blue)" />Bringing a friend? Their first class is free too.</span></label>
         <div class="field full" id="friendFields" style="display:none;grid-column:1/-1">
-          <div class="formgrid">
+          <!-- Adult or child? Not pre-selected, like "Who is this trial for?". A
+               child friend is booked exactly like a child booking: the person
+               filling this form is the parent / guardian on it. -->
+          <div class="whofor" id="friendWho">
+            <span class="wlab">Is your friend an adult or a child?<span class="req"> *</span></span>
+            <div class="wopts">
+              <button type="button" id="friendWhoAdult" data-kid="0">An adult<span class="wsub">14 or over</span></button>
+              <button type="button" id="friendWhoKid" data-kid="1">A child<span class="wsub">13 or under</span></button>
+            </div>
+            <div class="whonote" id="friendWhonote" style="display:none">
+              <span>Noted — we'll check the class is right for their age and contact you if a Kids class suits better.</span>
+            </div>
+          </div>
+          <div class="formgrid" id="friendAdultFields" style="display:none">
             <label class="field full"><span class="lab">Friend's full name<span class="req"> *</span></span><input type="text" id="friend_name" autocomplete="off" /></label>
             <label class="field"><span class="lab">Their email</span><input type="email" id="friend_email" inputmode="email" /></label>
             <label class="field"><span class="lab">Their phone</span><input type="tel" id="friend_phone" inputmode="tel" placeholder="0412 345 678" /></label>
             <div style="grid-column:1/-1;font-size:12.5px;color:var(--ink3);line-height:1.5;margin-top:-4px">We only need one. Without an email we can't send them the health check form, so you'll need to let them know.</div>
+          </div>
+          <div class="formgrid" id="friendKidFields" style="display:none">
+            <div style="grid-column:1/-1;font-size:12.5px;color:var(--ink3);line-height:1.5;margin-top:-4px">The child's booking is in your name, as their parent or guardian. We'll email you their own health check form.</div>
+            <label class="field"><span class="lab">Child's first name<span class="req"> *</span></span><input type="text" id="friend_kid_first" autocomplete="off" /></label>
+            <label class="field"><span class="lab">Child's last name<span class="req"> *</span></span><input type="text" id="friend_kid_last" autocomplete="off" /></label>
+            <div class="dobfield" role="group" aria-labelledby="friendKidDobLab">
+              <span class="lab" id="friendKidDobLab">Child's date of birth<span class="req"> *</span></span>
+              <div class="dobrow">
+                <label><span class="sub">Day</span><input type="text" id="friend_kid_dob_d" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="DD" /></label>
+                <label><span class="sub">Month</span><input type="text" id="friend_kid_dob_m" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="MM" /></label>
+                <label><span class="sub">Year</span><input type="text" id="friend_kid_dob_y" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="YYYY" /></label>
+              </div>
+              <div class="whonote" id="friendDobnote" style="display:none"><span id="friendDobnoteTx"></span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -511,6 +538,7 @@
     // is_kid, the child-name field, the parent labels and the kidnote — none of
     // which are inferred from the chosen class any more.
     forKid: null,
+    friendKid: null,   // bring a friend: null = not answered, false = adult, true = a child
     cfToken: "",
     cfRendered: false,
     booked: false      // guard against double-submit
@@ -1029,6 +1057,7 @@
     if(state.fallback){ $("friendToggle").checked=false; }
     $("friendToggleRow").style.display = state.fallback ? "none" : "block";
     $("friendFields").style.display = (!state.fallback && $("friendToggle").checked) ? "block" : "none";
+    paintFriend();
     // Child + an Adults class is NOT automatically wrong — a 14-year-old
     // training with adults is normal here (see renderKidsCards). So the answer
     // is recorded and the mismatch is flagged, never blocked.
@@ -1056,6 +1085,25 @@
   // display:none mechanism #kidFirstField / #availField use).
   $("friendToggle").addEventListener("change", function(){
     $("friendFields").style.display = this.checked ? "block" : "none";
+    paintFriend();
+  });
+  // Bring a friend: adult or child. The answer decides which fields show; a child
+  // in an Adults class gets the same non-blocking note as the booking itself.
+  function paintFriend(){
+    var k = state.friendKid;
+    $("friendWhoAdult").classList.toggle("on", k===false);
+    $("friendWhoKid").classList.toggle("on", k===true);
+    $("friendAdultFields").style.display = k===false ? "grid" : "none";
+    $("friendKidFields").style.display   = k===true  ? "grid" : "none";
+    $("friendWhonote").style.display = (k===true && state.audience==="Adults") ? "flex" : "none";
+    updateFriendDobNote();
+  }
+  ["friendWhoAdult","friendWhoKid"].forEach(function(id){
+    $(id).addEventListener("click", function(){
+      state.friendKid = this.getAttribute("data-kid")==="1";
+      $("friendWho").classList.remove("err");
+      paintFriend();
+    });
   });
   // Reveal the referrer-name field only when "Friend or family" is chosen (same
   // display:none mechanism as the friend fields); clear it on any other choice
@@ -1102,7 +1150,8 @@
   }
   // The child's name as ONE string for kid_name: "First Last", single-spaced.
   // The payload, the database and the trial-booking function keep one field.
-  function kidFullName(){ return (val("kid_first")+" "+val("kid_last")).replace(/\s+/g," ").trim(); }
+  // Same rule for the child brought along as the "friend" (friend_kid_first/last).
+  function kidFullName(firstId, lastId){ return (val(firstId||"kid_first")+" "+val(lastId||"kid_last")).replace(/\s+/g," ").trim(); }
   var KID_NAME_MAX = 120;   // the trial-booking function truncates kid_name at 120
 
   // ONE check for the child's date of birth: complete, a real date, not in the
@@ -1115,8 +1164,11 @@
     var a=t[0]-b[0]; if(t[1]<b[1] || (t[1]===b[1] && t[2]<b[2])) a--;
     return a;
   }
-  function kidDobCheck(){
-    var d=val("kid_dob_d"), m=val("kid_dob_m"), y=val("kid_dob_y");
+  // prefix: "kid_dob" (the child being booked) or "friend_kid_dob" (a child
+  // brought along as the friend) — the same three DD / MM / YYYY boxes.
+  function kidDobCheck(prefix){
+    prefix = prefix || "kid_dob";
+    var d=val(prefix+"_d"), m=val(prefix+"_m"), y=val(prefix+"_y");
     if(!d && !m && !y) return { issue:"missing" };
     if(!/^\d{1,2}$/.test(d) || !/^\d{1,2}$/.test(m) || !/^\d{4}$/.test(y)) return { issue:"incomplete" };
     var dn=+d, mn=+m, yn=+y;
@@ -1131,17 +1183,19 @@
   }
   // Non-blocking: when the child's age on the session date (today on the "none
   // of these times work" path) is outside the picked class's range, say so.
-  function updateDobNote(){
-    var note=$("dobnote"); if(!note) return;
+  function updateDobNote(){ dobNoteFor("kid_dob", "dobnote", "dobnoteTx", state.forKid===true); }
+  function updateFriendDobNote(){ dobNoteFor("friend_kid_dob", "friendDobnote", "friendDobnoteTx", state.friendKid===true); }
+  function dobNoteFor(prefix, noteId, txId, active){
+    var note=$(noteId); if(!note) return;
     var show=false;
-    if(state.forKid===true){
-      var dc=kidDobCheck();
+    if(active){
+      var dc=kidDobCheck(prefix);
       var r=state.typeCode ? ageRangeFor(state.typeCode, state.audience) : null;
       if(!dc.issue && r){
         var onDate=(!state.fallback && state.slot) ? state.slot.date : sydneyNow().dateStr;
         var a=ageOn(dc.iso, onDate);
         if(a<r.min || a>r.max){
-          $("dobnoteTx").textContent="This class is for ages "+r.min+" to "+r.max+". The academy will check and get in touch if another class suits better.";
+          $(txId).textContent="This class is for ages "+r.min+" to "+r.max+". The academy will check and get in touch if another class suits better.";
           show=true;
         }
       }
@@ -1149,20 +1203,22 @@
     note.style.display = show ? "flex" : "none";
   }
   ["kid_dob_d","kid_dob_m","kid_dob_y"].forEach(function(id){ $(id).addEventListener("input", updateDobNote); });
+  ["friend_kid_dob_d","friend_kid_dob_m","friend_kid_dob_y"].forEach(function(id){ $(id).addEventListener("input", updateFriendDobNote); });
 
   function showFormErr(msg){ var b=$("formerr"); b.textContent=msg; b.style.display="block"; b.scrollIntoView({behavior:"smooth",block:"center"}); }
 
   $("bookBtn").addEventListener("click", function(){
     if(state.booked) return;
     $("formerr").style.display="none";
-    ["first_name","last_name","email","phone","kid_first","kid_last","kid_dob_d","kid_dob_m","kid_dob_y","avail","friend_name","friend_email","friend_phone"].forEach(function(id){ setErr(id,false); });
+    ["first_name","last_name","email","phone","kid_first","kid_last","kid_dob_d","kid_dob_m","kid_dob_y","avail","friend_name","friend_email","friend_phone","friend_kid_first","friend_kid_last","friend_kid_dob_d","friend_kid_dob_m","friend_kid_dob_y"].forEach(function(id){ setErr(id,false); });
+    $("friendWho").classList.remove("err");
 
     var kidMode = (state.forKid===true);
     $("whofor").classList.remove("err");
     // Friend block is "open" only with a real session AND the box ticked. Closed →
     // no friend validation, no friend fields sent.
     var friendOpen = !state.fallback && $("friendToggle").checked;
-    var missing=[], badFormat=[], badName=[], longName=[], dobProblem="";
+    var missing=[], badFormat=[], badName=[], longName=[], dobProblem="", sameChild=false;
     var dobCheck = kidMode ? kidDobCheck() : { issue:"", iso:"" };
     // Every name field goes through nameIssue(); each problem names its field.
     function checkName(id, label){
@@ -1201,7 +1257,32 @@
     if(!val("phone")){ setErr("phone",true); missing.push("phone"); }
     else if(!validAUPhone(val("phone"))){ setErr("phone",true); badFormat.push("a valid Australian phone number (e.g. 0412 345 678)"); }
 
-    if(friendOpen){
+    var friendKid = friendOpen && state.friendKid===true;
+    var friendDobCheck = friendKid ? kidDobCheck("friend_kid_dob") : { issue:"", iso:"" };
+    if(friendOpen && state.friendKid===null){ $("friendWho").classList.add("err"); missing.push("whether your friend is an adult or a child"); }
+    else if(friendKid){
+      // Same name rule and the same date-of-birth rule as the child being booked.
+      checkName("friend_kid_first", "the other child's first name");
+      checkName("friend_kid_last",  "the other child's last name");
+      if(!nameIssue(val("friend_kid_first")) && !nameIssue(val("friend_kid_last"))){
+        if(kidFullName("friend_kid_first","friend_kid_last").length > KID_NAME_MAX){
+          setErr("friend_kid_first",true); setErr("friend_kid_last",true); longName.push("the other child's first and last name together ("+KID_NAME_MAX+" characters max)");
+        } else if(kidMode && kidFullName("friend_kid_first","friend_kid_last").toLowerCase()===kidFullName().toLowerCase()){
+          setErr("friend_kid_first",true); setErr("friend_kid_last",true); sameChild=true;
+        }
+      }
+      if(friendDobCheck.issue){
+        ["friend_kid_dob_d","friend_kid_dob_m","friend_kid_dob_y"].forEach(function(id){ setErr(id,true); });
+        if(friendDobCheck.issue==="missing") missing.push("the other child's date of birth");
+        else dobProblem = (dobProblem ? dobProblem+" " : "") + {
+          incomplete: "Please enter the other child's date of birth as day, month and year (e.g. 07 03 2016).",
+          invalid:    "The other child's date of birth isn't a real date. Please check it.",
+          future:     "The other child's date of birth can't be in the future.",
+          age:        "Children's trials are for ages "+KID_MIN_AGE+" to "+KID_MAX_AGE+". Please check the other child's date of birth."
+        }[friendDobCheck.issue];
+      }
+    }
+    else if(friendOpen){
       if(!val("friend_name")){ setErr("friend_name",true); missing.push("your friend's name"); }
       var _fe=val("friend_email"), _fp=val("friend_phone");
       if(!_fe && !_fp){ setErr("friend_email",true); setErr("friend_phone",true); missing.push("your friend's email or phone"); }
@@ -1211,8 +1292,9 @@
       }
     }
 
-    if(missing.length || badFormat.length || badName.length || longName.length || dobProblem){
+    if(missing.length || badFormat.length || badName.length || longName.length || dobProblem || sameChild){
       var parts=[];
+      if(sameChild) parts.push("The child you're bringing has the same name as the child above. Enter your other child's name, or untick \u201CBringing a friend\u201D.");
       if(missing.length) parts.push("Please fill in: "+missing.join(", ")+".");
       if(dobProblem) parts.push(dobProblem);
       if(badName.length) parts.push("Use letters only (no numbers or symbols) in: "+badName.join(", ")+".");
@@ -1241,9 +1323,15 @@
       kid_name: kidMode ? kidFullName() : "",
       // YYYY-MM-DD, child bookings only (migration 136).
       kid_dob: kidMode ? (dobCheck.iso || "") : "",
-      friend_name: friendOpen ? val("friend_name") : "",
-      friend_email: friendOpen ? val("friend_email") : "",
-      friend_phone: friendOpen ? val("friend_phone") : ""
+      // Bring a friend: an adult (name + email / phone, as before) or a child of
+      // the person filling this form (booked like a child booking, in their name).
+      friend_is_kid: friendKid,
+      friend_name: (friendOpen && !friendKid) ? val("friend_name") : "",
+      friend_email: (friendOpen && !friendKid) ? val("friend_email") : "",
+      friend_phone: (friendOpen && !friendKid) ? val("friend_phone") : "",
+      friend_kid_name: friendKid ? kidFullName("friend_kid_first","friend_kid_last") : "",
+      // YYYY-MM-DD, like kid_dob.
+      friend_kid_dob: friendKid ? (friendDobCheck.iso || "") : ""
     };
 
     var btn=$("bookBtn"); btn.disabled=true; btn.textContent="Booking…";
@@ -1251,7 +1339,7 @@
     fetch(ENDPOINT, { method:"POST", headers:{ "content-type":"application/json" }, body:JSON.stringify(payload) })
       .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, status:r.status, d:d }; }); })
       .then(function(res){
-        if(res.ok && res.d && res.d.ok){ onBooked(res.d.waiver_token, kidMode, res.d.friend_ok, friendOpen && !!val("friend_email")); return; }
+        if(res.ok && res.d && res.d.ok){ onBooked(res.d.waiver_token, kidMode, res.d.friend_ok, friendOpen && !friendKid && !!val("friend_email"), friendKid ? val("friend_kid_first") : ""); return; }
         btn.disabled=false; btn.textContent="Confirm my booking";
         // 403 = Turnstile (machine code body); 400/500 carry a human message in
         // .error; anything else is a generic fallback.
@@ -1272,7 +1360,7 @@
   // ============================================================================
   // STEP 5 — BOOKED + health-check hand-off
   // ============================================================================
-  function onBooked(token, kidMode, friendOk, friendHadEmail){
+  function onBooked(token, kidMode, friendOk, friendHadEmail, friendKidFirst){
     state.booked=true;
     // The slot, ONCE, as three hero lines:
     //   Wednesday 15 Jul · 6:00 AM   (or "Flexible time" for the fallback path)
@@ -1293,7 +1381,10 @@
     if(friendNote){
       if(friendOk === true){
         friendNote.style.background="var(--card)"; friendNote.style.border="1px solid var(--line)"; friendNote.style.color="var(--ink)"; friendNote.style.fontWeight="400";
-        friendNote.textContent = friendHadEmail
+        // textContent: the child's name is shown as text, never parsed.
+        friendNote.textContent = friendKidFirst
+          ? friendKidFirst + " is booked in too — we've emailed you their own health check form to complete before class."
+          : friendHadEmail
           ? "Your friend is booked in too — we've emailed them their own health check form to complete before class."
           : "Your friend is booked in too. We don't have their email, so please let them know to complete the health check form before class.";
         friendNote.style.display="";

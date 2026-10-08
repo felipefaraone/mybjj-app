@@ -420,6 +420,13 @@ Deno.serve(async (req) => {
   const friendName = titleCase(str(payload.friend_name, 120));
   const friendEmail = str(payload.friend_email, 160).toLowerCase();
   const friendPhone = str(payload.friend_phone, 40);
+  // The friend can be a CHILD of the person filling the form (a parent bringing
+  // a second child). Then the booking is exactly a child booking: the booker is
+  // the person filling the form (first/last name, email, phone above), and the
+  // child is friend_kid_name / friend_kid_dob. friend_name/email/phone are not
+  // used. Absent friend_is_kid (an older trial.html) = an adult friend, as before.
+  const friendIsKid = boolOrNull(payload.friend_is_kid) === true;
+  const friendKidName = titleCase(str(payload.friend_kid_name, 120));
 
   if (!UUID_RE.test(unitId)) return bad("Please choose which academy.", origin);
   if (!firstName) return bad("Please enter your first name.", origin);
@@ -575,8 +582,31 @@ Deno.serve(async (req) => {
   // needs a real session to attend, so it is ignored entirely on the fallback
   // ("None of these times work") path. Validate up-front so an invalid friend
   // block rejects the request BEFORE anything is inserted (nothing half-written).
-  const friendActive = insertClassId !== null && friendName.length > 0;
-  if (friendActive) {
+  const friendActive = insertClassId !== null && (friendIsKid || friendName.length > 0);
+  let friendKidDob: string | null = null;
+  let friendKidAge: number | null = null;
+  if (friendActive && friendIsKid) {
+    // A child friend is validated like a child booking: name, and a date of
+    // birth that is real, not in the future, and aged 2 to 17.
+    if (!friendKidName) return bad("Please add the name of the child you're bringing.", origin);
+    if (isKid && friendKidName === kidName) {
+      return bad("You've added the same child twice. Remove the second one, or enter your other child's name.", origin);
+    }
+    const rawFriendDob = str(payload.friend_kid_dob, 10);
+    if (!rawFriendDob) return bad("Please add the date of birth of the child you're bringing.", origin);
+    const fchk = checkKidDob(rawFriendDob, sydneyTodayStr());
+    if ("error" in fchk) return bad("For the child you're bringing: " + fchk.error, origin);
+    friendKidDob = fchk.dob;
+    friendKidAge = fchk.age;
+    // Same rule as the booker's own child: an Adults class is stored, never
+    // rejected (teenagers train with adults), logged here and labelled "(child)"
+    // in the ops email.
+    if (classAudience !== "Kids") {
+      console.log(
+        `[trial-booking] friend answer/class mismatch — friend is_kid=true, class audience=${classAudience}; storing the answer`,
+      );
+    }
+  } else if (friendActive) {
     if (!friendEmail && !friendPhone) return bad("Add your friend's email or phone, or remove their name.", origin);
     if (friendEmail && !EMAIL_RE.test(friendEmail)) return bad("Please enter a valid email for your friend.", origin);
     // No Australian phone validator exists in this function (it lives only in
@@ -619,14 +649,19 @@ Deno.serve(async (req) => {
     kid_name: string | null;
     kid_dob: string | null;
   };
-  let existingLead: LeadRow | null = null;
-  {
+  // THE DEDUPE RULE as three steps, used for the booking itself AND for a child
+  // brought along as the "friend" (a parent's second child), so the same parent
+  // with two children is two leads, and a child already on the list is found.
+
+  // The usable existing lead for (unit, this email, is_kid, kid name), or null.
+  // Never fails a booking: a lookup error means "none" (insert, as before).
+  async function findLead(forKid: boolean, forKidName: string): Promise<LeadRow | null> {
     const { data: leadRows, error: leadErr } = await supabase
       .from("trial_bookings")
       .select("id, waiver_token, trial_status, class_id, class_date, class_time, phone, lapsed_at, booked_at, kid_name, kid_dob")
       .eq("unit_id", unitRow.id)
       .eq("email", email)
-      .eq("is_kid", isKid)
+      .eq("is_kid", forKid)
       .neq("trial_status", "converted")
       .order("booked_at", { ascending: false })
       .limit(10);
@@ -634,85 +669,82 @@ Deno.serve(async (req) => {
       // Never fail a booking over the dedupe lookup — fall through and insert,
       // which is exactly today's behaviour.
       console.error("[trial-booking] lead lookup error:", leadErr.message);
-    } else {
-      const usable = (leadRows || []).filter((r) => {
-        if (isKid && titleCase(String(r.kid_name || "")) !== kidName) return false;
-        if (r.trial_status === "lapsed") {
-          const ref = r.lapsed_at || r.booked_at;
-          if (!ref) return true;
-          const age = Date.now() - new Date(String(ref)).getTime();
-          if (age > RETURNING_LEAD_DAYS * 86400000) return false;
-        }
-        return true;
-      });
-      existingLead = (usable[0] as LeadRow) || null;
+      return null;
     }
+    const usable = (leadRows || []).filter((r) => {
+      if (forKid && titleCase(String(r.kid_name || "")) !== forKidName) return false;
+      if (r.trial_status === "lapsed") {
+        const ref = r.lapsed_at || r.booked_at;
+        if (!ref) return true;
+        const age = Date.now() - new Date(String(ref)).getTime();
+        if (age > RETURNING_LEAD_DAYS * 86400000) return false;
+      }
+      return true;
+    });
+    return (usable[0] as LeadRow) || null;
   }
 
-  // The id and token the rest of this function works from, whichever branch ran.
-  let bookingId: string;
-  let bookingToken: string | null;
+  // Add this class to an existing lead. "dup" when they are already booked into
+  // this exact occurrence, "error" when a write failed, else "ok".
+  async function attachSession(lead: LeadRow): Promise<"ok" | "dup" | "error"> {
+    const { data: sessRows, error: sessErr } = await supabase
+      .from("trial_sessions")
+      .select("id, class_id, class_date")
+      .eq("trial_booking_id", lead.id);
+    if (sessErr) {
+      console.error("[trial-booking] session read error:", sessErr.message);
+      return "error";
+    }
+    const sessions = sessRows || [];
 
-  if (existingLead) {
-    if (insertClassId) {
-      const { data: sessRows, error: sessErr } = await supabase
-        .from("trial_sessions")
-        .select("id, class_id, class_date")
-        .eq("trial_booking_id", existingLead.id);
-      if (sessErr) {
-        console.error("[trial-booking] session read error:", sessErr.message);
-        return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
-      }
-      const sessions = sessRows || [];
+    // ALREADY BOOKED INTO THIS EXACT OCCURRENCE. Say so — a submission that
+    // silently does nothing is worse than one that explains itself. Checked
+    // against sessions AND, when there are none, the legacy trio, because that
+    // trio IS their current booking.
+    const dupSession = sessions.some((s) =>
+      String(s.class_id) === insertClassId && String(s.class_date) === insertClassDate
+    );
+    const dupLegacy = sessions.length === 0 &&
+      lead.class_id === insertClassId && lead.class_date === insertClassDate;
+    if (dupSession || dupLegacy) return "dup";
 
-      // ALREADY BOOKED INTO THIS EXACT OCCURRENCE. Say so — a submission that
-      // silently does nothing is worse than one that explains itself. Checked
-      // against sessions AND, when there are none, the legacy trio, because that
-      // trio IS their current booking.
-      const dupSession = sessions.some((s) =>
-        String(s.class_id) === insertClassId && String(s.class_date) === insertClassDate
-      );
-      const dupLegacy = sessions.length === 0 &&
-        existingLead.class_id === insertClassId && existingLead.class_date === insertClassDate;
-      if (dupSession || dupLegacy) {
-        return bad("You're already booked into that class. Check your email for the details, or pick a different time.", origin);
-      }
-
-      // LEGACY TRIO BACKFILL, and the reason this is not optional. trialClasses
-      // reads sessions the moment ANY exist and only falls back to
-      // trial_bookings.class_id/date/time when there are none. So attaching the
-      // first session to a lead that still carries the trio would make their
-      // ORIGINAL booking vanish from the card and the mat. Materialise the trio
-      // as a session first. Same move _doAddTrialSession makes (index.html:11972),
-      // including carrying attendance across from the scalar status.
-      if (sessions.length === 0 && existingLead.class_id && existingLead.class_date) {
-        const { error: backErr } = await supabase.from("trial_sessions").insert({
-          trial_booking_id: existingLead.id,
-          class_id: existingLead.class_id,
-          class_date: existingLead.class_date,
-          class_time: existingLead.class_time,
-          attended: existingLead.trial_status === "attended",
-        });
-        if (backErr) {
-          console.error("[trial-booking] legacy backfill error:", backErr.message);
-          return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
-        }
-      }
-
-      const { error: newSessErr } = await supabase.from("trial_sessions").insert({
-        trial_booking_id: existingLead.id,
-        class_id: insertClassId,
-        class_date: insertClassDate,
-        class_time: insertClassTime,
-        attended: false,
+    // LEGACY TRIO BACKFILL, and the reason this is not optional. trialClasses
+    // reads sessions the moment ANY exist and only falls back to
+    // trial_bookings.class_id/date/time when there are none. So attaching the
+    // first session to a lead that still carries the trio would make their
+    // ORIGINAL booking vanish from the card and the mat. Materialise the trio
+    // as a session first. Same move _doAddTrialSession makes (index.html:11972),
+    // including carrying attendance across from the scalar status.
+    if (sessions.length === 0 && lead.class_id && lead.class_date) {
+      const { error: backErr } = await supabase.from("trial_sessions").insert({
+        trial_booking_id: lead.id,
+        class_id: lead.class_id,
+        class_date: lead.class_date,
+        class_time: lead.class_time,
+        attended: lead.trial_status === "attended",
       });
-      if (newSessErr) {
-        console.error("[trial-booking] session insert error:", newSessErr.message);
-        return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
+      if (backErr) {
+        console.error("[trial-booking] legacy backfill error:", backErr.message);
+        return "error";
       }
     }
 
-    // The lead row itself. Deliberately NOT a general overwrite.
+    const { error: newSessErr } = await supabase.from("trial_sessions").insert({
+      trial_booking_id: lead.id,
+      class_id: insertClassId,
+      class_date: insertClassDate,
+      class_time: insertClassTime,
+      attended: false,
+    });
+    if (newSessErr) {
+      console.error("[trial-booking] session insert error:", newSessErr.message);
+      return "error";
+    }
+    return "ok";
+  }
+
+  // The lead row itself. Deliberately NOT a general overwrite.
+  async function patchLead(lead: LeadRow, leadKidDob: string | null, leadPreferredDay: string): Promise<void> {
     const patch: Record<string, unknown> = {};
     // no_show / lapsed describe a PAST class. The person now has a live upcoming
     // one, and the card gates Convert on that scalar (index.html:11569), so
@@ -722,7 +754,7 @@ Deno.serve(async (req) => {
     // with attended=false, which is a better place for a per-class fact than a
     // row-level scalar. 'attended' is left alone — it is still true, and it does
     // not block anything.
-    if (existingLead.trial_status === "no_show" || existingLead.trial_status === "lapsed") {
+    if (lead.trial_status === "no_show" || lead.trial_status === "lapsed") {
       patch.trial_status = "booked";
       patch.lapsed_at = null;
     }
@@ -732,18 +764,38 @@ Deno.serve(async (req) => {
     // field has nothing to protect, so it gets filled. Anything genuinely new
     // still reaches the office in the staff email below, which carries what was
     // submitted this time.
-    if (!existingLead.phone && phone) patch.phone = phone;
+    if (!lead.phone && phone) patch.phone = phone;
     // Child's date of birth: same fill-a-gap rule — set when the lead has none,
     // never overwrite a stored one (migration 136).
-    if (isKid && kidDob && !existingLead.kid_dob) patch.kid_dob = kidDob;
+    if (leadKidDob && !lead.kid_dob) patch.kid_dob = leadKidDob;
     // The exception: availability on the fallback path. preferredDay is only
     // non-empty when no class was chosen, and it is a statement about the future
     // that supersedes the old one rather than competing with it.
-    if (preferredDay) patch.preferred_day = preferredDay;
+    if (leadPreferredDay) patch.preferred_day = leadPreferredDay;
     if (Object.keys(patch).length) {
-      const { error: updErr } = await supabase.from("trial_bookings").update(patch).eq("id", existingLead.id);
+      const { error: updErr } = await supabase.from("trial_bookings").update(patch).eq("id", lead.id);
       if (updErr) console.error("[trial-booking] lead update error:", updErr.message);
     }
+  }
+
+  const existingLead: LeadRow | null = await findLead(isKid, kidName);
+
+  // The id and token the rest of this function works from, whichever branch ran.
+  let bookingId: string;
+  let bookingToken: string | null;
+
+  if (existingLead) {
+    if (insertClassId) {
+      const attached = await attachSession(existingLead);
+      if (attached === "dup") {
+        return bad("You're already booked into that class. Check your email for the details, or pick a different time.", origin);
+      }
+      if (attached === "error") {
+        return json({ ok: false, error: "Something went wrong saving your booking. Please try again." }, 500, origin);
+      }
+    }
+
+    await patchLead(existingLead, isKid ? kidDob : null, preferredDay);
 
     console.log(
       `[trial-booking] existing lead ${existingLead.id} (${existingLead.trial_status}) — ` +
@@ -824,7 +876,83 @@ Deno.serve(async (req) => {
   // Never rolls back, never fails the request.
   let friendOk = false;
   let friendStaffLine: string | null = null;
-  if (friendActive) {
+  if (friendActive && friendIsKid) {
+    // A CHILD friend (the booker's other child) is a child booking: the booker is
+    // the person filling the form (name, email, phone), is_kid true, kid_name and
+    // kid_dob. Same dedupe rule as the booking itself — unit, email, is_kid and
+    // kid name — so two children of one parent are two leads, and a child who is
+    // already on the list gets this class added instead of a second row.
+    let friendToken: string | null = null;
+    let friendNote = "";
+    let friendAlreadyBooked = false;
+    const friendLead = await findLead(true, friendKidName);
+    if (friendLead) {
+      const attached = await attachSession(friendLead);
+      if (attached === "error") {
+        console.error("[trial-booking] friend (child) session error for lead", friendLead.id);
+      } else {
+        if (attached === "ok") await patchLead(friendLead, friendKidDob, "");
+        friendOk = true;
+        friendToken = friendLead.waiver_token;
+        friendAlreadyBooked = attached === "dup";
+        friendNote = friendAlreadyBooked ? " (already booked into this class)" : " (added to their existing trial)";
+      }
+    } else {
+      const { data: friendRow, error: friendErr } = await supabase
+        .from("trial_bookings")
+        .insert({
+          unit_id: unitRow.id,
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          phone,
+          how_heard: "Friend or family",
+          preferred_day: null,
+          is_kid: true,
+          kid_name: friendKidName,
+          kid_dob: friendKidDob,
+          class_id: insertClassId,
+          class_date: insertClassDate,
+          class_time: insertClassTime,
+          trial_status: "booked",
+          booked_at: nowISO,
+          invited_by_booking_id: bookingId,
+        })
+        .select("id, waiver_token")
+        .single();
+      if (friendErr || !friendRow) {
+        console.error("[trial-booking] friend (child) insert error:", friendErr?.message);
+      } else {
+        friendOk = true;
+        friendToken = friendRow.waiver_token;
+      }
+    }
+    if (friendOk) {
+      friendStaffLine = `${friendKidName} (child${friendKidDob ? `, born ${fmtDob(friendKidDob)}, age ${friendKidAge}` : ""})` +
+        ` — booked by ${firstName} ${lastName}${friendNote}`;
+      // Email 1, KIDS stream, to the booker — with this child's OWN waiver link
+      // (k=1 and the child's name, exactly like a child booking). Not re-sent when
+      // the child was already booked into this very class.
+      if (!friendAlreadyBooked) {
+        let friendWaiverLink = `${WAIVER_ORIGIN}/waiver.html?t=${encodeURIComponent(String(friendToken || ""))}&k=1`;
+        if (friendKidName) friendWaiverLink += `&n=${encodeURIComponent(friendKidName)}`;
+        const friendMsg = renderTrialEmail("1", "kids", {
+          firstName,
+          childFirstName: friendKidName.split(/\s+/)[0] || "",
+          location: unitRow.name,
+          className: insertClassDate ? emailClassLabel : null,
+          trialDate: insertClassDate ? fmtDayDate(insertClassDate) : null,
+          trialTime: insertClassTime ? fmt12(insertClassTime) : null,
+          addressLine,
+          unitLegacyId: null,      // email 1 has no booking button
+          unitPhone: unitRow.phone || null,
+          waiverLink: friendWaiverLink,
+          unsubscribeUrl: await trialUnsubUrl(Deno.env.get("EMAIL_UNSUB_SECRET"), email),
+        });
+        await sendTrialEmail(email, friendMsg, REPLY_TO, TRIAL_FROM);
+      }
+    }
+  } else if (friendActive) {
     // Split friend_name on the FIRST space: before → first, after → last. No space
     // → whole name is the first, last EMPTY (never invent a surname — same rule the
     // trial→student convert flow uses).

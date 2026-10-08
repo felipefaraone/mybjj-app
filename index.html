@@ -11696,6 +11696,12 @@ function rTrialsBlock(){
     const viewWaiverBtn=(t.waiverSignedAt&&isOwner())
       ?'<button onclick="openWaiverDoc(\''+t._dbId+'\',\'trial\')" style="background:none;border:none;padding:6px 0 0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View waiver</button>'
       :'';
+    // Adult <-> kid. A child booked through "bring a friend" on an older trial.html
+    // arrived as an ADULT (child's name as the booker), and staff could then only
+    // move them into adult classes. Staff-only; opens a small sheet.
+    const switchTypeBtn=isStaffOrOwner()
+      ?'<div><button onclick="openTrialTypeSwitch(\''+t._dbId+'\')" style="background:none;border:none;padding:6px 0 0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>'+(t.isKid?'Switch to adult':'Switch to kid')+'</button></div>'
+      :'';
     // Compact — email · phone · prefDay collapse onto one line. Each bit is
     // its own span so flex-wrap breaks between them (not mid-value) and a
     // long email wraps rather than overflowing on a narrow screen.
@@ -11817,6 +11823,7 @@ function rTrialsBlock(){
       +showQrBtn
       +emailWaiverBtn
       +viewWaiverBtn
+      +switchTypeBtn
       +actionsRow
       +contactBlock
       +'</div>';
@@ -11969,10 +11976,97 @@ async function lapseTrialAction(trialDbId){
 function rescheduleTrial(trialDbId){
   const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
   // Fresh modal every time: always opens in MOVE mode, week auto-picked below.
-  S.reschedWeek=0;S.reschedAddMode=false;S.reschedMoveFrom=null;
+  S.reschedWeek=0;S.reschedAddMode=false;S.reschedMoveFrom=null;S.reschedBothAud=false;
   S.rescheduleTrial=trialDbId;render();
 }
-function closeRescheduleTrial(){S.rescheduleTrial=null;S.reschedWeek=0;S.reschedAddMode=false;S.reschedMoveFrom=null;render();}
+function closeRescheduleTrial(){S.rescheduleTrial=null;S.reschedWeek=0;S.reschedAddMode=false;S.reschedMoveFrom=null;S.reschedBothAud=false;render();}
+// "Show the other type's classes too" in the Move / Add sheet (see _trialSlotGroups).
+function setReschedBothAud(on){S.reschedBothAud=!!on;render();}
+
+// ---- Switch a trial between adult and kid (staff) ---------------------------
+// TO KID: the current first/last name is the CHILD's (that is how a child booked
+// as an adult arrives), so it moves into kid_name; email and phone stay — they are
+// the booker's contact. The parent's name is asked for, prefilled from the booking
+// that brought this one along (invited_by_booking_id) when it is on the list;
+// left blank, the contact name stays as it is.
+// TO ADULT: the reverse — kid_name becomes the first / last name. kid_dob is left
+// as it is (not shown for an adult; switching back keeps it).
+// Same write path as the other trial actions: update, then a confirming re-fetch.
+function openTrialTypeSwitch(trialDbId){
+  if(!isStaffOrOwner())return;
+  if(!TRIALS.find(x=>x._dbId===trialDbId))return;
+  S.trialTypeSwitch={id:trialDbId,busy:false,err:''};render();
+}
+function closeTrialTypeSwitch(){S.trialTypeSwitch=null;render();}
+// The public form's name rule (trial.html nameIssue): letters, marks, space,
+// hyphen, apostrophes and full stop; at least one letter; 80 max.
+function _ttsNameOk(v){v=String(v||'').trim();return !!v&&v.length<=80&&/\p{L}/u.test(v)&&!/\d/.test(v)&&/^[\p{L}\p{M} '\u2019.\-]+$/u.test(v);}
+function rTrialTypeSwitchModal(){
+  const st=S.trialTypeSwitch;if(!st)return '';
+  const t=TRIALS.find(x=>x._dbId===st.id);if(!t)return '';
+  const toKid=!t.isKid;
+  const d=st.draft||{};
+  const fld=(id,label,val,hint)=>'<label style="display:block;margin-bottom:10px"><span style="display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">'+escHtml(label)+'</span>'
+    +'<input id="'+id+'" class="einput" type="text" autocomplete="off" value="'+escAttr(val)+'" style="width:100%;box-sizing:border-box;text-align:left;padding:11px 12px;border:1px solid var(--border);border-radius:10px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none">'
+    +(hint?'<span style="display:block;font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4">'+escHtml(hint)+'</span>':'')+'</label>';
+  let body,title;
+  if(toKid){
+    const inviter=t.invitedBy?TRIALS.find(x=>x._dbId===t.invitedBy):null;
+    title='Switch to a kid trial';
+    body='<div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;line-height:1.45">The name on this trial becomes the child\u2019s. Email and phone stay \u2014 they are the parent\u2019s contact.</div>'
+      +fld('tts-cf','Child\u2019s first name',d.cf!=null?d.cf:(t.firstName||''))
+      +fld('tts-cl','Child\u2019s last name',d.cl!=null?d.cl:(t.lastName||''))
+      +fld('tts-pf','Parent / guardian first name',d.pf!=null?d.pf:(inviter?(inviter.firstName||''):''))
+      +fld('tts-pl','Parent / guardian last name',d.pl!=null?d.pl:(inviter?(inviter.lastName||''):''),'Leave the parent\u2019s name blank if you don\u2019t know it yet \u2014 the contact name stays as it is.');
+  }else{
+    const kn=String(t.kidName||'').trim();const sp=kn.indexOf(' ');
+    title='Switch to an adult trial';
+    body='<div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;line-height:1.45">The child\u2019s name becomes the name on this trial. Email and phone stay as they are.</div>'
+      +fld('tts-af','First name',d.af!=null?d.af:(sp>=0?kn.slice(0,sp):kn))
+      +fld('tts-al','Last name',d.al!=null?d.al:(sp>=0?kn.slice(sp+1).trim():''));
+  }
+  const err=st.err?'<div style="font-size:12px;color:var(--red-text);margin:2px 0 10px">'+escHtml(st.err)+'</div>':'';
+  return `<div class="cov" onclick="closeTrialTypeSwitch()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:400px;width:100%;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
+<button onclick="closeTrialTypeSwitch()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:10px;padding-right:40px">${title}</div>
+${body}${err}
+<div style="display:flex;gap:8px;margin-top:6px"><button class="bblue" style="flex:1;padding:11px" onclick="saveTrialTypeSwitch()" ${st.busy?'disabled':''}>${st.busy?'Saving\u2026':'Save'}</button><button style="flex:1;padding:11px;background:var(--card);border:1px solid var(--border);border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text2);cursor:pointer" onclick="closeTrialTypeSwitch()">Cancel</button></div>
+</div></div>`;
+}
+async function saveTrialTypeSwitch(){
+  const st=S.trialTypeSwitch;if(!st||st.busy||!isStaffOrOwner())return;
+  const t=TRIALS.find(x=>x._dbId===st.id);if(!t){closeTrialTypeSwitch();return;}
+  const toKid=!t.isKid;
+  const v=id=>{const e=document.getElementById(id);return e?String(e.value||'').replace(/\s+/g,' ').trim():'';};
+  let patch;
+  if(toKid){
+    st.draft={cf:v('tts-cf'),cl:v('tts-cl'),pf:v('tts-pf'),pl:v('tts-pl')};
+    const d=st.draft;
+    if(!_ttsNameOk(d.cf)||!_ttsNameOk(d.cl)){st.err='Enter the child\u2019s first and last name (letters only).';render();return;}
+    const kidName=(d.cf+' '+d.cl).trim();
+    if(kidName.length>120){st.err='The child\u2019s name is too long (120 characters max).';render();return;}
+    if((d.pf||d.pl)&&(!_ttsNameOk(d.pf)||(d.pl&&!_ttsNameOk(d.pl)))){st.err='Check the parent\u2019s name (letters only), or leave it blank.';render();return;}
+    patch={is_kid:true,kid_name:kidName};
+    if(d.pf){patch.first_name=d.pf;patch.last_name=d.pl||'';}
+  }else{
+    st.draft={af:v('tts-af'),al:v('tts-al')};
+    const d=st.draft;
+    if(!_ttsNameOk(d.af)||(d.al&&!_ttsNameOk(d.al))){st.err='Enter the first name (and last name) with letters only.';render();return;}
+    patch={is_kid:false,kid_name:null,first_name:d.af,last_name:d.al||''};
+  }
+  st.busy=true;st.err='';render();
+  const cli=initSupabase();if(!cli){st.busy=false;st.err='Connection issue.';render();return;}
+  const upd=await cli.from('trial_bookings').update(patch).eq('id',t._dbId);
+  if(upd&&upd.error){st.busy=false;st.err=friendlyMutationError(upd.error);render();return;}
+  const chk=await cli.from('trial_bookings').select('id,is_kid,kid_name,first_name,last_name').eq('id',t._dbId).single();
+  if(chk&&chk.error){st.busy=false;st.err=friendlyMutationError(chk.error);render();return;}
+  if(!chk||!chk.data||chk.data.is_kid!==toKid){st.busy=false;st.err='Could not switch this trial. Please try again.';render();return;}
+  t.isKid=!!chk.data.is_kid;t.kidName=chk.data.kid_name||null;
+  t.firstName=chk.data.first_name;t.lastName=chk.data.last_name;
+  t.name=((chk.data.first_name||'')+' '+(chk.data.last_name||'')).trim();
+  S.trialTypeSwitch=null;render();
+  showSaveToast2(toKid?'Switched to a kid trial':'Switched to an adult trial');
+}
 function setReschedWeek(n){S.reschedWeek=Number(n)||0;render();}
 function setReschedMode(add){S.reschedAddMode=!!add;render();}
 // Which session a MOVE starts from. Only meaningful with 2+ sessions, where the
@@ -11983,8 +12077,10 @@ function setReschedMoveFrom(id){S.reschedMoveFrom=id||null;render();}
 // staff can reach every day a member of the public could have picked).
 // Each group carries weekIndex (0/1/2) so the modal can tab by week. Class-eligibility rules are IDENTICAL to trial.html's
 // public picker (do not soften them): only trial-bookable type_codes (adv / omat
-// are not entry points), only the trial's OWN audience (a kid is never offered an
-// adult class, and vice-versa). #4 (John): the range now REACHES BACK 2 days so
+// are not entry points), and BY DEFAULT only the trial's own audience. Staff can
+// tick "show the other type's classes too" (S.reschedBothAud): a trial saved as the
+// wrong type must never leave staff with no class to pick. Those slots carry
+// otherAud so the sheet labels them. #4 (John): the range now REACHES BACK 2 days so
 // staff can log a class the person actually did (e.g. filled the form after their
 // Friday 5pm MMA). The ≥2h future-guard therefore applies ONLY to days AFTER
 // today — past days and today show ALL their classes (a class earlier today may be
@@ -11995,14 +12091,15 @@ function _trialSlotGroups(t){
   const LEAD_MIN=120;
   const DOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const aud=t.isKid?'Kids':'Adults';               // audience MUST NOT change on reschedule
+  const aud=t.isKid?'Kids':'Adults';               // the trial's own audience: the default
+  const bothAud=!!S.reschedBothAud;                // staff toggle: every audience
   const hhmmToMin=v=>{const p=String(v||'').split(':');return (parseInt(p[0],10)||0)*60+(parseInt(p[1],10)||0);};
   // "Now" in Australia/Sydney → {dateStr,minutes} (matches trial.html's sydneyNow).
   const f=new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
   const o={};f.formatToParts(new Date()).forEach(p=>{if(p.type!=='literal')o[p.type]=p.value;});
   const nowDate=o.year+'-'+o.month+'-'+o.day;
   const nowMin=(parseInt(o.hour==='24'?'00':o.hour,10)||0)*60+(parseInt(o.minute,10)||0);
-  const matches=(CLASSES||[]).filter(cl=>cl&&cl.active===true&&cl.unit_id===t._unitId&&TRIAL_TYPES[cl.type]&&cl.audience===aud);
+  const matches=(CLASSES||[]).filter(cl=>cl&&cl.active===true&&cl.unit_id===t._unitId&&TRIAL_TYPES[cl.type]&&(bothAud||cl.audience===aud));
   // Monday-based calendar-week start for a UTC date (AU convention: Monday first,
   // Sunday LAST). Sunday is getUTCDay()===0, so it steps BACK 6 days, not forward 1.
   // Works on a copy — the caller's `d` is still needed for the day/month label.
@@ -12031,7 +12128,7 @@ function _trialSlotGroups(t){
     const weekIndex=Math.max(0,Math.round((mondayOf(d)-nowMonday)/604800000));
     // clsLabel via the SAME helper the trial card already uses for a session
     // (index.html:8892 — CLASSES row -> _clsLabel), so wording can't drift.
-    groups.push({label:DOW[dow]+' '+d.getUTCDate()+' '+MON[d.getUTCMonth()],dateStr,past:dateStr<nowDate,weekIndex:weekIndex,slots:day.map(cl=>({classId:cl.id,time:String(cl.time||'').slice(0,5),timeLabel:fmtT12(cl.time),clsLabel:_clsLabel(cl)}))});
+    groups.push({label:DOW[dow]+' '+d.getUTCDate()+' '+MON[d.getUTCMonth()],dateStr,past:dateStr<nowDate,weekIndex:weekIndex,slots:day.map(cl=>({classId:cl.id,time:String(cl.time||'').slice(0,5),timeLabel:fmtT12(cl.time),clsLabel:_clsLabel(cl),otherAud:cl.audience!==aud?String(cl.audience||''):''}))});
   }
   return groups;
 }
@@ -12069,10 +12166,18 @@ function rRescheduleModal(){
       :(addMode?'Keeps their current day and adds a second class.'
                :'Replaces their current trial day with the one you pick.'))
   +'</div>';
+  // The trial's own type by default; one tick shows the other type's classes too,
+  // so a trial saved as the wrong type is never a dead end.
+  const _ownLbl=t.isKid?'kids':'adult', _otherLbl=t.isKid?'adult':'kids';
+  const bothToggle='<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text2);margin:0 2px 14px;cursor:pointer"><input type="checkbox" '+(S.reschedBothAud?'checked ':'')+'onchange="setReschedBothAud(this.checked)" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--blue)">Show '+_otherLbl+' classes too</label>';
   let body;
   if(!groups.length){
-    // No confirm button when there's nothing to pick — never an empty list.
-    body='<div style="font-size:13px;color:var(--text2);text-align:center;padding:22px 8px;line-height:1.5">No slots in the last few days or the weeks ahead.</div>';
+    // No confirm button when there's nothing to pick — never an empty list, and
+    // never a dead end: offer the other type's classes straight away.
+    body='<div style="font-size:13px;color:var(--text2);text-align:center;padding:22px 8px;line-height:1.5">'
+      +(S.reschedBothAud?'No slots in the last few days or the weeks ahead.'
+        :'No '+_ownLbl+' classes in the last few days or the weeks ahead.<div style="margin-top:10px"><button class="bsm" onclick="setReschedBothAud(true)">Show '+_otherLbl+' classes</button></div>')
+      +'</div>';
   }else{
     // Week tabs — 21 days is too many buttons for one wall. CALENDAR weeks,
     // Monday-based (weekIndex from _trialSlotGroups); retro days live in week 0.
@@ -12099,6 +12204,7 @@ function rRescheduleModal(){
         return '<button class="bsm" style="padding:6px 11px;display:flex;flex-direction:column;align-items:flex-start;gap:1px;line-height:1.15'+(st?';'+st:'')+'" onclick="'+fn+'(\''+t._dbId+'\',\''+esc(s.classId)+'\',\''+esc(g.dateStr)+'\',\''+esc(s.time)+'\')">'
           +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px">'+s.timeLabel+'</span>'
           +(s.clsLabel?'<span style="font-size:10px;opacity:.75;font-weight:400">'+escHtml(s.clsLabel)+'</span>':'')
+          +(s.otherAud?'<span style="font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--amber-text)">'+escHtml(s.otherAud)+' class</span>':'')
           +'</button>';
       }).join('');
       return '<div style="margin-bottom:14px"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:7px">'+esc(g.label)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+slots+'</div></div>';
@@ -12148,7 +12254,7 @@ function rRescheduleModal(){
   const _tail=_cur
     ?(addMode?'This keeps their current day and adds a second one.':'This replaces their current trial day.')
     :'They have no trial day set yet.';
-  const sub=_lead+'<b style="color:var(--text2)">'+escHtml(who)+'</b> — '+(t.isKid?'kids':'adult')+' classes. '+_tail;
+  const sub=_lead+'<b style="color:var(--text2)">'+escHtml(who)+'</b> — '+(S.reschedBothAud?'kids and adult':(t.isKid?'kids':'adult'))+' classes. '+_tail;
   return `<div class="cov" onclick="closeRescheduleTrial()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:400px;width:100%;margin:0 auto;padding:22px;max-height:90vh;overflow-y:auto">
 <button onclick="closeRescheduleTrial()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;padding-right:40px">${title}</div>
@@ -12156,6 +12262,7 @@ function rRescheduleModal(){
 ${curChip}
 ${modeSeg}
 ${modeHint}
+${bothToggle}
 ${body}
 </div></div>`;
 }
@@ -12786,7 +12893,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -17022,7 +17129,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings. Scope to active trials only
     // (booked|attended); converted/lapsed rows are excluded in the
     // query so TRIALS only ever holds rows that still need action.
-    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,waiver_token,is_kid,kid_name,admin_note,contact_log,created_at,kid_dob').in('trial_status',['booked','attended','no_show','lapsed']).order('booked_at',{ascending:false}).limit(200),
+    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,waiver_token,is_kid,kid_name,admin_note,contact_log,created_at,kid_dob,invited_by_booking_id').in('trial_status',['booked','attended','no_show','lapsed']).order('booked_at',{ascending:false}).limit(200),
     // Cross-unit visitors — minimal display-only rows for students who
     // attended a class at the active unit but train elsewhere. Staff-only +
     // unit-bounded server-side; returns 0 rows for non-staff / no visitors.
@@ -17145,7 +17252,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings mapped to camelCase, same style as
     // STUDENTS. unit resolved via uMap (legacy id) so render can scope
     // to the current unit the same way the member roster does.
-    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,classId:r.class_id||null,classDate:r.class_date||null,classTime:r.class_time||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,waiverToken:r.waiver_token||null,isKid:!!r.is_kid,kidName:r.kid_name||null,kidDob:r.kid_dob||null,adminNote:r.admin_note||null,contactLog:Array.isArray(r.contact_log)?r.contact_log:[],unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
+    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,classId:r.class_id||null,classDate:r.class_date||null,classTime:r.class_time||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,waiverToken:r.waiver_token||null,isKid:!!r.is_kid,kidName:r.kid_name||null,kidDob:r.kid_dob||null,invitedBy:r.invited_by_booking_id||null,adminNote:r.admin_note||null,contactLog:Array.isArray(r.contact_log)?r.contact_log:[],unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
     // Phase B — group trial_sessions by trial_booking_id and attach as t.sessions
     // (camelCase, date-sorted). No sessions → []. Legacy classId/classDate/classTime
     // are untouched (reschedule still reads them this phase).
