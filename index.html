@@ -1281,10 +1281,19 @@ function _nameClipHtml(name){
   const n=String(name==null?'':name);
   return '<span class="namefade" title="'+escHtml(n)+'">'+escHtml(n)+'</span>';
 }
-function holdBadge(s){
+// The hold note, trimmed ('' when none). One source for the badge and the
+// roster card's note line. Raw text: callers escape it.
+function _holdNote(s){
+  return (s&&s.holdNote&&String(s.holdNote).trim())||'';
+}
+// opts.withNote:false renders only "On hold" and never wraps — for the roster
+// card's one-line name row, where the full note goes on its own line instead.
+// No opts: exactly as before (badge + full note), for every other caller.
+function holdBadge(s,opts){
   if(!isOnHoldVisible(s))return '';
-  const note=(s.holdNote&&String(s.holdNote).trim())||'';
-  return '<span style="display:inline-flex;align-items:center;max-width:100%;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;margin-left:6px;text-transform:uppercase">On hold'+(note?' · '+escHtml(note):'')+'</span>';
+  const withNote=!(opts&&opts.withNote===false);
+  const note=withNote?_holdNote(s):'';
+  return '<span style="display:inline-flex;align-items:center;max-width:100%;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;margin-left:6px;text-transform:uppercase'+(withNote?'':';white-space:nowrap')+'">On hold'+(note?' · '+escHtml(note):'')+'</span>';
 }
 function membershipBadge(s){
   const m=membershipDef(s&&s.membershipLevel);
@@ -11529,8 +11538,12 @@ function rARosterListInner(){
       // One row, never wrapping: the name shrinks to an ellipsis (_nameClipHtml), the
       // hold badge and the belt bar never shrink, the belt stays right-aligned.
       // padding-left keeps a minimum gap when a long name reaches the belt.
-      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;flex-wrap:nowrap">'+_nameClipHtml(s.name)+(isOnHoldVisible(s)?'<span style="flex-shrink:0;display:inline-flex">'+holdBadge(s)+'</span>':'')
+      // The badge here is "On hold" only: a long note inside a non-shrinking badge
+      // squeezed the name to nothing and pushed the belt off the card. The full
+      // note goes on its own line below the name row, never truncated.
+      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;flex-wrap:nowrap">'+_nameClipHtml(s.name)+(isOnHoldVisible(s)?'<span style="flex-shrink:0;display:inline-flex">'+holdBadge(s,{withNote:false})+'</span>':'')
       +'<span style="margin-left:auto;padding-left:8px;flex-shrink:0;display:inline-flex">'+bb(s.belt,s.deg||0,s.prog,'left',true)+'</span></div>'
+      +((isOnHoldVisible(s)&&_holdNote(s))?'<div style="font-size:11px;color:var(--amber-text);margin-top:2px;line-height:1.35;overflow-wrap:anywhere">'+escHtml(_holdNote(s))+'</div>':'')
       +(_showCtx?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div>':'')
       +statLine
       +(_flagsHtml?'<div class="rc-flags">'+_flagsHtml+'</div>':'')
