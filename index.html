@@ -3533,6 +3533,23 @@ function rAtts(all,cid){
 // _dbId:null — that is how the card knows there is no session row to remove, and
 // how any caller can tell a real session from the mirror.
 // Empty array when the trial has neither.
+// The trial's participant: the child for a kid trial, else the booker. '' when
+// unknown — call sites add their own fallback ('—', 'this trial').
+function _trialParticipantName(t){
+  return (t&&t.isKid&&t.kidName)?t.kidName:((t&&t.name)||'');
+}
+// Name compare for "is this trial someone we already have": lowercase, any
+// "(...)" removed (nicknames), whitespace collapsed, trimmed.
+function _trialNormName(v){
+  return String(v||'').toLowerCase().replace(/\([^)]*\)/g,' ').replace(/\s+/g,' ').trim();
+}
+// STUDENTS in the trial's unit whose name matches the participant. Inactive
+// students included: a returning member must not be duplicated either.
+function _trialMemberMatches(t){
+  const n=_trialNormName(_trialParticipantName(t));
+  if(!n||!t||!t.unit)return [];
+  return STUDENTS.filter(s=>s&&s.unit===t.unit&&_trialNormName(s.name)===n);
+}
 function trialClasses(t){
   if(!t)return [];
   const sess=Array.isArray(t.sessions)?t.sessions:[];
@@ -3569,7 +3586,7 @@ function trialsForClass(cid){
 // app's primary language); No show is the quiet secondary (.bsm, same as the
 // roster's Undo/trash). No new palette. `first` suppresses the inter-row divider.
 function _trialRosterRow(tr,first){
-  const nm=(tr.isKid&&tr.kidName)?tr.kidName:(tr.name||'—');
+  const nm=_trialParticipantName(tr)||'—';
   const waiverOk=!!tr.waiverSignedAt;
   const chipBase='display:inline-flex;align-items:center;gap:4px;font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px';
   const waiverChip='<span style="'+chipBase+';background:'+(waiverOk?'var(--green-bg)':'var(--amber-bg)')+';color:'+(waiverOk?'var(--green-text)':'var(--amber-text)')+';border:1px solid '+(waiverOk?'var(--green-border)':'var(--amber-border)')+'">'+(waiverOk?'WAIVER OK':'WAIVER PENDING')+'</span>';
@@ -11676,7 +11693,7 @@ function rTrialsBlock(){
     const waiverChip=noWaiverAttended
       ?'<span style="'+chipBase+';background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border)">ATTENDED, NO WAIVER</span>'
       :'<span style="'+chipBase+';background:'+(waiverOk?'var(--green-bg)':'var(--amber-bg)')+';color:'+(waiverOk?'var(--green-text)':'var(--amber-text)')+';border:1px solid '+(waiverOk?'var(--green-border)':'var(--amber-border)')+'">'+(waiverOk?'WAIVER OK':'WAIVER PENDING')+'</span>';
-    const displayName=(t.isKid&&t.kidName)?t.kidName:(t.name||'—');
+    const displayName=_trialParticipantName(t)||'—';
     // Child's date of birth from the booking form (migration 136): age next to
     // the name, the date in the contact line. Age only — the kids class age
     // ranges live in trial.html, not here, so no class-fit flag on this card.
@@ -11805,6 +11822,19 @@ function rTrialsBlock(){
     actBtns.push('<button class="admin-action-btn" onclick="rescheduleTrial(\''+t._dbId+'\')">'+iResched+'Reschedule</button>');
     actBtns.push('<button class="admin-action-btn" onclick="lapseTrial(\''+t._dbId+'\')" style="color:var(--red-text)">'+iLapse+'Lapse</button>');
     const actionsRow='<div style="display:flex;gap:8px;margin-top:12px">'+actBtns.join('')+'</div>';
+    // "Already a member": a member who fills the generic website waiver arrives as
+    // a NEW trial lead, and Convert would duplicate them. When the participant's
+    // name matches students in this unit, offer Link (closes the trial onto the
+    // existing member and moves the signed waiver) next to Convert. Ids only in the
+    // onclick; every name escaped.
+    const _matches=isNoShow?[]:_trialMemberMatches(t);
+    const memberLine=_matches.length
+      ?'<div style="margin-top:10px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:8px;padding:7px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:12px;color:var(--amber-text)">'
+        +'<span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase">Already a member</span>'
+        +_matches.map(m=>'<span style="display:inline-flex;align-items:center;gap:6px;min-width:0"><span style="overflow-wrap:anywhere">'+escHtml(m.name)+(m._active===false?' <span style="opacity:.8">(inactive)</span>':'')+'</span>'
+          +'<button onclick="linkTrialToMember(\''+escAttr(t._dbId)+'\',\''+escAttr(m._dbId)+'\')" style="background:transparent;border:1px solid var(--amber-border);color:var(--amber-text);border-radius:6px;padding:2px 9px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;cursor:pointer;flex-shrink:0">Link</button></span>').join('')
+        +'</div>'
+      :'';
     // #5 (John's trial list) — running contact-attempt log so Patricia/Evelin
     // don't double up on follow-ups. Entries render most-recent-first (defensive
     // date-desc sort). Channel + short date (_fmtAttWhen, the app's day/month
@@ -11839,6 +11869,7 @@ function rTrialsBlock(){
       +emailWaiverBtn
       +viewWaiverBtn
       +switchTypeBtn
+      +memberLine
       +actionsRow
       +contactBlock
       +'</div>';
@@ -12151,7 +12182,7 @@ function rRescheduleModal(){
   if(!S.rescheduleTrial)return '';
   const t=TRIALS.find(x=>x._dbId===S.rescheduleTrial);if(!t)return '';
   const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
-  const who=(t.isKid&&t.kidName)?t.kidName:(t.name||'this trial');
+  const who=_trialParticipantName(t)||'this trial';
   const groups=_trialSlotGroups(t);
   // MOVE is the default action; add is one tap away via the link at the bottom.
   const addMode=!!S.reschedAddMode;
@@ -12480,6 +12511,56 @@ async function convertTrialToMemberAction(trialDbId){
   if(_waiverWarn)showSaveToast2('Converted, but the health waiver could not be linked — ask an owner to do it','error');
   else showSaveToast2('Converted to member');
 }
+// Link a trial to a member who already exists (the "Already a member" line).
+// Nothing is created: the signed waiver moves to the member, and the trial closes
+// as 'converted' — the existing "this lead is a member" state, which also stops
+// the trial follow-up emails. students.waiver_signed_at is NOT written here:
+// migration 141's trigger on health_waivers stamps it when student_id is set.
+function linkTrialToMember(trialDbId,studentDbId){
+  const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)return;
+  const s=STUDENTS.find(x=>x._dbId===studentDbId);if(!s){showSaveToast2('Member not found','error');return;}
+  openConfirm({
+    title:'Link to member?',
+    message:'Link this trial to '+escHtml(s.name||'this member')+'? The signed waiver moves to their profile and the trial closes. No new member is created.',
+    dangerLabel:'Link',
+    onConfirm:()=>linkTrialToMemberAction(trialDbId,studentDbId)
+  });
+}
+async function linkTrialToMemberAction(trialDbId,studentDbId){
+  const t=TRIALS.find(x=>x._dbId===trialDbId);if(!t)throw new Error('trial missing');
+  const s=STUDENTS.find(x=>x._dbId===studentDbId);if(!s){showSaveToast2('Member not found','error');throw new Error('student missing');}
+  const cli=initSupabase();if(!cli){showSaveToast2('Connection issue','error');throw new Error('no client');}
+  const nowIso=new Date().toISOString();
+  // a. The waiver follows the person. UPDATE on health_waivers is is_admin() only,
+  // so a non-owner's write is a silent RLS no-op: check it landed. If it did NOT,
+  // stop here — closing the trial would drop the card and its Link line, leaving
+  // the waiver orphaned with no UI left for an owner to fix it.
+  let linked=false;
+  if(t.waiverSignedAt){
+    const wu=await cli.from('health_waivers').update({student_id:studentDbId}).eq('trial_booking_id',trialDbId).is('student_id',null);
+    if(wu&&wu.error)console.warn('[mybjj] link waiver:',friendlyMutationError(wu.error));
+    const wchk=await cli.from('health_waivers').select('id,student_id').eq('trial_booking_id',trialDbId);
+    linked=!!(wchk&&wchk.data&&wchk.data.some(w=>w.student_id===studentDbId));
+    if(!linked){
+      showSaveToast2('Only an owner can link a waiver. The trial stays here so an owner can link it.','error');
+      return;
+    }
+  }
+  // b. Close the trial on the existing member — same columns and confirming
+  // re-fetch as the convert paths.
+  const upd=await cli.from('trial_bookings').update({trial_status:'converted',converted_at:nowIso,converted_student_id:studentDbId}).eq('id',trialDbId);
+  if(upd&&upd.error){showSaveToast2(friendlyMutationError(upd.error),'error');throw upd.error;}
+  const chk=await cli.from('trial_bookings').select('id,converted_at,converted_student_id').eq('id',trialDbId).single();
+  if(chk&&chk.error){showSaveToast2(friendlyMutationError(chk.error),'error');throw chk.error;}
+  if(!chk||!chk.data||!chk.data.converted_at||chk.data.converted_student_id!==studentDbId){showSaveToast2('Link not confirmed','error');throw new Error('link not confirmed');}
+  // c. Local state: mirror the 141 trigger so the member's card shows the waiver
+  // without a reload; the trial leaves the list.
+  if(linked&&!s.waiverSignedAt)s.waiverSignedAt=t.waiverSignedAt;
+  TRIALS=TRIALS.filter(x=>x._dbId!==trialDbId);
+  render();
+  // d.
+  showSaveToast2('Linked to '+(s.name||'member'));
+}
 // Phase 4 — kid conversion. Unlike the adult one-click path, a kid opens a
 // pre-filled REVIEW form: a kids students row is the only record of a person who
 // cannot consent for themselves, and this is the last moment a human looks at the
@@ -12610,14 +12691,15 @@ async function convertKidAction(){
     // only, so a non-owner instructor's write is a silent RLS no-op — CHECK that it
     // landed and tell the user plainly rather than pretending it worked.
     let waiverWarn=false;
+    let linked=false;
     if(t.waiverSignedAt){
       await cli.from('health_waivers').update({student_id:ins.data.id}).eq('trial_booking_id',t._dbId).is('student_id',null);
       const wchk=await cli.from('health_waivers').select('id,student_id').eq('trial_booking_id',t._dbId);
-      const linked=!!(wchk&&wchk.data&&wchk.data.some(w=>w.student_id===ins.data.id));
+      linked=!!(wchk&&wchk.data&&wchk.data.some(w=>w.student_id===ins.data.id));
       if(!linked)waiverWarn=true;
     }
     // Local state — mirror the adult path: push into STUDENTS, drop from TRIALS.
-    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok',convertedAt:nowIso,membershipLevel:null,_parentStudentId:null,_parent2StudentId:null});
+    STUDENTS.push({id:ins.data.legacy_id,_dbId:ins.data.id,_userId:null,_parentUserId:parentUserId,_active:true,email:null,name:fullName,firstName,lastName:lastName||null,belt,deg:degree,total:0,giTotal:0,grade:0,giGrade:0,initials,prog:'kids',unit:t.unit||null,waiverSignedAt:(linked?t.waiverSignedAt:null)||null,gender:gender||null,journey:[],feedback:[],photoUrl:null,parentName:parentName||null,parentPhone:parentPhone||null,parentEmail:parentEmail||null,parentUserName:null,dob:dob||null,bjjStartDate:null,standing:'ok',convertedAt:nowIso,membershipLevel:null,_parentStudentId:null,_parent2StudentId:null});
     TRIALS=TRIALS.filter(x=>x._dbId!==t._dbId);
     S.convertKid=null;render();
     if(waiverWarn)showSaveToast2('Member created, but the health waiver could not be linked — ask an owner to do it','error');
@@ -20461,7 +20543,7 @@ function rContactLogSheet(){
   const t=TRIALS.find(x=>x._dbId===S.contactLogFor); if(!t)return '';
   const busy=!!S.contactSaving;
   const today=dk(new Date());
-  const who=(t.isKid&&t.kidName)?t.kidName:(t.name||'this trial');
+  const who=_trialParticipantName(t)||'this trial';
   const meStaff=STAFF.find(x=>x._userId===((S.profile&&S.profile.id)||null))||null;
   const defSel=meStaff?meStaff._dbId:'';
   const CH_LBL={email:'Email',call:'Call',text:'Text',other:'Other'};
@@ -21988,7 +22070,7 @@ function rTrialQRSheet(){
   if(!isStaffOrOwner()){S.qrFor=null;return '';}     // defensive — staff only
   const t=TRIALS.find(x=>x._dbId===S.qrFor); if(!t)return '';
   const busy=false;
-  const who=(t.isKid&&t.kidName)?t.kidName:(t.name||'this trial');
+  const who=_trialParticipantName(t)||'this trial';
   let qrArea;
   if(S.qrError){
     qrArea='<div style="text-align:center;color:var(--text3);font-size:13px;padding:40px 8px;line-height:1.5">Couldn\'t generate the QR.<br>Use Copy link instead.</div>';
