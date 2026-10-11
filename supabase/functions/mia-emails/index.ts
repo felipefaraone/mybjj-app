@@ -1,6 +1,6 @@
 // supabase/functions/mia-emails/index.ts
 //
-// MIA ("missing in action") emails (migration 140): M1-M4 at 7, 14, 21 and 30
+// MIA ("missing in action") emails (migration 140): M1-M4 at 10, 14, 21 and 30
 // days since a member's last class, the team note T4 to info@mybjj.com.au with
 // M4, and R ("great to have you back") the day after they return. Templates:
 // ../_shared/mia_emails.ts. Nothing schedules this function: it runs when

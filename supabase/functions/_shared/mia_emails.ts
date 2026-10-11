@@ -213,7 +213,7 @@ export interface MiaParent { name: string | null; email: string | null; phone: s
 // What the member actually got this episode, for the T4 line.
 export interface MiaSent { codes: string[]; reason: string | null }   // reason: only used when codes is empty
 
-const DAYS_OF: Record<string, number> = { M1: 7, M2: 14, M3: 21, M4: 30 };
+const DAYS_OF: Record<string, number> = { M1: 10, M2: 14, M3: 21, M4: 30 };
 // ["M2","M3","M4"] -> "14, 21 and 30 days"; [] -> "none (<reason>)"
 export function automatedSentLine(x: MiaSent | null): string {
   const days = (x?.codes || []).filter((c) => c in DAYS_OF).map((c) => DAYS_OF[c]).sort((a, b) => a - b)
