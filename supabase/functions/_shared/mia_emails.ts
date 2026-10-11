@@ -213,10 +213,12 @@ export interface MiaParent { name: string | null; email: string | null; phone: s
 // What the member actually got this episode, for the T4 line.
 export interface MiaSent { codes: string[]; reason: string | null }   // reason: only used when codes is empty
 
-const DAYS_OF: Record<string, number> = { M1: 10, M2: 14, M3: 21, M4: 30 };
+// The schedule lives in the database (public.mia_codes, migration 143), not in
+// code: the caller reads it once per run and passes it in as { M1: 10, ... }.
+export type MiaDays = Record<string, number>;
 // ["M2","M3","M4"] -> "14, 21 and 30 days"; [] -> "none (<reason>)"
-export function automatedSentLine(x: MiaSent | null): string {
-  const days = (x?.codes || []).filter((c) => c in DAYS_OF).map((c) => DAYS_OF[c]).sort((a, b) => a - b)
+export function automatedSentLine(x: MiaSent | null, daysOf: MiaDays): string {
+  const days = (x?.codes || []).filter((c) => c in daysOf).map((c) => daysOf[c]).sort((a, b) => a - b)
     .filter((d, i, arr) => arr.indexOf(d) === i);
   if (!days.length) return `Automated emails sent: none (${(x?.reason || "started after launch").trim()}).`;
   const list = days.length === 1 ? String(days[0]) : days.slice(0, -1).join(", ") + " and " + days[days.length - 1];
@@ -241,6 +243,7 @@ export interface MiaVars {
   membershipLevel: string | null;
   parents: MiaParent[] | null;  // T4 for a kid
   automated: MiaSent | null;    // T4: what the member actually got
+  daysOf: MiaDays | null;       // T4: public.mia_codes as { code: days }; required for T4
   unsubscribeUrl: string | null; // member emails only
 }
 
@@ -278,7 +281,9 @@ export function renderMiaEmail(code: MiaCode, stream: MiaStream, v: MiaVars):
       text.push(...rows.map(([k, val]) => `${k}: ${val}`), "");
     }
     else if (b.t === "sent") {
-      const line = automatedSentLine(v.automated);
+      // No schedule, no team note: a wrong number of days would mislead the office.
+      if (!v.daysOf) throw new Error("T4 needs the MIA schedule (public.mia_codes)");
+      const line = automatedSentLine(v.automated, v.daysOf);
       blocks.push({ t: "p", parts: [line] }); text.push(line, "");
     }
     else if (b.t === "parents") {

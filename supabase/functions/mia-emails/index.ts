@@ -1,8 +1,10 @@
 // supabase/functions/mia-emails/index.ts
 //
-// MIA ("missing in action") emails (migration 140): M1-M4 at 10, 14, 21 and 30
-// days since a member's last class, the team note T4 to info@mybjj.com.au with
-// M4, and R ("great to have you back") the day after they return. Templates:
+// MIA ("missing in action") emails (migration 140): M1-M4 when a member has not
+// trained for a while, the team note T4 to info@mybjj.com.au with M4, and R
+// ("great to have you back") after they return. The SCHEDULE lives in the
+// database, not in code: public.mia_codes (days per code) and public.mia_settings
+// (settle delay, unit gate, lateness), migration 143. Templates:
 // ../_shared/mia_emails.ts. Nothing schedules this function: it runs when
 // someone calls it with the shared secret (hourly, once pg_cron is set up).
 // A separate function rather than a path in trial-emails: different people,
@@ -18,9 +20,11 @@
 //
 // WHAT IS DUE comes from public.mia_email_candidates(now), which applies every
 // rule: eligibility (active, not on hold, has trained, not a visitor or casual
-// tier, not staff), 15:00 Sydney timing, the 2-day lateness limit, the current
-// absence only (a newer class stops it), R only after a sent M1, recipients and
-// opt-outs, and sent-or-skipped-already. T4 rows come addressed to
+// tier, not staff), 15:00 Sydney timing after the settle delay, the unit gate,
+// the lateness rule, the current absence only (a newer class stops it), R only
+// after a sent M1, recipients and opt-outs, and sent-or-skipped-already.
+// This function reads public.mia_codes once per run for the T4 line's days; if
+// that read fails, no T4 is sent in that run (logged) and member emails go on. T4 rows come addressed to
 // info@mybjj.com.au, with what the member actually got (sent_codes,
 // member_reach) for its "Automated emails sent: …" line.
 //
@@ -30,12 +34,12 @@
 //   period_key '<student>:<last class date>:<code>', with the student_id, status
 //   'failed' / error 'sending'; 137's unique key makes the claim exclusive), send,
 //   then mark it 'sent' or 'failed'. A failed row is retried on the next run while
-//   the email is still inside its 2-day window.
+//   the email is still due (migration 143's lateness rule).
 //
 // DAILY CAP, shared: EMAIL_DAILY_CAP (default 90) is a budget for the Sydney day,
 // counted across every kind as trial-emails does; at most MAX_EMAILS_PER_RUN (60)
 // per run; sends paced at 2 a second with 429 retries; no new send after 100 s.
-// Whatever is not sent stays due for the next hourly run, inside its 2 days.
+// Whatever is not sent stays due for the next hourly run while it is still due.
 //
 // Secrets: ENGAGEMENT_SECRET, EMAIL_UNSUB_SECRET (required to send),
 // RESEND_API_KEY, EMAIL_DAILY_CAP (optional). Auto: SUPABASE_URL,
@@ -44,7 +48,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  type MiaCode, type MiaParent, type MiaSent, type MiaStream, MIA_CODES, noneReason, renderMiaEmail, TEAM_ADDRESS,
+  type MiaCode, type MiaDays, type MiaParent, type MiaSent, type MiaStream, MIA_CODES, noneReason, renderMiaEmail, TEAM_ADDRESS,
 } from "../_shared/mia_emails.ts";
 import { TRIAL_FROM, TRIAL_REPLY_TO } from "../_shared/trial_emails.ts";
 import { parseTestTo, TEST_SUBJECT_PREFIX } from "../_shared/test_to.ts";
@@ -113,6 +117,21 @@ type Cand = {
   parents: MiaParent[] | null; sent_codes: string[] | null; member_reach: string | null; attempt_status: string | null;
 };
 
+// The MIA schedule ({ M1: 10, M2: 14, ... }) from public.mia_codes, read once per
+// run with the service role. null when it cannot be read: the caller then sends
+// no T4 in that run (its "Automated emails sent" line would be wrong).
+// deno-lint-ignore no-explicit-any
+async function readMiaDays(sb: any): Promise<MiaDays | null> {
+  const { data, error } = await sb.from("mia_codes").select("code, days");
+  if (error || !Array.isArray(data) || !data.length) {
+    console.error("[mia-emails] could not read public.mia_codes:", error ? error.message : "no rows");
+    return null;
+  }
+  const out: MiaDays = {};
+  for (const r of data as { code: string; days: number }[]) if (r && r.code) out[r.code] = Number(r.days);
+  return out;
+}
+
 // Made-up people for samples and test sends. Never a real person.
 function fixtureFor(stream: MiaStream, code: MiaCode, recipient: string): Cand {
   const last = new Date(Date.now() - 30 * 86400000);
@@ -133,7 +152,7 @@ function fixtureFor(stream: MiaStream, code: MiaCode, recipient: string): Cand {
   };
 }
 
-async function render(c: Cand, code: MiaCode = c.code, stream: MiaStream = c.is_kid ? "kids" : "adult",
+async function render(c: Cand, daysOf: MiaDays | null, code: MiaCode = c.code, stream: MiaStream = c.is_kid ? "kids" : "adult",
                       automated: MiaSent | null = { codes: c.sent_codes || [], reason: noneReason(c.member_reach, false) }) {
   return renderMiaEmail(code, stream, {
     firstName: c.first_name || "",
@@ -147,6 +166,7 @@ async function render(c: Cand, code: MiaCode = c.code, stream: MiaStream = c.is_
     membershipLevel: c.membership_level,
     parents: c.parents,
     automated,
+    daysOf,
     unsubscribeUrl: code === "T4" ? null : await unsubLink(Deno.env.get("EMAIL_UNSUB_SECRET"), c.recipient, "mia"),
   });
 }
@@ -180,17 +200,22 @@ Deno.serve(async (req) => {
       if (!u) return json({ error: `unit "${TEST_UNITS[st]}" not found in public.units` }, 500);
       units[st] = u;
     }
+    const daysOf = await readMiaDays(sb);
     const results = [];
     const testSender = createPacedSender();
     for (const stream of ["adult", "kids"] as MiaStream[]) {
       const u = units[stream]!;
       for (const code of MIA_CODES) {
+        if (code === "T4" && !daysOf) {
+          results.push({ stream, code, ok: false, skipped: "public.mia_codes could not be read: no T4 in this run" });
+          continue;
+        }
         const c: Cand = {
           ...fixtureFor(stream, code, to),
           unit_name: String(u.name || "").trim(), unit_legacy_id: u.legacy_id ? String(u.legacy_id).toLowerCase() : null,
           unit_address: u.address, unit_phone: u.phone ? String(u.phone).trim() || null : null,
         };
-        const msg = await render(c, code, stream);
+        const msg = await render(c, daysOf, code, stream);
         const subject = TEST_SUBJECT_PREFIX + msg.subject;
         const r = await sendViaResend(testSender, to, { ...msg, subject });
         results.push({ stream, code, subject, ok: r.ok, ...(r.ok ? {} : { error: r.error }) });
@@ -243,7 +268,12 @@ Deno.serve(async (req) => {
   // What this run may send: the daily cap's remainder, a smaller `limit`, and at
   // most MAX_EMAILS_PER_RUN so the run ends inside the 150 s request timeout.
   const budget = Math.max(0, Math.min(reqLimit == null ? Infinity : reqLimit, envCap - emailsSentToday, MAX_EMAILS_PER_RUN));
-  const toSend = [...cands].sort((x, y) => new Date(x.due_at).getTime() - new Date(y.due_at).getTime() || x.period_key.localeCompare(y.period_key) || x.recipient.localeCompare(y.recipient));
+  // The schedule, once per run. Unreadable -> no T4 this run (left unclaimed, so
+  // still due next run); member emails are unaffected.
+  const daysOf = await readMiaDays(supabase);
+  const t4Held = daysOf ? 0 : cands.filter((c) => c.code === "T4").length;
+  const toSend = [...cands].filter((c) => daysOf || c.code !== "T4")
+    .sort((x, y) => new Date(x.due_at).getTime() - new Date(y.due_at).getTime() || x.period_key.localeCompare(y.period_key) || x.recipient.localeCompare(y.recipient));
 
   // T4's "Automated emails sent" in a dry run: what is logged, plus the M4 this run
   // would send for the same episode (M4 sorts before its T4).
@@ -264,9 +294,10 @@ Deno.serve(async (req) => {
     const samples = [];
     for (const stream of ["adult", "kids"] as MiaStream[]) {
       for (const code of MIA_CODES) {
+        if (code === "T4" && !daysOf) { samples.push({ stream, code, skipped: "public.mia_codes could not be read: no T4 in this run" }); continue; }
         const real = cands.find((c) => (c.is_kid ? "kids" : "adult") === stream && c.code === code);
         const base = real || fixtureFor(stream, code, code === "T4" ? TEAM_ADDRESS : "sample@example.invalid");
-        samples.push({ stream, code, to: base.recipient, from_real_member: !!real, ...(await render(base, code, stream, real ? dryAutomated(real) : undefined)) });
+        samples.push({ stream, code, to: base.recipient, from_real_member: !!real, ...(await render(base, daysOf, code, stream, real ? dryAutomated(real) : undefined)) });
       }
     }
     return json({
@@ -278,8 +309,12 @@ Deno.serve(async (req) => {
         of_which_retries: toSend.slice(0, budget).filter((c) => c.attempt_status === "failed").length,
         over_daily_cap: Math.max(0, toSend.length - budget),
         by_code: Object.fromEntries(MIA_CODES.map((k) => [k, toSend.filter((c) => c.code === k).length])),
+        t4_held_schedule_unreadable: t4Held,
       },
-      warnings: Deno.env.get("EMAIL_UNSUB_SECRET") ? [] : ["EMAIL_UNSUB_SECRET not set: samples have no unsubscribe link, and send:true will refuse"],
+      warnings: [
+        ...(Deno.env.get("EMAIL_UNSUB_SECRET") ? [] : ["EMAIL_UNSUB_SECRET not set: samples have no unsubscribe link, and send:true will refuse"]),
+        ...(daysOf ? [] : ["public.mia_codes could not be read: no T4 would be sent this run"]),
+      ],
       due,
       samples,
     }, 200);
@@ -330,7 +365,7 @@ Deno.serve(async (req) => {
     // T4 reads the log fresh, so an M4 sent earlier in THIS run is listed.
     let automated: MiaSent | undefined;
     if (c.code === "T4") automated = await sentThisEpisode(c);
-    const res = await sendViaResend(sender, c.recipient, await render(c, c.code, c.is_kid ? "kids" : "adult", automated));
+    const res = await sendViaResend(sender, c.recipient, await render(c, daysOf, c.code, c.is_kid ? "kids" : "adult", automated));
     retries429 += Math.max(0, res.attempts - 1);
     if (res.stop) stopReason = "Resend rate limit: " + (res.error || "429");
     await supabase.from("email_sends")
@@ -345,6 +380,7 @@ Deno.serve(async (req) => {
     emails_sent: sent, emails_failed: failed,
     over_daily_cap: overCap, claimed_by_another_run: lostClaim,
     max_per_run: MAX_EMAILS_PER_RUN, deferred_to_next_run: deferred, stopped: stopReason,
+    t4_held_schedule_unreadable: t4Held,
     retries_after_429: retries429, run_ms: sender.elapsedMs(),
     failures,
   }, 200);
