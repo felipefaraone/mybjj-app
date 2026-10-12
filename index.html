@@ -16114,23 +16114,18 @@ async function _drawShareCard(opts){
       ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=ringW;ctx.stroke();
     }
     // Cake badge on the bottom-right edge of the last circle: white disc, the
-    // cake glyph in the card colour, a ring in the card colour.
+    // cake emoji, a ring in the card colour.
     if(lay.circles.length){
       const last=lay.circles[lay.circles.length-1];
       const br=Math.round(ar*0.42);
       const bx=last.x+ar*0.7071,by=acy+ar*0.7071;
       ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();
       ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.strokeStyle=base;ctx.lineWidth=Math.max(6,Math.round(br*0.12));ctx.stroke();
-      ctx.save();ctx.translate(bx,by+br*0.08);const ks=(br*0.78)/122;ctx.scale(ks,ks);
-      ctx.fillStyle=base;
-      const wrr=(x0,y0,w0,h0,rad)=>{ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x0,y0,w0,h0,rad);else ctx.rect(x0,y0,w0,h0);ctx.closePath();};
-      wrr(-120,78,240,14,7);ctx.fill();
-      wrr(-100,8,200,70,12);ctx.fill();
-      wrr(-70,-44,140,52,10);ctx.fill();
-      for(const dx of [-40,0,40]){
-        wrr(dx-5,-92,10,48,4);ctx.fill();
-        ctx.beginPath();ctx.moveTo(dx,-122);ctx.quadraticCurveTo(dx+12,-104,dx,-98);ctx.quadraticCurveTo(dx-12,-104,dx,-122);ctx.closePath();ctx.fill();
-      }
+      // Cake emoji centred in the disc, ~60% of its diameter. save/restore keeps
+      // the alphabetic baseline the text below relies on.
+      ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.font=Math.round(br*2*0.6)+'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+      ctx.fillText('\u{1F382}',bx,by);
       ctx.restore();
     }
     ctx.textAlign='center';
