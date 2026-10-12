@@ -3754,6 +3754,12 @@ function rAttsStaff(rows,cid){
   const safetyPill=s=>(s&&s._safety===true)
     ?'<span aria-label="Has safety flags" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">SAFETY</span>'
     :'';
+  // Birthday pill on the class's own date (not today). Staff only; visitors
+  // carry no dob, so _isBirthdayOn is false for them.
+  const _bdDate=(()=>{const pc=_parseCID(cid);return pc?_parseISODate(pc.date):null;})();
+  const bdayPill=s=>(isStaffOrOwner()&&_bdDate&&_isBirthdayOn(s,_bdDate))
+    ?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px;margin-left:6px">BIRTHDAY</span>'
+    :'';
   // Expanded: going row (with rotated chevron) + per-student list, then the
   // SAME footer, still last. Only the middle grew — the footer did not move
   // or change. Per-student rows / btnFor / statusPill / cvChip unchanged.
@@ -3772,7 +3778,7 @@ function rAttsStaff(rows,cid){
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
     const _firstRow=!_rowShown;_rowShown=true;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${bdayPill(s)}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   // Bulk move — expanded only, so the collapsed card is untouched. Same
   // staff + isClassLocked gate markAllPresent uses (openAttMove re-checks both;
@@ -5285,15 +5291,44 @@ function revertPromo(id){
 }
 
 // Whole-years age from a 'YYYY-MM-DD' dob, or null when absent/unparseable.
-function _ageFromDob(dob){
+// onDate (optional, a local Date such as TODAY or S.selDay): the age on that
+// calendar day instead of now. Omitted: exactly as before.
+function _ageFromDob(dob,onDate){
   if(!dob)return null;
   const d=new Date(String(dob).slice(0,10)+'T00:00:00Z');
   if(isNaN(d.getTime()))return null;
-  const now=new Date();
+  const now=(onDate instanceof Date&&!isNaN(onDate.getTime()))?new Date(Date.UTC(onDate.getFullYear(),onDate.getMonth(),onDate.getDate())):new Date();
   let age=now.getUTCFullYear()-d.getUTCFullYear();
   const mo=now.getUTCMonth()-d.getUTCMonth();
   if(mo<0||(mo===0&&now.getUTCDate()<d.getUTCDate()))age--;
   return (age>=0&&age<130)?age:null;
+}
+// Birthday on `date` (a local Date, e.g. TODAY or S.selDay): the dob's month and
+// day equal date's. Born 29 Feb: celebrated 28 Feb in non-leap years. Any
+// malformed dob (or date) is simply false - never throws.
+function _bdayParts(dob){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dob==null?'':dob).slice(0,10));
+  if(!m)return null;
+  const y=+m[1],mo=+m[2],d=+m[3];
+  if(mo<1||mo>12||d<1||d>new Date(y,mo,0).getDate())return null;
+  return {y,mo,d};
+}
+function _isBirthdayOn(s,date){
+  try{
+    if(!s||!s.dob||!(date instanceof Date)||isNaN(date.getTime()))return false;
+    const b=_bdayParts(s.dob);if(!b)return false;
+    const mo=date.getMonth()+1,d=date.getDate();
+    if(b.mo===mo&&b.d===d)return true;
+    const leap=new Date(date.getFullYear(),1,29).getMonth()===1;
+    return b.mo===2&&b.d===29&&!leap&&mo===2&&d===28;
+  }catch(_){return false;}
+}
+// Age reached on a birthday `date`. A 29 Feb dob celebrated on 28 Feb would
+// read one short there, so it is evaluated on 1 Mar instead.
+function _turnsOn(s,date){
+  const b=s&&_bdayParts(s.dob);
+  const on=(b&&b.mo===2&&b.d===29&&date.getMonth()===1&&date.getDate()===28)?new Date(date.getFullYear(),2,1):date;
+  return _ageFromDob(s&&s.dob,on);
 }
 // Migration 99 — profile safety block. The 8 flags + notes are NOT in STUDENTS
 // (never held there); fetched lazily per student and stashed in S._safetyDetail,
@@ -7217,6 +7252,49 @@ function _otherUnitCheckinsBanner(dayKey){
   }
   return html;
 }
+// Birthdays, staff only: active students of the active unit whose birthday is
+// on the selected day `sd`, independent of attendance. '' when there are none.
+// Kids carry "(turns N)" for that day; adults the name only.
+function _rBirthdaysStaff(sd){
+  if(!isStaffOrOwner())return '';
+  const curU=UNITS.find(u=>u.name===S.unit);const curUnit=curU?curU.id:null;
+  if(!curUnit)return '';
+  const list=STUDENTS.filter(s=>s&&s._active!==false&&s.unit===curUnit&&_isBirthdayOn(s,sd))
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+  if(!list.length)return '';
+  const rows=list.map(s=>{
+    const n=s.prog==='kids'?_turnsOn(s,sd):null;
+    const turns=n!=null?'<span style="color:var(--text3);font-weight:400"> (turns '+escHtml(String(n))+')</span>':'';
+    const share=canShareCard(s)?shareBtnHtml('event.stopPropagation();_shareCard(\'birthday\',this.dataset.sid)').replace('<button ','<button data-sid="'+escAttr(s.id)+'" '):'';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0">'
+      +'<div data-sid="'+escAttr(s.id)+'" onclick="viewStu(this.dataset.sid,\'class\')" style="cursor:pointer;font-size:14px;font-weight:500;color:var(--text);min-width:0">'+escHtml(s.name||'')+turns+'</div>'
+      +share+'</div>';
+  }).join('');
+  return '<div class="card" style="padding:12px 14px;margin-bottom:12px"><div class="slbl" style="margin-bottom:4px">Birthdays</div>'+rows+'</div>';
+}
+// Member greeting: the ACTIVE profile's own student (the member, or the kid a
+// parent has selected) on its birthday TODAY. Dismissed per student per year.
+function _bdayGreetKey(sid){return 'mybjj_bday_hide_'+sid+'_'+TODAY.getFullYear();}
+function _rBirthdayGreeting(){
+  let s=(typeof myStudentRow==='function')?myStudentRow():null;
+  if(!s)return '';
+  // A parent's kid may come from the MY_KIDS cache, which carries no dob.
+  s=STUDENTS.find(x=>x&&x._dbId===s._dbId)||s;
+  if(s._active===false||!_isBirthdayOn(s,TODAY))return '';
+  try{if(localStorage.getItem(_bdayGreetKey(s.id))==='1')return '';}catch(_){}
+  const first=String(s.firstName||(s.name||'').split(' ')[0]||'').trim();
+  const forKid=!activeProfileIsSelf();
+  const head=forKid?('Happy birthday to '+first):('Happy birthday, '+first);
+  return '<div class="card" style="padding:14px 16px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;background:var(--blue-tint);border:1px solid var(--blue-mid)">'
+    +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:var(--blue)">'+escHtml(head)+'</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-top:2px">From everyone at myBJJ</div></div>'
+    +'<button data-sid="'+escAttr(s.id)+'" onclick="dismissBdayGreeting(this.dataset.sid)" title="Close" aria-label="Close" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:2px 4px;line-height:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+    +'</div>';
+}
+function dismissBdayGreeting(sid){
+  try{localStorage.setItem(_bdayGreetKey(sid),'1');}catch(_){}
+  render();
+}
 function rClass(){
   const days=bdays();const sk=dk(S.selDay||TODAY);const sd=days.find(d=>dk(d)===sk)||TODAY;const isT=sk===dk(TODAY);const closed=dayClosure(sd);const me=S.me;
   // Below the hydrate floor this day's rows are not in memory. Kick the week
@@ -7264,8 +7342,9 @@ function rClass(){
     return h*60+m;
   })();
   _maybePromoToast();
-  return `${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}${_dayReady?`<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}`:''}</div>`:''}</div>
+  return `${_rBirthdayGreeting()}${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}${_dayReady?`<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}`:''}</div>`:''}</div>
   ${_otherUnitCheckinsBanner(sk)}
+  ${_rBirthdaysStaff(sd)}
   ${closed?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${escHtml(closed.reason||'Academy closed')}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Regular classes cancelled</div></div></div>`:''}
   ${cls.length>0?'<div class="agenda">'+cls.map(c=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];
@@ -15625,6 +15704,10 @@ function shareWelcome(legacyId){
 // Who may share a card: staff/owner can share anyone's, a member can only share
 // their own. Used to decide whether the button is EMITTED at all (not merely
 // hidden), and re-checked inside _shareCard as defence in depth.
+// Birthday share text: name only - no age, no date, no trial link.
+function shareBirthdayText(s){
+  return 'Happy birthday '+String((s&&s.name)||'').trim()+' from everyone at myBJJ!';
+}
 function canShareCard(s){
   return !!(s&&((typeof isStaffOrOwner==='function'&&isStaffOrOwner())||(s._userId&&S.profile&&s._userId===S.profile.id)));
 }
@@ -15771,10 +15854,13 @@ async function _drawShareCard(opts){
     _shareWrap(ctx,opts.congrats,W-220,3).forEach(l=>{ctx.fillText(l,cx,y);y+=58;});
   }
   // Footer — the link is BAKED IN so it survives even if the OS drops the text.
+  // opts.noTrial (birthday card only) leaves the trial footer off entirely.
+  if(!opts.noTrial){
   ctx.fillStyle='#fff';ctx.font='700 50px '+COND;
   ctx.fillText('Book a free trial',cx,H-190);
   ctx.fillStyle='rgba(255,255,255,.82)';ctx.font='500 40px '+BODY;
   ctx.fillText('mybjj.com.au',cx,H-128);
+  }
   return cv;
 }
 // Orchestrates an image share, falling back to the existing text-only path so
@@ -15782,8 +15868,18 @@ async function _drawShareCard(opts){
 // canvas, a File constructor failure or any draw error all land on shareNative.
 async function _shareCard(kind,legacyId){
   try{
-    let s=null,p=null,text='',eyebrow='',congrats='',belt='white',deg=0,unit='';
-    if(kind==='welcome'){
+    let s=null,p=null,text='',eyebrow='',congrats='',belt='white',deg=0,unit='',noTrial=false;
+    if(kind==='birthday'){
+      // No age, DOB or birth year anywhere; no trial link in the text or image.
+      s=STUDENTS.find(x=>x.id===legacyId);if(!s)return;
+      if(!canShareCard(s))return;
+      belt=s.belt||'white';deg=s.deg|0;
+      eyebrow='Happy birthday';
+      congrats='From everyone at myBJJ';
+      unit=(UNITS.find(u=>u.id===s.unit)||{name:''}).name;
+      text=shareBirthdayText(s);
+      noTrial=true;
+    }else if(kind==='welcome'){
       s=STUDENTS.find(x=>x.id===legacyId);if(!s)return;
       if(!canShareCard(s))return;
       belt=s.belt||'white';deg=s.deg|0;
@@ -15810,7 +15906,7 @@ async function _shareCard(kind,legacyId){
       unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
       text=sharePromoText(p,s);
     }
-    const cv=await _drawShareCard({belt,deg,prog:s.prog||'adult',name:s.name,initials:s.initials,photoUrl:s.photoUrl,eyebrow,congrats,unit});
+    const cv=await _drawShareCard({belt,deg,prog:s.prog||'adult',name:s.name,initials:s.initials,photoUrl:s.photoUrl,eyebrow,congrats,unit,noTrial});
     cv.toBlob(async blob=>{
       if(!blob){shareNative(text,'MyBJJ');return;}
       try{
@@ -15826,7 +15922,8 @@ async function _shareCard(kind,legacyId){
     console.warn('[mybjj] share card:',e);
     // Last resort — never leave the button dead.
     try{
-      if(kind==='welcome'){const s2=STUDENTS.find(x=>x.id===legacyId);if(s2)shareNative(shareWelcomeText(s2),'MyBJJ');}
+      if(kind==='birthday'){const s2=STUDENTS.find(x=>x.id===legacyId);if(s2&&canShareCard(s2))shareNative(shareBirthdayText(s2),'MyBJJ');}
+      else if(kind==='welcome'){const s2=STUDENTS.find(x=>x.id===legacyId);if(s2)shareNative(shareWelcomeText(s2),'MyBJJ');}
       else{const p2=PROMOTION_LOG.find(x=>x.id===legacyId);if(p2){const s2=STUDENTS.find(x=>x.id===p2.studentId);shareNative(sharePromoText(p2,s2),'MyBJJ');}}
     }catch(_){}
   }
@@ -17520,7 +17617,7 @@ async function loadMyKids(){
   if(!ids.length){MY_KIDS=[];return;}
   try{
     const{data,error}=await c.from('students')
-      .select('id,legacy_id,user_id,parent_user_id,belt,degree,prog,initials,full_name,unit_id,photo_url,active,standing,hold_note')
+      .select('id,legacy_id,user_id,parent_user_id,belt,degree,prog,initials,full_name,unit_id,photo_url,active,standing,hold_note,date_of_birth')
       .in('id',ids);
     if(error){console.warn('[mybjj] loadMyKids:',error.message);return;}
     MY_KIDS=(data||[]).map(r=>({
@@ -17528,7 +17625,7 @@ async function loadMyKids(){
       name:r.full_name,belt:r.belt,deg:r.degree,prog:r.prog,initials:r.initials,
       unit:(UNITS.find(u=>u&&u._dbId===r.unit_id)||{}).id||null,
       photoUrl:r.photo_url||null,_active:r.active!==false,
-      standing:r.standing||'ok',holdNote:r.hold_note||null
+      standing:r.standing||'ok',holdNote:r.hold_note||null,dob:r.date_of_birth||null
     }));
   }catch(e){console.warn('[mybjj] loadMyKids ex:',e);MY_KIDS=[];}
 }
