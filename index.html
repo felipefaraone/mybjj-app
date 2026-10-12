@@ -2594,6 +2594,9 @@ let MY_STUDENT=null;
 // clause). Fetched ONCE at auth alongside loadMyStudent; NEVER rebuilt by
 // refetchUnitScopedData / the unit switch. Cleared on logout / SIGNED_OUT.
 let MY_KIDS=[];
+// birthday_messages (145): [{belt_group,body}], loaded once at hydrate. Empty on
+// failure - birthdayMessage() then falls back to one fixed line.
+let BDAY_MESSAGES=[];
 // Guardianship (Phase B1) — live rows of public.guardianships (migration 133):
 // {id, student_id, guardian_user_id, guardian_student_id, status, is_primary},
 // status in requested/pending/active. THE frontend source of truth for "who may
@@ -5330,6 +5333,66 @@ function _turnsOn(s,date){
   const on=(b&&b.mo===2&&b.d===29&&date.getMonth()===1&&date.getDate()===28)?new Date(date.getFullYear(),2,1):date;
   return _ageFromDob(s&&s.dob,on);
 }
+// Birthday message group (birthday_messages.belt_group). Kids belts are the BK
+// keys: white and the grey family -> kids_beginner; the yellow, orange and green
+// families -> kids_colour. A kid holding an ADULT belt (the 16-bridge) and every
+// adult use the adult belt itself. Unknown belt: kids_beginner / white.
+function _bdayGroup(s){
+  const b=String((s&&s.belt)||'white');
+  if(s&&s.prog==='kids'&&BK[b]){const fam=b.split('/')[0];return (fam==='white'||fam==='grey')?'kids_beginner':'kids_colour';}
+  if(BA[b])return b;
+  return (s&&s.prog==='kids')?'kids_beginner':'white';
+}
+// FNV-1a 32-bit: a stable string hash, identical on every device and render.
+function _bdayHash(str){
+  let h=0x811c9dc5;
+  for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0;}
+  return h>>>0;
+}
+// The student's birthday in `year` as a local Date (29 Feb -> 28 Feb in a
+// non-leap year), or null for a missing/malformed dob.
+function _bdayDateIn(s,year){
+  const b=s&&_bdayParts(s.dob);if(!b)return null;
+  const leap=new Date(year,1,29).getMonth()===1;
+  return (b.mo===2&&b.d===29&&!leap)?new Date(year,1,28):new Date(year,b.mo-1,b.d);
+}
+// One message per student per year, the same on every surface all day.
+// Slot = hash(_dbId + year) mod pool size. Peers in the same group with a
+// birthday on the same day (from STUDENTS + MY_KIDS, ordered by _dbId) claim
+// slots in that order, and a taken slot moves to the next free one, so peers
+// get different lines while the pool allows.
+function birthdayMessage(s,year){
+  const FALLBACK='Have a great birthday.';
+  if(!s)return FALLBACK;
+  const g=_bdayGroup(s);
+  const pool=(Array.isArray(BDAY_MESSAGES)?BDAY_MESSAGES:[]).filter(m=>m&&m.belt_group===g&&m.body).map(m=>String(m.body));
+  if(!pool.length)return FALLBACK;
+  const y=year|0;
+  const slotOf=x=>_bdayHash(String(x._dbId||x.id||'')+':'+y)%pool.length;
+  const day=_bdayDateIn(s,y);
+  if(!day)return pool[slotOf(s)];
+  const seen=new Set(),peers=[];
+  for(const x of [s,...(Array.isArray(STUDENTS)?STUDENTS:[]),...(Array.isArray(MY_KIDS)?MY_KIDS:[])]){
+    if(!x||!x._dbId||seen.has(x._dbId))continue;
+    if(x!==s&&(x._active===false||_bdayGroup(x)!==g||!_isBirthdayOn(x,day)))continue;
+    seen.add(x._dbId);peers.push(x);
+  }
+  if(!s._dbId)peers.push(s);
+  peers.sort((a,b)=>String(a._dbId||'').localeCompare(String(b._dbId||'')));
+  const used=new Set();
+  for(const x of peers){
+    let k=slotOf(x);
+    if(used.size<pool.length)while(used.has(k))k=(k+1)%pool.length;
+    used.add(k);
+    if(x===s)return pool[k];
+  }
+  return pool[slotOf(s)];
+}
+// Birthday card only: a member's own card (canShareCard) or a guardian sharing
+// their child's. canShareCard itself, and the welcome/promotion kinds, unchanged.
+function canShareBirthdayCard(s){
+  return canShareCard(s)||(typeof isGuardianOfStu==='function'&&isGuardianOfStu(s));
+}
 // Migration 99 — profile safety block. The 8 flags + notes are NOT in STUDENTS
 // (never held there); fetched lazily per student and stashed in S._safetyDetail,
 // keyed by _dbId, using the standard {loaded,loading,data} render-and-refetch
@@ -7252,44 +7315,122 @@ function _otherUnitCheckinsBanner(dayKey){
   }
   return html;
 }
-// Birthdays, staff only: active students of the active unit whose birthday is
-// on the selected day `sd`, independent of attendance. '' when there are none.
-// Kids carry "(turns N)" for that day; adults the name only.
-function _rBirthdaysStaff(sd){
-  if(!isStaffOrOwner())return '';
+// Staff summary row (Classes tab, staff only): equal-width tiles for promotions
+// ready, check-ins at each OTHER unit on the selected day, and birthdays in the
+// week from the selected day. A tile renders only when its count > 0.
+// Other-unit check-ins: the same counting _otherUnitCheckinsBanner uses
+// (going/present on dayKey, unit != active, 2+ active units), as data.
+function _otherUnitCheckinCounts(dayKey){
+  if(!isStaffOrOwner())return [];
+  if(UNITS.filter(u=>u.active).length<2)return [];
+  const activeU=UNITS.find(u=>u.name===S.unit)||{};
+  const activeId=activeU._dbId||null;   // ATTENDANCE.unitId is the DB uuid
+  const counts={};
+  for(const a of ATTENDANCE){
+    if(!a||a.classDate!==dayKey)continue;
+    if(a.status!=='going'&&a.status!=='present')continue;
+    if(!a.unitId||a.unitId===activeId)continue;
+    counts[a.unitId]=(counts[a.unitId]||0)+1;
+  }
+  const out=[];
+  for(const uid in counts){
+    const n=counts[uid];if(!n)continue;
+    const u=UNITS.find(x=>x._dbId===uid);if(!u)continue;
+    out.push({unit:u,n});
+  }
+  return out;
+}
+// Active students of the active unit with a birthday in [sd, sd+6], sorted by
+// date then name. Each entry: {s, date, off}.
+function _bdayWeek(sd){
   const curU=UNITS.find(u=>u.name===S.unit);const curUnit=curU?curU.id:null;
-  if(!curUnit)return '';
-  const list=STUDENTS.filter(s=>s&&s._active!==false&&s.unit===curUnit&&_isBirthdayOn(s,sd))
-    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
-  if(!list.length)return '';
-  const rows=list.map(s=>{
-    const n=s.prog==='kids'?_turnsOn(s,sd):null;
-    const turns=n!=null?'<span style="color:var(--text3);font-weight:400"> (turns '+escHtml(String(n))+')</span>':'';
-    const share=canShareCard(s)?shareBtnHtml('event.stopPropagation();_shareCard(\'birthday\',this.dataset.sid)').replace('<button ','<button data-sid="'+escAttr(s.id)+'" '):'';
-    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0">'
-      +'<div data-sid="'+escAttr(s.id)+'" onclick="viewStu(this.dataset.sid,\'class\')" style="cursor:pointer;font-size:14px;font-weight:500;color:var(--text);min-width:0">'+escHtml(s.name||'')+turns+'</div>'
-      +share+'</div>';
-  }).join('');
-  return '<div class="card" style="padding:12px 14px;margin-bottom:12px"><div class="slbl" style="margin-bottom:4px">Birthdays</div>'+rows+'</div>';
+  if(!curUnit||!(sd instanceof Date))return [];
+  const out=[];
+  for(let off=0;off<7;off++){
+    const d=new Date(sd.getFullYear(),sd.getMonth(),sd.getDate()+off);
+    for(const s of STUDENTS){
+      if(s&&s._active!==false&&s.unit===curUnit&&_isBirthdayOn(s,d))out.push({s,date:d,off});
+    }
+  }
+  return out.sort((a,b)=>a.off-b.off||String(a.s.name||'').localeCompare(String(b.s.name||'')));
+}
+function _bdayIsRealToday(d){return dk(d)===dk(TODAY);}
+// Panel open state: S.bdayOpen null = default (open when a birthday in the week
+// is real TODAY, closed otherwise); a tap stores the explicit choice.
+function _bdayPanelOpen(week){
+  if(S.bdayOpen===true||S.bdayOpen===false)return S.bdayOpen;
+  return week.some(x=>_bdayIsRealToday(x.date));
+}
+function toggleBdayPanel(){
+  const sd=S.selDay||TODAY;
+  S.bdayOpen=!_bdayPanelOpen(_bdayWeek(sd));
+  render();
+}
+function _rStaffSummary(sd){
+  if(!isStaffOrOwner())return '';
+  const tiles=[];
+  const promoN=getPromoReady().length;
+  if(promoN>0)tiles.push({n:promoN,label:'To promote',attrs:'onclick="goToEligibleRoster()"'});
+  for(const o of _otherUnitCheckinCounts(dk(sd))){
+    tiles.push({n:o.n,label:'At '+o.unit.name,attrs:'data-unit="'+escAttr(o.unit.name)+'" onclick="pickUnit(this.dataset.unit)"'});
+  }
+  const week=_bdayWeek(sd);
+  const hasToday=week.some(x=>_bdayIsRealToday(x.date));
+  if(week.length>0)tiles.push({n:week.length,label:week.length===1?'Birthday':'Birthdays',attrs:'onclick="toggleBdayPanel()"',hi:hasToday});
+  if(!tiles.length)return '';
+  const tileHtml=x=>'<div '+x.attrs+' style="cursor:pointer;min-width:0;text-align:center;background:'+(x.hi?'var(--blue-tint)':'var(--card)')+';border:1px solid '+(x.hi?'var(--blue-mid)':'var(--border)')+';border-radius:12px;padding:10px 6px">'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:22px;font-weight:700;line-height:1.1;color:'+(x.hi?'var(--blue)':'var(--text)')+'">'+escHtml(String(x.n))+'</div>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(x.hi?'var(--blue)':'var(--text2)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(x.label)+'</div></div>';
+  // Rows of at most 3; each row is its own grid with one equal column per tile,
+  // so a short last row fills the width instead of leaving a ragged gap.
+  let rows='';
+  for(let i=0;i<tiles.length;i+=3){
+    const chunk=tiles.slice(i,i+3);
+    rows+='<div style="display:grid;grid-template-columns:repeat('+chunk.length+',minmax(0,1fr));gap:8px;margin-bottom:8px">'+chunk.map(tileHtml).join('')+'</div>';
+  }
+  let panel='';
+  if(week.length&&_bdayPanelOpen(week)){
+    const tomorrow=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
+    const dayLbl=d=>_bdayIsRealToday(d)?'Today':(dk(d)===dk(tomorrow)?'Tomorrow':DS[d.getDay()]);
+    panel='<div class="card" style="padding:8px 14px;margin-bottom:12px">'+week.map(x=>{
+      const s=x.s,isToday=_bdayIsRealToday(x.date);
+      const n=s.prog==='kids'?_turnsOn(s,x.date):null;
+      const turns=n!=null?'<span style="color:var(--text3);font-weight:400"> turns '+escHtml(String(n))+'</span>':'';
+      const share=(isToday&&canShareCard(s))?shareBtnHtml('event.stopPropagation();_shareCard(\'birthday\',this.dataset.sid)').replace('<button ','<button data-sid="'+escAttr(s.id)+'" '):'';
+      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0">'
+        +'<div data-sid="'+escAttr(s.id)+'" onclick="viewStu(this.dataset.sid,\'class\')" style="cursor:pointer;flex:1;min-width:0;font-size:14px;font-weight:500;color:var(--text)">'+escHtml(s.name||'')+turns+'</div>'
+        +share
+        +'<div style="flex-shrink:0;min-width:64px;text-align:right;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(isToday?'var(--blue)':'var(--text2)')+'">'+escHtml(dayLbl(x.date))+'</div>'
+        +'</div>';
+    }).join('')+'</div>';
+  }
+  return '<div style="margin-bottom:4px">'+rows+'</div>'+panel;
 }
 // Member greeting: the ACTIVE profile's own student (the member, or the kid a
 // parent has selected) on its birthday TODAY. Dismissed per student per year.
+// Rendered directly below the date strip, never above it.
 function _bdayGreetKey(sid){return 'mybjj_bday_hide_'+sid+'_'+TODAY.getFullYear();}
 function _rBirthdayGreeting(){
   let s=(typeof myStudentRow==='function')?myStudentRow():null;
   if(!s)return '';
-  // A parent's kid may come from the MY_KIDS cache, which carries no dob.
+  // A parent's kid may come from the MY_KIDS cache; prefer the STUDENTS copy.
   s=STUDENTS.find(x=>x&&x._dbId===s._dbId)||s;
   if(s._active===false||!_isBirthdayOn(s,TODAY))return '';
   try{if(localStorage.getItem(_bdayGreetKey(s.id))==='1')return '';}catch(_){}
   const first=String(s.firstName||(s.name||'').split(' ')[0]||'').trim();
-  const forKid=!activeProfileIsSelf();
-  const head=forKid?('Happy birthday to '+first):('Happy birthday, '+first);
-  return '<div class="card" style="padding:14px 16px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;background:var(--blue-tint);border:1px solid var(--blue-mid)">'
-    +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:var(--blue)">'+escHtml(head)+'</div>'
-    +'<div style="font-size:13px;color:var(--text2);margin-top:2px">From everyone at myBJJ</div></div>'
-    +'<button data-sid="'+escAttr(s.id)+'" onclick="dismissBdayGreeting(this.dataset.sid)" title="Close" aria-label="Close" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:2px 4px;line-height:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
-    +'</div>';
+  const msg=birthdayMessage(s,TODAY.getFullYear());
+  const share=canShareBirthdayCard(s)?shareBtnHtml('event.stopPropagation();_shareCard(\'birthday\',this.dataset.sid)').replace('<button ','<button data-sid="'+escAttr(s.id)+'" '):'';
+  return '<div style="margin-top:12px;border-radius:14px;overflow:hidden;border:1px solid var(--blue-mid)">'
+    +'<div style="position:relative;background:var(--blue);color:white;padding:14px 44px 16px 16px">'
+    +'<button data-sid="'+escAttr(s.id)+'" onclick="dismissBdayGreeting(this.dataset.sid)" title="Close" aria-label="Close" style="position:absolute;top:10px;right:10px;background:none;border:none;color:white;opacity:.8;cursor:pointer;padding:2px 4px;line-height:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.85">Happy birthday</div>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:24px;font-weight:700;line-height:1.15;margin-top:2px">'+escHtml(first)+'</div>'
+    +'<div style="font-family:Barlow,sans-serif;font-size:13px;line-height:1.4;margin-top:4px;opacity:.95">'+escHtml(msg)+'</div>'
+    +'<div style="margin-top:10px">'+bb(s.belt,s.deg,s.prog,'left',true)+'</div>'
+    +'</div>'
+    +'<div style="background:var(--blue-tint);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px">'
+    +'<div style="font-size:12px;color:var(--text2)">From everyone at myBJJ</div>'+share
+    +'</div></div>';
 }
 function dismissBdayGreeting(sid){
   try{localStorage.setItem(_bdayGreetKey(sid),'1');}catch(_){}
@@ -7342,9 +7483,8 @@ function rClass(){
     return h*60+m;
   })();
   _maybePromoToast();
-  return `${_rBirthdayGreeting()}${rDayStrip()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}${_dayReady?`<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}`:''}</div>`:''}</div>
-  ${_otherUnitCheckinsBanner(sk)}
-  ${_rBirthdaysStaff(sd)}
+  return `${rDayStrip()}${_rBirthdayGreeting()}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}${_dayReady?`<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}`:''}</div>`:''}</div>
+  ${_rStaffSummary(sd)}
   ${closed?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${escHtml(closed.reason||'Academy closed')}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Regular classes cancelled</div></div></div>`:''}
   ${cls.length>0?'<div class="agenda">'+cls.map(c=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];
@@ -15704,9 +15844,14 @@ function shareWelcome(legacyId){
 // Who may share a card: staff/owner can share anyone's, a member can only share
 // their own. Used to decide whether the button is EMITTED at all (not merely
 // hidden), and re-checked inside _shareCard as defence in depth.
-// Birthday share text: name only - no age, no date, no trial link.
+// Birthday share text: name + this year's birthdayMessage - no age, no date,
+// no trial link.
 function shareBirthdayText(s){
-  return 'Happy birthday '+String((s&&s.name)||'').trim()+' from everyone at myBJJ!';
+  return 'Happy birthday '+String((s&&s.name)||'').trim()+'! '+birthdayMessage(s,TODAY.getFullYear());
+}
+// The birthday card may be for a parent's child from another unit (MY_KIDS).
+function _bdayShareStu(legacyId){
+  return STUDENTS.find(x=>x.id===legacyId)||(Array.isArray(MY_KIDS)?MY_KIDS.find(x=>x.id===legacyId):null)||null;
 }
 function canShareCard(s){
   return !!(s&&((typeof isStaffOrOwner==='function'&&isStaffOrOwner())||(s._userId&&S.profile&&s._userId===S.profile.id)));
@@ -15861,6 +16006,9 @@ async function _drawShareCard(opts){
   ctx.fillStyle='rgba(255,255,255,.82)';ctx.font='500 40px '+BODY;
   ctx.fillText('mybjj.com.au',cx,H-128);
   }
+  // opts.footer (birthday card only, with noTrial): one line where the trial
+  // footer would sit.
+  if(opts.noTrial&&opts.footer){ctx.fillStyle='#fff';ctx.font='700 50px '+COND;ctx.fillText(String(opts.footer),cx,H-160);}
   return cv;
 }
 // Orchestrates an image share, falling back to the existing text-only path so
@@ -15868,14 +16016,15 @@ async function _drawShareCard(opts){
 // canvas, a File constructor failure or any draw error all land on shareNative.
 async function _shareCard(kind,legacyId){
   try{
-    let s=null,p=null,text='',eyebrow='',congrats='',belt='white',deg=0,unit='',noTrial=false;
+    let s=null,p=null,text='',eyebrow='',congrats='',belt='white',deg=0,unit='',noTrial=false,footer='';
     if(kind==='birthday'){
       // No age, DOB or birth year anywhere; no trial link in the text or image.
-      s=STUDENTS.find(x=>x.id===legacyId);if(!s)return;
-      if(!canShareCard(s))return;
+      s=_bdayShareStu(legacyId);if(!s)return;
+      if(!canShareBirthdayCard(s))return;
       belt=s.belt||'white';deg=s.deg|0;
       eyebrow='Happy birthday';
-      congrats='From everyone at myBJJ';
+      congrats=birthdayMessage(s,TODAY.getFullYear());
+      footer='From everyone at myBJJ';
       unit=(UNITS.find(u=>u.id===s.unit)||{name:''}).name;
       text=shareBirthdayText(s);
       noTrial=true;
@@ -15906,7 +16055,7 @@ async function _shareCard(kind,legacyId){
       unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
       text=sharePromoText(p,s);
     }
-    const cv=await _drawShareCard({belt,deg,prog:s.prog||'adult',name:s.name,initials:s.initials,photoUrl:s.photoUrl,eyebrow,congrats,unit,noTrial});
+    const cv=await _drawShareCard({belt,deg,prog:s.prog||'adult',name:s.name,initials:s.initials,photoUrl:s.photoUrl,eyebrow,congrats,unit,noTrial,footer});
     cv.toBlob(async blob=>{
       if(!blob){shareNative(text,'MyBJJ');return;}
       try{
@@ -15922,7 +16071,7 @@ async function _shareCard(kind,legacyId){
     console.warn('[mybjj] share card:',e);
     // Last resort — never leave the button dead.
     try{
-      if(kind==='birthday'){const s2=STUDENTS.find(x=>x.id===legacyId);if(s2&&canShareCard(s2))shareNative(shareBirthdayText(s2),'MyBJJ');}
+      if(kind==='birthday'){const s2=_bdayShareStu(legacyId);if(s2&&canShareBirthdayCard(s2))shareNative(shareBirthdayText(s2),'MyBJJ');}
       else if(kind==='welcome'){const s2=STUDENTS.find(x=>x.id===legacyId);if(s2)shareNative(shareWelcomeText(s2),'MyBJJ');}
       else{const p2=PROMOTION_LOG.find(x=>x.id===legacyId);if(p2){const s2=STUDENTS.find(x=>x.id===p2.studentId);shareNative(sharePromoText(p2,s2),'MyBJJ');}}
     }catch(_){}
@@ -17629,6 +17778,14 @@ async function loadMyKids(){
     }));
   }catch(e){console.warn('[mybjj] loadMyKids ex:',e);MY_KIDS=[];}
 }
+async function loadBirthdayMessages(){
+  const c=initSupabase();if(!c)return;
+  try{
+    const{data,error}=await c.from('birthday_messages').select('belt_group,body').order('belt_group').order('body');
+    if(error){console.warn('[mybjj] birthday_messages:',error.message);return;}
+    BDAY_MESSAGES=Array.isArray(data)?data:[];
+  }catch(e){console.warn('[mybjj] birthday_messages ex:',e);}
+}
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
   let touched=false;
@@ -17697,6 +17854,8 @@ async function hydrateData(){
     // loadMyStudent so a linked kid stays visible + checkinable no matter
     // which unit the parent's dropdown is on. Never re-run on unit switch.
     await loadMyKids();
+    // Birthday messages: not unit-scoped, loaded once; failure keeps [].
+    await loadBirthdayMessages();
     // EVENTS / SCHED / ATTENDANCE / feedback-attach are populated by
     // refetchUnitScopedData() above (shared boot + unit-switch path).
     // Batch B — fire-and-forget cleanup of stale 'going' rows past
