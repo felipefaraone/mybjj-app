@@ -29,6 +29,12 @@
 // info@mybjj.com.au, with what the member actually got (sent_codes,
 // member_reach) for its "Automated emails sent: …" line.
 //
+// ONE AUTOMATED EMAIL PER ADDRESS PER SYDNEY DAY (migration 144): before a member
+// group is claimed, public.email_sent_today(address, now) and this run's own sends
+// are checked; if the address already had one today the group is deferred (left
+// unclaimed, still due). The most advanced stage goes first (highestStageFirst).
+// T4 is never limited. If the check fails, no member email goes this run.
+//
 // ONE EMAIL PER ADDRESS AND CODE (see groupCands): a guardian of several children
 // at the same stage gets one email naming them all; email_sends still gets one
 // row per student, all sharing that send. The cap and budget count emails.
@@ -212,6 +218,29 @@ function groupCands(list: Cand[]): Group[] {
 }
 const groupNames = (rows: Cand[]) => rows.map((r) => String(r.first_name || "").trim()).filter(Boolean);
 
+// ONE AUTOMATED EMAIL PER ADDRESS PER SYDNEY DAY (migration 144). When an address
+// has several groups due, the most advanced stage must be the one that goes: the
+// address's groups are reordered among the SAME positions they already hold in
+// the run order, highest stage first (M4, M3, M2, M1, then R). The global order
+// of positions (due_at, T4 after its M4, key) is untouched, and an M4 can only
+// move earlier, so a T4 still follows its M4. Ranks mirror mia_codes.seq.
+const STAGE_RANK: Record<string, number> = { M4: 4, M3: 3, M2: 2, M1: 1, R: 0 };
+function highestStageFirst(groups: Group[]): Group[] {
+  const slots = new Map<string, number[]>();
+  groups.forEach((g, i) => {
+    if (g.code === "T4") return;
+    (slots.get(g.recipient) || slots.set(g.recipient, []).get(g.recipient)!).push(i);
+  });
+  const out = groups.slice();
+  for (const idx of slots.values()) {
+    if (idx.length < 2) continue;
+    const mine = idx.map((i) => groups[i]).sort((a, b) => (STAGE_RANK[b.code] ?? -1) - (STAGE_RANK[a.code] ?? -1)
+      || new Date(a.due_at).getTime() - new Date(b.due_at).getTime() || a.key.localeCompare(b.key));
+    idx.forEach((pos, k) => { out[pos] = mine[k]; });
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   const requestStart = Date.now();
   // 1. Shared secret. Unset secret = nobody gets in (fail closed).
@@ -331,11 +360,52 @@ Deno.serve(async (req) => {
   const t4Held = daysOf ? 0 : cands.filter((c) => c.code === "T4").length;
   const sendable = cands.filter((c) => daysOf || c.code !== "T4");
   // The budget and the daily cap count EMAILS: one per group.
-  const groups = groupCands(sendable);
+  const groups = highestStageFirst(groupCands(sendable));
+
+  // One automated email per address per Sydney day (144): has this address had
+  // one today? Asked once per address per run. null = the check failed.
+  const sentTodayCache = new Map<string, boolean | null>();
+  let rpcError: string | null = null;
+  const hadEmailToday = async (addr: string): Promise<boolean | null> => {
+    if (sentTodayCache.has(addr)) return sentTodayCache.get(addr)!;
+    const { data, error } = await supabase.rpc("email_sent_today", { p_email: addr, p_now: now.toISOString() });
+    const v = error ? null : data === true ? true : data === false ? false : null;
+    if (v === null && !rpcError) {
+      rpcError = error ? (error.message || String(error)) : "unexpected result from email_sent_today";
+      console.error("[mia-emails] email_sent_today failed — no member email this run:", rpcError);
+    }
+    sentTodayCache.set(addr, v);
+    return v;
+  };
+  // The run plan, shared by the dry run and the send loop: for each group, in
+  // order, would it go now? Member groups: not if the check failed (fail closed),
+  // not if the address already had an email today or earlier in THIS run. T4 is
+  // never limited. Deferred groups stay due and do not use the budget.
+  type Plan = "send" | "deferred_daily_limit" | "not_sent_rpc_error" | "over_daily_cap_next_run";
+  const planFor = async (g: Group, used: number, sentThisRun: Set<string>): Promise<Plan> => {
+    if (g.code !== "T4") {
+      if (rpcError) return "not_sent_rpc_error";
+      if (sentThisRun.has(g.recipient)) return "deferred_daily_limit";
+      const st = await hadEmailToday(g.recipient);
+      if (st === null) return "not_sent_rpc_error";
+      if (st) return "deferred_daily_limit";
+    }
+    return used < budget ? "send" : "over_daily_cap_next_run";
+  };
 
   // T4's "Automated emails sent" in a dry run: what is logged, plus the M4 this run
   // would send for the same episode (an M4 group sorts no later than its T4).
-  const willSend = new Set(groups.slice(0, budget).flatMap((g) => g.rows.map((c) => c.period_key)));
+  const willSend = new Set<string>();
+  const dryPlan: Plan[] = [];
+  if (!send) {
+    const sentThisRun = new Set<string>();
+    let used = 0;
+    for (const g of groups) {
+      const pl = await planFor(g, used, sentThisRun);
+      dryPlan.push(pl);
+      if (pl === "send") { used++; if (g.code !== "T4") sentThisRun.add(g.recipient); g.rows.forEach((c) => willSend.add(c.period_key)); }
+    }
+  }
   const dryAutomated = (t: Cand): MiaSent => {
     const m4 = t.period_key.replace(/:T4$/, ":M4");
     const codes = [...(t.sent_codes || []), ...(willSend.has(m4) ? ["M4"] : [])];
@@ -349,8 +419,9 @@ Deno.serve(async (req) => {
     const due = [];
     for (const [i, g] of groups.entries()) {
       const msg = await renderGroup(g, g.code === "T4" ? dryAutomated(g.rows[0]) : undefined);
+      const pl = dryPlan[i];
       due.push({
-        action: i < budget ? (g.rows.some((c) => c.attempt_status === "failed") ? "would_retry" : "would_send") : "over_daily_cap_next_run",
+        action: pl === "send" ? (g.rows.some((c) => c.attempt_status === "failed") ? "would_retry" : "would_send") : pl,
         code: g.code, stream: g.stream, recipient: g.recipient, due_at: g.due_at,
         children: g.stream === "kids" ? groupNames(g.rows) : undefined,
         members: g.stream === "adult" ? groupNames(g.rows) : undefined,
@@ -382,17 +453,21 @@ Deno.serve(async (req) => {
       counts: {
         due_rows: cands.length,
         due_emails: groups.length,
-        would_send: Math.min(budget, groups.length),
-        rows_covered: groups.slice(0, budget).reduce((n, g) => n + g.rows.length, 0),
-        of_which_retries: groups.slice(0, budget).filter((g) => g.rows.some((c) => c.attempt_status === "failed")).length,
-        over_daily_cap: Math.max(0, groups.length - budget),
+        would_send: dryPlan.filter((x) => x === "send").length,
+        rows_covered: groups.filter((_, i) => dryPlan[i] === "send").reduce((n, g) => n + g.rows.length, 0),
+        of_which_retries: groups.filter((g, i) => dryPlan[i] === "send" && g.rows.some((c) => c.attempt_status === "failed")).length,
+        over_daily_cap: dryPlan.filter((x) => x === "over_daily_cap_next_run").length,
+        deferred_daily_limit: dryPlan.filter((x) => x === "deferred_daily_limit").length,
+        not_sent_rpc_error: dryPlan.filter((x) => x === "not_sent_rpc_error").length,
         by_code: Object.fromEntries(MIA_CODES.map((k) => [k, groups.filter((g) => g.code === k).length])),
         t4_held_schedule_unreadable: t4Held,
       },
       warnings: [
         ...(Deno.env.get("EMAIL_UNSUB_SECRET") ? [] : ["EMAIL_UNSUB_SECRET not set: samples have no unsubscribe link, and send:true will refuse"]),
         ...(daysOf ? [] : ["public.mia_codes could not be read: no T4 would be sent this run"]),
+        ...(rpcError ? [`email_sent_today failed (${rpcError}): no member email would be sent this run`] : []),
       ],
+      rpc_error: rpcError,
       due,
       samples,
     }, 200);
@@ -429,11 +504,17 @@ Deno.serve(async (req) => {
   };
 
   let sent = 0, failed = 0, lostClaim = 0, overCap = 0, attempts = 0, deferred = 0, retries429 = 0;
-  let rowsCovered = 0, rowsLeftOut = 0;
+  let rowsCovered = 0, rowsLeftOut = 0, deferredDaily = 0, rpcSkipped = 0;
+  const sentThisRun = new Set<string>();
   let stopReason: string | null = null;
   const failures: unknown[] = [];
   const sender = createPacedSender(requestStart);
   for (const g of groups) {
+    // One automated email per address per day (144): checked BEFORE claiming, so
+    // a deferred group stays due (unclaimed) for the next run. Fail closed.
+    const pl = await planFor(g, attempts, sentThisRun);
+    if (pl === "deferred_daily_limit") { deferredDaily++; continue; }
+    if (pl === "not_sent_rpc_error") { rpcSkipped++; continue; }
     // The budget counts EMAILS: one per group, however many students it covers.
     if (attempts >= budget) { overCap++; continue; }
     // Out of run time, or Resend said stop: leave it unclaimed; still due next run.
@@ -464,7 +545,7 @@ Deno.serve(async (req) => {
         .update(res.ok ? { status: "sent", error: null, sent_at: at } : { status: "failed", error: res.error || "send failed" })
         .eq("id", x.id);
     }
-    if (res.ok) { sent++; rowsCovered += claimed.length; }
+    if (res.ok) { sent++; rowsCovered += claimed.length; if (g.code !== "T4") sentThisRun.add(g.recipient); }
     else { failed++; failures.push({ recipient: g.recipient, code: g.code, students: groupNames(rows), error: res.error }); }
   }
   return json({
@@ -472,6 +553,7 @@ Deno.serve(async (req) => {
     daily_cap: envCap, emails_sent_today_before_run: emailsSentToday, budget_this_run: budget,
     emails_sent: sent, emails_failed: failed,
     groups_sent: sent, rows_covered: rowsCovered, rows_left_out: rowsLeftOut,
+    deferred_daily_limit: deferredDaily, not_sent_rpc_error: rpcSkipped, rpc_error: rpcError,
     over_daily_cap: overCap, claimed_by_another_run: lostClaim,
     max_per_run: MAX_EMAILS_PER_RUN, deferred_to_next_run: deferred, stopped: stopReason,
     t4_held_schedule_unreadable: t4Held,
