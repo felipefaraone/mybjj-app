@@ -7378,31 +7378,42 @@ function _bdayDayLabel(d){
 }
 function _rStaffSummary(sd){
   if(!isStaffOrOwner())return '';
-  const tiles=[];
+  // One card of rows (promotions ready, check-ins at each OTHER unit on the
+  // selected day, birthdays in [sd, sd+6]); a row only when its count > 0.
+  // Same counts and tap targets as before. Icons: outline, the app's stroke style.
+  const svg=b=>'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+b+'</svg>';
+  const IC_AWARD=svg('<circle cx="12" cy="8" r="6"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>');
+  const IC_PIN=svg('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>');
+  const IC_CAKE=svg('<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3"/><path d="M12 8v3"/><path d="M17 8v3"/><path d="M7 4h.01"/><path d="M12 4h.01"/><path d="M17 4h.01"/>');
+  const chev=dir=>'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><polyline points="'+(dir==='down'?'6 9 12 15 18 9':dir==='up'?'18 15 12 9 6 15':'9 18 15 12 9 6')+'"/></svg>';
+  const items=[];
   const promoN=getPromoReady().length;
-  if(promoN>0)tiles.push({n:promoN,label:'To promote',attrs:'onclick="goToEligibleRoster()"'});
+  if(promoN>0)items.push({attrs:'onclick="goToEligibleRoster()"',icon:IC_AWARD,title:promoN+' ready to promote',sub:'Review in Roster',dir:'right'});
   for(const o of _otherUnitCheckinCounts(dk(sd))){
-    tiles.push({n:o.n,label:'At '+o.unit.name,attrs:'data-unit="'+escAttr(o.unit.name)+'" onclick="pickUnit(this.dataset.unit)"'});
+    items.push({attrs:'data-unit="'+escAttr(o.unit.name)+'" onclick="pickUnit(this.dataset.unit)"',icon:IC_PIN,
+      title:o.n+' check-in'+(o.n===1?'':'s')+' at '+o.unit.name,sub:'Switch to '+o.unit.name,dir:'right'});
   }
   const week=_bdayWeek(sd);
-  const hasToday=week.some(x=>_bdayIsRealToday(x.date));
-  if(week.length>0)tiles.push({n:week.length,label:week.length===1?'Birthday':'Birthdays',attrs:'onclick="toggleBdayPanel()"',hi:hasToday});
-  if(!tiles.length)return '';
-  const tileHtml=x=>'<div '+x.attrs+' style="cursor:pointer;min-width:0;text-align:center;background:'+(x.hi?'var(--blue-tint)':'var(--card)')+';border:1px solid '+(x.hi?'var(--blue-mid)':'var(--border)')+';border-radius:12px;padding:10px 6px">'
-    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:22px;font-weight:700;line-height:1.1;color:'+(x.hi?'var(--blue)':'var(--text)')+'">'+escHtml(String(x.n))+'</div>'
-    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(x.hi?'var(--blue)':'var(--text2)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(x.label)+'</div></div>';
-  // Rows of at most 3; each row is its own grid with one equal column per tile,
-  // so a short last row fills the width instead of leaving a ragged gap.
-  let rows='';
-  for(let i=0;i<tiles.length;i+=3){
-    const chunk=tiles.slice(i,i+3);
-    rows+='<div style="display:grid;grid-template-columns:repeat('+chunk.length+',minmax(0,1fr));gap:8px;margin-bottom:8px">'+chunk.map(tileHtml).join('')+'</div>';
+  const todays=week.filter(x=>_bdayIsRealToday(x.date));
+  const open=week.length>0&&_bdayPanelOpen(week);
+  if(week.length>0){
+    const sub=todays.length
+      ?_andList(todays.map(x=>x.s.name||''))+' today'
+      :(week[0].s.name||'')+', '+_bdayDayLabel(week[0].date)+(week.length>1?' and '+(week.length-1)+' more':'');
+    items.push({attrs:'onclick="toggleBdayPanel()"',icon:IC_CAKE,title:week.length+' birthday'+(week.length===1?'':'s')+' this week',sub,dir:open?'up':'down',hi:todays.length>0,bday:true});
   }
+  if(!items.length)return '';
+  const rowHtml=(x,i)=>'<div '+x.attrs+' style="display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;'+(i?'border-top:1px solid var(--border);':'')+(x.hi?'background:var(--blue-tint)':'')+'">'
+    +'<div style="flex-shrink:0;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:'+(x.hi?'var(--blue-mid)':'var(--bg)')+';color:'+(x.hi?'var(--blue)':'var(--text2)')+'">'+x.icon+'</div>'
+    +'<div style="flex:1;min-width:0">'
+      +'<div style="font-family:Barlow,sans-serif;font-size:14px;font-weight:500;color:'+(x.hi?'var(--blue)':'var(--text)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(x.title)+'</div>'
+      +'<div style="font-family:Barlow,sans-serif;font-size:12px;color:'+(x.hi?'var(--blue)':'var(--text2)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(x.sub)+'</div>'
+    +'</div>'
+    +chev(x.dir)
+    +'</div>';
   let panel='';
-  if(week.length&&_bdayPanelOpen(week)){
-    const tomorrow=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
-    const dayLbl=d=>_bdayIsRealToday(d)?'Today':(dk(d)===dk(tomorrow)?'Tomorrow':DS[d.getDay()]);
-    panel='<div class="card" style="padding:8px 14px;margin-bottom:12px">'+week.map(x=>{
+  if(open){
+    panel='<div style="border-top:1px solid var(--border);padding:4px 14px 12px">'+week.map(x=>{
       const s=x.s,isToday=_bdayIsRealToday(x.date);
       const n=s.prog==='kids'?_turnsOn(s,x.date):null;
       const turns=n!=null?'<span style="color:var(--text3);font-weight:400"> turns '+escHtml(String(n))+'</span>':'';
@@ -7410,14 +7421,15 @@ function _rStaffSummary(sd){
       return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0">'
         +'<div data-sid="'+escAttr(s.id)+'" onclick="viewStu(this.dataset.sid,\'class\')" style="cursor:pointer;flex:1;min-width:0;font-size:14px;font-weight:500;color:var(--text)">'+escHtml(s.name||'')+turns+'</div>'
         +share
-        +'<div style="flex-shrink:0;min-width:64px;text-align:right;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(isToday?'var(--blue)':'var(--text2)')+'">'+escHtml(dayLbl(x.date))+'</div>'
+        +'<div style="flex-shrink:0;min-width:64px;text-align:right;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(isToday?'var(--blue)':'var(--text2)')+'">'+escHtml(_bdayDayLabel(x.date))+'</div>'
         +'</div>';
     }).join('')
       // Share the week (staff only): opens the existing picker sheet.
-      +(isStaffOrOwner()?'<button onclick="openBdayWeekShare()" style="display:block;width:100%;margin:8px 0 6px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--blue-mid);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer">Share the week</button>':'')
+      +(isStaffOrOwner()?'<button onclick="openBdayWeekShare()" style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--blue-mid);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer">'+SHARE_ICON+'Share the week</button>':'')
       +'</div>';
   }
-  return '<div style="margin-bottom:4px">'+rows+'</div>'+panel;
+  const out=items.map((x,i)=>rowHtml(x,i)+(x.bday?panel:''));
+  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:4px">'+out.join('')+'</div>';
 }
 // "Share the week" sheet (staff only). Mounted from rApp. S.bdayWeekShare =
 // {sel:{legacyId:true}, err:false}; closing discards the ticks.
