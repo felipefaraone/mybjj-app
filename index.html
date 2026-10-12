@@ -7315,31 +7315,6 @@ function _otherUnitCheckinsBanner(dayKey){
   }
   return html;
 }
-// Staff summary row (Classes tab, staff only): equal-width tiles for promotions
-// ready, check-ins at each OTHER unit on the selected day, and birthdays in the
-// week from the selected day. A tile renders only when its count > 0.
-// Other-unit check-ins: the same counting _otherUnitCheckinsBanner uses
-// (going/present on dayKey, unit != active, 2+ active units), as data.
-function _otherUnitCheckinCounts(dayKey){
-  if(!isStaffOrOwner())return [];
-  if(UNITS.filter(u=>u.active).length<2)return [];
-  const activeU=UNITS.find(u=>u.name===S.unit)||{};
-  const activeId=activeU._dbId||null;   // ATTENDANCE.unitId is the DB uuid
-  const counts={};
-  for(const a of ATTENDANCE){
-    if(!a||a.classDate!==dayKey)continue;
-    if(a.status!=='going'&&a.status!=='present')continue;
-    if(!a.unitId||a.unitId===activeId)continue;
-    counts[a.unitId]=(counts[a.unitId]||0)+1;
-  }
-  const out=[];
-  for(const uid in counts){
-    const n=counts[uid];if(!n)continue;
-    const u=UNITS.find(x=>x._dbId===uid);if(!u)continue;
-    out.push({unit:u,n});
-  }
-  return out;
-}
 // Active students of the active unit with a birthday in [sd, sd+6], sorted by
 // date then name. Each entry: {s, date, off}.
 function _bdayWeek(sd){
@@ -7366,45 +7341,127 @@ function toggleBdayPanel(){
   S.bdayOpen=!_bdayPanelOpen(_bdayWeek(sd));
   render();
 }
-function _rStaffSummary(sd){
+// "A", "A and B", "A, B and C" (no Oxford comma).
+function _andList(names){
+  const a=(names||[]).map(x=>String(x||'').trim()).filter(Boolean);
+  if(a.length<=1)return a.join('');
+  return a.slice(0,-1).join(', ')+' and '+a[a.length-1];
+}
+// Birthdays this week, staff only: one row in the same style as an
+// _otherUnitCheckinsBanner row, directly below those rows, expanding inline
+// to the week list. Hidden when there are none in [sd, sd+6].
+function _bdayDayLabel(d){
+  const tomorrow=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
+  return _bdayIsRealToday(d)?'Today':(dk(d)===dk(tomorrow)?'Tomorrow':DS[d.getDay()]);
+}
+function _rBirthdayWeekRow(sd){
   if(!isStaffOrOwner())return '';
-  const tiles=[];
-  const promoN=getPromoReady().length;
-  if(promoN>0)tiles.push({n:promoN,label:'To promote',attrs:'onclick="goToEligibleRoster()"'});
-  for(const o of _otherUnitCheckinCounts(dk(sd))){
-    tiles.push({n:o.n,label:'At '+o.unit.name,attrs:'data-unit="'+escAttr(o.unit.name)+'" onclick="pickUnit(this.dataset.unit)"'});
-  }
   const week=_bdayWeek(sd);
-  const hasToday=week.some(x=>_bdayIsRealToday(x.date));
-  if(week.length>0)tiles.push({n:week.length,label:week.length===1?'Birthday':'Birthdays',attrs:'onclick="toggleBdayPanel()"',hi:hasToday});
-  if(!tiles.length)return '';
-  const tileHtml=x=>'<div '+x.attrs+' style="cursor:pointer;min-width:0;text-align:center;background:'+(x.hi?'var(--blue-tint)':'var(--card)')+';border:1px solid '+(x.hi?'var(--blue-mid)':'var(--border)')+';border-radius:12px;padding:10px 6px">'
-    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:22px;font-weight:700;line-height:1.1;color:'+(x.hi?'var(--blue)':'var(--text)')+'">'+escHtml(String(x.n))+'</div>'
-    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(x.hi?'var(--blue)':'var(--text2)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(x.label)+'</div></div>';
-  // Rows of at most 3; each row is its own grid with one equal column per tile,
-  // so a short last row fills the width instead of leaving a ragged gap.
-  let rows='';
-  for(let i=0;i<tiles.length;i+=3){
-    const chunk=tiles.slice(i,i+3);
-    rows+='<div style="display:grid;grid-template-columns:repeat('+chunk.length+',minmax(0,1fr));gap:8px;margin-bottom:8px">'+chunk.map(tileHtml).join('')+'</div>';
+  if(!week.length)return '';
+  const n=week.length;
+  const todays=week.filter(x=>_bdayIsRealToday(x.date)).map(x=>x.s.name||'');
+  const open=_bdayPanelOpen(week);
+  const suffix=' birthday'+(n===1?'':'s')+' this week';
+  const todayTxt=todays.length?' · <span style="color:var(--blue)">'+escHtml(_andList(todays))+'</span> today':'';
+  let html='<div onclick="toggleBdayPanel()" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer"><div style="font-size:13px;color:var(--text2)"><span style="font-weight:700;color:var(--blue)">'+n+'</span>'+suffix+todayTxt+'</div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;transition:transform .15s;transform:rotate('+(open?90:0)+'deg)"><polyline points="9 18 15 12 9 6"/></svg></div>';
+  if(!open)return html;
+  const rows=week.map(x=>{
+    const s=x.s,isToday=_bdayIsRealToday(x.date);
+    const t=s.prog==='kids'?_turnsOn(s,x.date):null;
+    const turns=t!=null?'<span style="color:var(--text3);font-weight:400"> turns '+escHtml(String(t))+'</span>':'';
+    const share=(isToday&&canShareCard(s))?shareBtnHtml('event.stopPropagation();_shareCard(\'birthday\',this.dataset.sid)').replace('<button ','<button data-sid="'+escAttr(s.id)+'" '):'';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0">'
+      +'<div data-sid="'+escAttr(s.id)+'" onclick="viewStu(this.dataset.sid,\'class\')" style="cursor:pointer;flex:1;min-width:0;font-size:14px;font-weight:500;color:var(--text)">'+escHtml(s.name||'')+turns+'</div>'
+      +share
+      +'<div style="flex-shrink:0;min-width:64px;text-align:right;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(isToday?'var(--blue)':'var(--text2)')+'">'+escHtml(_bdayDayLabel(x.date))+'</div>'
+      +'</div>';
+  }).join('');
+  html+='<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:6px 14px 12px;margin:-4px 0 10px">'+rows
+    +'<button onclick="openBdayWeekShare()" style="display:block;width:100%;margin-top:8px;padding:10px;border-radius:10px;background:transparent;border:1px solid var(--blue-mid);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer">Share the week</button>'
+    +'</div>';
+  return html;
+}
+// "Share the week" sheet (staff only). Mounted from rApp. S.bdayWeekShare =
+// {sel:{legacyId:true}, err:false}; closing discards the ticks.
+function openBdayWeekShare(){
+  if(!isStaffOrOwner())return;
+  const sel={};
+  for(const x of _bdayWeek(S.selDay||TODAY))sel[x.s.id]=true;
+  S.bdayWeekShare={sel,err:false};
+  render();
+}
+function closeBdayWeekShare(){S.bdayWeekShare=null;render();}
+function toggleBdayWeekPick(sid){
+  const m=S.bdayWeekShare;if(!m)return;
+  m.sel[sid]=!m.sel[sid];m.err=false;
+  render();
+}
+function rBdayWeekShareSheet(){
+  const m=S.bdayWeekShare;
+  if(!m||!isStaffOrOwner())return '';
+  const week=_bdayWeek(S.selDay||TODAY);
+  const nSel=week.filter(x=>m.sel[x.s.id]).length;
+  const tick='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  const rows=week.map(x=>{
+    const s=x.s,on=!!m.sel[s.id];
+    const box='<span style="flex-shrink:0;width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;color:white;'+(on?'background:var(--blue);border:1px solid var(--blue)':'background:var(--card);border:1px solid var(--border)')+'">'+(on?tick:'')+'</span>';
+    const kidTag=s.prog==='kids'?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 5px;margin-left:6px">Kids</span>':'';
+    return '<div data-sid="'+escAttr(s.id)+'" onclick="toggleBdayWeekPick(this.dataset.sid)" style="display:flex;align-items:center;gap:10px;padding:9px 2px;cursor:pointer">'
+      +box
+      +'<span style="flex:1;min-width:0;font-size:13.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(s.name||'')+kidTag+'</span>'
+      +'<span style="flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(_bdayIsRealToday(x.date)?'var(--blue)':'var(--text2)')+'">'+escHtml(_bdayDayLabel(x.date))+'</span>'
+      +'</div>';
+  }).join('');
+  return '<div class="cov" onclick="closeBdayWeekShare()" style="align-items:flex-end;z-index:290">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">Share the week</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:2px">Untick anyone you\'d rather leave out. Only names go on the card.</div>'
+      +'<div style="margin-top:12px">'+rows+'</div>'
+      +(m.err?'<div style="font-size:12.5px;color:var(--red-text);margin-top:10px;text-align:center">Pick at least one name</div>':'')
+      +'<button onclick="shareBdayWeekPicked()" style="width:100%;margin-top:14px;padding:12px;border-radius:10px;border:none;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;text-transform:uppercase;background:var(--blue);color:white;cursor:pointer">Share '+nSel+' name'+(nSel===1?'':'s')+'</button>'
+      +'<button onclick="closeBdayWeekShare()" style="width:100%;margin-top:8px;padding:11px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px;cursor:pointer">Cancel</button>'
+    +'</div>'
+  +'</div>';
+}
+function shareBdayWeekPicked(){
+  const m=S.bdayWeekShare;if(!m||!isStaffOrOwner())return;
+  const names=_bdayWeek(S.selDay||TODAY).filter(x=>m.sel[x.s.id]).map(x=>String(x.s.name||'').trim()).filter(Boolean);
+  if(!names.length){m.err=true;render();return;}
+  S.bdayWeekShare=null;render();
+  _shareBirthdayWeek(names);
+}
+// Week card text: names only - no dates, ages or years, no trial link.
+function shareBirthdayWeekText(names){
+  return 'Happy birthday this week to '+_andList(names)+' from everyone at myBJJ!';
+}
+// Card lines: up to 8 names, then "and N more".
+function _bdayWeekCardLines(names){
+  const a=(names||[]).map(x=>String(x||'').trim()).filter(Boolean);
+  return a.length<=8?a:a.slice(0,8).concat(['and '+(a.length-8)+' more']);
+}
+// Same share path and fallback as _shareCard: image share when supported,
+// otherwise (or on any error) the text-only shareNative.
+async function _shareBirthdayWeek(names){
+  if(!isStaffOrOwner()||!names||!names.length)return;
+  const text=shareBirthdayWeekText(names);
+  try{
+    const unit=(UNITS.find(u=>u.name===S.unit)||{name:''}).name;
+    const cv=await _drawShareCard({belt:'blue',deg:0,prog:'adult',name:'',initials:'',photoUrl:null,eyebrow:'Birthdays this week',congrats:'',unit,noTrial:true,weekNames:_bdayWeekCardLines(names),weekLine:'Have a great one from everyone at myBJJ'});
+    cv.toBlob(async blob=>{
+      if(!blob){shareNative(text,'MyBJJ');return;}
+      try{
+        const file=new File([blob],'mybjj.jpg',{type:'image/jpeg'});
+        if(navigator.canShare&&navigator.canShare({files:[file]})){
+          try{ await navigator.share({files:[file],text,title:'MyBJJ'}); return; }
+          catch(e){ if(e&&e.name==='AbortError')return; }
+        }
+      }catch(_){}
+      shareNative(text,'MyBJJ');
+    },'image/jpeg',0.9);
+  }catch(e){
+    console.warn('[mybjj] week card:',e);
+    try{shareNative(text,'MyBJJ');}catch(_){}
   }
-  let panel='';
-  if(week.length&&_bdayPanelOpen(week)){
-    const tomorrow=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()+1);
-    const dayLbl=d=>_bdayIsRealToday(d)?'Today':(dk(d)===dk(tomorrow)?'Tomorrow':DS[d.getDay()]);
-    panel='<div class="card" style="padding:8px 14px;margin-bottom:12px">'+week.map(x=>{
-      const s=x.s,isToday=_bdayIsRealToday(x.date);
-      const n=s.prog==='kids'?_turnsOn(s,x.date):null;
-      const turns=n!=null?'<span style="color:var(--text3);font-weight:400"> turns '+escHtml(String(n))+'</span>':'';
-      const share=(isToday&&canShareCard(s))?shareBtnHtml('event.stopPropagation();_shareCard(\'birthday\',this.dataset.sid)').replace('<button ','<button data-sid="'+escAttr(s.id)+'" '):'';
-      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0">'
-        +'<div data-sid="'+escAttr(s.id)+'" onclick="viewStu(this.dataset.sid,\'class\')" style="cursor:pointer;flex:1;min-width:0;font-size:14px;font-weight:500;color:var(--text)">'+escHtml(s.name||'')+turns+'</div>'
-        +share
-        +'<div style="flex-shrink:0;min-width:64px;text-align:right;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+(isToday?'var(--blue)':'var(--text2)')+'">'+escHtml(dayLbl(x.date))+'</div>'
-        +'</div>';
-    }).join('')+'</div>';
-  }
-  return '<div style="margin-bottom:4px">'+rows+'</div>'+panel;
 }
 // Member greeting: the ACTIVE profile's own student (the member, or the kid a
 // parent has selected) on its birthday TODAY. Dismissed per student per year.
@@ -7483,8 +7540,9 @@ function rClass(){
     return h*60+m;
   })();
   _maybePromoToast();
-  return `${rDayStrip()}${_rBirthdayGreeting()}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}${_dayReady?`<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}`:''}</div>`:''}</div>
-  ${_rStaffSummary(sd)}
+  return `${rDayStrip()}${_rBirthdayGreeting()}${isStaffOrOwner()?rPromoAlert():''}<div style="height:10px"></div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div class="slbl" style="margin-bottom:0">${isT?'Today':fd(sd)}</div>${isStaffOrOwner()?`<div style="display:flex;align-items:center;gap:14px"><span style="position:relative;display:inline-flex;align-items:center"><input type="date" id="cls-datejump" value="${sk}" max="${dk(TODAY)}" onclick="_clsDateJumpOpen(this)" onchange="_jumpToDate(this.value)" aria-label="Jump to date" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;padding:0;margin:0;cursor:pointer;z-index:2"/><span style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase;pointer-events:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>${isT?'<span style="margin-left:4px">Jump to date</span>':''}</span></span>${!isT?`<button onclick="_backToToday()" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">‹ Today</button>`:''}${_dayReady?`<button onclick="openOneoff('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Extra class</button>${closed?`<button onclick="askReopenDay('${sk}')" style="background:none;border:none;color:var(--blue);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Reopen day</button>`:`<button onclick="openCloseDay('${sk}')" style="background:none;border:none;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Close this day</button>`}`:''}</div>`:''}</div>
+  ${_otherUnitCheckinsBanner(sk)}
+  ${_rBirthdayWeekRow(sd)}
   ${closed?`<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:4px"><div style="font-size:26px">🏖️</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--amber-text)">${escHtml(closed.reason||'Academy closed')}</div><div style="font-size:12px;color:var(--amber-text);opacity:.8;margin-top:3px">Regular classes cancelled</div></div></div>`:''}
   ${cls.length>0?'<div class="agenda">'+cls.map(c=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];
@@ -13216,7 +13274,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -15926,6 +15984,44 @@ async function _drawShareCard(opts){
   ctx.fillStyle='#fff';ctx.font='700 76px '+COND;
   ctx.fillText('MyBJJ',hx,150);
   if(opts.unit){ctx.fillStyle='rgba(255,255,255,.78)';ctx.font='500 38px '+BODY;ctx.fillText(opts.unit,hx+2,206);}
+  // opts.weekNames (birthday_week card only): a cake glyph in the photo circle,
+  // the eyebrow, the names one per line and a closing line. No photo, belt,
+  // dates or trial footer. Every other kind skips this block untouched.
+  if(Array.isArray(opts.weekNames)){
+    const wx=W/2,wy=640,wr=170;
+    ctx.save();ctx.beginPath();ctx.arc(wx,wy,wr,0,Math.PI*2);ctx.closePath();
+    ctx.fillStyle='rgba(255,255,255,.14)';ctx.fill();ctx.restore();
+    ctx.beginPath();ctx.arc(wx,wy,wr,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=8;ctx.stroke();
+    // Cake: plate, two tiers, three candles with flames - white paths only.
+    ctx.fillStyle='#fff';ctx.strokeStyle='#fff';
+    const wrr=(x0,y0,w0,h0,rad)=>{ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x0,y0,w0,h0,rad);else ctx.rect(x0,y0,w0,h0);ctx.closePath();};
+    wrr(wx-120,wy+78,240,14,7);ctx.fill();
+    wrr(wx-100,wy+8,200,70,12);ctx.fill();
+    wrr(wx-70,wy-44,140,52,10);ctx.fill();
+    for(const dx of [-40,0,40]){
+      wrr(wx+dx-5,wy-92,10,48,4);ctx.fill();
+      ctx.beginPath();ctx.moveTo(wx+dx,wy-122);ctx.quadraticCurveTo(wx+dx+12,wy-104,wx+dx,wy-98);ctx.quadraticCurveTo(wx+dx-12,wy-104,wx+dx,wy-122);ctx.closePath();ctx.fill();
+    }
+    ctx.textAlign='center';
+    let wyy=wy+wr+100;
+    if(opts.eyebrow){ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='700 42px '+COND;ctx.fillText(String(opts.eyebrow).toUpperCase(),wx,wyy);}
+    wyy+=96;
+    const nl=opts.weekNames.length;
+    const fs=nl<=4?72:(nl<=6?62:54);
+    ctx.fillStyle='#fff';ctx.font='700 '+fs+'px '+COND;
+    opts.weekNames.forEach(l=>{
+      let s=String(l||'');
+      while(s.length>1&&ctx.measureText(s).width>W-180)s=s.slice(0,-1);
+      if(s!==String(l||''))s=s.replace(/\s+$/,'')+'\u2026';
+      ctx.fillText(s,wx,wyy);wyy+=fs+16;
+    });
+    if(opts.weekLine){
+      wyy+=24;ctx.fillStyle='rgba(255,255,255,.93)';ctx.font='500 42px '+BODY;
+      _shareWrap(ctx,opts.weekLine,W-220,2).forEach(l=>{ctx.fillText(l,wx,wyy);wyy+=58;});
+    }
+    return cv;
+  }
   // Avatar — circle, photo when we have one, initials otherwise.
   const cx=W/2,cy=740,r=200;
   let drew=false;
