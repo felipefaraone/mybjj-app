@@ -12,8 +12,9 @@
 // are already modules both import.
 //
 //   POST { send?: false|true, limit?: n, now?: ISO }    (now: dry run only)
-//   POST { test_to: "<one address>" }   TEST SEND: every code x both streams
-//        (12 emails, T4 included) to that address, subjects "[TEST] …". Fixture
+//   POST { test_to: "<one address>", test_set?: "all"|"plural" }   TEST SEND:
+//        every code x both streams (12, T4 included) + the plural kids copy for
+//        2+ children (5); test_set "plural" sends only those 5. Subjects "[TEST] …". Fixture
 //        people; the real Neutral Bay (adult) and Camperdown (kids) units from
 //        public.units. Writes nothing and ignores the daily cap.
 //   header x-engagement-secret: <ENGAGEMENT_SECRET>
@@ -28,8 +29,13 @@
 // info@mybjj.com.au, with what the member actually got (sent_codes,
 // member_reach) for its "Automated emails sent: …" line.
 //
+// ONE EMAIL PER ADDRESS AND CODE (see groupCands): a guardian of several children
+// at the same stage gets one email naming them all; email_sends still gets one
+// row per student, all sharing that send. The cap and budget count emails.
+//
 // send:false (DEFAULT) — a dry run. Writes NOTHING. Returns the counts, the due
-//   list, and rendered samples of every code for both streams.
+//   EMAILS (recipient, code, children, subject, the rows each covers), and
+//   rendered samples of every code for both streams plus the plural kids copy.
 // send:true — for each due email: CLAIM a row in email_sends (kind 'mia',
 //   period_key '<student>:<last class date>:<code>', with the student_id, status
 //   'failed' / error 'sending'; 137's unique key makes the claim exclusive), send,
@@ -132,6 +138,9 @@ async function readMiaDays(sb: any): Promise<MiaDays | null> {
   return out;
 }
 
+// Made-up children for the plural samples (rendered "Ava, Leo and Mia").
+const FIXTURE_SIBLINGS = ["Mia", "Leo", "Ava"];
+
 // Made-up people for samples and test sends. Never a real person.
 function fixtureFor(stream: MiaStream, code: MiaCode, recipient: string): Cand {
   const last = new Date(Date.now() - 30 * 86400000);
@@ -153,7 +162,8 @@ function fixtureFor(stream: MiaStream, code: MiaCode, recipient: string): Cand {
 }
 
 async function render(c: Cand, daysOf: MiaDays | null, code: MiaCode = c.code, stream: MiaStream = c.is_kid ? "kids" : "adult",
-                      automated: MiaSent | null = { codes: c.sent_codes || [], reason: noneReason(c.member_reach, false) }) {
+                      automated: MiaSent | null = { codes: c.sent_codes || [], reason: noneReason(c.member_reach, false) },
+                      groupNames?: string[]) {
   return renderMiaEmail(code, stream, {
     firstName: c.first_name || "",
     lastName: c.last_name,
@@ -167,9 +177,40 @@ async function render(c: Cand, daysOf: MiaDays | null, code: MiaCode = c.code, s
     parents: c.parents,
     automated,
     daysOf,
+    groupFirstNames: groupNames,
     unsubscribeUrl: code === "T4" ? null : await unsubLink(Deno.env.get("EMAIL_UNSUB_SECRET"), c.recipient, "mia"),
   });
 }
+
+// ONE EMAIL PER ADDRESS AND CODE. A guardian with three children at the same
+// stage used to get three identical emails on the same day. Member rows group by
+// (lowercased recipient, code, kids/adults): kids become one email naming every
+// child (plural copy for 2+), adults sharing an address one email with the names
+// joined. Codes are never mixed, nor kid and adult wording. T4 (the team note) is
+// never grouped. email_sends keeps one row PER STUDENT (137's unique key), all
+// rows of a group sharing the one send.
+type Group = { key: string; code: MiaCode; recipient: string; stream: MiaStream; rows: Cand[]; due_at: string };
+function groupCands(list: Cand[]): Group[] {
+  const m = new Map<string, Group>();
+  for (const c of list) {
+    const stream: MiaStream = c.is_kid ? "kids" : "adult";
+    const rcpt = String(c.recipient || "").toLowerCase();
+    const key = c.code === "T4" ? `T4|${c.period_key}|${rcpt}` : `${rcpt}|${c.code}|${stream}`;
+    let g = m.get(key);
+    if (!g) { g = { key, code: c.code, recipient: rcpt, stream, rows: [], due_at: c.due_at }; m.set(key, g); }
+    g.rows.push(c);
+    if (new Date(c.due_at).getTime() < new Date(g.due_at).getTime()) g.due_at = c.due_at;
+  }
+  const byName = (a: Cand, b: Cand) => String(a.first_name || "").localeCompare(String(b.first_name || ""), "en", { sensitivity: "base" })
+    || a.student_id.localeCompare(b.student_id);
+  return [...m.values()].map((g) => ({ ...g, rows: g.rows.sort(byName) }))
+    // due_at, then T4 AFTER every member email due at the same instant: T4 reports
+    // what the member received this episode, so its M4 must already be sent.
+    .sort((x, y) => new Date(x.due_at).getTime() - new Date(y.due_at).getTime()
+      || (x.code === "T4" ? 1 : 0) - (y.code === "T4" ? 1 : 0)
+      || x.key.localeCompare(y.key));
+}
+const groupNames = (rows: Cand[]) => rows.map((r) => String(r.first_name || "").trim()).filter(Boolean);
 
 Deno.serve(async (req) => {
   const requestStart = Date.now();
@@ -201,9 +242,12 @@ Deno.serve(async (req) => {
       units[st] = u;
     }
     const daysOf = await readMiaDays(sb);
+    // test_set: "all" (default) = every code x both streams + the plural kids copy;
+    // "plural" = only the plural kids copy (M1 to M4 and R, three fixture children).
+    const testSet = body.test_set === "plural" ? "plural" : "all";
     const results = [];
     const testSender = createPacedSender();
-    for (const stream of ["adult", "kids"] as MiaStream[]) {
+    for (const stream of (testSet === "plural" ? [] : ["adult", "kids"]) as MiaStream[]) {
       const u = units[stream]!;
       for (const code of MIA_CODES) {
         if (code === "T4" && !daysOf) {
@@ -221,8 +265,21 @@ Deno.serve(async (req) => {
         results.push({ stream, code, subject, ok: r.ok, ...(r.ok ? {} : { error: r.error }) });
       }
     }
+    // The plural kids copy: one email per code naming FIXTURE_SIBLINGS.
+    for (const code of MIA_CODES.filter((k) => k !== "T4")) {
+      const u = units.kids!;
+      const c: Cand = {
+        ...fixtureFor("kids", code, to),
+        unit_name: String(u.name || "").trim(), unit_legacy_id: u.legacy_id ? String(u.legacy_id).toLowerCase() : null,
+        unit_address: u.address, unit_phone: u.phone ? String(u.phone).trim() || null : null,
+      };
+      const msg = await render(c, daysOf, code, "kids", undefined, FIXTURE_SIBLINGS);
+      const subject = TEST_SUBJECT_PREFIX + msg.subject;
+      const r = await sendViaResend(testSender, to, { ...msg, subject });
+      results.push({ stream: "kids", code, plural: true, children: FIXTURE_SIBLINGS, subject, ok: r.ok, ...(r.ok ? {} : { error: r.error }) });
+    }
     return json({
-      mode: "test", to, wrote: "nothing",
+      mode: "test", to, test_set: testSet, wrote: "nothing",
       academies: Object.fromEntries((["adult", "kids"] as MiaStream[]).map((st) => [st, {
         name: units[st]!.name, address_line: unitAddressLine(units[st]!.address), phone: units[st]!.phone }])),
       sent: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length,
@@ -272,25 +329,36 @@ Deno.serve(async (req) => {
   // still due next run); member emails are unaffected.
   const daysOf = await readMiaDays(supabase);
   const t4Held = daysOf ? 0 : cands.filter((c) => c.code === "T4").length;
-  const toSend = [...cands].filter((c) => daysOf || c.code !== "T4")
-    .sort((x, y) => new Date(x.due_at).getTime() - new Date(y.due_at).getTime() || x.period_key.localeCompare(y.period_key) || x.recipient.localeCompare(y.recipient));
+  const sendable = cands.filter((c) => daysOf || c.code !== "T4");
+  // The budget and the daily cap count EMAILS: one per group.
+  const groups = groupCands(sendable);
 
   // T4's "Automated emails sent" in a dry run: what is logged, plus the M4 this run
-  // would send for the same episode (M4 sorts before its T4).
-  const willSend = new Set(toSend.slice(0, budget).map((c) => c.period_key));
+  // would send for the same episode (an M4 group sorts no later than its T4).
+  const willSend = new Set(groups.slice(0, budget).flatMap((g) => g.rows.map((c) => c.period_key)));
   const dryAutomated = (t: Cand): MiaSent => {
     const m4 = t.period_key.replace(/:T4$/, ":M4");
     const codes = [...(t.sent_codes || []), ...(willSend.has(m4) ? ["M4"] : [])];
     return { codes, reason: noneReason(t.member_reach, false) };
   };
+  const renderGroup = (g: Group, automated?: MiaSent) =>
+    render(g.rows[0], daysOf, g.code, g.stream, automated, groupNames(g.rows));
 
   // ---------------- DRY RUN: write nothing ----------------
   if (!send) {
-    const due = toSend.map((c, i) => ({
-      action: i < budget ? (c.attempt_status === "failed" ? "would_retry" : "would_send") : "over_daily_cap_next_run",
-      code: c.code, stream: c.is_kid ? "kids" : "adult", recipient: c.recipient, period_key: c.period_key, due_at: c.due_at,
-      student_id: c.student_id, first_name: c.first_name, academy: c.unit_name, last_class_date: c.last_class_date, days_absent: c.days_absent,
-    }));
+    const due = [];
+    for (const [i, g] of groups.entries()) {
+      const msg = await renderGroup(g, g.code === "T4" ? dryAutomated(g.rows[0]) : undefined);
+      due.push({
+        action: i < budget ? (g.rows.some((c) => c.attempt_status === "failed") ? "would_retry" : "would_send") : "over_daily_cap_next_run",
+        code: g.code, stream: g.stream, recipient: g.recipient, due_at: g.due_at,
+        children: g.stream === "kids" ? groupNames(g.rows) : undefined,
+        members: g.stream === "adult" ? groupNames(g.rows) : undefined,
+        students: g.rows.length, subject: msg.subject,
+        rows: g.rows.map((c) => ({ student_id: c.student_id, period_key: c.period_key, first_name: c.first_name, academy: c.unit_name,
+          last_class_date: c.last_class_date, days_absent: c.days_absent })),
+      });
+    }
     const samples = [];
     for (const stream of ["adult", "kids"] as MiaStream[]) {
       for (const code of MIA_CODES) {
@@ -300,15 +368,25 @@ Deno.serve(async (req) => {
         samples.push({ stream, code, to: base.recipient, from_real_member: !!real, ...(await render(base, daysOf, code, stream, real ? dryAutomated(real) : undefined)) });
       }
     }
+    // The plural copy (2+ children): a real group when there is one, else fixture children.
+    for (const code of MIA_CODES.filter((k) => k !== "T4")) {
+      const realG = groups.find((g) => g.stream === "kids" && g.code === code && g.rows.length >= 2);
+      const base = realG ? realG.rows[0] : fixtureFor("kids", code, "sample@example.invalid");
+      const names = realG ? groupNames(realG.rows) : FIXTURE_SIBLINGS;
+      samples.push({ stream: "kids", code, plural: true, children: names, to: base.recipient, from_real_member: !!realG,
+        ...(await render(base, daysOf, code, "kids", undefined, names)) });
+    }
     return json({
       mode: "dry_run", wrote: "nothing", now: now.toISOString(),
       daily_cap: envCap, emails_sent_today_all_kinds: emailsSentToday, max_per_run: MAX_EMAILS_PER_RUN, budget_this_run: budget,
       counts: {
-        due: cands.length,
-        would_send: Math.min(budget, toSend.length),
-        of_which_retries: toSend.slice(0, budget).filter((c) => c.attempt_status === "failed").length,
-        over_daily_cap: Math.max(0, toSend.length - budget),
-        by_code: Object.fromEntries(MIA_CODES.map((k) => [k, toSend.filter((c) => c.code === k).length])),
+        due_rows: cands.length,
+        due_emails: groups.length,
+        would_send: Math.min(budget, groups.length),
+        rows_covered: groups.slice(0, budget).reduce((n, g) => n + g.rows.length, 0),
+        of_which_retries: groups.slice(0, budget).filter((g) => g.rows.some((c) => c.attempt_status === "failed")).length,
+        over_daily_cap: Math.max(0, groups.length - budget),
+        by_code: Object.fromEntries(MIA_CODES.map((k) => [k, groups.filter((g) => g.code === k).length])),
         t4_held_schedule_unreadable: t4Held,
       },
       warnings: [
@@ -351,33 +429,49 @@ Deno.serve(async (req) => {
   };
 
   let sent = 0, failed = 0, lostClaim = 0, overCap = 0, attempts = 0, deferred = 0, retries429 = 0;
+  let rowsCovered = 0, rowsLeftOut = 0;
   let stopReason: string | null = null;
   const failures: unknown[] = [];
   const sender = createPacedSender(requestStart);
-  for (const c of toSend) {
+  for (const g of groups) {
+    // The budget counts EMAILS: one per group, however many students it covers.
     if (attempts >= budget) { overCap++; continue; }
     // Out of run time, or Resend said stop: leave it unclaimed; still due next run.
     if (!stopReason && !sender.canStartAnother()) stopReason = "run time budget reached";
     if (stopReason) { deferred++; continue; }
-    const id = await claim(c);
-    if (!id) { lostClaim++; continue; }
+    // Claim EVERY row of the group before sending. A row already claimed or sent
+    // (another run, or sent earlier) is left out; the rest still go.
+    const claimed: { c: Cand; id: string }[] = [];
+    for (const c of g.rows) {
+      const id = await claim(c);
+      if (id) claimed.push({ c, id });
+      else { rowsLeftOut++; console.log(`[mia-emails] ${c.period_key} -> ${c.recipient}: already claimed or sent, left out of this email`); }
+    }
+    if (!claimed.length) { lostClaim++; continue; }
     attempts++;
+    const rows = claimed.map((x) => x.c);
     // T4 reads the log fresh, so an M4 sent earlier in THIS run is listed.
     let automated: MiaSent | undefined;
-    if (c.code === "T4") automated = await sentThisEpisode(c);
-    const res = await sendViaResend(sender, c.recipient, await render(c, daysOf, c.code, c.is_kid ? "kids" : "adult", automated));
+    if (g.code === "T4") automated = await sentThisEpisode(rows[0]);
+    const res = await sendViaResend(sender, g.recipient, await render(rows[0], daysOf, g.code, g.stream, automated, groupNames(rows)));
     retries429 += Math.max(0, res.attempts - 1);
     if (res.stop) stopReason = "Resend rate limit: " + (res.error || "429");
-    await supabase.from("email_sends")
-      .update(res.ok ? { status: "sent", error: null, sent_at: new Date().toISOString() } : { status: "failed", error: res.error || "send failed" })
-      .eq("id", id);
-    if (res.ok) sent++;
-    else { failed++; failures.push({ recipient: c.recipient, period_key: c.period_key, error: res.error }); }
+    // One outcome for the whole group: sent together, or failed together (and
+    // retried together on the next run).
+    const at = new Date().toISOString();
+    for (const x of claimed) {
+      await supabase.from("email_sends")
+        .update(res.ok ? { status: "sent", error: null, sent_at: at } : { status: "failed", error: res.error || "send failed" })
+        .eq("id", x.id);
+    }
+    if (res.ok) { sent++; rowsCovered += claimed.length; }
+    else { failed++; failures.push({ recipient: g.recipient, code: g.code, students: groupNames(rows), error: res.error }); }
   }
   return json({
     mode: "send", now: now.toISOString(),
     daily_cap: envCap, emails_sent_today_before_run: emailsSentToday, budget_this_run: budget,
     emails_sent: sent, emails_failed: failed,
+    groups_sent: sent, rows_covered: rowsCovered, rows_left_out: rowsLeftOut,
     over_daily_cap: overCap, claimed_by_another_run: lostClaim,
     max_per_run: MAX_EMAILS_PER_RUN, deferred_to_next_run: deferred, stopped: stopReason,
     t4_held_schedule_unreadable: t4Held,

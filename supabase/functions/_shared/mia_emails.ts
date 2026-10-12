@@ -208,6 +208,85 @@ const KIDS: Record<MiaCode, Tpl> = {
   ] },
 };
 
+// ============================ KIDS, 2+ CHILDREN (PLURAL) ============================
+// One email to a guardian for ALL their children at the same stage (same code).
+// {{child_first_name}} is the children's first names joined: "Ava and Leo",
+// "Ava, Leo and Mia" (alphabetical, no Oxford comma). The singular KIDS text
+// adapted MINIMALLY: verbs and pronouns made plural; no sentence added or removed.
+// Every line that differs from the singular one carries a PLURAL comment quoting the singular.
+// Used only for 2 or more children; one child renders with KIDS above, unchanged.
+const KIDS_PLURAL: Record<Exclude<MiaCode, "T4">, Tpl> = {
+  M1: { subject: "Haven’t seen {{child_first_name}} this week", blocks: [
+    p("Hi {{parent_first_name}},"),
+    p("We haven’t seen {{child_first_name}} on the mats this week, so we just wanted to check in."),
+    p("Hopefully everything’s going well and life has just been keeping your family busy."),
+    p("Whenever {{child_first_name}} are ready, we’d love to see them back at training."),            // PLURAL: Whenever {{child_first_name}} is ready, we’d love to see them back at training.
+    p("You can check the timetable below and find a class that works for you."),
+    btn("VIEW TIMETABLE"),
+    sign("See you on the mats,", "The myBJJ Team"),
+  ] },
+  M2: { subject: "Everything okay with {{child_first_name}}?", blocks: [
+    p("Hi {{parent_first_name}},"),
+    p("It’s been a couple of weeks since we’ve seen {{child_first_name}} at myBJJ, so we wanted to check in."),
+    p("Sometimes school gets busy, families go away, injuries happen, or training just gets pushed down the list for a while."),
+    p("Whatever the reason, we hope everything’s okay."),
+    p("If there’s something keeping {{child_first_name}} away from training, feel free to reply and let us know."),
+    p("And if you’ve simply been meaning to get {{child_first_name}} back in, there’s no need to wait for the perfect week."),
+    p("Pick a class and bring {{child_first_name}} in to train."),
+    btn("VIEW TIMETABLE"),
+    p("We’d be happy to see {{child_first_name}} back."),
+    sign("The myBJJ Team"),
+  ] },
+  M3: { subject: "Time for {{child_first_name}} to get back on the mats?", blocks: [
+    p("Hi {{parent_first_name}},"),
+    p("It’s been a little while since {{child_first_name}}’s last class."),
+    p("And we know what can happen."),
+    p("{{child_first_name}} miss a week."),                                                            // PLURAL: {{child_first_name}} misses a week.
+    p("Then another week gets busy."),
+    p("And suddenly getting back to training feels harder than it should."),
+    p("The good news is {{child_first_name}} don’t need to get fit again before coming back."),        // PLURAL: The good news is {{child_first_name}} doesn’t need to get fit again before coming back.
+    p("They don’t need to remember everything."),
+    p("And nobody expects them to pick up exactly where they left off."),
+    p("Just bring them back in to train."),
+    p("One class is all it takes to get moving again."),
+    btn("FIND THEIR NEXT CLASS"),
+    p("We’d love to see {{child_first_name}} back on the mats."),
+    sign("The myBJJ Team"),
+  ] },
+  M4: { subject: "We’d really like to see {{child_first_name}} back", blocks: [
+    p("Hi {{parent_first_name}},"),
+    p("It’s been about a month since we’ve seen {{child_first_name}} at training."),
+    p("We wanted to reach out because we don’t want someone who was part of our training community to quietly disappear without checking that everything is okay."),
+    p("If life has simply been busy, {{child_first_name}}’s next class is waiting whenever you’re ready."),
+    p("If there’s something making it difficult for {{child_first_name}} to come back, whether that’s your schedule, an injury, motivation or something else, reply and let us know."),
+    p("There may be something we can help with."),
+    p("And if you’ve just been waiting for the right day for {{child_first_name}} to return, make it this week."),
+    btn("VIEW TIMETABLE"),
+    p("We hope to see {{child_first_name}} back soon."),
+    sign("The myBJJ Team"),
+  ] },
+  R: { subject: "Great to have {{child_first_name}} back 🥋", blocks: [
+    p("Hi {{parent_first_name}},"),
+    p("It was great to see {{child_first_name}} back on the mats."),
+    p("Getting back into training after some time away can sometimes be the hardest class to make."),
+    p("Now that {{child_first_name}} have done it, keep the momentum going."),                          // PLURAL: Now that {{child_first_name}} has done it, keep the momentum going.
+    p("They don’t need a perfect training schedule."),
+    p("Just keep bringing them in when you can and build the habit again."),
+    p("See you at the next one."),
+    sign("The myBJJ Team"),
+    btn("VIEW TIMETABLE"),
+  ] },
+};
+
+// "Ava" / "Ava and Leo" / "Ava, Leo and Mia": alphabetical, trimmed, no blanks,
+// no Oxford comma.
+export function joinFirstNames(names: string[]): string {
+  const n = names.map((x) => String(x || "").trim()).filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+  if (n.length <= 1) return n[0] || "";
+  return n.slice(0, -1).join(", ") + " and " + n[n.length - 1];
+}
+
 // ---- rendering ----------------------------------------------------------------------
 export interface MiaParent { name: string | null; email: string | null; phone: string | null }
 // What the member actually got this episode, for the T4 line.
@@ -245,12 +324,18 @@ export interface MiaVars {
   automated: MiaSent | null;    // T4: what the member actually got
   daysOf: MiaDays | null;       // T4: public.mia_codes as { code: days }; required for T4
   unsubscribeUrl: string | null; // member emails only
+  // A grouped member email (one address, one code): every member's first name.
+  // Kids with 2+ names use KIDS_PLURAL; adults sharing an address get the names
+  // joined (the adult copy already says "you"). Absent or 1 name: as before.
+  groupFirstNames?: string[];
 }
 
 export function renderMiaEmail(code: MiaCode, stream: MiaStream, v: MiaVars):
   { subject: string; html: string; text: string } {
-  const tpl = (stream === "kids" ? KIDS : ADULT)[code];
-  const first = (v.firstName || "").trim();
+  const group = (code !== "T4" && v.groupFirstNames) ? v.groupFirstNames.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const plural = stream === "kids" && group.length >= 2;
+  const tpl = plural ? KIDS_PLURAL[code as Exclude<MiaCode, "T4">] : (stream === "kids" ? KIDS : ADULT)[code];
+  const first = group.length >= 2 ? joinFirstNames(group) : (v.firstName || "").trim();
   const vars: Record<string, string> = {
     first_name: first || "there",
     child_first_name: first || "your child",
@@ -298,7 +383,9 @@ export function renderMiaEmail(code: MiaCode, stream: MiaStream, v: MiaVars):
   const why = team
     ? "Sent automatically by the myBJJ MIA follow-up."
     : stream === "kids"
-    ? "You’re getting this because a child you look after trains at myBJJ."
+    ? (plural
+      ? "You’re getting this because children you look after train at myBJJ."   // PLURAL: You’re getting this because a child you look after trains at myBJJ.
+      : "You’re getting this because a child you look after trains at myBJJ.")
     : "You’re getting this because you train at myBJJ.";
   const unsub = team ? "" : (v.unsubscribeUrl || "");
   text.push(why, ...(unsub ? [`Don't want these emails? Unsubscribe: ${unsub}`] : []));
