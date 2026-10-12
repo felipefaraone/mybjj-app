@@ -7475,10 +7475,15 @@ function rBdayWeekShareSheet(){
 }
 function shareBdayWeekPicked(){
   const m=S.bdayWeekShare;if(!m||!isStaffOrOwner())return;
-  const names=_bdayWeek(S.selDay||TODAY).filter(x=>m.sel[x.s.id]).map(x=>String(x.s.name||'').trim()).filter(Boolean);
+  const picked=_bdayWeek(S.selDay||TODAY).filter(x=>m.sel[x.s.id]&&String(x.s.name||'').trim());
+  const names=picked.map(x=>String(x.s.name||'').trim());
   if(!names.length){m.err=true;render();return;}
   S.bdayWeekShare=null;render();
-  _shareBirthdayWeek(names);
+  // Card people: adults may show their photo; kids never (initials only).
+  const people=picked.map(x=>({name:String(x.s.name||'').trim(),
+    initials:String(x.s.initials||String(x.s.name||'').trim().split(/\s+/).map(w=>w[0]||'').slice(0,2).join('')||'?'),
+    photoUrl:x.s.prog!=='kids'?(x.s.photoUrl||null):null}));
+  _shareBirthdayWeek(names,people);
 }
 // Week card text: names only - no dates, ages or years, no trial link.
 function shareBirthdayWeekText(names){
@@ -7491,12 +7496,12 @@ function _bdayWeekCardLines(names){
 }
 // Same share path and fallback as _shareCard: image share when supported,
 // otherwise (or on any error) the text-only shareNative.
-async function _shareBirthdayWeek(names){
+async function _shareBirthdayWeek(names,people){
   if(!isStaffOrOwner()||!names||!names.length)return;
   const text=shareBirthdayWeekText(names);
   try{
     const unit=(UNITS.find(u=>u.name===S.unit)||{name:''}).name;
-    const cv=await _drawShareCard({belt:'blue',deg:0,prog:'adult',name:'',initials:'',photoUrl:null,eyebrow:'Birthdays this week',congrats:'',unit,noTrial:true,weekNames:_bdayWeekCardLines(names),weekLine:'Have a great one from everyone at myBJJ'});
+    const cv=await _drawShareCard({belt:'blue',deg:0,prog:'adult',name:'',initials:'',photoUrl:null,eyebrow:'Birthdays this week',congrats:'',unit,noTrial:true,weekNames:_bdayWeekCardLines(names),weekPeople:Array.isArray(people)?people:[],weekLine:'Have a great one from everyone at myBJJ'});
     cv.toBlob(async blob=>{
       if(!blob){shareNative(text,'MyBJJ');return;}
       try{
@@ -15985,6 +15990,22 @@ function _shareWrap(ctx,text,maxW,maxLines){
 // image path is guarded: photoSrc returns '' until the signed URL is cached, a
 // cross-origin load can fail, and a tainted canvas would throw on toBlob — all
 // three fall through to the initials circle so a card is always produced.
+// Week card avatar row (pure): 1 person -> one circle of the single-card radius
+// (200); 2-4 -> side by side, overlapping by a quarter diameter, sized to fit
+// ~80% of the width; more than 4 -> the first 3 plus a "+N" circle.
+// Returns {r, more, circles:[{x, idx} | {x, more:true}]}.
+function _weekAvatarLayout(n,W){
+  n=Math.max(0,n|0);
+  if(!n)return {r:0,more:0,circles:[]};
+  if(n===1)return {r:200,more:0,circles:[{x:W/2,idx:0}]};
+  const shown=n>4?3:n,more=n>4?n-3:0,k=shown+(more?1:0);
+  const r=Math.floor(Math.min(200,(W*0.8)/(2+1.5*(k-1))));
+  const step=1.5*r,span=2*r+step*(k-1),x0=W/2-span/2+r;
+  const circles=[];
+  for(let i=0;i<shown;i++)circles.push({x:x0+i*step,idx:i});
+  if(more)circles.push({x:x0+shown*step,more:true});
+  return {r,more,circles};
+}
 async function _drawShareCard(opts){
   opts=opts||{};
   const W=1080,H=1920;
@@ -16032,48 +16053,106 @@ async function _drawShareCard(opts){
   ctx.fillStyle='#fff';ctx.font='700 76px '+COND;
   ctx.fillText('MyBJJ',hx,150);
   if(opts.unit){ctx.fillStyle='rgba(255,255,255,.78)';ctx.font='500 38px '+BODY;ctx.fillText(opts.unit,hx+2,206);}
-  // opts.weekNames (birthday_week card only): a cake glyph in the photo circle,
-  // the eyebrow, the names one per line and a closing line. No photo, belt,
-  // dates or trial footer. Every other kind skips this block untouched.
+  // opts.weekNames (birthday_week card only): the picked people as avatar
+  // circles (opts.weekPeople: adults' photos, kids always initials) with a cake
+  // badge, the eyebrow, the names one per line and a closing line - the whole
+  // block centred in the space below the header. No belt, dates or trial
+  // footer. Every other kind skips this block untouched.
   if(Array.isArray(opts.weekNames)){
-    const wx=W/2,wy=640,wr=170;
-    ctx.save();ctx.beginPath();ctx.arc(wx,wy,wr,0,Math.PI*2);ctx.closePath();
-    ctx.fillStyle='rgba(255,255,255,.14)';ctx.fill();ctx.restore();
-    ctx.beginPath();ctx.arc(wx,wy,wr,0,Math.PI*2);
-    ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=8;ctx.stroke();
-    // Cake: plate, two tiers, three candles with flames - white paths only.
-    ctx.fillStyle='#fff';ctx.strokeStyle='#fff';
-    const wrr=(x0,y0,w0,h0,rad)=>{ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x0,y0,w0,h0,rad);else ctx.rect(x0,y0,w0,h0);ctx.closePath();};
-    wrr(wx-120,wy+78,240,14,7);ctx.fill();
-    wrr(wx-100,wy+8,200,70,12);ctx.fill();
-    wrr(wx-70,wy-44,140,52,10);ctx.fill();
-    for(const dx of [-40,0,40]){
-      wrr(wx+dx-5,wy-92,10,48,4);ctx.fill();
-      ctx.beginPath();ctx.moveTo(wx+dx,wy-122);ctx.quadraticCurveTo(wx+dx+12,wy-104,wx+dx,wy-98);ctx.quadraticCurveTo(wx+dx-12,wy-104,wx+dx,wy-122);ctx.closePath();ctx.fill();
-    }
-    ctx.textAlign='center';
-    let wyy=wy+wr+100;
-    if(opts.eyebrow){ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='700 42px '+COND;ctx.fillText(String(opts.eyebrow).toUpperCase(),wx,wyy);}
-    wyy+=96;
+    const wx=W/2;
+    const people=Array.isArray(opts.weekPeople)?opts.weekPeople:[];
+    const lay=_weekAvatarLayout(people.length,W);
+    const ar=lay.r;
+    // Content height, to centre it between the header and the bottom edge.
     const nl=opts.weekNames.length;
     const fs=nl<=4?72:(nl<=6?62:54);
+    ctx.font='500 42px '+BODY;
+    const msgLines=opts.weekLine?_shareWrap(ctx,opts.weekLine,W-220,2):[];
+    const avH=lay.circles.length?2*ar+100:0;
+    const total=avH+(opts.eyebrow?96:0)+(nl?(nl-1)*(fs+16)+fs:0)+(msgLines.length?40+msgLines.length*58:0);
+    const top=250,bottom=H-100;
+    const y0=top+Math.max(0,(bottom-top-total)/2);
+    const acy=y0+ar;
+    // One guarded load per photo (same path as the single avatar: photoSrc,
+    // crossOrigin, timeout; any failure or taint leaves the initials circle).
+    const loadImg=async u=>{
+      const url=u?photoSrc(u):'';
+      if(!url)return null;
+      try{
+        const img=new Image();img.crossOrigin='anonymous';img.src=url;
+        await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;setTimeout(rej,6000);});
+        try{ if(img.decode)await img.decode(); }catch(_){}
+        return img;
+      }catch(_){return null;}
+    };
+    const ringW=lay.circles.length===1?8:6;
+    for(const c of lay.circles){
+      const p=c.more?null:people[c.idx];
+      const img=(p&&p.photoUrl)?await loadImg(p.photoUrl):null;
+      // The card's own background (base + the same wash) first, so an
+      // overlapped neighbour never shows through and initials match the card.
+      ctx.beginPath();ctx.arc(c.x,acy,ar,0,Math.PI*2);ctx.closePath();ctx.fillStyle=base;ctx.fill();ctx.fillStyle=g;ctx.fill();
+      let drewP=false;
+      if(img){
+        try{
+          ctx.save();ctx.beginPath();ctx.arc(c.x,acy,ar,0,Math.PI*2);ctx.clip();
+          const sc=Math.max((ar*2)/img.width,(ar*2)/img.height);
+          const dw=img.width*sc,dh=img.height*sc;
+          ctx.drawImage(img,c.x-dw/2,acy-dh/2,dw,dh);
+          ctx.restore();drewP=true;
+        }catch(_){try{ctx.restore();}catch(__){}drewP=false;}
+      }
+      if(!drewP){
+        ctx.beginPath();ctx.arc(c.x,acy,ar,0,Math.PI*2);ctx.closePath();
+        ctx.fillStyle='rgba(255,255,255,.14)';ctx.fill();
+        const label=c.more?('+'+lay.more):String((p&&p.initials)||'?').toUpperCase();
+        const fz=Math.round(ar*0.75);
+        ctx.fillStyle='#fff';ctx.font='700 '+fz+'px '+COND;ctx.textAlign='center';
+        ctx.fillText(label,c.x,acy+fz*0.35);
+      }
+      ctx.beginPath();ctx.arc(c.x,acy,ar,0,Math.PI*2);
+      ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=ringW;ctx.stroke();
+    }
+    // Cake badge on the bottom-right edge of the last circle: white disc, the
+    // cake glyph in the card colour, a ring in the card colour.
+    if(lay.circles.length){
+      const last=lay.circles[lay.circles.length-1];
+      const br=Math.round(ar*0.42);
+      const bx=last.x+ar*0.7071,by=acy+ar*0.7071;
+      ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();
+      ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.strokeStyle=base;ctx.lineWidth=Math.max(6,Math.round(br*0.12));ctx.stroke();
+      ctx.save();ctx.translate(bx,by+br*0.08);const ks=(br*0.78)/122;ctx.scale(ks,ks);
+      ctx.fillStyle=base;
+      const wrr=(x0,y0,w0,h0,rad)=>{ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x0,y0,w0,h0,rad);else ctx.rect(x0,y0,w0,h0);ctx.closePath();};
+      wrr(-120,78,240,14,7);ctx.fill();
+      wrr(-100,8,200,70,12);ctx.fill();
+      wrr(-70,-44,140,52,10);ctx.fill();
+      for(const dx of [-40,0,40]){
+        wrr(dx-5,-92,10,48,4);ctx.fill();
+        ctx.beginPath();ctx.moveTo(dx,-122);ctx.quadraticCurveTo(dx+12,-104,dx,-98);ctx.quadraticCurveTo(dx-12,-104,dx,-122);ctx.closePath();ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.textAlign='center';
+    let wyy=y0+avH;
+    if(opts.eyebrow){ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='700 42px '+COND;ctx.fillText(String(opts.eyebrow).toUpperCase(),wx,wyy);wyy+=96;}
     ctx.fillStyle='#fff';ctx.font='700 '+fs+'px '+COND;
     opts.weekNames.forEach(l=>{
       let s=String(l||'');
       while(s.length>1&&ctx.measureText(s).width>W-180)s=s.slice(0,-1);
-      if(s!==String(l||''))s=s.replace(/\s+$/,'')+'\u2026';
+      if(s!==String(l||''))s=s.replace(/\s+$/,'')+'…';
       ctx.fillText(s,wx,wyy);wyy+=fs+16;
     });
-    if(opts.weekLine){
+    if(msgLines.length){
       wyy+=24;ctx.fillStyle='rgba(255,255,255,.93)';ctx.font='500 42px '+BODY;
-      _shareWrap(ctx,opts.weekLine,W-220,2).forEach(l=>{ctx.fillText(l,wx,wyy);wyy+=58;});
+      msgLines.forEach(l=>{ctx.fillText(l,wx,wyy);wyy+=58;});
     }
     return cv;
   }
   // Avatar — circle, photo when we have one, initials otherwise.
   const cx=W/2,cy=740,r=200;
   let drew=false;
-  const url=opts.photoUrl?photoSrc(opts.photoUrl):'';
+  const url=(opts.photoUrl&&!opts.noPhoto)?photoSrc(opts.photoUrl):'';
   if(url){
     try{
       const img=new Image();
@@ -16160,7 +16239,7 @@ async function _drawShareCard(opts){
 // canvas, a File constructor failure or any draw error all land on shareNative.
 async function _shareCard(kind,legacyId){
   try{
-    let s=null,p=null,text='',eyebrow='',congrats='',belt='white',deg=0,unit='',noTrial=false,footer='';
+    let s=null,p=null,text='',eyebrow='',congrats='',belt='white',deg=0,unit='',noTrial=false,footer='',noPhoto=false;
     if(kind==='birthday'){
       // No age, DOB or birth year anywhere; no trial link in the text or image.
       s=_bdayShareStu(legacyId);if(!s)return;
@@ -16169,6 +16248,8 @@ async function _shareCard(kind,legacyId){
       eyebrow='Happy birthday';
       congrats=birthdayMessage(s,TODAY.getFullYear());
       footer='From everyone at myBJJ';
+      // Kids' birthday cards never carry their photo (initials instead).
+      noPhoto=s.prog==='kids';
       unit=(UNITS.find(u=>u.id===s.unit)||{name:''}).name;
       text=shareBirthdayText(s);
       noTrial=true;
@@ -16199,7 +16280,7 @@ async function _shareCard(kind,legacyId){
       unit=(UNITS.find(u=>u.id===p.unit)||{name:''}).name;
       text=sharePromoText(p,s);
     }
-    const cv=await _drawShareCard({belt,deg,prog:s.prog||'adult',name:s.name,initials:s.initials,photoUrl:s.photoUrl,eyebrow,congrats,unit,noTrial,footer});
+    const cv=await _drawShareCard({belt,deg,prog:s.prog||'adult',name:s.name,initials:s.initials,photoUrl:s.photoUrl,eyebrow,congrats,unit,noTrial,footer,noPhoto});
     cv.toBlob(async blob=>{
       if(!blob){shareNative(text,'MyBJJ');return;}
       try{
