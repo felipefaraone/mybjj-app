@@ -1,0 +1,28 @@
+-- 146_mia_resume_clock_backfill_apply.sql
+--
+-- NOT RUNNABLE AS IS. The owner fills the id list from
+-- 146_mia_resume_clock_backfill_preview.sql (only the members who were on hold /
+-- inactive and came back, NOT members who simply stopped training), then removes
+-- the comment markers below and runs it once.
+--
+-- What it does: stamps mia_resume_at for exactly those members, so the absence
+-- clock restarts from the stamp (a fresh episode: M1 again after days + settle,
+-- never the next code of the old episode). Choose the stamp time:
+--   * now()                    : the clock starts today;
+--   * the real release time    : e.g. timestamptz '2026-10-12 09:00 Australia/Sydney'
+--     (the clock starts that day; use when you know it).
+-- Rows already stamped (mia_resume_at not null) are left alone.
+--
+-- Check the row count it reports matches the number of ids you listed.
+
+-- begin;
+--
+-- update public.students
+--    set mia_resume_at = now()                -- or the real release time, see above
+--  where id in (
+--          '00000000-0000-0000-0000-000000000000'   -- replace: one uuid per member, comma separated
+--        )
+--    and mia_resume_at is null
+-- returning id, full_name, mia_resume_at;
+--
+-- commit;
