@@ -648,6 +648,7 @@ Deno.serve(async (req) => {
     phone: string | null; lapsed_at: string | null; booked_at: string | null;
     kid_name: string | null;
     kid_dob: string | null;
+    referrer_name: string | null;
   };
   // THE DEDUPE RULE as three steps, used for the booking itself AND for a child
   // brought along as the "friend" (a parent's second child), so the same parent
@@ -658,7 +659,7 @@ Deno.serve(async (req) => {
   async function findLead(forKid: boolean, forKidName: string): Promise<LeadRow | null> {
     const { data: leadRows, error: leadErr } = await supabase
       .from("trial_bookings")
-      .select("id, waiver_token, trial_status, class_id, class_date, class_time, phone, lapsed_at, booked_at, kid_name, kid_dob")
+      .select("id, waiver_token, trial_status, class_id, class_date, class_time, phone, lapsed_at, booked_at, kid_name, kid_dob, referrer_name")
       .eq("unit_id", unitRow.id)
       .eq("email", email)
       .eq("is_kid", forKid)
@@ -744,7 +745,7 @@ Deno.serve(async (req) => {
   }
 
   // The lead row itself. Deliberately NOT a general overwrite.
-  async function patchLead(lead: LeadRow, leadKidDob: string | null, leadPreferredDay: string): Promise<void> {
+  async function patchLead(lead: LeadRow, leadKidDob: string | null, leadPreferredDay: string, leadReferrer = ""): Promise<void> {
     const patch: Record<string, unknown> = {};
     // no_show / lapsed describe a PAST class. The person now has a live upcoming
     // one, and the card gates Convert on that scalar (index.html:11569), so
@@ -768,6 +769,9 @@ Deno.serve(async (req) => {
     // Child's date of birth: same fill-a-gap rule — set when the lead has none,
     // never overwrite a stored one (migration 136).
     if (leadKidDob && !lead.kid_dob) patch.kid_dob = leadKidDob;
+    // Referrer name (migration 148): same fill-a-gap rule. Only the booking's own
+    // lead passes one; a friend child's lead never inherits the booker's referrer.
+    if (leadReferrer && !lead.referrer_name) patch.referrer_name = leadReferrer;
     // The exception: availability on the fallback path. preferredDay is only
     // non-empty when no class was chosen, and it is a statement about the future
     // that supersedes the old one rather than competing with it.
@@ -795,7 +799,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    await patchLead(existingLead, isKid ? kidDob : null, preferredDay);
+    await patchLead(existingLead, isKid ? kidDob : null, preferredDay, referrerName);
 
     console.log(
       `[trial-booking] existing lead ${existingLead.id} (${existingLead.trial_status}) — ` +
@@ -815,6 +819,8 @@ Deno.serve(async (req) => {
       email,
       phone,
       how_heard: howHeard || null,
+      // Who referred them (migration 148): trimmed, max 120, empty -> NULL.
+      referrer_name: referrerName || null,
       preferred_day: preferredDay || null,
       is_kid: isKid,
       kid_name: isKid ? kidName : null,
