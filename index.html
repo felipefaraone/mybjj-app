@@ -3612,6 +3612,406 @@ function _trialRosterRow(tr,first){
 // The trials block: a bordered, brand-tinted container that sits ABOVE the member
 // roster and reads as its own section, never as a checked-in member. Empty → ''
 // so the card is byte-identical to today. Label uses .slbl (same as rTrialsBlock).
+// ── Competitions, Phase B: staff controls (migration 151) ───────────────────
+// Points are never stored: these controls only record FACTS through the 148/149
+// RPCs (competition_award_add / _void, trial_set_referrer). Which controls show
+// comes from competition_rules_for_date (151): the competition that applies to a
+// unit on a date (an admin also gets a DRAFT event, to test it before it goes
+// active). Every write re-fetches its own row to confirm, errors go to the
+// toast, and buttons are disabled while a write is in flight.
+const COMP_RULES={};          // 'unitDbId|YYYY-MM-DD' -> {loading, rows, err}
+const COMP_CLASS_AWARDS={};   // 'YYYY-MM-DD' -> {loading, rows}: class_challenge / best_attitude, not voided
+const COMP_INFO={};           // competition id -> {loading, row}: kind, status, starts_on, ends_on
+const COMP_POSTS={};          // 'studentDbId|competitionId' -> {loading, rows}: social_post awards in the period
+const _COMP_OCC={};           // class card cid -> {classId, unitDbId, date}, set while the roster renders
+const TRIAL_REF_NAMES={};     // student db id -> name picked in the Link member sheet (cross-unit members)
+const _COMP_AWARD_LABEL={class_challenge:'Challenge',best_attitude:'Attitude'};
+function _compBusy(){if(!S.compBusy)S.compBusy={};return S.compBusy;}
+function _compPts(v){const n=Number(v);return Number.isFinite(n)?String(Math.round(n*100)/100):'0';}
+function _compErr(e){
+  const m=String((e&&e.message)||e||'');
+  if(/duplicate key|unique/i.test(m))return 'Already recorded';
+  if(/not allowed|permission|insufficient/i.test(m))return 'Not allowed';
+  return m?('Could not save: '+m):'Could not save';
+}
+// The applicable rules, or null while loading (the fetch then re-renders).
+function _compRules(unitDbId,dateKey){
+  if(!unitDbId||!dateKey||!isStaffOrOwner())return null;
+  const k=unitDbId+'|'+dateKey;const e=COMP_RULES[k];
+  if(e)return e.loading?null:e;
+  COMP_RULES[k]={loading:true,rows:[]};
+  _loadCompRules(unitDbId,dateKey);
+  return null;
+}
+async function _loadCompRules(unitDbId,dateKey){
+  const k=unitDbId+'|'+dateKey;const cli=initSupabase();
+  if(!cli){COMP_RULES[k]={loading:false,rows:[],err:'offline'};return;}
+  try{
+    const r=await cli.rpc('competition_rules_for_date',{p_unit:unitDbId,p_date:dateKey});
+    COMP_RULES[k]=r.error?{loading:false,rows:[],err:r.error.message}:{loading:false,rows:Array.isArray(r.data)?r.data:[]};
+    if(r.error)console.warn('[mybjj] competition_rules_for_date:',r.error.message);
+  }catch(e){COMP_RULES[k]={loading:false,rows:[],err:String(e)};}
+  render();
+}
+// The enabled rule for a key, or null.
+function _compRule(entry,key){return (entry&&entry.rows||[]).find(r=>r&&r.rule_key===key&&r.enabled===true)||null;}
+// Class awards of one date (both keys, not voided).
+function _compClassAwards(dateKey){
+  if(!dateKey||!isStaffOrOwner())return null;
+  const e=COMP_CLASS_AWARDS[dateKey];
+  if(e)return e.loading?null:e;
+  COMP_CLASS_AWARDS[dateKey]={loading:true,rows:[]};
+  _loadCompClassAwards(dateKey);
+  return null;
+}
+async function _loadCompClassAwards(dateKey,noRender){
+  const cli=initSupabase();if(!cli){COMP_CLASS_AWARDS[dateKey]={loading:false,rows:[]};return;}
+  try{
+    const r=await cli.from('competition_awards').select('id,student_id,award_key,class_id,class_date')
+      .eq('class_date',dateKey).in('award_key',['class_challenge','best_attitude']).is('voided_at',null)
+      .order('created_at',{ascending:true}).order('id',{ascending:true});
+    if(r.error)console.warn('[mybjj] competition_awards (class):',r.error.message);
+    COMP_CLASS_AWARDS[dateKey]={loading:false,rows:r.error?[]:(r.data||[])};
+  }catch(e){COMP_CLASS_AWARDS[dateKey]={loading:false,rows:[]};}
+  if(!noRender)render();
+}
+// The award for this student, key and class occurrence (a one-off class has no
+// class_id: it matches the date's awards with a NULL class_id).
+function _compFindClassAward(occ,studentDbId,key){
+  const e=occ&&COMP_CLASS_AWARDS[occ.date];if(!e||e.loading)return null;
+  return (e.rows||[]).find(a=>a.student_id===studentDbId&&a.award_key===key
+    &&(occ.classId?a.class_id===occ.classId:a.class_id==null))||null;
+}
+// Roster toggles for one PRESENT row: "Challenge +N" / "Attitude +N" when the
+// rule is enabled. Ids only in the handler (data attributes).
+function _compClassCtl(cid,r,studentDbId){
+  if(!r||r.status!=='present'||!studentDbId||!isStaffOrOwner())return '';
+  const occ=_COMP_OCC[cid];if(!occ)return '';
+  const rules=_compRules(occ.unitDbId,occ.date);if(!rules)return '';
+  const keys=['class_challenge','best_attitude'].filter(k=>_compRule(rules,k));
+  if(!keys.length)return '';
+  const awards=_compClassAwards(occ.date);if(!awards)return '';
+  const busy=_compBusy();
+  return '<div onclick="event.stopPropagation()" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+keys.map(k=>{
+    const rule=_compRule(rules,k);
+    const on=!!_compFindClassAward(occ,studentDbId,k);
+    const bk=cid+'|'+studentDbId+'|'+k;
+    const isBusy=!!busy[bk];
+    return '<button data-cid="'+escAttr(cid)+'" data-sid="'+escAttr(studentDbId)+'" data-key="'+escAttr(k)+'"'
+      +' onclick="compToggleClassAward(this.dataset.cid,this.dataset.sid,this.dataset.key)"'+(isBusy?' disabled':'')
+      +' aria-pressed="'+(on?'true':'false')+'"'
+      +' style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;padding:3px 9px;border-radius:12px;cursor:'+(isBusy?'default':'pointer')+';opacity:'+(isBusy?'.6':'1')+';'
+      +(on?'background:var(--blue);border:1px solid var(--blue);color:var(--card)':'background:transparent;border:1px solid var(--border);color:var(--text2)')+'">'
+      +escHtml(_COMP_AWARD_LABEL[k]+' +'+_compPts(rule.points))+'</button>';
+  }).join('')+'</div>';
+}
+// "Christmas Cup · draft" — once above the roster rows when a draft drives them.
+function _compDraftPill(cid){
+  const occ=_COMP_OCC[cid];if(!occ)return '';
+  const rules=_compRules(occ.unitDbId,occ.date);if(!rules||!rules.rows.length)return '';
+  const r0=rules.rows[0];
+  if(r0.status!=='draft')return '';
+  if(!['class_challenge','best_attitude'].some(k=>_compRule(rules,k)))return '';
+  return '<div style="margin:2px 0 6px"><span style="display:inline-block;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;padding:2px 8px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text3)">'
+    +escHtml(String(r0.competition_name||'Competition')+' · draft')+'</span></div>';
+}
+async function compToggleClassAward(cid,studentDbId,key){
+  if(!isStaffOrOwner())return;
+  const occ=_COMP_OCC[cid];if(!occ||!_COMP_AWARD_LABEL[key])return;
+  const busy=_compBusy();const bk=cid+'|'+studentDbId+'|'+key;
+  if(busy[bk])return;
+  const cli=initSupabase();if(!cli){showSaveToast2('Offline: not saved','error');return;}
+  busy[bk]=true;render();
+  try{
+    // Fresh state for this date first: never toggle from a stale cache.
+    await _loadCompClassAwards(occ.date,true);
+    const existing=_compFindClassAward(occ,studentDbId,key);
+    if(existing){
+      const r=await cli.rpc('competition_award_void',{p_id:existing.id});
+      if(r.error)throw r.error;
+      const chk=await cli.from('competition_awards').select('id,voided_at').eq('id',existing.id).maybeSingle();
+      if(chk.error||!chk.data||!chk.data.voided_at)throw new Error('removal not confirmed');
+      showSaveToast2(_COMP_AWARD_LABEL[key]+' removed');
+    }else{
+      const r=await cli.rpc('competition_award_add',{p_student:studentDbId,p_key:key,p_date:occ.date,
+        p_class_id:occ.classId||null,p_class_date:occ.date});
+      if(r.error)throw r.error;
+      const chk=await cli.from('competition_awards').select('id,student_id,award_key,class_date,voided_at').eq('id',r.data).maybeSingle();
+      if(chk.error||!chk.data||chk.data.voided_at||chk.data.student_id!==studentDbId||chk.data.award_key!==key)throw new Error('award not confirmed');
+      showSaveToast2(_COMP_AWARD_LABEL[key]+' awarded');
+    }
+  }catch(e){
+    showSaveToast2(_compErr(e),'error');
+  }finally{
+    await _loadCompClassAwards(occ.date,true);
+    delete busy[bk];render();
+  }
+}
+
+// ── Social posts (student profile, admin only) ──────────────────────────────
+function _compInfo(compId){
+  if(!compId)return null;
+  const e=COMP_INFO[compId];if(e)return e.loading?null:e;
+  COMP_INFO[compId]={loading:true,row:null};
+  (async()=>{
+    const cli=initSupabase();
+    try{
+      const r=cli?await cli.from('competitions').select('id,kind,status,starts_on,ends_on').eq('id',compId).maybeSingle():null;
+      COMP_INFO[compId]={loading:false,row:(r&&!r.error&&r.data)||null};
+    }catch(_){COMP_INFO[compId]={loading:false,row:null};}
+    render();
+  })();
+  return null;
+}
+// The competition period around a date: an event's own dates; a monthly race's
+// calendar month.
+function _compPeriod(info,dateKey){
+  if(!info||!info.row)return null;
+  const c=info.row;
+  if(c.kind==='event'&&c.starts_on&&c.ends_on)return {from:String(c.starts_on).slice(0,10),to:String(c.ends_on).slice(0,10)};
+  const y=+dateKey.slice(0,4),m=+dateKey.slice(5,7);
+  return {from:dateKey.slice(0,7)+'-01',to:dk(new Date(y,m,0))};
+}
+function _compPosts(studentDbId,compId,per){
+  const k=studentDbId+'|'+compId;const e=COMP_POSTS[k];
+  if(e)return e.loading?null:e;
+  COMP_POSTS[k]={loading:true,rows:[]};
+  _loadCompPosts(studentDbId,compId,per);
+  return null;
+}
+async function _loadCompPosts(studentDbId,compId,per,noRender){
+  const k=studentDbId+'|'+compId;const cli=initSupabase();
+  try{
+    const r=cli?await cli.from('competition_awards').select('id,award_date')
+      .eq('student_id',studentDbId).eq('award_key','social_post').is('voided_at',null)
+      .gte('award_date',per.from).lte('award_date',per.to)
+      .order('award_date',{ascending:false}).order('id',{ascending:true}):null;
+    if(r&&r.error)console.warn('[mybjj] competition_awards (posts):',r.error.message);
+    COMP_POSTS[k]={loading:false,rows:(r&&!r.error&&r.data)||[],per};
+  }catch(_){COMP_POSTS[k]={loading:false,rows:[],per};}
+  if(!noRender)render();
+}
+function _compPostsCtx(s){
+  if(!isOwner()||!s||!s._dbId)return null;
+  const u=UNITS.find(x=>x&&x.id===s.unit);if(!u||!u._dbId)return null;
+  const today=dk(TODAY);
+  const rules=_compRules(u._dbId,today);if(!rules)return null;
+  const rule=_compRule(rules,'social_post');if(!rule)return null;
+  const compId=rule.competition_id;
+  const info=_compInfo(compId);if(!info)return null;
+  const per=_compPeriod(info,today);if(!per)return null;
+  return {rule,compId,per,today,draft:rule.status==='draft',compName:rule.competition_name};
+}
+function _rSocialPostsRow(s){
+  const ctx=_compPostsCtx(s);if(!ctx)return '';
+  const posts=_compPosts(s._dbId,ctx.compId,ctx.per);
+  const busy=_compBusy();
+  const list=!posts?'<div style="font-size:12px;color:var(--text3);margin-top:8px">Loading…</div>'
+    :(posts.rows.length
+      ?posts.rows.map(p=>{
+          const bk='void|'+p.id;
+          return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--border)">'
+            +'<span style="flex:1;font-size:13px;color:var(--text)">'+escHtml(_fmtAttWhen(String(p.award_date).slice(0,10),null))+'</span>'
+            +'<button data-id="'+escAttr(p.id)+'" data-sid="'+escAttr(s.id)+'" onclick="compVoidPost(this.dataset.id,this.dataset.sid)"'+(busy[bk]?' disabled':'')
+            +' style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--red-text);cursor:pointer">Void</button></div>';
+        }).join('')
+      :'<div style="font-size:12px;color:var(--text3);margin-top:8px">No posts logged in this competition yet.</div>');
+  const draftPill=ctx.draft?' <span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;padding:1px 7px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text3)">'+escHtml(String(ctx.compName||'')+' · draft')+'</span>':'';
+  return '<div class="card" style="padding:14px 16px;margin-top:12px">'
+    +'<div style="display:flex;align-items:center;gap:10px">'
+      +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">Social posts'+draftPill+'</div>'
+      +'<div style="font-size:12px;color:var(--text3)">+'+escHtml(_compPts(ctx.rule.points))+' per day · '+escHtml(String(ctx.compName||''))+'</div></div>'
+      +'<button data-sid="'+escAttr(s.id)+'" onclick="openSocialPost(this.dataset.sid)" style="background:var(--blue-tint);border:1px solid var(--blue-mid);color:var(--blue);border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Post</button>'
+    +'</div>'+list+'</div>';
+}
+function openSocialPost(sid){
+  if(!isOwner())return;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s)return;
+  S.socialPost={sid,date:dk(TODAY),busy:false,msg:''};render();
+}
+function closeSocialPost(){if(S.socialPost&&S.socialPost.busy)return;S.socialPost=null;render();}
+function rSocialPostSheet(){
+  const m=S.socialPost;if(!m||!isOwner())return '';
+  const s=STUDENTS.find(x=>x.id===m.sid);if(!s)return '';
+  const today=dk(TODAY);
+  return '<div class="cov" onclick="closeSocialPost()" style="align-items:flex-end;z-index:290">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">Log a social post</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+escHtml(s.name||'')+' · one per day</div>'
+      +'<label style="display:block;margin-top:14px;font-size:11px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3)">Date of the post</label>'
+      +'<input id="sp-date" type="date" class="einput" max="'+today+'" value="'+escAttr(m.date)+'" oninput="if(S.socialPost){S.socialPost.date=this.value;S.socialPost.msg=\'\';}" style="margin-top:6px;width:100%">'
+      +(m.msg?'<div style="font-size:12.5px;color:var(--red-text);margin-top:10px">'+escHtml(m.msg)+'</div>':'')
+      +'<button onclick="submitSocialPost()"'+(m.busy?' disabled':'')+' style="width:100%;margin-top:14px;padding:12px;border-radius:10px;border:none;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;text-transform:uppercase;background:var(--blue);color:var(--card);cursor:'+(m.busy?'default':'pointer')+';opacity:'+(m.busy?'.6':'1')+'">'+(m.busy?'Saving…':'Log post')+'</button>'
+      +'<button onclick="closeSocialPost()" style="width:100%;margin-top:8px;padding:11px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px;cursor:pointer">Cancel</button>'
+    +'</div></div>';
+}
+async function submitSocialPost(){
+  const m=S.socialPost;if(!m||m.busy||!isOwner())return;
+  const s=STUDENTS.find(x=>x.id===m.sid);if(!s||!s._dbId)return;
+  const el=document.getElementById('sp-date');const date=String((el&&el.value)||m.date||'').slice(0,10);
+  const today=dk(TODAY);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){m.msg='Pick a date.';render();return;}
+  if(date>today){m.msg='The date cannot be in the future.';render();return;}
+  const cli=initSupabase();if(!cli){showSaveToast2('Offline: not saved','error');return;}
+  m.date=date;m.busy=true;m.msg='';render();
+  try{
+    // Already logged for that day? Say so and do not submit.
+    const dup=await cli.from('competition_awards').select('id').eq('student_id',s._dbId).eq('award_key','social_post')
+      .eq('award_date',date).is('voided_at',null).order('id',{ascending:true}).limit(1);
+    if(dup.error)throw dup.error;
+    if(dup.data&&dup.data.length){m.busy=false;m.msg='A post is already logged for '+_fmtAttWhen(date,null)+'.';render();return;}
+    const r=await cli.rpc('competition_award_add',{p_student:s._dbId,p_key:'social_post',p_date:date});
+    if(r.error)throw r.error;
+    const chk=await cli.from('competition_awards').select('id,student_id,award_key,award_date,voided_at').eq('id',r.data).maybeSingle();
+    if(chk.error||!chk.data||chk.data.voided_at||chk.data.student_id!==s._dbId||String(chk.data.award_date).slice(0,10)!==date)throw new Error('post not confirmed');
+    const ctx=_compPostsCtx(s);
+    if(ctx)await _loadCompPosts(s._dbId,ctx.compId,ctx.per,true);
+    S.socialPost=null;render();
+    showSaveToast2('Post logged');
+  }catch(e){
+    if(S.socialPost){S.socialPost.busy=false;}
+    render();
+    showSaveToast2(_compErr(e),'error');
+  }
+}
+async function compVoidPost(awardId,sid){
+  if(!isOwner())return;
+  const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
+  const busy=_compBusy();const bk='void|'+awardId;if(busy[bk])return;
+  const cli=initSupabase();if(!cli){showSaveToast2('Offline: not saved','error');return;}
+  busy[bk]=true;render();
+  try{
+    const r=await cli.rpc('competition_award_void',{p_id:awardId});
+    if(r.error)throw r.error;
+    const chk=await cli.from('competition_awards').select('id,voided_at').eq('id',awardId).maybeSingle();
+    if(chk.error||!chk.data||!chk.data.voided_at)throw new Error('void not confirmed');
+    showSaveToast2('Post voided');
+  }catch(e){
+    showSaveToast2(_compErr(e),'error');
+  }finally{
+    const ctx=_compPostsCtx(s);
+    if(ctx)await _loadCompPosts(s._dbId,ctx.compId,ctx.per,true);
+    delete busy[bk];render();
+  }
+}
+
+// ── Trial referrer (Trials card, staff and admin) ───────────────────────────
+// The member a referrer link points at: in STUDENTS when they belong to the
+// active unit, else the name picked in the sheet this session.
+function _trialRefMemberName(dbId){
+  if(!dbId)return '';
+  const s=STUDENTS.find(x=>x._dbId===dbId);
+  return (s&&s.name)||TRIAL_REF_NAMES[dbId]||'a member of another academy';
+}
+function _trialReferralLine(t){
+  if(!t||(!t.referrerName&&!t.referredById))return '';
+  const staff=isStaffOrOwner();
+  const busy=_compBusy()['ref|'+t._dbId];
+  const btn='background:none;border:none;padding:0 0 0 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer';
+  const who=t.referrerName?('Referred by '+escHtml(t.referrerName)):'Referred';
+  const linked=t.referredById?(' · linked to '+escHtml(_trialRefMemberName(t.referredById))):'';
+  const act=!staff?''
+    :t.referredById
+      ?'<button data-tid="'+escAttr(t._dbId)+'" onclick="unlinkTrialReferrer(this.dataset.tid)"'+(busy?' disabled':'')+' style="'+btn+'">Unlink</button>'
+      :'<button data-tid="'+escAttr(t._dbId)+'" onclick="openTrialRefLink(this.dataset.tid)"'+(busy?' disabled':'')+' style="'+btn+'">Link member</button>';
+  return '<div style="font-size:12px;color:var(--text2);margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;row-gap:4px">'
+    +'<span style="overflow-wrap:anywhere">'+who+linked+'</span>'+act+'</div>';
+}
+let _refRpcTimer=null;
+function openTrialRefLink(tid){
+  if(!isStaffOrOwner())return;
+  const t=TRIALS.find(x=>x._dbId===tid);if(!t)return;
+  S.refLink={tid,q:t.referrerName||'',extra:[],busy:false};render();
+  setTimeout(()=>{const el=document.getElementById('rl-input');if(el){el.focus();el.select();}_renderRefLinkList();_refScheduleFetch(S.refLink&&S.refLink.q);},20);
+}
+function closeTrialRefLink(){if(S.refLink&&S.refLink.busy)return;if(_refRpcTimer){clearTimeout(_refRpcTimer);_refRpcTimer=null;}S.refLink=null;render();}
+function setRefLinkQ(v){if(!S.refLink)return;S.refLink.q=v;_renderRefLinkList();_refScheduleFetch(v);}
+function _refScheduleFetch(rawQ){
+  if(_refRpcTimer){clearTimeout(_refRpcTimer);_refRpcTimer=null;}
+  const needle=String(rawQ||'').trim();if(needle.length<2)return;
+  _refRpcTimer=setTimeout(()=>{_refRpcTimer=null;_refDoFetch(needle);},250);
+}
+// Cross-unit members through search_students_all_units (staff-gated, as the
+// + Add student picker uses it). Stale responses are dropped.
+async function _refDoFetch(needle){
+  if(!S.refLink)return;
+  const cli=initSupabase();if(!cli)return;
+  let rows=null;
+  try{
+    const r=await cli.rpc('search_students_all_units',{p_query:needle});
+    if(r&&r.error){console.warn('[mybjj] search_students_all_units:',r.error.message);return;}
+    rows=r&&r.data;
+  }catch(e){console.warn('[mybjj] search_students_all_units ex:',e);return;}
+  if(!S.refLink||String(S.refLink.q||'').trim().toLowerCase()!==needle.toLowerCase())return;
+  S.refLink.extra=(rows||[]).filter(r=>r&&r.id).map(r=>{
+    const u=UNITS.find(x=>x&&x._dbId===r.unit_id)||{};
+    return {_dbId:r.id,name:r.full_name||'',unitName:u.name||''};
+  });
+  _renderRefLinkList();
+}
+function _refLinkListHTML(){
+  const m=S.refLink;if(!m)return '';
+  const q=String(m.q||'').trim().toLowerCase();
+  if(q.length<2)return '<div style="font-size:12.5px;color:var(--text3);padding:10px 2px">Type at least two letters of the member\'s name.</div>';
+  const curU=UNITS.find(u=>u.name===S.unit)||{};
+  const seen={};const out=[];
+  STUDENTS.filter(s=>s&&s._dbId&&s._active!==false&&String(s.name||'').toLowerCase().indexOf(q)>=0)
+    .forEach(s=>{if(seen[s._dbId])return;seen[s._dbId]=1;out.push({_dbId:s._dbId,name:s.name,unitName:curU.name||''});});
+  (m.extra||[]).forEach(r=>{if(seen[r._dbId])return;seen[r._dbId]=1;out.push(r);});
+  if(!out.length)return '<div style="font-size:12.5px;color:var(--text3);padding:10px 2px">No member found.</div>';
+  return out.slice(0,30).map(r=>'<button data-sid="'+escAttr(r._dbId)+'" onclick="linkTrialReferrer(this.dataset.sid)"'+(m.busy?' disabled':'')
+    +' style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--border);padding:10px 2px;cursor:pointer">'
+    +'<span style="flex:1;min-width:0;font-size:13.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.name||'')+'</span>'
+    +'<span style="flex-shrink:0;font-size:11px;color:var(--text3)">'+escHtml(r.unitName||'')+'</span></button>').join('');
+}
+function _renderRefLinkList(){const host=document.getElementById('rl-results');if(host&&S.refLink)host.innerHTML=_refLinkListHTML();}
+function rTrialRefLinkSheet(){
+  const m=S.refLink;if(!m||!isStaffOrOwner())return '';
+  const t=TRIALS.find(x=>x._dbId===m.tid);if(!t)return '';
+  return '<div class="cov" onclick="closeTrialRefLink()" style="align-items:flex-end;z-index:290">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">Link the referrer</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+escHtml(_trialParticipantName(t)||'')+(t.referrerName?' · said: '+escHtml(t.referrerName):'')+'</div>'
+      +'<input id="rl-input" class="einput" type="search" autocomplete="off" placeholder="Search members" value="'+escAttr(m.q||'')+'" oninput="setRefLinkQ(this.value)" style="margin-top:12px;width:100%">'
+      +'<div id="rl-results" style="margin-top:6px">'+_refLinkListHTML()+'</div>'
+      +'<button onclick="closeTrialRefLink()" style="width:100%;margin-top:12px;padding:11px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px;cursor:pointer">Cancel</button>'
+    +'</div></div>';
+}
+async function _setTrialReferrer(tid,studentDbId){
+  const cli=initSupabase();if(!cli)throw new Error('offline');
+  const r=await cli.rpc('trial_set_referrer',{p_booking:tid,p_student:studentDbId});
+  if(r.error)throw r.error;
+  const chk=await cli.from('trial_bookings').select('id,referred_by_student_id').eq('id',tid).maybeSingle();
+  if(chk.error||!chk.data||(chk.data.referred_by_student_id||null)!==(studentDbId||null))throw new Error('link not confirmed');
+  const t=TRIALS.find(x=>x._dbId===tid);if(t)t.referredById=chk.data.referred_by_student_id||null;
+}
+async function linkTrialReferrer(studentDbId){
+  const m=S.refLink;if(!m||m.busy||!isStaffOrOwner()||!studentDbId)return;
+  const pick=(m.extra||[]).find(r=>r._dbId===studentDbId)||STUDENTS.find(s=>s._dbId===studentDbId);
+  m.busy=true;_renderRefLinkList();
+  try{
+    await _setTrialReferrer(m.tid,studentDbId);
+    if(pick&&pick.name)TRIAL_REF_NAMES[studentDbId]=pick.name;
+    S.refLink=null;render();
+    showSaveToast2('Referrer linked');
+  }catch(e){
+    if(S.refLink)S.refLink.busy=false;
+    render();
+    showSaveToast2(_compErr(e),'error');
+  }
+}
+async function unlinkTrialReferrer(tid){
+  if(!isStaffOrOwner())return;
+  const busy=_compBusy();const bk='ref|'+tid;if(busy[bk])return;
+  busy[bk]=true;render();
+  try{
+    await _setTrialReferrer(tid,null);
+    showSaveToast2('Referrer unlinked');
+  }catch(e){
+    showSaveToast2(_compErr(e),'error');
+  }finally{delete busy[bk];render();}
+}
+
 function _trialsRosterHtml(cid){
   const trials=trialsForClass(cid);
   if(!trials.length)return '';
@@ -3619,7 +4019,10 @@ function _trialsRosterHtml(cid){
   const rows=trials.map((tr,i)=>_trialRosterRow(tr,i===0)).join('');
   return '<div style="background:var(--blue-tint);border:1px solid var(--blue-mid);border-radius:10px;padding:12px 14px;margin-bottom:14px">'+label+rows+'</div>';
 }
-function rAttsStaff(rows,cid){
+function rAttsStaff(rows,cid,occ){
+  // Competition controls (151): remember which class occurrence this card is, so
+  // the roster toggles know the class id (NULL for a one-off), unit and date.
+  if(occ&&occ.date)_COMP_OCC[cid]={classId:occ.classId||null,unitDbId:occ.unitDbId||null,date:occ.date};
   // G9.3 — include 'absent' rows in the staff confirm-attendance view.
   // Absent is now an explicit disambiguation signal (re-allowed in
   // migration 47), not a soft-delete. Counts: cf is still PRESENT
@@ -3772,7 +4175,7 @@ function rAttsStaff(rows,cid){
   // the student isn't found, so "first rendered" isn't always index 0; track
   // whether a row has actually been emitted rather than trusting the index.
   let _rowShown=false;
-  const listHtml=`<div style="margin-top:6px">${visible.map(r=>{
+  const listHtml=`<div style="margin-top:6px">${visible.some(r=>r.status==='present')?_compDraftPill(cid):''}${visible.map(r=>{
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];if(!s)return '';
     const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
     // G9.2 — strikethrough the student name when class_value === 0
@@ -3781,7 +4184,7 @@ function rAttsStaff(rows,cid){
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
     const _firstRow=!_rowShown;_rowShown=true;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${bdayPill(s)}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div></div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${bdayPill(s)}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div>${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   // Bulk move — expanded only, so the collapsed card is untouched. Same
   // staff + isClassLocked gate markAllPresent uses (openAttMove re-checks both;
@@ -5694,6 +6097,9 @@ ${adminActionsBlock}
 
 <!-- Section 2: Stats — peer-gated -->
 ${statsCard}
+
+<!-- Competitions: social posts (admin only, when the rules for today include social_post) -->
+${_rSocialPostsRow(s)}
 
 <!-- Health — one compact line; the detail lives in the Edit Student "Health" tab -->
 ${healthLine}
@@ -7688,7 +8094,7 @@ function rClass(){
     // full roster. Staff path is unchanged.
     let attBlock;
     if(isStaff){
-      attBlock=rAttsStaff(rows,c.id);
+      attBlock=rAttsStaff(rows,c.id,{classId:c.classId||null,unitDbId:_clsUnit||meUnitDbId(),date:c.date});
     }else if(c.aud==='Kids'){
       attBlock=rAttsCountOnly(all);
     }else if(c.aud==='All'){
@@ -12203,6 +12609,7 @@ function rTrialsBlock(){
       +viewWaiverBtn
       +switchTypeBtn
       +memberLine
+      +_trialReferralLine(t)
       +actionsRow
       +contactBlock
       +'</div>';
@@ -13330,7 +13737,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -17702,7 +18109,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings. Scope to active trials only
     // (booked|attended); converted/lapsed rows are excluded in the
     // query so TRIALS only ever holds rows that still need action.
-    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,waiver_token,is_kid,kid_name,admin_note,contact_log,created_at,kid_dob,invited_by_booking_id').in('trial_status',['booked','attended','no_show','lapsed']).order('booked_at',{ascending:false}).limit(200),
+    c.from('trial_bookings').select('id,unit_id,first_name,last_name,email,phone,how_heard,preferred_day,class_id,class_date,class_time,trial_status,booked_at,attended_at,waiver_signed_at,waiver_signed_by_name,waiver_token,is_kid,kid_name,admin_note,contact_log,created_at,kid_dob,invited_by_booking_id,referrer_name,referred_by_student_id').in('trial_status',['booked','attended','no_show','lapsed']).order('booked_at',{ascending:false}).limit(200),
     // Cross-unit visitors — minimal display-only rows for students who
     // attended a class at the active unit but train elsewhere. Staff-only +
     // unit-bounded server-side; returns 0 rows for non-staff / no visitors.
@@ -17825,7 +18232,7 @@ async function refetchUnitScopedData(){
     // Module 1 — trial bookings mapped to camelCase, same style as
     // STUDENTS. unit resolved via uMap (legacy id) so render can scope
     // to the current unit the same way the member roster does.
-    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,classId:r.class_id||null,classDate:r.class_date||null,classTime:r.class_time||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,waiverToken:r.waiver_token||null,isKid:!!r.is_kid,kidName:r.kid_name||null,kidDob:r.kid_dob||null,invitedBy:r.invited_by_booking_id||null,adminNote:r.admin_note||null,contactLog:Array.isArray(r.contact_log)?r.contact_log:[],unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
+    TRIALS=tr.data.map(r=>({_dbId:r.id,firstName:r.first_name,lastName:r.last_name,name:((r.first_name||'')+' '+(r.last_name||'')).trim(),email:r.email,phone:r.phone,howHeard:r.how_heard||null,preferredDay:r.preferred_day||null,classId:r.class_id||null,classDate:r.class_date||null,classTime:r.class_time||null,status:r.trial_status,bookedAt:r.booked_at,attendedAt:r.attended_at||null,waiverSignedAt:r.waiver_signed_at||null,waiverSignedBy:r.waiver_signed_by_name||null,waiverToken:r.waiver_token||null,isKid:!!r.is_kid,kidName:r.kid_name||null,kidDob:r.kid_dob||null,invitedBy:r.invited_by_booking_id||null,referrerName:r.referrer_name||null,referredById:r.referred_by_student_id||null,adminNote:r.admin_note||null,contactLog:Array.isArray(r.contact_log)?r.contact_log:[],unit:uMap[r.unit_id]||null,_unitId:r.unit_id}));
     // Phase B — group trial_sessions by trial_booking_id and attach as t.sessions
     // (camelCase, date-sorted). No sessions → []. Legacy classId/classDate/classTime
     // are untouched (reschedule still reads them this phase).
