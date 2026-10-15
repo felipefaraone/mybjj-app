@@ -9951,8 +9951,28 @@ async function submitLbPosts(){
 // session (an archived challenge keeps it on, so the monthly board shows after
 // the Cup). While it is unknown the answer is false: no segment, no other fetch.
 const LB_VIS={};let _lbSeenLive=false;
+// Device-only preview of the member view, before any challenge is live. Open the
+// app once with ?preview=leaderboard to turn it on for THIS device (localStorage
+// 'mybjj_lb_preview' = '1'), ?preview=off to turn it off; the parameter is then
+// removed from the URL without a reload. It changes visibility only: no owner
+// controls, and the database still decides what the account can read.
+(function(){
+  try{
+    const u=new URL(location.href);
+    const v=u.searchParams.get('preview');
+    if(v!=='leaderboard'&&v!=='off')return;
+    try{
+      if(v==='leaderboard')localStorage.setItem('mybjj_lb_preview','1');
+      else localStorage.removeItem('mybjj_lb_preview');
+    }catch(_){}
+    u.searchParams.delete('preview');
+    history.replaceState(history.state,'',u.pathname+u.search+u.hash);
+  }catch(_){}
+})();
+function _lbPreview(){try{return localStorage.getItem('mybjj_lb_preview')==='1';}catch(_){return false;}}
 function _lbVisible(){
   if(isOwner())return true;
+  if(_lbPreview())return true;
   if(_lbSeenLive)return true;
   const today=dk(TODAY);
   const e=_lbGet(LB_VIS,'live',()=>_lbSelect(initSupabase().from('competitions').select('id,starts_on')
