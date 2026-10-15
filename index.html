@@ -3626,6 +3626,12 @@ const COMP_POSTS={};          // 'studentDbId|competitionId' -> {loading, rows}:
 const _COMP_OCC={};           // class card cid -> {classId, unitDbId, date}, set while the roster renders
 const TRIAL_REF_NAMES={};     // student db id -> name picked in the Link member sheet (cross-unit members)
 const _COMP_AWARD_LABEL={class_challenge:'Challenge',best_attitude:'Attitude'};
+// Cache freshness. Entries used to live for the whole session, INCLUDING failed
+// loads (rules cached as [] / competition cached as null), so a profile opened
+// after one bad or outdated load showed no Social posts card until a reload.
+// Now an entry is reused for a minute, and a failed one is retried after 10 s.
+const _COMP_TTL=60000,_COMP_RETRY=10000;
+function _compFresh(e){return !!e&&!e.loading&&(Date.now()-(e.at||0))<(e.err?_COMP_RETRY:_COMP_TTL);}
 function _compBusy(){if(!S.compBusy)S.compBusy={};return S.compBusy;}
 function _compPts(v){const n=Number(v);return Number.isFinite(n)?String(Math.round(n*100)/100):'0';}
 function _compErr(e){
@@ -3638,19 +3644,22 @@ function _compErr(e){
 function _compRules(unitDbId,dateKey){
   if(!unitDbId||!dateKey||!isStaffOrOwner())return null;
   const k=unitDbId+'|'+dateKey;const e=COMP_RULES[k];
-  if(e)return e.loading?null:e;
-  COMP_RULES[k]={loading:true,rows:[]};
+  if(_compFresh(e))return e.err?null:e;
+  if(e&&e.loading)return e.prev||null;
+  // Stale (or never loaded): reload in the background, keep showing the last good rows.
+  const prev=(e&&!e.err&&!e.loading)?e:null;
+  COMP_RULES[k]={loading:true,rows:[],prev};
   _loadCompRules(unitDbId,dateKey);
-  return null;
+  return prev;
 }
 async function _loadCompRules(unitDbId,dateKey){
   const k=unitDbId+'|'+dateKey;const cli=initSupabase();
-  if(!cli){COMP_RULES[k]={loading:false,rows:[],err:'offline'};return;}
+  if(!cli){COMP_RULES[k]={loading:false,rows:[],err:'offline',at:Date.now()};return;}
   try{
     const r=await cli.rpc('competition_rules_for_date',{p_unit:unitDbId,p_date:dateKey});
-    COMP_RULES[k]=r.error?{loading:false,rows:[],err:r.error.message}:{loading:false,rows:Array.isArray(r.data)?r.data:[]};
+    COMP_RULES[k]=r.error?{loading:false,rows:[],err:r.error.message,at:Date.now()}:{loading:false,rows:Array.isArray(r.data)?r.data:[],at:Date.now()};
     if(r.error)console.warn('[mybjj] competition_rules_for_date:',r.error.message);
-  }catch(e){COMP_RULES[k]={loading:false,rows:[],err:String(e)};}
+  }catch(e){COMP_RULES[k]={loading:false,rows:[],err:String(e),at:Date.now()};}
   render();
 }
 // The enabled rule for a key, or null.
@@ -3659,20 +3668,22 @@ function _compRule(entry,key){return (entry&&entry.rows||[]).find(r=>r&&r.rule_k
 function _compClassAwards(dateKey){
   if(!dateKey||!isStaffOrOwner())return null;
   const e=COMP_CLASS_AWARDS[dateKey];
-  if(e)return e.loading?null:e;
-  COMP_CLASS_AWARDS[dateKey]={loading:true,rows:[]};
+  if(_compFresh(e))return e;
+  if(e&&e.loading)return e.prev||null;
+  const prev=(e&&!e.loading)?e:null;
+  COMP_CLASS_AWARDS[dateKey]={loading:true,rows:[],prev};
   _loadCompClassAwards(dateKey);
-  return null;
+  return prev;
 }
 async function _loadCompClassAwards(dateKey,noRender){
-  const cli=initSupabase();if(!cli){COMP_CLASS_AWARDS[dateKey]={loading:false,rows:[]};return;}
+  const cli=initSupabase();if(!cli){COMP_CLASS_AWARDS[dateKey]={loading:false,rows:[],err:'offline',at:Date.now()};return;}
   try{
     const r=await cli.from('competition_awards').select('id,student_id,award_key,class_id,class_date')
       .eq('class_date',dateKey).in('award_key',['class_challenge','best_attitude']).is('voided_at',null)
       .order('created_at',{ascending:true}).order('id',{ascending:true});
     if(r.error)console.warn('[mybjj] competition_awards (class):',r.error.message);
-    COMP_CLASS_AWARDS[dateKey]={loading:false,rows:r.error?[]:(r.data||[])};
-  }catch(e){COMP_CLASS_AWARDS[dateKey]={loading:false,rows:[]};}
+    COMP_CLASS_AWARDS[dateKey]=r.error?{loading:false,rows:[],err:r.error.message,at:Date.now()}:{loading:false,rows:r.data||[],at:Date.now()};
+  }catch(e){COMP_CLASS_AWARDS[dateKey]={loading:false,rows:[],err:String(e),at:Date.now()};}
   if(!noRender)render();
 }
 // The award for this student, key and class occurrence (a one-off class has no
@@ -3705,15 +3716,19 @@ function _compClassCtl(cid,r,studentDbId){
       +escHtml(_COMP_AWARD_LABEL[k]+' +'+_compPts(rule.points))+'</button>';
   }).join('')+'</div>';
 }
-// "Christmas Cup · draft" — once above the roster rows when a draft drives them.
+// ONE draft badge (doc 03 badge pattern), used by the roster pill and the Social
+// posts card.
+function _compDraftBadge(text){
+  return '<span style="display:inline-block;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;padding:2px 8px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text3)">'+escHtml(text)+'</span>';
+}
+// "Christmas Cup 2026 · draft" — once above the roster rows when a draft drives them.
 function _compDraftPill(cid){
   const occ=_COMP_OCC[cid];if(!occ)return '';
   const rules=_compRules(occ.unitDbId,occ.date);if(!rules||!rules.rows.length)return '';
   const r0=rules.rows[0];
   if(r0.status!=='draft')return '';
   if(!['class_challenge','best_attitude'].some(k=>_compRule(rules,k)))return '';
-  return '<div style="margin:2px 0 6px"><span style="display:inline-block;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;padding:2px 8px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text3)">'
-    +escHtml(String(r0.competition_name||'Competition')+' · draft')+'</span></div>';
+  return '<div style="margin:2px 0 6px">'+_compDraftBadge(String(r0.competition_name||'Competition')+' · draft')+'</div>';
 }
 async function compToggleClassAward(cid,studentDbId,key){
   if(!isStaffOrOwner())return;
@@ -3751,17 +3766,22 @@ async function compToggleClassAward(cid,studentDbId,key){
 // ── Social posts (student profile, admin only) ──────────────────────────────
 function _compInfo(compId){
   if(!compId)return null;
-  const e=COMP_INFO[compId];if(e)return e.loading?null:e;
-  COMP_INFO[compId]={loading:true,row:null};
+  const e=COMP_INFO[compId];
+  if(_compFresh(e))return e.err?null:e;
+  if(e&&e.loading)return e.prev||null;
+  const prev=(e&&!e.err&&!e.loading)?e:null;
+  COMP_INFO[compId]={loading:true,row:null,prev};
   (async()=>{
     const cli=initSupabase();
     try{
       const r=cli?await cli.from('competitions').select('id,kind,status,starts_on,ends_on').eq('id',compId).maybeSingle():null;
-      COMP_INFO[compId]={loading:false,row:(r&&!r.error&&r.data)||null};
-    }catch(_){COMP_INFO[compId]={loading:false,row:null};}
+      const row=(r&&!r.error&&r.data)||null;
+      if(r&&r.error)console.warn('[mybjj] competitions:',r.error.message);
+      COMP_INFO[compId]=row?{loading:false,row,at:Date.now()}:{loading:false,row:null,err:(r&&r.error&&r.error.message)||'not found',at:Date.now()};
+    }catch(e){COMP_INFO[compId]={loading:false,row:null,err:String(e),at:Date.now()};}
     render();
   })();
-  return null;
+  return prev;
 }
 // The competition period around a date: an event's own dates; a monthly race's
 // calendar month.
@@ -3774,10 +3794,12 @@ function _compPeriod(info,dateKey){
 }
 function _compPosts(studentDbId,compId,per){
   const k=studentDbId+'|'+compId;const e=COMP_POSTS[k];
-  if(e)return e.loading?null:e;
-  COMP_POSTS[k]={loading:true,rows:[]};
+  if(_compFresh(e))return e;
+  if(e&&e.loading)return e.prev||null;
+  const prev=(e&&!e.loading)?e:null;
+  COMP_POSTS[k]={loading:true,rows:[],prev};
   _loadCompPosts(studentDbId,compId,per);
-  return null;
+  return prev;
 }
 async function _loadCompPosts(studentDbId,compId,per,noRender){
   const k=studentDbId+'|'+compId;const cli=initSupabase();
@@ -3787,8 +3809,8 @@ async function _loadCompPosts(studentDbId,compId,per,noRender){
       .gte('award_date',per.from).lte('award_date',per.to)
       .order('award_date',{ascending:false}).order('id',{ascending:true}):null;
     if(r&&r.error)console.warn('[mybjj] competition_awards (posts):',r.error.message);
-    COMP_POSTS[k]={loading:false,rows:(r&&!r.error&&r.data)||[],per};
-  }catch(_){COMP_POSTS[k]={loading:false,rows:[],per};}
+    COMP_POSTS[k]={loading:false,rows:(r&&!r.error&&r.data)||[],per,err:(r&&r.error&&r.error.message)||null,at:Date.now()};
+  }catch(e){COMP_POSTS[k]={loading:false,rows:[],per,err:String(e),at:Date.now()};}
   if(!noRender)render();
 }
 function _compPostsCtx(s){
@@ -3806,23 +3828,33 @@ function _rSocialPostsRow(s){
   const ctx=_compPostsCtx(s);if(!ctx)return '';
   const posts=_compPosts(s._dbId,ctx.compId,ctx.per);
   const busy=_compBusy();
-  const list=!posts?'<div style="font-size:12px;color:var(--text3);margin-top:8px">Loading…</div>'
+  const pts=_compPts(ctx.rule.points);
+  const n=posts?posts.rows.length:null;
+  const head='<div style="display:flex;align-items:flex-start;gap:10px">'
+    +'<div style="flex:1;min-width:0">'
+      +'<div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:6px">'
+        +'<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:26px;font-weight:700;line-height:1;color:var(--text)">'+(n==null?'–':n)+'</span>'
+        +'<span style="font-size:13px;color:var(--text2)">'+(n===1?'post':'posts')+' · '+escHtml(_compPts((n||0)*Number(ctx.rule.points||0)))+' pts</span>'
+        +(ctx.draft?_compDraftBadge('DRAFT'):'')
+      +'</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:4px">'+escHtml(String(ctx.compName||''))+' · +'+escHtml(pts)+' a day, one post per day</div>'
+    +'</div>'
+    +'<button data-sid="'+escAttr(s.id)+'" onclick="openSocialPost(this.dataset.sid)" style="color:var(--blue);background:none;border:none;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">+ Log post</button>'
+  +'</div>';
+  const rows=!posts?'<div style="font-size:13px;color:var(--text3);margin-top:10px">Loading…</div>'
     :(posts.rows.length
-      ?posts.rows.map(p=>{
+      ?'<div style="margin-top:10px">'+posts.rows.map(p=>{
           const bk='void|'+p.id;
-          return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--border)">'
-            +'<span style="flex:1;font-size:13px;color:var(--text)">'+escHtml(_fmtAttWhen(String(p.award_date).slice(0,10),null))+'</span>'
-            +'<button data-id="'+escAttr(p.id)+'" data-sid="'+escAttr(s.id)+'" onclick="compVoidPost(this.dataset.id,this.dataset.sid)"'+(busy[bk]?' disabled':'')
-            +' style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--red-text);cursor:pointer">Void</button></div>';
-        }).join('')
-      :'<div style="font-size:12px;color:var(--text3);margin-top:8px">No posts logged in this competition yet.</div>');
-  const draftPill=ctx.draft?' <span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;padding:1px 7px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text3)">'+escHtml(String(ctx.compName||'')+' · draft')+'</span>':'';
-  return '<div class="card" style="padding:14px 16px;margin-top:12px">'
-    +'<div style="display:flex;align-items:center;gap:10px">'
-      +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">Social posts'+draftPill+'</div>'
-      +'<div style="font-size:12px;color:var(--text3)">+'+escHtml(_compPts(ctx.rule.points))+' per day · '+escHtml(String(ctx.compName||''))+'</div></div>'
-      +'<button data-sid="'+escAttr(s.id)+'" onclick="openSocialPost(this.dataset.sid)" style="background:var(--blue-tint);border:1px solid var(--blue-mid);color:var(--blue);border-radius:8px;padding:6px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Post</button>'
-    +'</div>'+list+'</div>';
+          return '<div style="display:flex;align-items:center;gap:10px;border-top:1px solid var(--border);padding:10px 0">'
+            +'<span style="flex:1;min-width:0;font-size:14px;color:var(--text)">'+escHtml(_fmtAttWhen(String(p.award_date).slice(0,10),null))+'</span>'
+            +'<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:14px;font-weight:700;color:var(--text2)">+'+escHtml(pts)+'</span>'
+            +'<button data-id="'+escAttr(p.id)+'" data-sid="'+escAttr(s.id)+'" onclick="compRemovePost(this.dataset.id,this.dataset.sid)"'+(busy[bk]?' disabled':'')
+            +' style="color:var(--text3);background:none;border:none;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;letter-spacing:.4px;cursor:pointer;padding:4px 0;text-transform:uppercase">Remove</button>'
+            +'</div>';
+        }).join('')+'</div>'
+      :'<div style="font-size:13px;color:var(--text3);margin-top:10px">No posts logged yet.</div>');
+  return '<div class="slbl">Social posts</div>'
+    +'<div class="card" style="padding:12px 16px">'+head+rows+'</div>';
 }
 function openSocialPost(sid){
   if(!isOwner())return;
@@ -3834,12 +3866,18 @@ function rSocialPostSheet(){
   const m=S.socialPost;if(!m||!isOwner())return '';
   const s=STUDENTS.find(x=>x.id===m.sid);if(!s)return '';
   const today=dk(TODAY);
+  const ctx=_compPostsCtx(s);
+  const sub=escHtml(s.name||'')+(ctx&&ctx.compName?' · '+escHtml(String(ctx.compName)):'');
   return '<div class="cov" onclick="closeSocialPost()" style="align-items:flex-end;z-index:290">'
     +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
       +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">Log a social post</div>'
-      +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+escHtml(s.name||'')+' · one per day</div>'
-      +'<label style="display:block;margin-top:14px;font-size:11px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3)">Date of the post</label>'
-      +'<input id="sp-date" type="date" class="einput" max="'+today+'" value="'+escAttr(m.date)+'" oninput="if(S.socialPost){S.socialPost.date=this.value;S.socialPost.msg=\'\';}" style="margin-top:6px;width:100%">'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+sub+'</div>'
+      // The house date row (.erow + .elbl + transparent date input): the label
+      // is painted from data-datelabel by _syncEmptyDates / _initDateAffordance.
+      +'<div class="card" style="padding:0;margin:14px 0 0">'
+        +'<div class="erow"><div class="elbl">Date</div><input id="sp-date" class="einput" type="date" max="'+today+'" value="'+escAttr(m.date)+'" oninput="if(S.socialPost){S.socialPost.date=this.value;S.socialPost.msg=\'\';}"/></div>'
+      +'</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:8px">The day the post went up. One post per day counts.</div>'
       +(m.msg?'<div style="font-size:12.5px;color:var(--red-text);margin-top:10px">'+escHtml(m.msg)+'</div>':'')
       +'<button onclick="submitSocialPost()"'+(m.busy?' disabled':'')+' style="width:100%;margin-top:14px;padding:12px;border-radius:10px;border:none;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;text-transform:uppercase;background:var(--blue);color:var(--card);cursor:'+(m.busy?'default':'pointer')+';opacity:'+(m.busy?'.6':'1')+'">'+(m.busy?'Saving…':'Log post')+'</button>'
       +'<button onclick="closeSocialPost()" style="width:100%;margin-top:8px;padding:11px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px;cursor:pointer">Cancel</button>'
@@ -3874,7 +3912,7 @@ async function submitSocialPost(){
     showSaveToast2(_compErr(e),'error');
   }
 }
-async function compVoidPost(awardId,sid){
+async function compRemovePost(awardId,sid){
   if(!isOwner())return;
   const s=STUDENTS.find(x=>x.id===sid);if(!s||!s._dbId)return;
   const busy=_compBusy();const bk='void|'+awardId;if(busy[bk])return;
@@ -3884,8 +3922,8 @@ async function compVoidPost(awardId,sid){
     const r=await cli.rpc('competition_award_void',{p_id:awardId});
     if(r.error)throw r.error;
     const chk=await cli.from('competition_awards').select('id,voided_at').eq('id',awardId).maybeSingle();
-    if(chk.error||!chk.data||!chk.data.voided_at)throw new Error('void not confirmed');
-    showSaveToast2('Post voided');
+    if(chk.error||!chk.data||!chk.data.voided_at)throw new Error('removal not confirmed');
+    showSaveToast2('Post removed');
   }catch(e){
     showSaveToast2(_compErr(e),'error');
   }finally{
@@ -3918,22 +3956,31 @@ function _trialReferralLine(t){
     +'<span style="overflow-wrap:anywhere">'+who+linked+'</span>'+act+'</div>';
 }
 let _refRpcTimer=null;
+// The sheet starts EMPTY. While it is empty and the lead named a referrer, it
+// suggests members matched against that name (local STUDENTS plus one
+// search_students_all_units call on its first token); typing searches like the
+// Add student picker (local + debounced cross-unit RPC, stale guard).
 function openTrialRefLink(tid){
   if(!isStaffOrOwner())return;
   const t=TRIALS.find(x=>x._dbId===tid);if(!t)return;
-  S.refLink={tid,q:t.referrerName||'',extra:[],busy:false};render();
-  setTimeout(()=>{const el=document.getElementById('rl-input');if(el){el.focus();el.select();}_renderRefLinkList();_refScheduleFetch(S.refLink&&S.refLink.q);},20);
+  S.refLink={tid,q:'',extra:[],sugg:[],busy:false};render();
+  const tok=_refFirstToken(t.referrerName);
+  if(tok)_refDoFetch(tok,'sugg');
+  setTimeout(()=>{const el=document.getElementById('rl-input');if(el)el.focus();},20);
 }
 function closeTrialRefLink(){if(S.refLink&&S.refLink.busy)return;if(_refRpcTimer){clearTimeout(_refRpcTimer);_refRpcTimer=null;}S.refLink=null;render();}
 function setRefLinkQ(v){if(!S.refLink)return;S.refLink.q=v;_renderRefLinkList();_refScheduleFetch(v);}
 function _refScheduleFetch(rawQ){
   if(_refRpcTimer){clearTimeout(_refRpcTimer);_refRpcTimer=null;}
   const needle=String(rawQ||'').trim();if(needle.length<2)return;
-  _refRpcTimer=setTimeout(()=>{_refRpcTimer=null;_refDoFetch(needle);},250);
+  _refRpcTimer=setTimeout(()=>{_refRpcTimer=null;_refDoFetch(needle,'extra');},250);
 }
-// Cross-unit members through search_students_all_units (staff-gated, as the
-// + Add student picker uses it). Stale responses are dropped.
-async function _refDoFetch(needle){
+function _refNorm(v){return String(v||'').trim().toLowerCase().replace(/\s+/g,' ');}
+function _refFirstToken(v){const t=_refNorm(v).split(' ')[0]||'';return t.length>=2?t:'';}
+// Cross-unit members through search_students_all_units (staff-gated). Mapped as
+// the Add student picker maps them, so the shared row shows avatar and belt.
+// slot 'extra' = typed search, 'sugg' = suggestions for the referrer's name.
+async function _refDoFetch(needle,slot){
   if(!S.refLink)return;
   const cli=initSupabase();if(!cli)return;
   let rows=null;
@@ -3942,40 +3989,89 @@ async function _refDoFetch(needle){
     if(r&&r.error){console.warn('[mybjj] search_students_all_units:',r.error.message);return;}
     rows=r&&r.data;
   }catch(e){console.warn('[mybjj] search_students_all_units ex:',e);return;}
-  if(!S.refLink||String(S.refLink.q||'').trim().toLowerCase()!==needle.toLowerCase())return;
-  S.refLink.extra=(rows||[]).filter(r=>r&&r.id).map(r=>{
+  if(!S.refLink)return;
+  if(slot==='extra'&&_refNorm(S.refLink.q)!==needle.toLowerCase())return;   // stale
+  const mapped=(rows||[]).filter(r=>r&&r.id).map(r=>{
     const u=UNITS.find(x=>x&&x._dbId===r.unit_id)||{};
-    return {_dbId:r.id,name:r.full_name||'',unitName:u.name||''};
+    return {id:r.legacy_id,_dbId:r.id,name:r.full_name||'',belt:r.belt,deg:r.degree,prog:r.prog||'adult',initials:r.initials,unit:u.id||null,_unitName:u.name||null,_visitor:true};
   });
+  S.refLink[slot==='sugg'?'sugg':'extra']=mapped;
   _renderRefLinkList();
+}
+// One member row (the Add student picker's row): ids only in the handler.
+function _refRowHTML(s){
+  const curU=UNITS.find(u=>u.name===S.unit)||{};
+  const otherUnit=s.unit&&curU.id&&s.unit!==curU.id
+    ?((UNITS.find(u=>u.id===s.unit)||{}).name||s._unitName||null)
+    :null;
+  const busy=S.refLink&&S.refLink.busy;
+  // prog is NULL for some adults (NULL = adult); the shared row upper-cases it.
+  return _memberPickRowHTML(Object.assign({},s,{prog:s.prog||'adult'}),{
+    visitorUnit:otherUnit,
+    dim:busy?'opacity:.5;cursor:default':'cursor:pointer',
+    onclick:'data-sid="'+escAttr(s._dbId)+'" onclick="linkTrialReferrer(this.dataset.sid)"'
+  });
+}
+// Suggestions for the referrer's name: exact full name first, then names that
+// contain every token, then first-name matches. Up to 8.
+function _refSuggestions(refName,extra){
+  const ref=_refNorm(refName);if(ref.length<2)return [];
+  const toks=ref.split(' ').filter(Boolean);
+  const seen={};const out=[];
+  const pool=STUDENTS.filter(s=>s&&s._dbId&&s._active!==false).concat(extra||[]);
+  pool.forEach(s=>{
+    if(!s||!s._dbId||seen[s._dbId])return;
+    const n=_refNorm(s.name);if(!n)return;
+    let rank=-1;
+    if(n===ref)rank=0;
+    else if(toks.every(tk=>n.indexOf(tk)>=0))rank=1;
+    else if(n.split(' ')[0]===toks[0])rank=2;
+    if(rank<0)return;
+    seen[s._dbId]=1;out.push({s,rank});
+  });
+  return out.sort((a,b)=>a.rank-b.rank||String(a.s.name||'').localeCompare(String(b.s.name||''))).slice(0,8).map(x=>x.s);
 }
 function _refLinkListHTML(){
   const m=S.refLink;if(!m)return '';
-  const q=String(m.q||'').trim().toLowerCase();
-  if(q.length<2)return '<div style="font-size:12.5px;color:var(--text3);padding:10px 2px">Type at least two letters of the member\'s name.</div>';
-  const curU=UNITS.find(u=>u.name===S.unit)||{};
-  const seen={};const out=[];
-  STUDENTS.filter(s=>s&&s._dbId&&s._active!==false&&String(s.name||'').toLowerCase().indexOf(q)>=0)
-    .forEach(s=>{if(seen[s._dbId])return;seen[s._dbId]=1;out.push({_dbId:s._dbId,name:s.name,unitName:curU.name||''});});
-  (m.extra||[]).forEach(r=>{if(seen[r._dbId])return;seen[r._dbId]=1;out.push(r);});
-  if(!out.length)return '<div style="font-size:12.5px;color:var(--text3);padding:10px 2px">No member found.</div>';
-  return out.slice(0,30).map(r=>'<button data-sid="'+escAttr(r._dbId)+'" onclick="linkTrialReferrer(this.dataset.sid)"'+(m.busy?' disabled':'')
-    +' style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--border);padding:10px 2px;cursor:pointer">'
-    +'<span style="flex:1;min-width:0;font-size:13.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.name||'')+'</span>'
-    +'<span style="flex-shrink:0;font-size:11px;color:var(--text3)">'+escHtml(r.unitName||'')+'</span></button>').join('');
+  const t=TRIALS.find(x=>x._dbId===m.tid)||{};
+  const q=_refNorm(m.q);
+  const hint=txt=>'<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">'+txt+'</div>';
+  if(!q){
+    if(!t.referrerName)return hint('Type at least two letters of the member\'s name.');
+    const sugg=_refSuggestions(t.referrerName,m.sugg);
+    if(!sugg.length)return hint('No member named like “'+escHtml(t.referrerName)+'”. Search by name.');
+    return '<div class="slbl" style="margin:10px 4px 4px">Suggested</div>'+sugg.map(_refRowHTML).join('');
+  }
+  if(q.length<2)return hint('Type at least two letters of the member\'s name.');
+  const seen={};
+  const local=STUDENTS.filter(s=>s&&s._dbId&&s._active!==false&&_refNorm(s.name).indexOf(q)>=0)
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+  local.forEach(s=>{seen[s._dbId]=1;});
+  const extra=(m.extra||[]).filter(s=>s&&s._dbId&&!seen[s._dbId]&&_refNorm(s.name).indexOf(q)>=0)
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+  const rows=local.slice(0,50).concat(extra.slice(0,30));
+  if(!rows.length)return hint('No matching members.');
+  return rows.map(_refRowHTML).join('');
 }
 function _renderRefLinkList(){const host=document.getElementById('rl-results');if(host&&S.refLink)host.innerHTML=_refLinkListHTML();}
+// Same anatomy as "Add student to class" (rClassAddStudentModal): round close
+// button, Bebas title, subtitle, the search box, results with a top border, hint.
 function rTrialRefLinkSheet(){
   const m=S.refLink;if(!m||!isStaffOrOwner())return '';
   const t=TRIALS.find(x=>x._dbId===m.tid);if(!t)return '';
-  return '<div class="cov" onclick="closeTrialRefLink()" style="align-items:flex-end;z-index:290">'
-    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
-      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">Link the referrer</div>'
-      +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+escHtml(_trialParticipantName(t)||'')+(t.referrerName?' · said: '+escHtml(t.referrerName):'')+'</div>'
-      +'<input id="rl-input" class="einput" type="search" autocomplete="off" placeholder="Search members" value="'+escAttr(m.q||'')+'" oninput="setRefLinkQ(this.value)" style="margin-top:12px;width:100%">'
-      +'<div id="rl-results" style="margin-top:6px">'+_refLinkListHTML()+'</div>'
-      +'<button onclick="closeTrialRefLink()" style="width:100%;margin-top:12px;padding:11px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px;cursor:pointer">Cancel</button>'
-    +'</div></div>';
+  const lead=escHtml(_trialParticipantName(t)||'');
+  const sub=t.referrerName?(lead+' wrote “'+escHtml(t.referrerName)+'”'):lead;
+  return `<div class="cov" onclick="closeTrialRefLink()" style="align-items:center;justify-content:center;z-index:280;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:460px;width:100%;margin:0 auto;padding:18px;max-height:calc(100vh - 32px);overflow:hidden;display:flex;flex-direction:column">
+<button onclick="closeTrialRefLink()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px;padding-right:40px">Link the referrer</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:12px">${sub}</div>
+<div style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 12px;margin-bottom:10px">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+  <input id="rl-input" value="${escAttr(m.q||'')}" oninput="setRefLinkQ(this.value)" placeholder="Search by name…" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)" autocomplete="off"/>
+</div>
+<div id="rl-results" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--border);margin:0 -2px">${_refLinkListHTML()}</div>
+<div style="font-size:11px;color:var(--text3);text-align:center;padding-top:8px">Tap a member to link.</div>
+</div></div>`;
 }
 async function _setTrialReferrer(tid,studentDbId){
   const cli=initSupabase();if(!cli)throw new Error('offline');
@@ -3987,7 +4083,7 @@ async function _setTrialReferrer(tid,studentDbId){
 }
 async function linkTrialReferrer(studentDbId){
   const m=S.refLink;if(!m||m.busy||!isStaffOrOwner()||!studentDbId)return;
-  const pick=(m.extra||[]).find(r=>r._dbId===studentDbId)||STUDENTS.find(s=>s._dbId===studentDbId);
+  const pick=STUDENTS.find(s=>s._dbId===studentDbId)||(m.extra||[]).concat(m.sugg||[]).find(r=>r._dbId===studentDbId);
   m.busy=true;_renderRefLinkList();
   try{
     await _setTrialReferrer(m.tid,studentDbId);
@@ -7944,10 +8040,12 @@ function _rBirthdayGreeting(){
     +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.85">Happy birthday</div>'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-size:24px;font-weight:700;line-height:1.15;margin-top:2px">'+escHtml(first)+'</div>'
     +'<div style="font-family:Barlow,sans-serif;font-size:13px;line-height:1.4;margin-top:4px;opacity:.95">'+escHtml(msg)+'</div>'
-    +'<div style="margin-top:10px">'+bb(s.belt,s.deg,s.prog,'left',true)+'</div>'
+    +'<div style="font-size:12px;margin-top:8px;opacity:.85">From everyone at myBJJ</div>'
     +'</div>'
+    // The belt sits on the light strip: a blue belt on the var(--blue) header
+    // disappeared.
     +'<div style="background:var(--blue-tint);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px">'
-    +'<div style="font-size:12px;color:var(--text2)">From everyone at myBJJ</div>'+share
+    +'<div>'+bb(s.belt,s.deg,s.prog,'left',true)+'</div>'+share
     +'</div></div>';
 }
 function dismissBdayGreeting(sid){
@@ -20752,6 +20850,29 @@ function _renderClassAddList(){
   if(!host||!S.classAdd)return;
   host.innerHTML=_classAddListHTML();
 }
+// ONE member row for the member pickers (Add student to class, Link the
+// referrer): avatar, name + programme chip + unit chip (opts.visitorUnit, only
+// for a member from another academy) + hold badge + opts.tag, and "<Belt> belt".
+// opts.dim is the row's extra style, opts.onclick its handler attribute(s).
+// Moved verbatim out of _classAddListHTML's rowHTML: same strings, same order.
+function _memberPickRowHTML(s,opts){
+  opts=opts||{};
+  const visitorUnit=opts.visitorUnit||null;
+  const tag=opts.tag||'';
+  const dim=opts.dim||'cursor:pointer';
+  const onclick=opts.onclick||'';
+  const b=beltDef(s.belt,s.prog);
+  const progChip='<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;color:'+(s.prog==='kids'?'var(--amber-text)':'var(--text3)')+';letter-spacing:.5px;margin-left:6px">'+s.prog.toUpperCase()+'</span>';
+  const unitChip=visitorUnit?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:6px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px">'+String(visitorUnit).toUpperCase()+'</span>':'';
+  return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);'+dim+'" '+onclick+'>'
+    +avStu(s,34)
+    // holdBadge sits with the other chips and follows the same grammar (each
+    // chip carries its own margin-left:6px). It informs the instructor; it does
+    // NOT gate the row — an on-hold student is still addable.
+    +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+escHtml(s.name)+progChip+unitChip+holdBadge(s)+tag+'</div>'
+    +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt</div></div>'
+    +'</div>';
+}
 function _classAddListHTML(){
   if(!S.classAdd)return '';
   const{cid,q,allProgs}=S.classAdd;
@@ -20807,20 +20928,10 @@ function _classAddListHTML(){
   }).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const rowHTML=(s,visitorUnit)=>{
     const already=attDbIds.has(s._dbId);
-    const b=beltDef(s.belt,s.prog);
     const dim=already?'opacity:.5;cursor:not-allowed':'cursor:pointer';
     const onclick=already?'':`onclick="addStudentToClass('${cid}','${s.id}')"`;
     const tag=already?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">ALREADY IN</span>':'';
-    const progChip='<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;color:'+(s.prog==='kids'?'var(--amber-text)':'var(--text3)')+';letter-spacing:.5px;margin-left:6px">'+s.prog.toUpperCase()+'</span>';
-    const unitChip=visitorUnit?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:6px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px">'+String(visitorUnit).toUpperCase()+'</span>':'';
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);'+dim+'" '+onclick+'>'
-      +avStu(s,34)
-      // holdBadge sits with the other chips and follows the same grammar (each
-      // chip carries its own margin-left:6px). It informs the instructor; it does
-      // NOT gate the row — an on-hold student is still addable.
-      +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+escHtml(s.name)+progChip+unitChip+holdBadge(s)+tag+'</div>'
-      +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt</div></div>'
-      +'</div>';
+    return _memberPickRowHTML(s,{visitorUnit,tag,dim,onclick});
   };
   const localHTML=list.slice(0,50).map(s=>rowHTML(s,null)).join('');
   const extraHTML=extraRows.slice(0,30).map(s=>rowHTML(s,s._unitName)).join('');
