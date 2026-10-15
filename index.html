@@ -9549,18 +9549,28 @@ function _lbBoardScope(){
 function setLbAud(a){S.lbAud=a==='kids'?'kids':'adult';S.lbShowAll=false;render();}
 // Period options for the board: the current board, the last 3 months of the
 // monthly board, and past challenges.
+// The board options, grouped. Now: the current board (the challenge while it
+// runs, else the current month). Past challenges: events that have ended, newest
+// first (never a draft or a challenge that has not started: its board is empty).
+// Past months: the previous 3 months of the monthly board, plus the current
+// month while a challenge runs (the monthly keeps counting in the background).
+// Monthly options are named by month only.
 function _lbPeriodOptions(cur,today){
-  const opts=[];
-  if(cur)opts.push({key:'cur',label:cur.kind==='event'?cur.name:MFULL[_parseISODate(today).getMonth()]});
+  const groups=[];
+  if(!cur)return groups;
+  const d=_parseISODate(today);
+  groups.push({label:'Now',opts:[{key:'cur',label:cur.kind==='event'?cur.name:MFULL[d.getMonth()]}]});
   const comps=_lbComps()||[];
+  const past=comps.filter(c=>c.kind==='event'&&c.status!=='draft'&&c.starts_on&&c.starts_on<=today&&c.ends_on&&c.ends_on<today&&c.id!==cur.id)
+    .slice().sort((a,b)=>String(b.ends_on).localeCompare(String(a.ends_on)));
+  if(past.length)groups.push({label:'Past challenges',opts:past.map(c=>({key:'e:'+c.id,label:c.name}))});
   const monthly=comps.find(c=>c.kind==='monthly'&&c.status==='active');
   if(monthly){
-    const d=_parseISODate(today);
-    for(let i=1;i<=3;i++){const m=new Date(d.getFullYear(),d.getMonth()-i,1);opts.push({key:'m:'+monthly.id+':'+dk(m).slice(0,7),label:MFULL[m.getMonth()]+' '+m.getFullYear()});}
+    const months=[];
+    for(let i=(cur.kind==='event'?0:1);i<=3;i++){const m=new Date(d.getFullYear(),d.getMonth()-i,1);months.push({key:'m:'+monthly.id+':'+dk(m).slice(0,7),label:MFULL[m.getMonth()]});}
+    groups.push({label:'Past months',opts:months});
   }
-  comps.filter(c=>c.kind==='event'&&c.status!=='draft'&&c.ends_on&&c.ends_on<today&&(!cur||c.id!==cur.id))
-    .forEach(c=>opts.push({key:'e:'+c.id,label:c.name}));
-  return opts;
+  return groups;
 }
 function setLbPeriod(v){S.lbPeriod=v||'cur';S.lbShowAll=false;render();}
 // Resolve the board the list shows: {comp, from, to} for the picked period.
@@ -9622,32 +9632,35 @@ function _rLbBoard(){
   const today=dk(TODAY);
   const scope=_lbBoardScope();if(!scope.unit)return '';
   const bc=_lbBoardComp(scope,today);
-  const opts=bc&&bc.cur?_lbPeriodOptions(bc.cur,today):[];
-  // The app's filter select (People's desktop filters): _selWrap + chevron.
-  const pill=opts.length>1
-    ?_selWrap('<select class="mfilt-sel" onchange="setLbPeriod(this.value)" aria-label="Period">'
-      +opts.map(o=>'<option value="'+escAttr(o.key)+'"'+((S.lbPeriod||'cur')===o.key?' selected':'')+'>'+escHtml(o.label)+'</option>').join('')
+  // The board says WHICH board it is: the period select is the title (house
+  // filter select), followed by its CHALLENGE / MONTHLY badge.
+  const groups=bc&&bc.cur?_lbPeriodOptions(bc.cur,today):[];
+  const selKey=S.lbPeriod||'cur';
+  const sel=groups.length
+    ?_selWrap('<select class="mfilt-sel" onchange="setLbPeriod(this.value)" aria-label="Board">'
+      +groups.map(g=>'<optgroup label="'+escAttr(g.label)+'">'+g.opts.map(o=>'<option value="'+escAttr(o.key)+'"'+(selKey===o.key?' selected':'')+'>'+escHtml(o.label)+'</option>').join('')+'</optgroup>').join('')
     +'</select>','mfilt-wrap')
     :'';
-  const head='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px;margin-bottom:12px"><div class="slbl" style="margin:0">Leaderboard</div>'+pill+'</div>';
+  const head='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px">'+sel+(bc&&bc.comp?_lbKindBadge(bc.comp):'')+'</div>';
+  const sub=txt=>'<div style="font-size:13px;color:var(--text2);margin:6px 0 12px">'+escHtml(txt)+'</div>';
   const toggle=scope.toggle
-    ?'<div class="rsw" style="margin-bottom:12px"><div class="rseg '+(scope.aud==='adult'?'active':'')+'" onclick="setLbAud(\'adult\')">Adults</div><div class="rseg '+(scope.aud==='kids'?'active':'')+'" onclick="setLbAud(\'kids\')">Kids</div></div>'
+    ?'<div class="rsw" style="margin-top:16px;margin-bottom:0"><div class="rseg '+(scope.aud==='adult'?'active':'')+'" onclick="setLbAud(\'adult\')">Adults</div><div class="rseg '+(scope.aud==='kids'?'active':'')+'" onclick="setLbAud(\'kids\')">Kids</div></div>'
     :'';
-  if(!bc)return head+toggle+'<div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
-  if(!bc.comp)return head+toggle+'<div class="card" style="text-align:center;padding:24px 16px;font-size:13px;color:var(--text3)">No one on the board yet. The first class puts you on it.</div>';
-  const rows=_lbStandings(bc.comp.id,bc.from,bc.to);
   const divName=_lbDivName(scope.unit,scope.aud);
-  if(!rows)return head+toggle+'<div class="slbl">'+escHtml(divName)+'</div><div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
+  if(!bc)return toggle+head+sub(divName)+'<div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
+  if(!bc.comp)return toggle+head+sub(divName)+'<div class="card" style="text-align:center;padding:24px 16px;font-size:13px;color:var(--text3)">No one on the board yet. The first class puts you on it.</div>';
+  const rows=_lbStandings(bc.comp.id,bc.from,bc.to);
+  if(!rows)return toggle+head+sub(divName)+'<div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
   const list=rows.filter(r=>r.unit_id===scope.unit&&r.audience===scope.aud&&Number(r.points)>0)
     .slice().sort((x,y)=>(x.rank-y.rank)||String(x.display_name||'').localeCompare(String(y.display_name||'')));
   const p=_lbPerson();const myId=p&&p.s&&p.s._dbId;
-  const label='<div class="slbl">'+escHtml(divName+' · '+list.length+' on the board')+'</div>';
-  if(!list.length)return head+toggle+label+'<div class="card" style="text-align:center;padding:24px 16px;font-size:13px;color:var(--text3)">No one on the board yet. The first class puts you on it.</div>'+_rLbBattle(bc,scope);
+  const label=sub(divName+' · '+list.length+' on the board');
+  if(!list.length)return toggle+head+label+'<div class="card" style="text-align:center;padding:24px 16px;font-size:13px;color:var(--text3)">No one on the board yet. The first class puts you on it.</div>'+_rLbBattle(bc,scope);
   let shown=S.lbShowAll?list:list.slice(0,10);
   const mineRow=myId?list.find(r=>r.student_id===myId):null;
   if(!S.lbShowAll&&mineRow&&shown.indexOf(mineRow)<0)shown=shown.concat([mineRow]);
   const more=(!S.lbShowAll&&list.length>10)?'<div style="border-top:1px solid var(--border);padding:8px 12px;text-align:center"><button onclick="lbShowAll()" style="color:var(--blue);'+_LB_TXT_BTN+'">Show all '+list.length+'</button></div>':'';
-  return head+toggle+label
+  return toggle+head+label
     +'<div class="card" style="padding:0;overflow:hidden">'+shown.map((r,i)=>_lbRowHtml(r,bc.comp,r.student_id===myId,i===0)).join('')+more+'</div>'
     +_rLbBattle(bc,scope);
 }
@@ -9976,6 +9989,36 @@ async function submitLbPosts(){
     if(S.lbPosts){S.lbPosts.busy=false;_renderLbPostsBtn();}
     showSaveToast2(_compErr(e),'error');
   }
+}
+// ── Programme > Events: the running or announced challenge ─────────────────
+// Read only (owners edit from the Leaderboard). An ACTIVE event challenge whose
+// prizes day has not passed, pinned above Upcoming in the Later-card anatomy.
+// Before it starts, while members cannot open the Leaderboard yet, the action
+// reads "Starts <day>" instead of the button. Drafts never show (RLS hides them
+// from members; filtered here for owners too).
+function openLeaderboard(){S.commTab='leaderboard';S.lbPeriod='cur';S.lbShowAll=false;setTab('community');}
+function _rEvChallengeCard(){
+  const today=dk(TODAY);
+  const comps=_lbComps();if(!comps)return '';
+  const c=comps.filter(x=>x.kind==='event'&&x.status==='active'&&x.starts_on&&today<=(_lbPrizeDay(x)||x.ends_on))
+    .slice().sort((a,b)=>String(a.starts_on).localeCompare(String(b.starts_on)))[0];
+  if(!c)return '';
+  const d=_parseISODate(c.starts_on);
+  const places=_lbPlaces(c);
+  const act=_lbVisible()
+    ?'<div class="ev-acts"><button class="ev-btn is-comp" onclick="openLeaderboard()">See leaderboard</button></div>'
+    :'<div style="font-family:Barlow Condensed,sans-serif;font-size:13px;font-weight:700;color:var(--text2);margin-top:12px">'+escHtml('Starts '+_lbDowDM(c.starts_on))+'</div>';
+  return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
+    +'<div style="display:flex;align-items:center;gap:12px">'
+      +'<div class="ev-date"><b>'+d.getDate()+'</b><span>'+MFULL[d.getMonth()].slice(0,3)+'</span></div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div class="ev-head"><div class="ev-t ev-t-card">'+escHtml(c.name)+'</div>'+_lbKindBadge(c)+'</div>'
+        +'<div style="font-size:13px;color:var(--text2);margin-top:4px">'+escHtml(_lbDM(c.starts_on)+' to '+_lbDM(c.ends_on)+' · prizes '+_lbDowDM(_lbPrizeDay(c)))+'</div>'
+      +'</div>'
+    +'</div>'
+    +'<div class="ev-desc">'+escHtml('Earn points for training, class challenges, posts and bringing friends.'+(places?' Top '+places+' of each group win.':''))+'</div>'
+    +act
+  +'</div>';
 }
 // ── visibility ─────────────────────────────────────────────────────────────
 // Who sees the Leaderboard at all: owners (is_admin, the same check as the owner
@@ -12849,7 +12892,7 @@ function rEvents(isA){
   const addBtn=isA?'<button class="badd" style="margin-top:4px;margin-bottom:12px" onclick="openAddEv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add event</button>':'';
   // Nothing at all → the original empty state, word for word.
   if(!filtered.length){
-    return addBtn+'<div class="card" style="text-align:center;padding:32px 20px">'
+    return addBtn+_rEvChallengeCard()+'<div class="card" style="text-align:center;padding:32px 20px">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text2);letter-spacing:.5px;margin-bottom:6px">No events yet</div>'
       +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Upcoming tournaments and seminars will show here.</div>'
       +'</div>';
@@ -12871,6 +12914,7 @@ function rEvents(isA){
   // turns .ev-two into two panes, and the "UPCOMING · N" label is desktop-only
   // so mobile keeps no label above the hero.
   return addBtn
+    +_rEvChallengeCard()
     +'<div class="ev-two">'
       +'<div><div class="slbl cyc-deskonly">Upcoming · '+upcoming.length+'</div>'+heroHtml+laterHtml+'</div>'
       +'<div>'+pastHtml+'</div>'
