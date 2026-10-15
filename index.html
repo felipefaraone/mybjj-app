@@ -9943,6 +9943,24 @@ async function submitLbPosts(){
     showSaveToast2(_compErr(e),'error');
   }
 }
+// ── visibility ─────────────────────────────────────────────────────────────
+// Who sees the Leaderboard at all: owners (is_admin, the same check as the owner
+// controls) always; everyone else only once a challenge has gone live (an event,
+// active or archived, that has started). RLS already hides drafts from members.
+// One small select, cached like the rest; once true it stays true for the
+// session (an archived challenge keeps it on, so the monthly board shows after
+// the Cup). While it is unknown the answer is false: no segment, no other fetch.
+const LB_VIS={};let _lbSeenLive=false;
+function _lbVisible(){
+  if(isOwner())return true;
+  if(_lbSeenLive)return true;
+  const today=dk(TODAY);
+  const e=_lbGet(LB_VIS,'live',()=>_lbSelect(initSupabase().from('competitions').select('id,starts_on')
+    .eq('kind','event').in('status',['active','archived']).lte('starts_on',today)
+    .order('starts_on',{ascending:true}).order('id',{ascending:true}).limit(1)));
+  if(e&&Array.isArray(e.data)&&e.data.length)_lbSeenLive=true;
+  return _lbSeenLive;
+}
 // ── the tab ───────────────────────────────────────────────────────────────
 function rLeaderboard(){
   return _rLbOwner()+_rLbMemberCard()+_rLbBoard();
@@ -9954,13 +9972,16 @@ function rMembers(){
   // / student) falls through to the normal People/Wall community view.
   if(!activeProfileIsSelf())return rParentMembers();
   if(isNonTrainingParent())return rParentMembers();
-  const tab=S.commTab==='wall'?'wall':(S.commTab==='leaderboard'?'leaderboard':'people');
+  // A saved 'leaderboard' for a viewer who cannot see it falls back to the
+  // default tab (Wall) for this render; the saved choice is left as it is.
+  const _lbOk=_lbVisible();
+  const tab=S.commTab==='wall'?'wall':((S.commTab==='leaderboard'&&_lbOk)?'leaderboard':(S.commTab==='leaderboard'?'wall':'people'));
   // V2 hierarchy — top-level People/Wall reuses the same `.rsw / .rseg`
   // class as the nested Adults/Kids toggle so parent and child read
   // visually equivalent.
   const segBtn=(key,lbl)=>'<div class="rseg '+(tab===key?'active':'')+'" data-ct="'+key+'" onclick="setCommTab(\''+key+'\')">'+lbl+'</div>';
   // Wall first: it is the landing tab, so it leads the strip.
-  const segHtml='<div class="rsw">'+segBtn('wall','Wall')+segBtn('people','People')+segBtn('leaderboard','Leaderboard')+'</div>';
+  const segHtml='<div class="rsw">'+segBtn('wall','Wall')+segBtn('people','People')+(_lbOk?segBtn('leaderboard','Leaderboard'):'')+'</div>';
   // Flicker fix — BOTH bodies are mounted, the inactive one hidden via
   // display:none, so setCommTab can swap tabs by flipping display instead
   // of calling render(). render() does app.innerHTML=rApp(), which destroys
@@ -9975,7 +9996,7 @@ function rMembers(){
   return '<div style="height:16px"></div>'+segHtml+body;
 }
 function setCommTab(t){
-  const tab=t==='wall'?'wall':(t==='leaderboard'?'leaderboard':'people');
+  const tab=t==='wall'?'wall':((t==='leaderboard'&&_lbVisible())?'leaderboard':'people');
   const was=S.commTab;
   S.commTab=tab;
   // Leaderboard is mounted only while active: a full render on the way in or out.
@@ -11234,10 +11255,13 @@ function rParentMembers(){
   const instructorsBlock=instructors.length
     ?'<div class="slbl" style="margin-top:20px">Instructors</div>'+instructorRows
     :'<div class="slbl" style="margin-top:20px">Instructors</div><div class="card" style="text-align:center;padding:24px;color:var(--text3);font-size:13px">No instructors at this unit yet.</div>';
-  const _ptab=S.commTab==='leaderboard'?'leaderboard':'people';
-  const _pseg='<div class="rsw">'
+  // The segment exists only while the Leaderboard is visible (_lbVisible); a
+  // saved 'leaderboard' otherwise falls back to People, the default here.
+  const _lbOkP=_lbVisible();
+  const _ptab=(S.commTab==='leaderboard'&&_lbOkP)?'leaderboard':'people';
+  const _pseg=_lbOkP?('<div class="rsw">'
     +'<div class="rseg '+(_ptab==='people'?'active':'')+'" data-ct="people" onclick="setCommTab(\'people\')">People</div>'
-    +'<div class="rseg '+(_ptab==='leaderboard'?'active':'')+'" data-ct="leaderboard" onclick="setCommTab(\'leaderboard\')">Leaderboard</div></div>';
+    +'<div class="rseg '+(_ptab==='leaderboard'?'active':'')+'" data-ct="leaderboard" onclick="setCommTab(\'leaderboard\')">Leaderboard</div></div>'):'';
   if(_ptab==='leaderboard')return '<div style="height:16px"></div>'+_pseg+rLeaderboard();
   return '<div style="height:16px"></div>'+_pseg
     +'<div class="slbl">Kids program</div>'
