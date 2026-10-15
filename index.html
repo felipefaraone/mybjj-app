@@ -3689,7 +3689,12 @@ async function _loadCompClassAwards(dateKey,noRender){
 // The award for this student, key and class occurrence (a one-off class has no
 // class_id: it matches the date's awards with a NULL class_id).
 function _compFindClassAward(occ,studentDbId,key){
-  const e=occ&&COMP_CLASS_AWARDS[occ.date];if(!e||e.loading)return null;
+  // During a background refresh the entry is {loading:true, prev}: keep reading
+  // the last good list (prev), as the _compClassAwards getter does. Only a first
+  // load with nothing before it has no answer yet.
+  const raw=occ&&COMP_CLASS_AWARDS[occ.date];
+  const e=(raw&&raw.loading)?raw.prev:raw;
+  if(!e||e.loading)return null;
   return (e.rows||[]).find(a=>a.student_id===studentDbId&&a.award_key===key
     &&(occ.classId?a.class_id===occ.classId:a.class_id==null))||null;
 }
