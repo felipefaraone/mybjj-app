@@ -9400,6 +9400,13 @@ function _lbCanHide(s){
 }
 // ── the five function sources ─────────────────────────────────────────────
 // The viewer's row (or the active kid's) among standings rows.
+// Which board a person is on (156: adult belts board with adults): the audience
+// of their own row once standings are loaded; prog only until then.
+function _lbAudOf(s,rows){
+  const r=s&&Array.isArray(rows)?rows.find(x=>x&&x.student_id===s._dbId):null;
+  if(r&&(r.audience==='kids'||r.audience==='adult'))return r.audience;
+  return s&&s.prog==='kids'?'kids':'adult';
+}
 function _lbMyRow(rows,person){
   const p=person||_lbPerson();if(!p||!Array.isArray(rows))return null;
   return rows.find(r=>r&&r.student_id===p.s._dbId)||null;
@@ -9464,7 +9471,7 @@ function _rLbMemberCard(){
   const per=_lbPeriodOf(comp,today);
   const rows=_lbStandings(comp.id,per.from,per.to);
   const rules=_lbRules(comp.id);
-  const aud=p.s.prog==='kids'?'kids':'adult';
+  const aud=_lbAudOf(p.s,rows);
   const divName=_lbDivName(home,aud);
   const title=comp.kind==='event'?comp.name:MFULL[_parseISODate(today).getMonth()];
   const meta=(comp.kind==='event'?(_lbDM(comp.starts_on)+' to '+_lbDM(comp.ends_on)):'Classes and friends this month')+' · '+divName;
@@ -9543,7 +9550,7 @@ function _lbBoardScope(){
   const curU=UNITS.find(u=>u.name===S.unit)||{};
   const p=_lbPerson();
   if(isStaffOrOwner()&&activeProfileIsSelf())return {unit:curU._dbId||null,aud:S.lbAud==='kids'?'kids':'adult',toggle:true};
-  if(p&&(!p.self||p.s.prog==='kids'))return {unit:_lbHomeUnit(p.s),aud:p.s.prog==='kids'?'kids':'adult',toggle:false};
+  if(p&&(!p.self||p.s.prog==='kids'))return {unit:_lbHomeUnit(p.s),aud:_lbAudOf(p.s,null),toggle:false,person:p.s};
   return {unit:curU._dbId||null,aud:'adult',toggle:false};
 }
 function setLbAud(a){S.lbAud=a==='kids'?'kids':'adult';S.lbShowAll=false;render();}
@@ -9597,13 +9604,21 @@ function _lbBoardComp(scope,today){
 // (never by name). tap = the handler People would use, or '' when the viewer
 // could not open that profile from People today (a kid's profile: staff who see
 // the Kids segment, or a guardian of that kid; never another child).
+// Migration 156: a row is a child by its minor flag (kids programme), whichever
+// board it is on: a kid on a blue belt ranks with the adults and is still shown
+// as a child. A server before 156 sends no minor: fall back to prog / board.
+function _lbRowMinor(r,s){
+  if(r&&typeof r.minor==='boolean')return r.minor;
+  return !!((s&&s.prog==='kids')||(r&&r.audience==='kids'));
+}
 function _lbIdentity(r){
   const s=r&&STUDENTS.find(x=>x&&x._dbId===r.student_id)||null;
   if(!s)return {s:null,st:null,tap:''};
+  const minor=_lbRowMinor(r,s);
   const em=String(s.email||'').trim().toLowerCase();
-  const st=(em&&s.prog!=='kids')?(STAFF.find(x=>x&&x._active!==false&&!isDevStaff(x)&&x.roleTitle!=='Admin'&&staffInUnit(x,s.unit)&&String(x.email||'').trim().toLowerCase()===em)||null):null;
+  const st=(em&&!minor&&s.prog!=='kids')?(STAFF.find(x=>x&&x._active!==false&&!isDevStaff(x)&&x.roleTitle!=='Admin'&&staffInUnit(x,s.unit)&&String(x.email||'').trim().toLowerCase()===em)||null):null;
   if(st)return {s,st,tap:'data-stid="'+escAttr(st.id)+'" onclick="viewStaff(this.dataset.stid,\'community\')"'};
-  if(s.prog==='kids'&&!(isOwner()||isProfessor()||isCoach()||isGuardianOfStu(s)))return {s,st:null,tap:''};
+  if(minor&&!(isOwner()||isProfessor()||isCoach()||isGuardianOfStu(s)))return {s,st:null,tap:''};
   return {s,st:null,tap:'data-sid="'+escAttr(s.id)+'" onclick="viewStu(this.dataset.sid,\'community\')"'};
 }
 // Board row: the People member row anatomy (avatar 40, Barlow Condensed 16/700
@@ -9611,9 +9626,11 @@ function _lbIdentity(r){
 // on the left and the points on the right. The name gives way first.
 function _lbRowHtml(r,comp,mine,first){
   const id=_lbIdentity(r);
-  const prog=r.audience==='kids'?'kids':'adult';
-  const fallback={name:r.display_name||'',initials:(String(r.display_name||'').split(/\s+/).map(w=>w[0]||'').slice(0,2).join('')||'?').toUpperCase(),photoUrl:r.photo_url||null,belt:r.belt||'',prog};
-  const av=id.st?avStaff(id.st,40):avStu(id.s||fallback,40);
+  const minor=_lbRowMinor(r,id.s);
+  // a minor's avatar is initials on the belt colour, never a photo (avStu's kids rule)
+  const prog=minor?'kids':'adult';
+  const fallback={name:r.display_name||'',initials:(String(r.display_name||'').split(/\s+/).map(w=>w[0]||'').slice(0,2).join('')||'?').toUpperCase(),photoUrl:minor?null:(r.photo_url||null),belt:r.belt||'',prog};
+  const av=id.st?avStaff(id.st,40):avStu(id.s?(minor?Object.assign({},id.s,{prog:'kids',photoUrl:null}):id.s):fallback,40);
   const places=_lbPlaces(comp);
   const badges=(r.prize_rank&&places&&r.prize_rank<=places?_lbBadge(_lbPlaceLabel(comp,r.prize_rank),'blue'):'')
     +(r.prize_eligible===false?_lbBadge('STAFF'):'');
@@ -9647,11 +9664,13 @@ function _rLbBoard(){
   const toggle=scope.toggle
     ?'<div class="rsw" style="margin-top:16px;margin-bottom:0"><div class="rseg '+(scope.aud==='adult'?'active':'')+'" onclick="setLbAud(\'adult\')">Adults</div><div class="rseg '+(scope.aud==='kids'?'active':'')+'" onclick="setLbAud(\'kids\')">Kids</div></div>'
     :'';
-  const divName=_lbDivName(scope.unit,scope.aud);
+  let divName=_lbDivName(scope.unit,scope.aud);
   if(!bc)return toggle+head+sub(divName)+'<div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
   if(!bc.comp)return toggle+head+sub(divName)+'<div class="card" style="text-align:center;padding:24px 16px;font-size:13px;color:var(--text3)">No one on the board yet. The first class puts you on it.</div>';
   const rows=_lbStandings(bc.comp.id,bc.from,bc.to);
   if(!rows)return toggle+head+sub(divName)+'<div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
+  // a kid's own board comes from their row (156: a kid on an adult belt is on adults)
+  if(scope.person){const a=_lbAudOf(scope.person,rows);if(a!==scope.aud){scope.aud=a;divName=_lbDivName(scope.unit,scope.aud);}}
   const list=rows.filter(r=>r.unit_id===scope.unit&&r.audience===scope.aud&&Number(r.points)>0)
     .slice().sort((x,y)=>(x.rank-y.rank)||String(x.display_name||'').localeCompare(String(y.display_name||'')));
   const p=_lbPerson();const myId=p&&p.s&&p.s._dbId;

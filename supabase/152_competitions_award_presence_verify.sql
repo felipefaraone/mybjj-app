@@ -20,7 +20,7 @@ begin
   if n <> 0 then raise exception 'FAIL 0: % social_post award(s) have class_date set', n; end if;
   raise notice 'PASS 0: no social_post award has class_date set';
 
-  select s.id, s.unit_id, public._competition_audience(s.prog::text) as aud into st
+  select s.id, s.unit_id into st
     from public.students s
    where public._competition_eligible(s.active, s.standing::text, s.membership_level::text) and s.unit_id is not null
    order by s.id limit 1;
@@ -32,7 +32,9 @@ begin
 
   insert into public.competitions (name, kind, starts_on, ends_on, status)
     values ('zz152 verify', 'event', '2031-07-01', '2031-07-31', 'draft') returning id into comp;
-  insert into public.competition_divisions (competition_id, unit_id, audience, label) values (comp, st.unit_id, st.aud, 'zz152');
+  -- both boards of the unit, so the student lands on theirs whichever rule decides it (156: belt)
+  insert into public.competition_divisions (competition_id, unit_id, audience, label) values
+    (comp, st.unit_id, 'adult', 'zz152 adults'), (comp, st.unit_id, 'kids', 'zz152 kids');
   insert into public.competition_rules (competition_id, rule_key, points, params, enabled) values
     (comp, 'class_attended', 1, '{"mode":"class_value","private_cap":1}', true),
     (comp, 'class_challenge', 3, '{}', true),
@@ -94,7 +96,10 @@ begin
 
   -- 8. signature and return columns identical to 149
   res := pg_get_function_result('public._competition_scores(uuid, date, date)'::regprocedure);
-  if res is distinct from expected then raise exception 'FAIL 8: return columns changed: %', res; end if;
+  -- 156 appends minor as the LAST column; everything before it stays 149's
+  if res is distinct from expected and res is distinct from replace(expected, 'degree integer)', 'degree integer, minor boolean)') then
+    raise exception 'FAIL 8: return columns changed: %', res;
+  end if;
   if pg_get_function_identity_arguments('public._competition_scores(uuid, date, date)'::regprocedure) <> 'p_competition uuid, p_from date, p_to date' then
     raise exception 'FAIL 8: arguments changed';
   end if;

@@ -182,7 +182,9 @@ begin
   end if;
   raise notice 'PASS 9: chase for 2nd (hidden leader keeps 1st; gap 1), gi Ann / no-gi Cal, battle, next class 23:30 Gi · All Levels going: %', v;
 
-  -- 10. playlist: sums to 90, races first, skips what is not true
+  -- 10. playlist: sums to 90, races first, skips what is not true (at midday: no
+  -- class within 30 minutes, so 157's class focus leaves the full playlist)
+  p := public._tv_payload(scr, '2031-07-15', '12:00');
   select sum((x ->> 'seconds')::int), string_agg(x ->> 'screen', ',' order by o) into n, v
     from jsonb_array_elements(p -> 'playlist') with ordinality t(x, o);
   if n <> 90 or v not like 'race_adults,race_kids,%' or v not like '%rules%' or v not like '%feed%' then

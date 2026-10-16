@@ -366,6 +366,11 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .bt2 .fair{font-size:1.3cqw}
 .bt2 .fair b{font-size:1.8cqw}
 .cls[hidden]{display:none}
+/* 156: race rows and podium carry the belt (same drawing as the chase screen) */
+.row.wb{grid-template-columns:2.4cqw 2.8cqw 1fr 5.6cqw 5.2cqw}
+.row .belt{display:block;width:5.6cqw;height:1.12cqw;border-radius:.12cqw;box-shadow:0 .1cqw .35cqw rgba(0,0,0,.4)}
+.pd .who .bmini{margin-top:.15cqw}
+.av.ini{text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -417,7 +422,6 @@ const ord=n=>n+((n%100>10&&n%100<14)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th'));
 const ini=n=>String(n||'').replace(/\./g,'').split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?';
 
 /* ---------- art (from the prototype) ---------- */
-const PHOTO='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4.2" fill="#eef2f8"/><path d="M3.5 22c.8-4.6 4.3-7.2 8.5-7.2s7.7 2.6 8.5 7.2" fill="#eef2f8"/></svg>';
 const BONBON=(c1,c2)=>`<svg class="bonbon" viewBox="0 0 52 22" aria-hidden="true"><path fill="${c1}" d="M15 7L9 2 4.5 3.5 7 7 3 11l4 4-2.5 3.5L9 20l6-5z"/><path fill="${c1}" d="M37 7l6-5 4.5 1.5L45 7l4 4-4 4 2.5 3.5L43 20l-6-5z"/><path fill="#000" opacity=".18" d="M15 7L9 2 4.5 3.5 7 7 3 11h12zM37 7l6-5 4.5 1.5L45 7l4 4H37z"/><rect x="14" y="4.5" width="24" height="13" rx="3" fill="${c1}"/><rect x="18" y="4.5" width="3" height="13" fill="${c2}"/><rect x="31" y="4.5" width="3" height="13" fill="${c2}"/><circle cx="26" cy="11" r="2.6" fill="${c2}"/><rect x="12.8" y="6" width="2.6" height="10" rx="1" fill="${c2}"/><rect x="36.6" y="6" width="2.6" height="10" rx="1" fill="${c2}"/><rect x="14" y="4.5" width="24" height="4" rx="2" fill="#fff" opacity=".22"/></svg>`;
 const STAR='<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path fill="#f6c453" d="M12 1.5l3.1 6.6 7.2.9-5.3 5 1.4 7.2L12 17.6l-6.4 3.6L7 14l-5.3-5 7.2-.9z"/></svg>';
 const GIFT='<svg class="gift" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M2 9h20M12 9v12M12 9c-1.5-4-6-5-6-2s4 2 6 2zM12 9c1.5-4 6-5 6-2s-4 2-6 2z"/></svg>';
@@ -469,12 +473,20 @@ const audOf=s=>/_kids$/.test(s)?'kids':'adult';
 const audLabel=a=>a==='kids'?'Kids':'Adults';
 const today=()=>syd().iso;
 
-/* avatars: kids never a photo (initials); adults their approved photo, else the silhouette */
-function avat(p,cqw,ring,kid){
-  const sz=`width:${cqw}cqw;height:${cqw}cqw`;
-  if(kid)return `<div class="av ini${ring?' ring':''}" style="${sz};font-size:${(cqw*.4).toFixed(2)}cqw" aria-hidden="true">${esc(ini(p&&p.name))}</div>`;
-  const u=p&&typeof p.photo_url==='string'&&/^https:\/\//.test(p.photo_url)?p.photo_url:'';
-  return `<div class="av${ring?' ring':''}" style="${sz}" aria-hidden="true">${PHOTO}${u?`<img src="${esc(u)}" alt="" onerror="this.remove()">`:''}</div>`;
+/* avatars: initials on the belt colour (the app's av() mapping); an adult's
+   approved photo sits on top and falls back to the initials if it fails. A minor
+   (row.minor, migration 156: kids programme, whichever board) never a photo.
+   kidFallback: what to assume when a payload from before 156 has no minor. */
+const AV_BELT={white:['#E5E7EB','#1F2937'],blue:['#1A5DAD','#FFFFFF'],purple:['#8B5CF6','#FFFFFF'],brown:['#92400E','#FFFFFF'],black:['#1F2937','#FFFFFF'],
+  gray:['#9CA3AF','#FFFFFF'],grey:['#9CA3AF','#FFFFFF'],yellow:['#F59E0B','#FFFFFF'],orange:['#EA580C','#FFFFFF'],green:['#16A34A','#FFFFFF']};
+const avPair=b=>AV_BELT[String(b||'').toLowerCase().split(/[\/\-\s]/)[0]]||['#6B7280','#FFFFFF'];
+const isMinor=(p,kidFallback)=>(p&&typeof p.minor==='boolean')?p.minor:!!kidFallback;
+function avat(p,cqw,ring,kidFallback){
+  const pr=avPair(p&&p.belt);
+  const st=`width:${cqw}cqw;height:${cqw}cqw;font-size:${(cqw*.38).toFixed(2)}cqw;background:${pr[0]};color:${pr[1]}`;
+  const minor=isMinor(p,kidFallback);
+  const u=!minor&&p&&typeof p.photo_url==='string'&&/^https:\/\//.test(p.photo_url)?p.photo_url:'';
+  return `<div class="av ini${ring?' ring':''}" style="${st}" aria-hidden="true">${esc(ini(p&&p.name))}${u?`<img src="${esc(u)}" alt="" onerror="this.remove()">`:''}</div>`;
 }
 const count=v=>`<span class="cnt" data-to="${r2(v)}">${esc(fmt(v))}</span>`;
 function prizeLabel(n){
@@ -496,8 +508,8 @@ function sRace(aud){
   const v=board(aud),kid=aud==='kids';
   if(!v.length)return `<div class="race"><div class="emptyboard in"><b>No points yet</b><span>${isEvent()?'Every class counts from the first day':'Every class this month counts'}</span></div></div>`;
   const t=v.slice(0,3),rest=v.slice(3,10);
-  const pd=(p,cls,h,i)=>p?`<div class="pd ${cls}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}${avat(p,cls==='p1'?6.6:5.4,true,kid)}<div class="nm">${esc(p.name)}</div></div><div class="blk" style="height:${h}%;animation-delay:${i*90}ms"><div class="n">${count(p.points)}</div><div class="u">POINTS</div><div class="pl">${esc(ord(p.rank).toUpperCase())}</div></div></div>`:'<div class="pd"></div>';
-  const rows=rest.map((p,i)=>`<div class="row in" style="--i:${i+3}"><span class="pos">${esc(p.rank)}</span>${avat(p,2.8,false,kid)}<span class="nm"><span class="tx">${esc(p.name)}</span>${tags(p,aud,false)}</span><span class="n">${count(p.points)}</span></div>`).join('');
+  const pd=(p,cls,h,i)=>p?`<div class="pd ${cls}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}${avat(p,cls==='p1'?6.6:5.4,true,kid)}<div class="nm">${esc(p.name)}</div>${beltSVG(p.belt,p.degree,240,'bmini')}</div><div class="blk" style="height:${h}%;animation-delay:${i*90}ms"><div class="n">${count(p.points)}</div><div class="u">POINTS</div><div class="pl">${esc(ord(p.rank).toUpperCase())}</div></div></div>`:'<div class="pd"></div>';
+  const rows=rest.map((p,i)=>`<div class="row wb in" style="--i:${i+3}"><span class="pos">${esc(p.rank)}</span>${avat(p,2.8,false,kid)}<span class="nm"><span class="tx">${esc(p.name)}</span>${tags(p,aud,false)}</span>${beltSVG(p.belt,p.degree,200,'belt')}<span class="n">${count(p.points)}</span></div>`).join('');
   return `<div class="race"><div class="podium">${pd(t[1],'p2',40,1)}${pd(t[0],'p1',52,0)}${pd(t[2],'p3',30,2)}</div><div class="list">${rows}</div></div>`;
 }
 function chaseTitle(c){
@@ -510,7 +522,7 @@ function sChase(aud){
   const kid=aud==='kids',a=c.a,b=c.b,gap=r2(c.gap);
   const la=c.kind==='first'?(c.place>1?ord(c.place).toUpperCase():'LEADER'):(ord(c.place).toUpperCase()+(c.prize?' PRIZE':''));
   const lb=c.kind==='first'&&c.place===1?'CHALLENGER':'CHASING';
-  const nameBlock=p=>{if(kid)return esc(p.name);const w=String(p.name||'').split(' ');return `<span>${esc(w[0])}</span>${esc(w.slice(1).join(' '))}`;};
+  const nameBlock=p=>{if(isMinor(p,kid))return esc(p.name);const w=String(p.name||'').split(' ');return `<span>${esc(w[0])}</span>${esc(w.slice(1).join(' '))}`;};
   const ftr=(p,side,lab,i)=>`<div class="ftr ${side} in" style="--i:${i}"><div class="corner">${esc(lab)}</div>${avat(p,11,false,kid)}<div class="fn">${nameBlock(p)}</div>${beltSVG(p.belt,p.degree,240,'bfo')}${p.staff?'<span class="tag staff">STAFF</span>':''}</div>`;
   const rows=[['POINTS',a.points,b.points],['CLASSES',a.classes,b.classes],['LAST 7 DAYS',a.week||0,b.week||0]];
   const tape=rows.map(x=>`<div class="trw"><div class="l${r2(x[1])>r2(x[2])?' win':''}">${esc(fmt(x[1]))}</div><div class="m">${x[0]}</div><div class="r${r2(x[2])>r2(x[1])?' win':''}">${esc(fmt(x[2]))}</div></div>`).join('');
@@ -526,11 +538,11 @@ function sGi(){
   const col=(k,l,rows)=>`<div class="col"><h3 class="in" style="--i:0">${l}</h3>${(rows||[]).map((p,i)=>`<div class="row in${i===0?' first':''}" style="--i:${i+1}"><span class="pos">${i+1}</span>${avat(p,2.8,false,false)}<span class="nm"><span class="tx">${esc(p.name)}</span>${p.staff?'<span class="tag staff">STAFF</span>':''}</span><span class="n">${count(p[k])}</span></div>`).join('')}</div>`;
   return `<div class="two">${col('gi','GI',g.gi)}${col('nogi','NO-GI',g.nogi)}</div>`;
 }
-function sFeed(){
-  const f=(P.feed||[]).slice(0,5);if(!f.length)return '';
+function sFeed(only){
+  const f=(P.feed||[]).filter(x=>!only||x.audience===only).slice(0,5);if(!f.length)return '';
   return `<div class="feed">${f.map((x,i)=>`<div class="fi in" style="--i:${i}">${avat(x,4.2,false,x.audience==='kids')}<div class="w"><b>${esc(x.name)}</b><span>${esc((FEED_W[x.key]||x.label||'')+' · '+dowDM(x.date))}</span></div><div class="p">+${esc(fmt(x.points))}</div></div>`).join('')}</div>`;
 }
-function sBattle(){
+function sBattle(only){
   const blk=(aud,i0)=>{
     const arr=(P.battle&&P.battle[aud])||[];if(arr.length<2)return '';
     const h=arr.find(x=>x.here)||arr[0],o=arr.find(x=>x!==h);
@@ -541,7 +553,7 @@ function sBattle(){
       <div class="track in" style="--i:${i0+3}"><i class="trk" style="width:50%" data-w="${pc}"></i></div>
       <div class="fair in" style="--i:${i0+4}"><b>${esc(x===y?'Level':(w?h.unit:o.unit)+' in front')}</b><span>Average per ${who.toLowerCase()} who trained, so size doesn't matter</span></div></div>`;
   };
-  const html=blk('adult',0)+blk('kids',2);
+  const html=(only==='kids'?'':blk('adult',0))+(only==='adult'?'':blk('kids',only==='kids'?0:2));
   return html?`<div class="bt2">${html}</div>`:'';
 }
 function sLast(){
@@ -569,24 +581,25 @@ function sRules(){
   return `<div class="howto"><div class="rl">${rows}</div>${panel}</div>`;
 }
 const SCR={race_adults:()=>sRace('adult'),race_kids:()=>sRace('kids'),chase_adults:()=>sChase('adult'),chase_kids:()=>sChase('kids'),
-  battle:sBattle,rules:sRules,feed:sFeed,gi_nogi:sGi,last_results:sLast};
+  battle:()=>sBattle(),battle_adults:()=>sBattle('adult'),battle_kids:()=>sBattle('kids'),
+  rules:sRules,feed:()=>sFeed(),feed_adults:()=>sFeed('adult'),gi_nogi:sGi,last_results:sLast};
 function monthName(){const d=pd(isEvent()?today():(comp().period_from||today()));return MFULL[d.getMonth()];}
 function title(s){
   const c=comp();
   if(s==='race_adults'||s==='race_kids')return isEvent()?c.name:monthName()+' race';
   if(s==='chase_adults'||s==='chase_kids')return chaseTitle(P.chase&&P.chase[audOf(s)]);
-  if(s==='battle')return isEvent()?(/cup/i.test(c.name)?'Cup battle':'Challenge battle'):monthName()+' battle';
+  if(/^battle/.test(s))return isEvent()?(/cup/i.test(c.name)?'Cup battle':'Challenge battle'):monthName()+' battle';
   if(s==='rules')return 'How to score';
-  if(s==='feed')return 'Latest points';
+  if(/^feed/.test(s))return 'Latest points';
   if(s==='gi_nogi')return 'Top in Gi and No-Gi';
   if(s==='last_results'){const d=pd(P.last_results.month_start);return MFULL[d.getMonth()]+' race';}
   return '';
 }
 function sub(s){
   const c=comp(),t=today();
-  if(s==='battle'){const u=((P.battle&&P.battle.adult)||[]).map(x=>x.unit);return u.length===2?u[0]+' vs '+u[1]:'';}
+  if(/^battle/.test(s)){const u=((P.battle&&P.battle[s==='battle_kids'?'kids':'adult'])||[]).map(x=>x.unit);return (s==='battle_kids'?'Kids · ':s==='battle_adults'?'Adults · ':'')+(u.length===2?u[0]+' vs '+u[1]:'');}
   if(s==='last_results')return 'Last month';
-  const who=s==='feed'||s==='rules'?'':(s==='gi_nogi'?'Adults':audLabel(audOf(s)));
+  const who=s==='feed'||s==='rules'?'':(s==='gi_nogi'||s==='feed_adults'?'Adults':audLabel(audOf(s)));
   let left;
   if(isEvent()){
     if(isFinal())return (who?who+' · ':'')+'FINAL RESULTS'+(c.finale_on?' · PRIZES '+dowDM(c.finale_on).toUpperCase():'');
@@ -609,7 +622,7 @@ function paint(s){
   stage.querySelectorAll('.scr').forEach(x=>{if(x!==old)x.remove();});
   stage.appendChild(el);
   if(old){old.classList.remove('on');old.classList.add('out');setTimeout(()=>{if(old.parentNode)old.remove();},460);}
-  $('tv').classList.toggle('kids',audOf(s)==='kids'&&s!=='battle'&&s!=='feed'&&s!=='rules'&&s!=='last_results');
+  $('tv').classList.toggle('kids',audOf(s)==='kids');
   void el.offsetWidth;el.classList.add('on');
   requestAnimationFrame(()=>{countUp(el);el.querySelectorAll('.trk').forEach(trk=>setTimeout(()=>{trk.style.width=trk.dataset.w+'%';},500));});
   const t=title(s);
