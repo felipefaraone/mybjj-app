@@ -216,14 +216,15 @@ begin
   end if;
   raise notice 'PASS 10: playlist % = % s', v, n;
 
-  -- 11. between the end and the prizes: final standings, no chase, no rules
+  -- 11. after ends_on (161): the monthly race is the board again and the Cup is
+  -- provisional (no positions until an owner publishes): its "Cup is over" screens
   p := public._tv_payload(scr, '2031-08-01', '10:00');
   select sum((x ->> 'seconds')::int), string_agg(x ->> 'screen', ',') into n, v from jsonb_array_elements(p -> 'playlist') x;
-  if p -> 'competition' ->> 'phase' is distinct from 'final' or p -> 'competition' ->> 'name' <> 'Zz155 Cup'
-     or v like '%chase%' or v like '%rules%' or n <> 90 then
-    raise exception 'FAIL 11: % % (% s)', p -> 'competition', v, n;
+  if p -> 'competition' ->> 'kind' is distinct from 'monthly' or p -> 'cup' ->> 'name' <> 'Zz155 Cup'
+     or p -> 'cup' ->> 'phase' <> 'provisional' or v !~ 'cup_over_' or v ~ 'cup_champions' or n <> 90 then
+    raise exception 'FAIL 11: % / cup % / % (% s)', p -> 'competition', p -> 'cup' ->> 'phase', v, n;
   end if;
-  raise notice 'PASS 11: finale day shows the Cup final standings: % (% s)', v, n;
+  raise notice 'PASS 11: after the end, the monthly race with the provisional Cup screens: % (% s)', v, n;
 
   -- 12. empty feed skipped; last month's results in the first 7 days (monthly)
   p := public._tv_payload(scr, '2031-08-03', '10:00');
