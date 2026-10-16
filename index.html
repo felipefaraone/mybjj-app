@@ -9288,7 +9288,7 @@ ${rows}${empty}
 // "Challenge" (an event, e.g. the Christmas Cup), "Monthly" (the always-on board).
 // Boards follow the unit picked at the top of the app (S.unit); the member's own
 // card always shows their HOME division; kids stay on their home unit.
-const LB_BOARD={},LB_STAND={},LB_BATTLE={},LB_RULES={},LB_DIVS={},LB_COMPS={},LB_CATALOG={};
+const LB_BOARD={},LB_STAND={},LB_BATTLE={},LB_RULES={},LB_DIVS={},LB_COMPS={},LB_CATALOG={},LB_CHAMPS={};
 // One cache rule for every leaderboard source, the same as the Phase B caches:
 // fresh for a minute, a failed load retried after 10 s, and while a refresh runs
 // the last good entry (prev) keeps answering. Returns {data} or null (first load).
@@ -9317,8 +9317,42 @@ function _lbBoardFor(unitDbId,date){
   if(!unitDbId||!date)return null;
   const e=_lbGet(LB_BOARD,unitDbId+'|'+date,()=>_lbRpc('competition_for_date',{p_unit:unitDbId,p_date:date}));
   if(!e)return null;
-  return {comp:(Array.isArray(e.data)?e.data[0]:e.data)||null};
+  let comp=(Array.isArray(e.data)?e.data[0]:e.data)||null;
+  // 161: once an event has ended nothing is a result until an owner publishes
+  // it, and the monthly race is the board again (competition_for_date still
+  // returns the event through its prizes day). Its closure has its own card.
+  if(comp&&comp.kind==='event'&&comp.ends_on&&comp.ends_on<date){
+    const mon=(_lbComps()||[]).find(c=>c&&c.kind==='monthly'&&c.status==='active');
+    if(!mon)return _lbComps()?{comp:null}:null;
+    comp=mon;
+  }
+  return {comp};
 }
+// 161: the event that has just ended at a unit: provisional (not published),
+// or published and still inside its results window (results_until, default the
+// last day of the month after ends_on), until another event starts there.
+function _lbResultsUntil(c){
+  if(!c)return null;
+  if(c.results_until)return c.results_until;
+  const d=_parseISODate(c.ends_on);return d?dk(new Date(d.getFullYear(),d.getMonth()+2,0)):null;
+}
+function _lbClosing(unitDbId,today){
+  const comps=_lbComps();if(!comps||!unitDbId)return null;
+  const ended=comps.filter(c=>c&&c.kind==='event'&&c.status!=='draft'&&c.ends_on&&c.ends_on<today)
+    .slice().sort((a,b)=>String(b.ends_on).localeCompare(String(a.ends_on)));
+  for(const c of ended){
+    const divs=_lbDivs(c.id);if(!divs)return null;
+    if(!divs.some(d=>d.unit_id===unitDbId))continue;
+    const next=comps.some(x=>x&&x.id!==c.id&&x.kind==='event'&&x.status!=='draft'&&x.starts_on>c.ends_on&&x.starts_on<=today);
+    if(next)return null;
+    if(c.published_at&&today>(_lbResultsUntil(c)||'')){return null;}
+    return c;
+  }
+  return null;
+}
+const _lbOrd=n=>{const v=Number(n)||0;return v+((v%100>=11&&v%100<=13)?'th':({1:'st',2:'nd',3:'rd'}[v%10]||'th'));};
+const _lbEndedOf=c=>c&&c.kind==='event'&&c.ends_on&&c.ends_on<dk(TODAY);
+const _lbProvisional=c=>_lbEndedOf(c)&&!c.published_at;
 // The scoring period of a board: a challenge is its own dates (null/null lets the
 // server clamp), a monthly board is the calendar month of `date`.
 function _lbPeriodOf(comp,date){
@@ -9350,7 +9384,7 @@ function _lbDivs(compId){
 }
 // Every competition the viewer may read (RLS: drafts for owners only).
 function _lbComps(){
-  const e=_lbGet(LB_COMPS,'all',()=>_lbSelect(initSupabase().from('competitions').select('id,name,kind,status,starts_on,ends_on,finale_on,prizes,created_at').order('starts_on',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false})));
+  const e=_lbGet(LB_COMPS,'all',()=>_lbSelect(initSupabase().from('competitions').select('id,name,kind,status,starts_on,ends_on,finale_on,prizes,created_at,published_at,results_until').order('starts_on',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false})));
   return e?(e.data||[]):null;
 }
 function _lbCatalog(){
@@ -9569,7 +9603,7 @@ function _lbPeriodOptions(cur,today){
   const d=_parseISODate(today);
   groups.push({label:'Now',opts:[{key:'cur',label:cur.kind==='event'?cur.name:MFULL[d.getMonth()]}]});
   const comps=_lbComps()||[];
-  const past=comps.filter(c=>c.kind==='event'&&c.status!=='draft'&&c.starts_on&&c.starts_on<=today&&c.ends_on&&c.ends_on<today&&c.id!==cur.id)
+  const past=comps.filter(c=>c.kind==='event'&&c.status!=='draft'&&c.starts_on&&c.starts_on<=today&&c.ends_on&&c.ends_on<today&&c.id!==cur.id&&(c.published_at||isStaffOrOwner()))
     .slice().sort((a,b)=>String(b.ends_on).localeCompare(String(a.ends_on)));
   if(past.length)groups.push({label:'Past challenges',opts:past.map(c=>({key:'e:'+c.id,label:c.name}))});
   const monthly=comps.find(c=>c.kind==='monthly'&&c.status==='active');
@@ -9582,9 +9616,16 @@ function _lbPeriodOptions(cur,today){
 }
 function setLbPeriod(v){S.lbPeriod=v||'cur';S.lbShowAll=false;render();}
 // Resolve the board the list shows: {comp, from, to} for the picked period.
+// 161: the picked board, or by default the published event's final board while
+// its results show (else the current board). One key for the list and the select.
+function _lbPeriodKey(scope,today){
+  if(S.lbPeriod)return S.lbPeriod;
+  const cl=_lbClosing(scope.unit,today);
+  return (cl&&cl.published_at)?'e:'+cl.id:'cur';
+}
 function _lbBoardComp(scope,today){
   const b=_lbBoardFor(scope.unit,today);if(!b)return null;
-  const key=S.lbPeriod||'cur';
+  const key=_lbPeriodKey(scope,today);
   if(key.indexOf('m:')===0){
     const parts=key.split(':');const mid=parts[1];const ym=parts[2];
     const comps=_lbComps()||[];const c=comps.find(x=>x.id===mid);
@@ -9625,18 +9666,21 @@ function _lbIdentity(r){
 // name on one line with ellipsis, bb(...) belt exactly as People) with the rank
 // on the left and the points on the right. The name gives way first.
 function _lbRowHtml(r,comp,mine,first){
-  const id=_lbIdentity(r);
+  // 161: a published board's hidden prize winner (no id): Anonymous, no photo,
+  // no belt, no tap. Prize badges only once an ended event is published.
+  const anon=!r.student_id&&r.display_name==='Anonymous';
+  const id=anon?{s:null,st:null,tap:''}:_lbIdentity(r);
   const minor=_lbRowMinor(r,id.s);
   // a minor's avatar is initials on the belt colour, never a photo (avStu's kids rule)
   const prog=minor?'kids':'adult';
   const fallback={name:r.display_name||'',initials:(String(r.display_name||'').split(/\s+/).map(w=>w[0]||'').slice(0,2).join('')||'?').toUpperCase(),photoUrl:minor?null:(r.photo_url||null),belt:r.belt||'',prog};
-  const av=id.st?avStaff(id.st,40):avStu(id.s?(minor?Object.assign({},id.s,{prog:'kids',photoUrl:null}):id.s):fallback,40);
-  const places=_lbPlaces(comp);
+  const avh=anon?av('?','',40):(id.st?avStaff(id.st,40):avStu(id.s?(minor?Object.assign({},id.s,{prog:'kids',photoUrl:null}):id.s):fallback,40));
+  const places=_lbProvisional(comp)?0:_lbPlaces(comp);
   const badges=(r.prize_rank&&places&&r.prize_rank<=places?_lbBadge(_lbPlaceLabel(comp,r.prize_rank),'blue'):'')
     +(r.prize_eligible===false?_lbBadge('STAFF'):'');
   return '<div '+(id.tap?id.tap+' ':'')+'style="display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:60px'+(first?'':';border-top:1px solid var(--border)')+(mine?';background:var(--blue-tint)':'')+(id.tap?';cursor:pointer':'')+'">'
     +'<div style="width:22px;flex-shrink:0;text-align:right;font-family:Barlow Condensed,sans-serif;font-size:16px;font-weight:700;color:var(--text2)">'+escHtml(String(r.rank))+'</div>'
-    +av
+    +avh
     // two lines: the name alone (full width), then the belt and the badges under it
     +'<div style="flex:1;min-width:0">'
       +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.display_name||'')+'</div>'
@@ -9656,7 +9700,7 @@ function _rLbBoard(){
   // The board says WHICH board it is: the period select is the title (house
   // filter select), followed by its CHALLENGE / MONTHLY badge.
   const groups=bc&&bc.cur?_lbPeriodOptions(bc.cur,today):[];
-  const selKey=S.lbPeriod||'cur';
+  const selKey=_lbPeriodKey(scope,today);
   const sel=groups.length
     ?_selWrap('<select class="mfilt-sel" onchange="setLbPeriod(this.value)" aria-label="Board">'
       +groups.map(g=>'<optgroup label="'+escAttr(g.label)+'">'+g.opts.map(o=>'<option value="'+escAttr(o.key)+'"'+(selKey===o.key?' selected':'')+'>'+escHtml(o.label)+'</option>').join('')+'</optgroup>').join('')
@@ -9717,8 +9761,19 @@ function _rLbOwner(){
   const comps=_lbComps();
   const add='<button class="badd" style="margin-top:4px;margin-bottom:12px" onclick="openLbEdit(null)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New challenge</button>';
   if(!comps)return add;
-  const live=comps.filter(c=>c.kind==='event'&&(c.status==='draft'||(c.status==='active'&&today<=(_lbPrizeDay(c)||c.ends_on))));
-  return add+live.map(c=>{
+  const live=comps.filter(c=>c.kind==='event'&&(c.status==='draft'||(c.status==='active'&&today<=c.ends_on)));
+  // 161: an event that has ended and is not published waits for the owner
+  const ended=comps.filter(c=>c.kind==='event'&&c.status!=='draft'&&c.ends_on&&c.ends_on<today&&!c.published_at);
+  return add+ended.map(c=>{
+    const divs=_lbDivs(c.id)||[];
+    return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--blue);margin-bottom:6px">'+escHtml('ENDED '+_lbDM(c.ends_on).toUpperCase()+' · NOT PUBLISHED')+'</div>'
+      +'<div class="ev-head"><div class="ev-t ev-t-hero">'+escHtml(c.name)+'</div>'+_lbKindBadge(c)+'</div>'
+      +'<div style="font-size:13px;color:var(--text2);margin-top:4px">'+escHtml(_lbDM(c.starts_on)+' to '+_lbDM(c.ends_on)+(divs.length?' · '+divs.length+' group'+(divs.length===1?'':'s'):''))+'</div>'
+      +'<div class="ev-part" style="font-size:13.5px;color:var(--text2);line-height:1.45">Members and the gym TVs show "Final results coming soon". Nobody sees a winner until you publish. Classes marked late still count until then.</div>'
+      +'<div class="ev-acts"><button class="ev-btn is-comp" data-id="'+escAttr(c.id)+'" onclick="openLbReview(this.dataset.id)">Review results</button></div>'
+    +'</div>';
+  }).join('')+live.map(c=>{
     const isDraft=c.status==='draft';
     const divs=_lbDivs(c.id)||[];
     const rules=_lbRules(c.id)||[];
@@ -9873,6 +9928,124 @@ async function confirmLbActivate(){
     showSaveToast2('Challenge activated');
   }catch(e){
     if(S.lbActivate){S.lbActivate.busy=false;S.lbActivate.err=String((e&&e.message)||e);}
+    render();
+  }
+}
+// ── 161: Review results and Publish (owner) ────────────────────────────────
+// competition_review gives, per division, the prize places, the staff above who
+// were skipped, hidden members and any tie still equal at a prize boundary; the
+// owner settles each tie (one of them, or both) and publishes. Final.
+async function openLbReview(id){
+  if(!isOwner())return;
+  S.lbReview={id,loading:true,rows:[],ties:{},busy:false,err:''};render();
+  try{
+    const rows=await _lbRpc('competition_review',{p_competition:id});
+    if(!S.lbReview||S.lbReview.id!==id)return;
+    S.lbReview.rows=rows||[];S.lbReview.loading=false;render();
+  }catch(e){S.lbReview=null;render();showSaveToast2(_compErr(e),'error');}
+}
+function closeLbReview(){if(S.lbReview&&S.lbReview.busy)return;S.lbReview=null;S.lbPublish=null;render();}
+function lbReviewTie(key,choice){const m=S.lbReview;if(!m||m.busy)return;m.ties[key]=choice;render();}
+// The rows of one division, grouped for the page.
+function _lbReviewGroups(rows){
+  const by={};const order=[];
+  (rows||[]).forEach(r=>{if(!by[r.division_id]){by[r.division_id]={label:r.division_label,aud:r.audience,places:r.places,rows:[]};order.push(r.division_id);}by[r.division_id].rows.push(r);});
+  return order.map(id=>Object.assign({id},by[id]));
+}
+function _lbReviewTies(rows){
+  const ties={};
+  (rows||[]).filter(r=>r.tie_unresolved).forEach(r=>{const k=r.division_id+'|'+r.prize_rank;(ties[k]=ties[k]||{key:k,division_id:r.division_id,prize_rank:r.prize_rank,label:r.division_label,rows:[]}).rows.push(r);});
+  return Object.keys(ties).map(k=>ties[k]);
+}
+const _lbRevName=r=>r.minor?(r.display_name||''):(r.real_name||r.display_name||'');
+function rLbReviewPage(){
+  const m=S.lbReview;if(!m||!isOwner())return '';
+  const c=(_lbComps()||[]).find(x=>x.id===m.id);
+  const close='<button class="cpg-x" onclick="closeLbReview()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+  const head='<div class="cpg-head"><div class="cpg-title">Review results</div>'+close+'</div>';
+  if(m.loading)return '<div class="cov cov-page"><div class="csheet">'+head+'<div class="cpg-body"><div style="font-size:13px;color:var(--text3);padding:16px">Loading…</div></div></div></div>';
+  const btn='flex:1;width:auto;min-width:0;height:var(--ctrl-h);padding:0 12px;border-radius:10px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;cursor:pointer';
+  const ties=_lbReviewTies(m.rows);
+  const revRow=(place,r,note)=>'<div class="erow" style="gap:10px">'
+    +'<div style="width:34px;flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text2)">'+escHtml(place)+'</div>'
+    +avStu({name:_lbRevName(r),initials:(_lbRevName(r).split(/\s+/).map(w=>w[0]||'').slice(0,2).join('')||'?').toUpperCase(),belt:r.belt||'',prog:r.minor?'kids':'adult',photoUrl:null},34)
+    +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(_lbRevName(r))+'</div>'
+    +(note?'<div style="font-size:12px;color:var(--text3);margin-top:1px">'+escHtml(note)+'</div>':'')+'</div>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text)">'+escHtml(_compPts(r.points))+'</div></div>';
+  let body='<div style="font-size:13px;color:var(--text2);line-height:1.45;margin:0 4px 14px">'+escHtml((c?c.name+', ':'')+'final points. Ties are broken by more classes, then by who got there first. Staff stay on the board but never take a prize.')+'</div>';
+  _lbReviewGroups(m.rows).forEach(g=>{
+    const prize=g.rows.filter(r=>r.prize_eligible&&r.prize_rank&&r.prize_rank<=g.places).sort((a,b)=>(a.prize_rank-b.prize_rank)||(a.rank-b.rank));
+    const staff=g.rows.filter(r=>!r.prize_eligible);
+    let prevRank=0;
+    const rowsHtml=prize.map(r=>{
+      const notes=[];
+      const skipped=staff.filter(x=>x.rank<r.rank&&x.rank>prevRank);prevRank=r.rank;
+      skipped.forEach(x=>notes.push(_lbRevName(x)+' has '+_compPts(x.points)+' but is staff'));
+      if(r.leaderboard_hidden)notes.push('Hidden on the board · shows as Anonymous');
+      if(r.tie_unresolved)notes.push('Tied, see below');
+      return revRow(_lbOrd(r.prize_rank),r,notes.join(' · '));
+    }).join('');
+    const tieHtml=ties.filter(t=>t.division_id===g.id).map(t=>{
+      const names=t.rows.map(_lbRevName);
+      const r0=t.rows[0];
+      const who=names.length===2?names[0]+' and '+names[1]:names.slice(0,-1).join(', ')+' and '+names[names.length-1];
+      const sel=m.ties[t.key];
+      const b=(label,val)=>'<button class="ev-btn'+(sel===val?' is-on-comp':'')+'" data-k="'+escAttr(t.key)+'" data-v="'+escAttr(val)+'" onclick="lbReviewTie(this.dataset.k,this.dataset.v)">'+escHtml(label)+'</button>';
+      return '<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:12px;padding:12px 14px;margin:0 0 10px">'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--amber-text)">'+escHtml('Tie for '+_lbOrd(t.prize_rank)+' prize')+'</div>'
+        +'<div style="font-size:12.5px;color:var(--amber-text);margin-top:4px;line-height:1.45">'+escHtml(who+' have '+_compPts(r0.points)+' points, '+r0.classes_count+' classes and '+(names.length===2?'both':'all')+' last scored on '+_lbDM(r0.last_scored_on)+'. Pick who takes '+_lbOrd(t.prize_rank)+', or give '+(names.length===2?'both':'all of them')+' a prize.')+'</div>'
+        +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+t.rows.map(r=>b(_lbRevName(r),r.student_id)).join('')+b(names.length===2?'Both':'All','both')+'</div></div>';
+    }).join('');
+    body+='<div class="slbl" style="margin:16px 4px 8px">'+escHtml(g.label)+'</div>'
+      +(rowsHtml?'<div class="ef">'+rowsHtml+'</div>':'<div style="font-size:13px;color:var(--text3);margin:0 4px 10px">Nobody scored.</div>')+tieHtml;
+  });
+  if(m.err)body+='<div style="font-size:12.5px;color:var(--red-text);margin:12px 4px 0">'+escHtml(m.err)+'</div>';
+  return '<div class="cov cov-page"><div class="csheet">'+head
+    +'<div class="cpg-body">'+body+'</div>'
+    +'<div class="cpg-foot"><button onclick="closeLbReview()"'+(m.busy?' disabled':'')+' style="'+btn+';background:transparent;border:1px solid var(--border);color:var(--text2)">Not yet</button>'
+      +'<button class="bblue" onclick="openLbPublish()"'+(m.busy?' disabled':'')+' style="'+btn+';border:1px solid var(--blue)">Publish results</button></div>'
+  +'</div></div>';
+}
+function openLbPublish(){
+  const m=S.lbReview;if(!m||m.busy||!isOwner())return;
+  const open=_lbReviewTies(m.rows).filter(t=>!m.ties[t.key]);
+  if(open.length){m.err='Settle the tie for '+open.map(t=>t.label+' '+_lbOrd(t.prize_rank)).join(', ')+' first.';render();return;}
+  m.err='';S.lbPublish={busy:false,err:''};render();
+}
+function closeLbPublish(){if(S.lbPublish&&S.lbPublish.busy)return;S.lbPublish=null;render();}
+function rLbPublishSheet(){
+  const m=S.lbReview,q=S.lbPublish;if(!m||!q||!isOwner())return '';
+  const c=(_lbComps()||[]).find(x=>x.id===m.id);if(!c)return '';
+  const p='<div style="font-size:13.5px;color:var(--text2);line-height:1.45;margin-top:10px">';
+  const btn='flex:1;width:auto;min-width:0;height:var(--ctrl-h);padding:0 12px;border-radius:10px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;cursor:pointer';
+  // above the Review results page (.cov is 300)
+  return '<div class="cov" onclick="closeLbPublish()" style="align-items:flex-end;z-index:310">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">'+escHtml('Publish '+c.name+' results?')+'</div>'
+      +p+'Everyone who scored gets their final position in the app. Parents get their kids\' results.</div>'
+      +p+escHtml('The Wall shows the adult champions of each gym, and the gym TVs show the champions until '+_lbDM(_lbResultsUntil(c))+'.')+'</div>'
+      +p+'The results are final. Classes marked after this don\'t change them.</div>'
+      +(q.err?'<div style="font-size:12.5px;color:var(--red-text);margin-top:12px">'+escHtml(q.err)+'</div>':'')
+      +'<div style="display:flex;gap:10px;margin-top:16px">'
+        +'<button onclick="closeLbPublish()"'+(q.busy?' disabled':'')+' style="'+btn+';background:transparent;border:1px solid var(--border);color:var(--text2)">Cancel</button>'
+        +'<button class="bblue" onclick="confirmLbPublish()"'+(q.busy?' disabled':'')+' style="'+btn+';border:1px solid var(--blue)">'+(q.busy?'Publishing…':'Publish')+'</button>'
+      +'</div>'
+    +'</div></div>';
+}
+async function confirmLbPublish(){
+  const m=S.lbReview,q=S.lbPublish;if(!m||!q||q.busy||!isOwner())return;
+  q.busy=true;q.err='';m.busy=true;render();
+  try{
+    const ties=_lbReviewTies(m.rows).map(t=>{const v=m.ties[t.key];return v==='both'?{division_id:t.division_id,prize_rank:t.prize_rank,both:true}:{division_id:t.division_id,prize_rank:t.prize_rank,winner:v};});
+    await _lbRpc('competition_publish',{p_competition:m.id,p_ties:ties});
+    const chk=await _lbSelect(initSupabase().from('competitions').select('id,published_at').eq('id',m.id).maybeSingle());
+    if(!chk||!chk.published_at)throw new Error('publish not confirmed');
+    _lbInvalidate();Object.keys(LB_CHAMPS).forEach(k=>{delete LB_CHAMPS[k];});
+    S.lbPublish=null;S.lbReview=null;render();
+    showSaveToast2('Results published');
+  }catch(e){
+    if(S.lbPublish){S.lbPublish.busy=false;S.lbPublish.err=_compErr(e);}
+    if(S.lbReview)S.lbReview.busy=false;
     render();
   }
 }
@@ -10087,7 +10260,52 @@ function _lbVisible(){
 }
 // ── the tab ───────────────────────────────────────────────────────────────
 function rLeaderboard(){
-  return _rLbOwner()+_rLbMemberCard()+_rLbBoard();
+  return _rLbOwner()+_rLbClosingCard()+_rLbMemberCard()+_rLbBoard();
+}
+// 161: the member's card for the event that has just ended at their home unit:
+// "Final results coming soon" until an owner publishes, then their final spot
+// (a prize winner's card takes their belt colour, like a belt promotion).
+function _rLbClosingCard(){
+  const p=_lbPerson();if(!p||!p.s||!p.s._dbId)return '';
+  const today=dk(TODAY);
+  const home=_lbHomeUnit(p.s);if(!home)return '';
+  const c=_lbClosing(home,today);if(!c)return '';
+  if(!c.published_at&&isOwner())return '';                 // the owner has the review card
+  const eye='font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:6px;color:';
+  const dates=_lbDM(c.starts_on)+' to '+_lbDM(c.ends_on);
+  if(!c.published_at){
+    const aud=_lbAudOf(p.s,null);
+    return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
+      +'<div style="'+eye+'var(--blue)">'+escHtml('ENDED '+_lbDM(c.ends_on).toUpperCase())+'</div>'
+      +'<div class="ev-head"><div class="ev-t ev-t-hero">'+escHtml(c.name)+'</div>'+_lbKindBadge(c)+'</div>'
+      +'<div style="font-size:13px;color:var(--text2);margin-top:4px">'+escHtml(dates+' · '+_lbDivName(home,aud))+'</div>'
+      +'<div class="ev-part"><div style="font-size:14px;color:var(--text)">Final results coming soon.</div>'
+      +'<div style="font-size:12.5px;color:var(--text3);margin-top:4px">The coaches are checking the last classes. You\'ll get a notification with '+(p.self?'your':escHtml(_lbFirst(p.s.firstName||p.s.name))+'\'s')+' spot.</div></div>'
+    +'</div>';
+  }
+  const rows=_lbStandings(c.id,null,null);if(!rows)return '';
+  const me=_lbMyRow(rows,p);if(!me||!(Number(me.points)>0))return '';
+  const places=_lbPlaces(c);
+  const prize=me.prize_eligible!==false&&me.prize_rank&&me.prize_rank<=places;
+  const minor=_lbRowMinor(me,p.s);const prog=minor?'kids':'adult';
+  const first=_lbFirst(p.s.firstName||p.s.name);
+  const spotK=p.self?'Your spot':(first.toUpperCase()+'\'S SPOT');
+  const line=prize
+    ?(p.self?'You won '+_lbOrd(me.prize_rank)+' prize. Congratulations, the team will be in touch about it.':first+' won '+_lbOrd(me.prize_rank)+' prize. Well done '+first+'!')
+    :(me.prize_eligible===false?'Staff don\'t win prizes. Thanks for leading the way.':'Thanks for training. See you at the next challenge.');
+  const src=[['Classes',me.class_points],['Bonus',me.award_points],['Friends',me.referral_points]].filter(x=>Number(x[1])>0).map(x=>x[0]+' '+_compPts(x[1])).join(' · ');
+  const _fix={white:'#B8BEC7',black:'#374151'};
+  const tint=prize?_tintClassFor(me.belt||'',prog):'';
+  const base=String(me.belt||'').split('/')[0];
+  const border=prize&&me.belt?';border:1.5px solid '+(_fix[base]||beltDef(me.belt,prog).bg):'';
+  return '<div class="card'+(tint?' '+tint:'')+'" style="margin-bottom:12px;padding:14px 16px'+border+'">'
+    +'<div style="'+eye+(prize?'var(--text)':'var(--blue)')+'">'+escHtml('FINAL RESULTS'+(prize?' · '+_lbOrd(me.prize_rank).toUpperCase()+' PRIZE':''))+'</div>'
+    +'<div class="ev-head"><div class="ev-t ev-t-hero">'+escHtml(c.name)+'</div>'+(prize?'':_lbKindBadge(c))+'</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-top:4px">'+escHtml(dates+' · '+_lbDivName(home,me.audience))+'</div>'
+    +'<div class="ev-part"><div class="ev-stats">'+_lbStat(spotK,'#'+me.rank)+_lbStat('Points',_compPts(me.points))+_lbStat('Classes',String(me.classes_count||0))+'</div>'
+    +'<div style="font-size:14px;color:var(--text);margin-top:12px">'+escHtml(line)+'</div>'
+    +(src&&!prize?'<div style="font-size:12px;color:var(--text3);margin-top:4px">'+escHtml(src)+'</div>':'')+'</div>'
+  +'</div>';
 }
 
 function rMembers(){
@@ -10547,6 +10765,15 @@ function rCommunityWall(){
     .filter(r=>r.po.kind!=='milestone'||!!r.stu);
   const _welcomeJoinById={};
   welcomes.forEach(w=>{ if(w.s&&w.s.id)_welcomeJoinById[w.s.id]=w.s._createdAt; });
+  // 161: one champions card per published event and ADULT division of this unit
+  // (competition_champions never returns kids); same unit rule and 12-month
+  // window as the promotions.
+  // Nothing competition-related is fetched before the Leaderboard is visible.
+  const _champE=_lbVisible()?_lbGet(LB_CHAMPS,'all',()=>_lbRpc('competition_champions',{})):null;
+  const _champBy={};
+  ((_champE&&_champE.data)||[]).filter(r=>r&&(!curUnitDb||r.unit_id===curUnitDb)&&r.published_at&&new Date(r.published_at)>=_wallCutoff)
+    .forEach(r=>{(_champBy[r.division_id]=_champBy[r.division_id]||{kind:'champions',key:r.division_id,name:r.competition_name,label:r.division_label,date:r.published_at,rows:[]}).rows.push(r);});
+  const _champRows=Object.keys(_champBy).map(k=>_champBy[k]);
   // Interleave promotions + welcomes into one feed, newest first.
   const feed=eligible
     .filter(e=>{
@@ -10564,6 +10791,7 @@ function rCommunityWall(){
     .map(e=>({kind:'promo',p:e.p,s:e.s,date:e.p.date}))
     .concat(welcomes)
     .concat(_wallPostRows)
+    .concat(_champRows)
     .sort((a,b)=>new Date(b.date)-new Date(a.date));
   const _wallShown=S.wallShown||5;
   const rows=feed.slice(0,_wallShown);
@@ -10596,6 +10824,7 @@ function rCommunityWall(){
   const promoIds=rows.filter(r=>r.kind==='promo'&&r.p).map(r=>r.p._dbId)
     .concat(rows.filter(r=>r.kind==='welcome'&&r.s).map(r=>r.s._dbId))
     .concat(rows.filter(r=>r.kind==='post'&&r.po).map(r=>r.po.id))
+    .concat(rows.filter(r=>r.kind==='champions').map(r=>r.key))
     .filter(Boolean);
   _ensureWallReactions(promoIds);
   const beltLabel=k=>(BA[k]||BK[k]||{label:k}).label;
@@ -10610,6 +10839,33 @@ function rCommunityWall(){
     ?'<button onclick="event.stopPropagation();'+call+'" title="Hide from Wall" aria-label="Hide from Wall" style="position:absolute;top:6px;right:6px;z-index:2;width:28px;height:28px;border:none;background:none;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>'
     :'');
   const cards=rows.map(item=>{
+    if(item.kind==='champions'){
+      // 161: the frame of a belt promotion card (border), Oss like a promotion.
+      // A hidden winner is Anonymous with no photo and no belt.
+      const row=r=>{
+        const st=!r.anonymous&&r.student_id?STUDENTS.find(x=>x&&x._dbId===r.student_id):null;
+        const ini=String(r.display_name||'').split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase()||'?';
+        const avh=r.anonymous?av('?','',34):avStu(st&&!r.minor?st:{name:r.display_name,initials:ini,belt:r.belt||'',prog:r.minor?'kids':'adult',photoUrl:null},34);
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">'
+          +'<div style="width:30px;flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2)">'+escHtml(_lbOrd(r.place))+'</div>'
+          +avh
+          +'<div style="flex:1;min-width:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.anonymous?'Anonymous':r.display_name)+'</div>'
+          +(!r.anonymous&&r.belt?'<div style="flex-shrink:0">'+beltSVG(r.belt,r.degree||0,r.minor?'kids':'adult',56)+'</div>':'')
+          +'<div style="flex-shrink:0;min-width:26px;text-align:right;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+escHtml(_compPts(r.points))+'</div></div>';
+      };
+      const pub=String(item.date||'');
+      const pubDay=pub?new Date(pub).toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'}):'';
+      return '<div class="card" style="margin-bottom:8px;padding:0;border:1.5px solid var(--amber)">'
+        +'<div style="padding:14px 14px 6px">'
+          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1">'+escHtml(item.name+' · Champions')+'</div>'
+          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-top:4px">'+escHtml(item.label||'')+'</div>'
+          +(pubDay?'<div style="font-size:11px;color:var(--text3);margin-top:4px">'+escHtml(_lbDowDM(pubDay))+'</div>':'')
+        +'</div>'
+        +'<div style="padding:0 14px 6px">'+item.rows.slice().sort((a,b)=>(a.place-b.place)||String(a.display_name).localeCompare(String(b.display_name))).map(row).join('')+'</div>'
+        +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'+_ossControlHtml(item.key,'champions')+'</div>'
+      +'</div>';
+    }
     if(item.kind==='post'&&item.po&&item.po.kind==='milestone'){
       // Automatic milestone (50 / 100 classes). Rendered like a PROMOTION card,
       // not like a manual post: it is about a person the way a promotion is, so
@@ -11106,7 +11362,8 @@ async function _ensureWallReactions(ids){
   // 'member' was the missing one: welcome-card ids are already in `ids` (:8776),
   // but this filter dropped their rows, so a welcome card's count came back as
   // zero after every reload even once the tap itself worked.
-  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post','member']).in('target_id',ids);
+  // 161: 'champions' (a Cup champions card, target = the adult division) too
+  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post','member','champions']).in('target_id',ids);
   S.wallReactionsLoading=false;
   if(r&&r.error){
     console.warn('[mybjj] wall_reactions:',r.error);
@@ -14667,7 +14924,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.lbEdit?rLbEditPage():''}${S.lbActivate?rLbActivateSheet():''}${S.lbPosts?rLbPostsModal():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.lbEdit?rLbEditPage():''}${S.lbActivate?rLbActivateSheet():''}${S.lbReview?rLbReviewPage():''}${S.lbPublish?rLbPublishSheet():''}${S.lbPosts?rLbPostsModal():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -21912,7 +22169,7 @@ async function loadNotifications(){
   }catch(e){console.warn('[mybjj] list_my_notifications exception:',e);NOTIFS=[];}
   // A points row deep links to the Leaderboard only while _lbVisible(): warm
   // its cached check now, so the tap does not find it still loading.
-  if(NOTIFS.some(n=>n&&n.type==='competition_points'))_lbVisible();
+  if(NOTIFS.some(n=>n&&(n.type==='competition_points'||n.type==='competition_result')))_lbVisible();
   await refreshUnreadCount();
   render();
 }
@@ -21964,7 +22221,7 @@ function openNotif(id){
   }
   // Phase B1 — feedback / promotion about one of MY kids: make that kid the
   // active profile first, so a parent with several kids lands on the right one.
-  if((t==='feedback_received'||t==='promotion'||t==='competition_points')&&md.student_id&&myKidIds().indexOf(md.student_id)>=0){
+  if((t==='feedback_received'||t==='promotion'||t==='competition_points'||t==='competition_result')&&md.student_id&&myKidIds().indexOf(md.student_id)>=0){
     const k=parentChildren().find(x=>x._dbId===md.student_id);
     if(k&&S.parentChild!==k.id){
       S.parentChild=k.id;
@@ -21985,7 +22242,7 @@ function openNotif(id){
   }
   // Migration 154: points for an award or a referral. The board shows them;
   // while members cannot see it yet the body says it all, so just close.
-  if(t==='competition_points'){
+  if(t==='competition_points'||t==='competition_result'){             // 161: results open the Leaderboard too
     S.inboxOpen=false;
     if(_lbVisible()){openLeaderboard();return;}
     render();return;
