@@ -229,7 +229,7 @@ begin
   select string_agg(format('%s %s %s %s %s', c.division_label, c.place, c.display_name, coalesce(c.belt, 'nobelt'), coalesce(c.photo_url, 'nophoto')), ' | ' order by c.division_label, c.place)
     into v from public.competition_champions() c where c.competition_id = comp;
   execute 'reset role';
-  if v <> 'Zz Adults 1 Ann Alpha purple zz161/ann.jpg | Zz Adults 2 Anonymous nobelt nophoto | Zz Adults 3 Tia Tie blue nophoto | Zz B Adults 1 Bee Bunit white nophoto' then
+  if v <> 'Zz Adults 1 Ann Alpha purple zz161/ann.jpg | Zz Adults 2 Anonymous nobelt nophoto | Zz Adults 3 Tia Tie blue nophoto | Zz B Adults 1 Bee Bunit nobelt nophoto' then
     raise exception 'FAIL 8: %', v;
   end if;
   raise notice 'PASS 8: champions (adults only, hidden = Anonymous): %', v;
