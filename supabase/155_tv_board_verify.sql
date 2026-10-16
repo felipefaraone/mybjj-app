@@ -15,6 +15,7 @@ declare
   s_ann uuid; s_ben uuid; s_cal uuid; s_hid uuid; s_kit uuid; s_lou uuid;
   p jsonb; v text; n int; tok text := encode(sha256('zz155-token-active'::bytea), 'hex');
   tok_off text := encode(sha256('zz155-token-inactive'::bytea), 'hex');
+  ty jsonb;   -- class_exceptions column -> its real type (created outside the repo)
 begin
   select u.id into ua from public.units u order by u.name, u.id limit 1;
   if ua is null then raise exception 'FAIL setup: needs a unit'; end if;
@@ -182,8 +183,31 @@ begin
   end if;
   raise notice 'PASS 9: chase for 2nd (hidden leader keeps 1st; gap 1), gi Ann / no-gi Cal, battle, next class 23:30 Gi · All Levels going: %', v;
 
-  -- 10. playlist: sums to 90, races first, skips what is not true (at midday: no
-  -- class within 30 minutes, so 157's class focus leaves the full playlist)
+  -- Cases 10 to 12 test the full playlist, so no class may be "on" (157 narrows
+  -- the playlist to a Kids or an Adults class running or starting within 30
+  -- minutes). Their days are closed at the fixture unit: a closed day keeps only
+  -- one-off classes and the fixture has none, so neither the real timetable nor
+  -- the fixture class can focus it. Before 157 (or without class_exceptions)
+  -- this changes nothing. Values are cast to the table's real column types.
+  if to_regclass('public.class_exceptions') is not null then
+    select jsonb_object_agg(a.attname, format_type(a.atttypid, a.atttypmod)) into ty
+      from pg_attribute a
+     where a.attrelid = 'public.class_exceptions'::regclass and a.attnum > 0 and not a.attisdropped;
+    select string_agg(a.attname, ', ') into v
+      from pg_attribute a
+     where a.attrelid = 'public.class_exceptions'::regclass and a.attnum > 0 and not a.attisdropped
+       and a.attnotnull and not a.atthasdef and a.attidentity = '' and a.attgenerated = ''
+       and a.attname not in ('unit_id', 'exception_date', 'kind');
+    if v is not null then raise exception 'FAIL setup: class_exceptions has other required columns: %', v; end if;
+    execute format(
+      'insert into public.class_exceptions (unit_id, exception_date, kind)
+       select $1::text::%s, d::text::%s, ''closed''::text::%s
+         from unnest(array[''2031-07-15'', ''2031-08-01'', ''2031-08-03'']) d',
+      ty ->> 'unit_id', ty ->> 'exception_date', ty ->> 'kind')
+    using ua;
+  end if;
+
+  -- 10. playlist: sums to 90, races first, skips what is not true (no class on)
   p := public._tv_payload(scr, '2031-07-15', '12:00');
   select sum((x ->> 'seconds')::int), string_agg(x ->> 'screen', ',' order by o) into n, v
     from jsonb_array_elements(p -> 'playlist') with ordinality t(x, o);
