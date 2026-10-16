@@ -24,6 +24,7 @@ declare
   ua uuid; ub uuid; comp uuid; s_bat uuid; s_nob uuid;
   sa uuid; sk uuid; sb uuid; sl uuid;
   p jsonb; v text; n int; t time; bad text;
+  ty jsonb;   -- class_exceptions column -> its real type (created outside the repo)
 begin
   select u.id into ua from public.units u order by u.name, u.id limit 1;
   select u.id into ub from public.units u order by u.name, u.id offset 1 limit 1;
@@ -62,12 +63,30 @@ begin
                  (sb, date '2031-07-01', ub), (sl, date '2031-07-01', ub)) x(sid, d, u);
   insert into public.competition_awards (student_id, award_key, award_date) values
     (sa, 'social_post', '2031-07-12'), (sk, 'social_post', '2031-07-13');
-  insert into public.class_exceptions (unit_id, exception_date, kind, oneoff_time, oneoff_audience, oneoff_duration_minutes)
-  select u.id, date '2031-07-15', x.kind, x.t, x.aud, x.dur
-    from (values (ua), (ub)) u(id)
-   cross join (values ('closed', null, null, null::int),
-                      ('oneoff', '16:00', 'Kids', 45), ('oneoff', '18:00', 'Adults', 60), ('oneoff', '20:00', 'All', 60),
-                      ('oneoff', '21:30', 'Kids', 30), ('oneoff', '21:30', 'Adults', 30)) x(kind, t, aud, dur);
+  -- class_exceptions was created in production outside the repo: read each
+  -- column's real type and cast every fixture value (staged as text) to it, so
+  -- no column can mismatch; and name any other required column up front.
+  select jsonb_object_agg(a.attname, format_type(a.atttypid, a.atttypmod)) into ty
+    from pg_attribute a
+   where a.attrelid = 'public.class_exceptions'::regclass and a.attnum > 0 and not a.attisdropped;
+  select string_agg(a.attname, ', ') into bad
+    from pg_attribute a
+   where a.attrelid = 'public.class_exceptions'::regclass and a.attnum > 0 and not a.attisdropped
+     and a.attnotnull and not a.atthasdef and a.attidentity = '' and a.attgenerated = ''
+     and a.attname not in ('unit_id', 'exception_date', 'kind', 'oneoff_time', 'oneoff_audience', 'oneoff_duration_minutes');
+  if bad is not null then raise exception 'FAIL setup: class_exceptions has other required columns: %', bad; end if;
+  bad := null;
+  execute format(
+    'insert into public.class_exceptions (unit_id, exception_date, kind, oneoff_time, oneoff_audience, oneoff_duration_minutes)
+     select u.id::text::%s, %L::text::%s, x.kind::%s, x.t::%s, x.aud::%s, x.dur::%s
+       from (values ($1), ($2)) u(id)
+      cross join (values (''closed'', null::text, null::text, null::text),
+                         (''oneoff'', ''16:00'', ''Kids'', ''45''), (''oneoff'', ''18:00'', ''Adults'', ''60''),
+                         (''oneoff'', ''20:00'', ''All'', ''60''),
+                         (''oneoff'', ''21:30'', ''Kids'', ''30''), (''oneoff'', ''21:30'', ''Adults'', ''30'')) x(kind, t, aud, dur)',
+    ty ->> 'unit_id', '2031-07-15', ty ->> 'exception_date', ty ->> 'kind', ty ->> 'oneoff_time',
+    ty ->> 'oneoff_audience', ty ->> 'oneoff_duration_minutes')
+  using ua, ub;
   insert into public.tv_screens (name, unit_id, token_hash, show_battle) values
     ('zz157 battle', ua, encode(sha256('zz157-a'::bytea), 'hex'), true) returning id into s_bat;
   insert into public.tv_screens (name, unit_id, token_hash, show_battle) values
