@@ -21,7 +21,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-:root{--display:'Barlow Condensed','Arial Narrow',sans-serif;--body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;color-scheme:dark}
+:root{--display:'Barlow Condensed','Arial Narrow',sans-serif;--body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;color-scheme:dark;
+  /* each gym keeps its own colour on every TV (158) */
+  --u-nb:#2b6cff;--u-cd:#d62839;--u-other:#6b7a90}
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-family:var(--body)}
 /* ================= TV (single dark broadcast look, colors set explicitly) ================= */
@@ -109,10 +111,6 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .hat{position:absolute;width:4.6cqw;height:auto;left:-.25cqw;top:-1.8cqw;transform:rotate(-10deg);transform-origin:43% 78%;display:none;filter:drop-shadow(0 .15cqw .3cqw rgba(0,0,0,.45))}
 .tv.cup .hat{display:block}
 .gapline em{display:block;font:600 1.4cqw var(--body);font-style:normal;color:rgba(255,255,255,.82);margin-top:.6cqw}
-.chips .ctrack{display:flex;gap:.8cqw;width:max-content}
-.chips .ctrack.run{animation:marq var(--d,30s) linear infinite}
-@keyframes marq{to{transform:translateX(calc(-50% - .4cqw))}}
-.chips.scroll{-webkit-mask-image:linear-gradient(90deg,transparent,#000 5%,#000 93%,transparent);mask-image:linear-gradient(90deg,transparent,#000 5%,#000 93%,transparent)}
 /* champion */
 .lm .champ{background:radial-gradient(circle at 50% 36%,rgba(246,196,83,.42),transparent 58%),repeating-conic-gradient(from 0deg at 50% 36%,rgba(246,196,83,.09) 0 6deg,transparent 6deg 12deg),linear-gradient(170deg,#1d1606,#0b0a07);color:#fff;border:.22cqw solid #d4a537;gap:.45cqw;padding:1.2cqw}
 .lm .champ .crown{width:4.4cqw;height:2.8cqw;margin-bottom:-.6cqw;filter:drop-shadow(0 0 .8cqw rgba(246,196,83,.8))}
@@ -172,11 +170,6 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .mats .lbl .k{font:700 1.15cqw var(--display);letter-spacing:.14cqw;color:rgba(255,255,255,.72)}
 .mats .lbl .n{font:900 3.4cqw/1 var(--display);font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:.8cqw}
 .mats .lbl .n small{font:600 1.15cqw var(--body);color:rgba(255,255,255,.65);order:2}
-.chips{display:flex;gap:.8cqw;overflow:hidden;flex:1;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
-.chip{flex-shrink:0;display:flex;align-items:center;gap:.6cqw;background:rgba(255,255,255,.1);border-radius:999px;padding:.4cqw 1.1cqw .4cqw .4cqw;font-size:1.35cqw;white-space:nowrap;border:1px solid rgba(255,255,255,.12)}
-.chip.soft{opacity:.55;border-style:dashed}
-.chip.new{animation:chipIn 1s cubic-bezier(.2,1.3,.3,1);background:#fff;color:#0a1f45;border-color:#fff}
-@keyframes chipIn{0%{transform:translateY(-3cqw) scale(.4);opacity:0}100%{transform:none;opacity:1}}
 .empty{font-size:1.35cqw;color:rgba(255,255,255,.6)}
 
 /* avatars */
@@ -341,7 +334,6 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
   .scr.on .in,.scr.on .pd .blk,.flash.on .stat,.flash.on .card{animation:none;opacity:1;transform:none}
   .flash.on .sweep{animation:none;transform:none}
   .scr.out{animation:none;visibility:hidden}
-  .chip.new{animation:none}
 }
 /* ---- tv.html: full screen 16:9 (1920x1080, 1280x720, letterboxed otherwise) ---- */
 .tv{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,calc(100vh * 16 / 9));max-width:none;border-radius:0;box-shadow:none}
@@ -366,6 +358,55 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .bt2 .fair{font-size:1.3cqw}
 .bt2 .fair b{font-size:1.8cqw}
 .cls[hidden]{display:none}
+/* 158: Up next (prototype v3 "tonight's class") */
+.roster{display:grid;grid-template-rows:auto 1fr;gap:1.6cqw;height:100%}
+.rhead{display:flex;align-items:center;gap:2.2cqw;min-height:5.4cqw}
+.rh{display:flex;align-items:baseline;gap:1cqw}
+.rh b{font:900 5.4cqw/1 var(--display);font-variant-numeric:tabular-nums}
+.rh b.dim{color:rgba(255,255,255,.55)}
+.rh span{font:800 1.3cqw var(--display);letter-spacing:.2cqw;color:rgba(255,255,255,.78)}
+.rsep{width:1px;height:4cqw;background:rgba(255,255,255,.2)}
+.rcls{margin-left:auto;text-align:right;min-width:0}
+.rcls span{font-size:1.5cqw;color:rgba(255,255,255,.8)}
+.rgrid{display:grid;grid-template-columns:repeat(var(--cols,5),minmax(0,1fr));gap:.9cqw;align-content:start}
+.rp{display:flex;align-items:center;gap:.9cqw;padding:.6cqw .9cqw;border-radius:.9cqw;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);min-width:0}
+.rp .tx{min-width:0;flex:1}
+.rp b{display:block;font-weight:600;font-size:1.4cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp .bm{display:block;width:5.2cqw;height:.9cqw;margin-top:.4cqw;border-radius:.1cqw}
+.rp.exp{background:transparent;border-style:dashed;opacity:.5}
+.rp.more{justify-content:center;font:800 1.6cqw var(--display);letter-spacing:.1cqw;background:transparent}
+.rav{position:relative;flex-shrink:0}
+.ck{position:absolute;right:-.3cqw;bottom:-.3cqw;width:1.5cqw;height:1.5cqw;border-radius:50%;background:#2fbf71;box-shadow:0 0 0 .2cqw var(--g1)}
+.ck::after{content:"";position:absolute;left:.5cqw;top:.26cqw;width:.4cqw;height:.75cqw;border:solid #fff;border-width:0 .2cqw .2cqw 0;transform:rotate(45deg)}
+.roster .empty{grid-column:1 / -1;font-size:2cqw}
+.rgrid.lg{gap:1.2cqw}
+.rgrid.lg .rp{padding:1cqw 1.3cqw;gap:1.3cqw;border-radius:1.1cqw}
+.rgrid.lg .rp b{font-size:1.95cqw}
+.rgrid.lg .rp .bm{width:7.2cqw;height:1.25cqw;margin-top:.5cqw}
+.rgrid.lg .ck{width:1.9cqw;height:1.9cqw}
+.rgrid.lg .ck::after{left:.66cqw;top:.36cqw;width:.5cqw;height:.95cqw}
+/* 158: the bottom bar is one calm line; the names live on Up next */
+.mats{gap:1.4cqw}
+.mats .lbl .k{font:800 1.2cqw/1 var(--display);letter-spacing:.22cqw;color:var(--acc)}
+.mline{display:flex;align-items:baseline;gap:2.4cqw;font-size:1.5cqw;color:rgba(255,255,255,.82);flex:1;min-width:0;white-space:nowrap;overflow:hidden}
+.mline .cnt2 b{font:800 2.6cqw/1 var(--display);color:#fff;margin-right:.6cqw;font-variant-numeric:tabular-nums}
+/* 158: the progress dots sit in the bottom bar, bottom right */
+.dots{bottom:3.9cqw;z-index:2}
+/* 158: battle badges and the bar in each gym's colour */
+.side .un{display:flex;align-items:center;gap:1.1cqw;font:900 2.8cqw/1 var(--display);letter-spacing:.14cqw}
+.side.r .un{justify-content:flex-end}
+.badge{width:4.4cqw;height:4.4cqw;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font:900 1.8cqw/1 var(--display);letter-spacing:.04cqw;color:#fff;box-shadow:0 0 0 .3cqw rgba(255,255,255,.9),0 .6cqw 1.6cqw rgba(0,0,0,.35)}
+.bt2 .side .un{font-size:2.2cqw}
+.bt2 .badge{width:3.4cqw;height:3.4cqw;font-size:1.4cqw}
+.bt2 .track{background:var(--away)}
+.bt2 .track i{background:var(--home)}
+.bt2 .track::after{display:none}
+/* 158: belts next to names */
+.rbelt{display:block;width:4.4cqw;height:.9cqw;border-radius:.08cqw;flex-shrink:0}
+.fbelt{display:block;width:5.4cqw;height:.95cqw;border-radius:.08cqw;margin:.35cqw 0 .3cqw}
+.ibelt{display:block;width:6.4cqw;height:1.05cqw;border-radius:.08cqw;margin-top:.4cqw}
+.cbelt{display:block;width:13cqw;height:1.7cqw;border-radius:.12cqw}
+.mbelt{display:inline-block;vertical-align:middle;width:3.6cqw;height:.75cqw;border-radius:.08cqw;margin-left:.6cqw}
 /* 156: race rows and podium carry the belt (same drawing as the chase screen) */
 .row.wb{grid-template-columns:2.4cqw 2.8cqw 1fr 5.6cqw 5.2cqw}
 .row .belt{display:block;width:5.6cqw;height:1.12cqw;border-radius:.12cqw;box-shadow:0 .1cqw .35cqw rgba(0,0,0,.4)}
@@ -386,8 +427,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
   <div class="stage" id="stage"></div>
   <div class="dots" id="dots"></div>
   <div class="mats">
-    <div class="lbl"><div class="k" id="mK"></div><div class="n" id="mN"></div></div>
-    <div class="chips" id="chips"></div>
+    <div class="lbl"><div class="k" id="mK"></div></div>
+    <div class="mline" id="mLine"></div>
   </div>
   <div class="boot on" id="boot"><img id="bootCrest" alt="myBJJ"><div class="bt">Leaderboard loading</div><div class="bu" id="bootUnit"></div></div>
 </div>
@@ -452,6 +493,8 @@ function beltSVG(belt,deg,L,cls){
    +`<rect x="${bx}" y="0" width="${barW}" height="40" fill="${barC}"/>${st}`
    +`<rect width="${L}" height="40" fill="url(#${id})"/></svg>`;
 }
+// 158: a person's belt, only when the payload has one
+const beltOf=(p,L,cls)=>p&&p.belt?beltSVG(p.belt,p.degree,L,cls):'';
 function titleBelt(){
   const crest=$('crest').src||'';
   return `<svg class="tbelt" viewBox="0 0 300 92" aria-hidden="true"><defs><linearGradient id="gpl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c2"/><stop offset=".45" stop-color="#f2c14e"/><stop offset="1" stop-color="#9c6b18"/></linearGradient><linearGradient id="gst" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2a2a"/><stop offset="1" stop-color="#0c0c0c"/></linearGradient></defs>
@@ -508,8 +551,8 @@ function sRace(aud){
   const v=board(aud),kid=aud==='kids';
   if(!v.length)return `<div class="race"><div class="emptyboard in"><b>No points yet</b><span>${isEvent()?'Every class counts from the first day':'Every class this month counts'}</span></div></div>`;
   const t=v.slice(0,3),rest=v.slice(3,10);
-  const pd=(p,cls,h,i)=>p?`<div class="pd ${cls}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}${avat(p,cls==='p1'?6.6:5.4,true,kid)}<div class="nm">${esc(p.name)}</div>${beltSVG(p.belt,p.degree,240,'bmini')}</div><div class="blk" style="height:${h}%;animation-delay:${i*90}ms"><div class="n">${count(p.points)}</div><div class="u">POINTS</div><div class="pl">${esc(ord(p.rank).toUpperCase())}</div></div></div>`:'<div class="pd"></div>';
-  const rows=rest.map((p,i)=>`<div class="row wb in" style="--i:${i+3}"><span class="pos">${esc(p.rank)}</span>${avat(p,2.8,false,kid)}<span class="nm"><span class="tx">${esc(p.name)}</span>${tags(p,aud,false)}</span>${beltSVG(p.belt,p.degree,200,'belt')}<span class="n">${count(p.points)}</span></div>`).join('');
+  const pd=(p,cls,h,i)=>p?`<div class="pd ${cls}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}${avat(p,cls==='p1'?6.6:5.4,true,kid)}<div class="nm">${esc(p.name)}</div>${beltOf(p,240,'bmini')}</div><div class="blk" style="height:${h}%;animation-delay:${i*90}ms"><div class="n">${count(p.points)}</div><div class="u">POINTS</div><div class="pl">${esc(ord(p.rank).toUpperCase())}</div></div></div>`:'<div class="pd"></div>';
+  const rows=rest.map((p,i)=>`<div class="row wb in" style="--i:${i+3}"><span class="pos">${esc(p.rank)}</span>${avat(p,2.8,false,kid)}<span class="nm"><span class="tx">${esc(p.name)}</span>${tags(p,aud,false)}</span>${beltOf(p,200,'belt')||'<span></span>'}<span class="n">${count(p.points)}</span></div>`).join('');
   return `<div class="race"><div class="podium">${pd(t[1],'p2',40,1)}${pd(t[0],'p1',52,0)}${pd(t[2],'p3',30,2)}</div><div class="list">${rows}</div></div>`;
 }
 function chaseTitle(c){
@@ -523,7 +566,7 @@ function sChase(aud){
   const la=c.kind==='first'?(c.place>1?ord(c.place).toUpperCase():'LEADER'):(ord(c.place).toUpperCase()+(c.prize?' PRIZE':''));
   const lb=c.kind==='first'&&c.place===1?'CHALLENGER':'CHASING';
   const nameBlock=p=>{if(isMinor(p,kid))return esc(p.name);const w=String(p.name||'').split(' ');return `<span>${esc(w[0])}</span>${esc(w.slice(1).join(' '))}`;};
-  const ftr=(p,side,lab,i)=>`<div class="ftr ${side} in" style="--i:${i}"><div class="corner">${esc(lab)}</div>${avat(p,11,false,kid)}<div class="fn">${nameBlock(p)}</div>${beltSVG(p.belt,p.degree,240,'bfo')}${p.staff?'<span class="tag staff">STAFF</span>':''}</div>`;
+  const ftr=(p,side,lab,i)=>`<div class="ftr ${side} in" style="--i:${i}"><div class="corner">${esc(lab)}</div>${avat(p,11,false,kid)}<div class="fn">${nameBlock(p)}</div>${beltOf(p,240,'bfo')}${p.staff?'<span class="tag staff">STAFF</span>':''}</div>`;
   const rows=[['POINTS',a.points,b.points],['CLASSES',a.classes,b.classes],['LAST 7 DAYS',a.week||0,b.week||0]];
   const tape=rows.map(x=>`<div class="trw"><div class="l${r2(x[1])>r2(x[2])?' win':''}">${esc(fmt(x[1]))}</div><div class="m">${x[0]}</div><div class="r${r2(x[2])>r2(x[1])?' win':''}">${esc(fmt(x[2]))}</div></div>`).join('');
   const ca=ruleOf('class_attended'),ch=ruleOf('class_challenge');
@@ -535,35 +578,71 @@ function sChase(aud){
 }
 function sGi(){
   const g=P.gi_nogi;if(!g)return '';
-  const col=(k,l,rows)=>`<div class="col"><h3 class="in" style="--i:0">${l}</h3>${(rows||[]).map((p,i)=>`<div class="row in${i===0?' first':''}" style="--i:${i+1}"><span class="pos">${i+1}</span>${avat(p,2.8,false,false)}<span class="nm"><span class="tx">${esc(p.name)}</span>${p.staff?'<span class="tag staff">STAFF</span>':''}</span><span class="n">${count(p[k])}</span></div>`).join('')}</div>`;
+  const col=(k,l,rows)=>`<div class="col"><h3 class="in" style="--i:0">${l}</h3>${(rows||[]).map((p,i)=>`<div class="row in${i===0?' first':''}" style="--i:${i+1}"><span class="pos">${i+1}</span>${avat(p,2.8,false,false)}<span class="nm"><span class="tx">${esc(p.name)}</span>${beltOf(p,140,'rbelt')}${p.staff?'<span class="tag staff">STAFF</span>':''}</span><span class="n">${count(p[k])}</span></div>`).join('')}</div>`;
   return `<div class="two">${col('gi','GI',g.gi)}${col('nogi','NO-GI',g.nogi)}</div>`;
 }
 function sFeed(only){
   const f=(P.feed||[]).filter(x=>!only||x.audience===only).slice(0,5);if(!f.length)return '';
-  return `<div class="feed">${f.map((x,i)=>`<div class="fi in" style="--i:${i}">${avat(x,4.2,false,x.audience==='kids')}<div class="w"><b>${esc(x.name)}</b><span>${esc((FEED_W[x.key]||x.label||'')+' · '+dowDM(x.date))}</span></div><div class="p">+${esc(fmt(x.points))}</div></div>`).join('')}</div>`;
+  return `<div class="feed">${f.map((x,i)=>`<div class="fi in" style="--i:${i}">${avat(x,4.2,false,x.audience==='kids')}<div class="w"><b>${esc(x.name)}</b>${beltOf(x,160,'fbelt')}<span>${esc((FEED_W[x.key]||x.label||'')+' · '+dowDM(x.date))}</span></div><div class="p">+${esc(fmt(x.points))}</div></div>`).join('')}</div>`;
+}
+// 158: each gym's badge and colour, the same on every TV (by unit name)
+function unitTag(name){
+  const n=String(name||'').trim(),k=n.toLowerCase();
+  if(k==='neutral bay')return {code:'NB',col:'var(--u-nb)'};
+  if(k==='camperdown')return {code:'CD',col:'var(--u-cd)'};
+  const w=n.split(/\s+/);return {code:(((w[0]||'')[0]||'')+((w[1]||'')[0]||'')).toUpperCase(),col:'var(--u-other)'};
+}
+function battlePair(aud){
+  const arr=(P.battle&&P.battle[aud])||[];if(arr.length<2)return null;
+  const h=arr.find(x=>x.here)||arr[0],o=arr.find(x=>x!==h);
+  return {h,o};
 }
 function sBattle(only){
   const blk=(aud,i0)=>{
-    const arr=(P.battle&&P.battle[aud])||[];if(arr.length<2)return '';
-    const h=arr.find(x=>x.here)||arr[0],o=arr.find(x=>x!==h);
-    const x=Number(h.avg)||0,y=Number(o.avg)||0,pc=(x+y)>0?(x/(x+y)*100).toFixed(1):'50',w=x>=y;
+    const pr=battlePair(aud);if(!pr)return '';
+    const {h,o}=pr,pm='per_member' in h&&'per_member' in o;            // 158 payload; else the old average
+    if(pm&&(h.per_member==null||o.per_member==null))return '';          // 158: no base at a unit, no battle
+    const val=u=>pm?(Number(u.per_member)||0):(Number(u.avg)||0);
+    const x=val(h),y=val(o),pc=(x+y)>0?(x/(x+y)*100).toFixed(1):'50',w=x>=y;
     const who=aud==='kids'?'KID':'MEMBER';
-    const side=(u,v,r,win,i)=>`<div class="side in${r?' r':''}${win?' win':''}" style="--i:${i}"><div class="un">${esc(String(u.unit||'').toUpperCase())}</div><div class="avg">${esc(v.toFixed(1))}</div><div class="per">CLASSES PER ${who}</div></div>`;
-    return `<div class="blk2"><div class="hd2 in" style="--i:${i0}">${aud==='kids'?'KIDS':'ADULTS'}</div><div class="sides">${side(h,x,false,w,i0)}<div class="vs in" style="--i:${i0+1}">VS</div>${side(o,y,true,!w,i0+2)}</div>
-      <div class="track in" style="--i:${i0+3}"><i class="trk" style="width:50%" data-w="${pc}"></i></div>
-      <div class="fair in" style="--i:${i0+4}"><b>${esc(x===y?'Level':(w?h.unit:o.unit)+' in front')}</b><span>Average per ${who.toLowerCase()} who trained, so size doesn't matter</span></div></div>`;
+    const th=unitTag(h.unit),to=unitTag(o.unit);
+    const side=(u,t,v,r,win,i)=>{const b=`<span class="badge" style="background:${t.col}">${esc(t.code)}</span>`,nm=`<span>${esc(String(u.unit||'').toUpperCase())}</span>`;
+      return `<div class="side in${r?' r':''}${win?' win':''}" style="--i:${i}"><div class="un">${r?nm+b:b+nm}</div><div class="avg">${esc(v.toFixed(1))}</div><div class="per">${pm?'POINTS':'CLASSES'} PER ${who}</div></div>`;};
+    const line=pm?`Points per ${who.toLowerCase()}, so it's fair for both gyms. Every class you train counts`:`Average classes per ${who.toLowerCase()} who trained`;
+    return `<div class="blk2"><div class="hd2 in" style="--i:${i0}">${aud==='kids'?'KIDS':'ADULTS'}</div><div class="sides">${side(h,th,x,false,w,i0)}<div class="vs in" style="--i:${i0+1}">VS</div>${side(o,to,y,true,!w,i0+2)}</div>
+      <div class="track in" style="--i:${i0+3};--home:${th.col};--away:${to.col}"><i class="trk" style="width:50%" data-w="${pc}"></i></div>
+      <div class="fair in" style="--i:${i0+4}"><b>${esc(x===y?'Level':(w?h.unit:o.unit)+' in front')}</b><span>${esc(line)}</span></div></div>`;
   };
   const html=(only==='kids'?'':blk('adult',0))+(only==='adult'?'':blk('kids',only==='kids'?0:2));
   return html?`<div class="bt2">${html}</div>`:'';
+}
+// 158: Up next, the list for the class about to start (one audience per screen)
+const upKey=a=>{const k=String(a||'').toLowerCase();return k==='kids'?'kids':k==='all'?'all':'adult';};
+const upBlock=k=>(Array.isArray(P.up_next)?P.up_next:[]).find(b=>upKey(b.audience)===k)||null;
+function hm12(t){const m=String(t||'').match(/^(\d{1,2}):(\d{2})/);if(!m)return '';const h=+m[1];return (((h+11)%12)+1)+':'+m[2]+(h>=12?' PM':' AM');}
+function sUpNext(k){
+  const b=upBlock(k);if(!b)return '';
+  const people=Array.isArray(b.people)?b.people:[];
+  const here=Number(b.here)||0,way=Number(b.on_the_way)||0,total=Math.max(here+way,people.length);
+  const cap=30,shown=people.slice(0,total>cap?cap-1:cap);
+  const big=total<=12,cols=big?4:total<=20?5:6;
+  const head=(here>0?`<div class="rh in" style="--i:0"><b>${here}</b><span>HERE</span></div>`:'')
+    +(here>0&&way>0?'<div class="rsep"></div>':'')
+    +(way>0?`<div class="rh in" style="--i:1"><b class="dim">${way}</b><span>ON THE WAY</span></div>`:'');
+  const cls=`<div class="rcls in" style="--i:2"><span>Tap I'm going in the app to be on the list</span></div>`;
+  const cards=shown.map((p,i)=>{const h=p.status==='here';
+    return `<div class="rp${h?'':' exp'} in" style="--i:${Math.min(i+3,14)}"><div class="rav">${avat(p,big?4.8:3.6,false,k==='kids')}${h?'<i class="ck"></i>':''}</div><div class="tx"><b>${esc(p.name)}</b>${beltOf(p,160,'bm')}</div></div>`;}).join('')
+    +(total>shown.length?`<div class="rp more in" style="--i:14">+${total-shown.length} more</div>`:'');
+  return `<div class="roster"><div class="rhead">${head}${cls}</div><div class="rgrid${big?' lg':''}" style="--cols:${cols}">${cards||'<span class="empty">Nobody on the list yet</span>'}</div></div>`;
 }
 function sLast(){
   const L=P.last_results;if(!L)return '';
   const ad=L.adult||[],kd=L.kids||[];
   const mainKid=!ad.length,main=mainKid?kd:ad,other=mainKid?[]:kd;if(!main.length)return '';
   const ch=main[0],d=pd(L.month_start),mon=MFULL[d.getMonth()].toUpperCase()+' '+d.getFullYear();
-  const rn=main.slice(1,3).map((p,i)=>`<span><i style="background:${i===0?'#c9ced6':'#c27a3a'}"></i>${esc(ord(p.rank))} ${esc(p.name)} · ${esc(fmt(p.points))}</span>`).join('');
-  const hl=(other.length?other:[]).slice(0,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,true)}<div><div class="k">${esc('KIDS '+(p.rank===1?'CHAMPION':ord(p.rank).toUpperCase()))}</div><div class="nm">${esc(p.name)}</div></div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(ch.name)}</div>${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
+  const rn=main.slice(1,3).map((p,i)=>`<span><i style="background:${i===0?'#c9ced6':'#c27a3a'}"></i>${esc(ord(p.rank))} ${esc(p.name)} · ${esc(fmt(p.points))}${beltOf(p,140,'mbelt')}</span>`).join('');
+  const hl=(other.length?other:[]).slice(0,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,true)}<div><div class="k">${esc('KIDS '+(p.rank===1?'CHAMPION':ord(p.rank).toUpperCase()))}</div><div class="nm">${esc(p.name)}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
   <div class="hl">${hl}</div></div>`;
 }
 function sRules(){
@@ -572,7 +651,7 @@ function sRules(){
   const c=comp(),t=today();let panel;
   if(isEvent()){
     const left=Math.max(0,dayDiff(t,c.ends_on));
-    const prize=places()>0&&c.finale_on?`<p>Top ${places()} win prizes at the finale, ${esc(dowDM(c.finale_on))}</p>`:'';
+    const prize=places()>0&&c.finale_on?`<p>Top ${places()} in each group win prizes, ${esc(dowDM(c.finale_on))}</p>`:'';
     panel=`<div class="cd in" style="--i:2">${xmas()?GIFT:''}<div class="big">${left>0?left:'Last'}</div><div class="k">${left>0?(left===1?'DAY TO GO':'DAYS TO GO'):'DAY'}</div>${prize}</div>`;
   }else{
     const end=c.period_to||t,left=Math.max(1,dayDiff(t,end)+1),nx=pd(end);nx.setDate(nx.getDate()+1);
@@ -582,13 +661,15 @@ function sRules(){
 }
 const SCR={race_adults:()=>sRace('adult'),race_kids:()=>sRace('kids'),chase_adults:()=>sChase('adult'),chase_kids:()=>sChase('kids'),
   battle:()=>sBattle(),battle_adults:()=>sBattle('adult'),battle_kids:()=>sBattle('kids'),
-  rules:sRules,feed:()=>sFeed(),feed_adults:()=>sFeed('adult'),gi_nogi:sGi,last_results:sLast};
+  rules:sRules,feed:()=>sFeed(),feed_adults:()=>sFeed('adult'),gi_nogi:sGi,last_results:sLast,
+  up_next_adult:()=>sUpNext('adult'),up_next_kids:()=>sUpNext('kids'),up_next_all:()=>sUpNext('all')};
 function monthName(){const d=pd(isEvent()?today():(comp().period_from||today()));return MFULL[d.getMonth()];}
 function title(s){
   const c=comp();
   if(s==='race_adults'||s==='race_kids')return isEvent()?c.name:monthName()+' race';
   if(s==='chase_adults'||s==='chase_kids')return chaseTitle(P.chase&&P.chase[audOf(s)]);
   if(/^battle/.test(s))return isEvent()?(/cup/i.test(c.name)?'Cup battle':'Challenge battle'):monthName()+' battle';
+  if(/^up_next_/.test(s))return 'Up next';
   if(s==='rules')return 'How to score';
   if(/^feed/.test(s))return 'Latest points';
   if(s==='gi_nogi')return 'Top in Gi and No-Gi';
@@ -597,7 +678,8 @@ function title(s){
 }
 function sub(s){
   const c=comp(),t=today();
-  if(/^battle/.test(s)){const u=((P.battle&&P.battle[s==='battle_kids'?'kids':'adult'])||[]).map(x=>x.unit);return (s==='battle_kids'?'Kids · ':s==='battle_adults'?'Adults · ':'')+(u.length===2?u[0]+' vs '+u[1]:'');}
+  if(/^battle/.test(s)){const pr=battlePair(s==='battle_kids'?'kids':'adult');return (s==='battle_kids'?'Kids · ':s==='battle_adults'?'Adults · ':'')+(pr?pr.h.unit+' vs '+pr.o.unit:'');}
+  if(/^up_next_/.test(s)){const k=s.slice(8),b=upBlock(k);return (k==='kids'?'Kids':k==='all'?'Adults and kids':'Adults')+(b&&b.starts_at?' · starts '+hm12(b.starts_at):'');}
   if(s==='last_results')return 'Last month';
   const who=s==='feed'||s==='rules'?'':(s==='gi_nogi'||s==='feed_adults'?'Adults':audLabel(audOf(s)));
   let left;
@@ -671,29 +753,28 @@ function clock(){
   else{$('clsBt').textContent='Finished';dot.hidden=true;}
 }
 let barKey='';
+// 158: one calm line. The names live on Up next, inside the class window only.
 function bar(){
-  const c=P&&P.next_class,going=(c&&Array.isArray(c.going))?c.going:[];
-  const key=JSON.stringify([c&&c.time,going.map(g=>[g.name,g.photo_url?1:0])]);
+  const c=P&&P.next_class;
+  const key=JSON.stringify(c?[c.state,c.time,c.opens_at,c.label,c.here,c.on_the_way,Array.isArray(c.going)?c.going.length:0]:null);
   if(key===barKey)return;barKey=key;
-  if(!c){$('mK').textContent='TODAY';$('mN').textContent='';$('chips').innerHTML='<span class="empty">No more classes today</span>';return;}
-  $('mK').textContent='GOING';$('mN').textContent=String(going.length);
-  $('chips').innerHTML=going.length
-    ?going.map(g=>`<div class="chip">${avat(g,2.6,false,!!g.kid)}<span>${esc(g.name)}</span></div>`).join('')
-    :'<span class="empty">Tap I\'m going in the app to show up here</span>';
-  marquee();
-}
-/* carousel: when the names don't fit, they scroll so everyone gets seen */
-function marquee(){
-  const box=$('chips');box.classList.remove('scroll');
-  if(box.querySelector('.empty'))return;
-  const html=box.innerHTML;box.innerHTML=`<div class="ctrack">${html}</div>`;
-  const tr=box.firstChild;
-  requestAnimationFrame(()=>{
-    if(RM||tr.scrollWidth<=box.clientWidth+2)return;
-    tr.innerHTML=html+html.replace(/<div class="chip/g,'<div aria-hidden="true" class="chip');
-    tr.style.setProperty('--d',(tr.scrollWidth/2/box.clientWidth*14).toFixed(1)+'s');
-    tr.classList.add('run');box.classList.add('scroll');
-  });
+  const cn=(v,l)=>`<span class="cnt2"><b>${esc(v)}</b>${esc(l)}</span>`;
+  const tap='<span>Tap I\'m going in the app to be on the list</span>';
+  let k,h;
+  if(!c){k='NEXT CLASS';h='<span>No more classes today</span>';}
+  else if(c.state==='far'){k='NEXT CLASS';h=`<span>The list for ${esc(hm12(c.time))} opens at ${esc(hm12(c.opens_at))}</span>`;}
+  else if(c.state==='window'){
+    const n=Number(c.here)||0,m=Number(c.on_the_way)||0;
+    k='UP NEXT';h=(n>0?cn(n,'here'):'')+(m>0?cn(m,'on the way'):'')||tap;
+  }else if(c.state==='on'){
+    const n=Number(c.here)||0;
+    k='ON NOW';h=`<span>${esc(c.label||'')}${n>0?' · '+n+' here':''}</span>`;
+  }else{
+    // a payload from before 158 (no state): the going count, no names
+    const g=Array.isArray(c.going)?c.going.length:0;
+    k='GOING';h=g?cn(g,'going'):tap;
+  }
+  $('mK').textContent=k;$('mLine').innerHTML=h;
 }
 
 /* ---------- data ---------- */
@@ -753,13 +834,13 @@ function boot(){
 })();
 (function snow(){
   const cv=$('snow'),ctx=cv.getContext('2d');let W=0,H=0,dpr=1,fl=[];
-  function size(){const r=cv.getBoundingClientRect();dpr=Math.min(2,window.devicePixelRatio||1);W=r.width;H=r.height;if(!W)return;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  function fit(){const r=cv.getBoundingClientRect();dpr=Math.min(2,window.devicePixelRatio||1);W=r.width;H=r.height;if(!W)return;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
     if(!fl.length)for(let i=0;i<45;i++)fl.push({x:Math.random(),y:Math.random(),r:.6+Math.random()*1.8,v:.00025+Math.random()*.0005,p:Math.random()*6.28});}
   function draw(t){ctx.clearRect(0,0,W,H);fl.forEach(f=>{if(!RM){f.y+=f.v;if(f.y>1.02){f.y=-.02;f.x=Math.random();}}
     const x=(f.x+Math.sin(t/2600+f.p)*.006)*W,y=f.y*H;ctx.beginPath();ctx.arc(x,y,f.r*W/1150,0,6.283);ctx.fillStyle='rgba(255,255,255,'+(0.05+f.r*.04)+')';ctx.fill();});}
-  function frame(t){if($('tv').classList.contains('cup')&&!document.hidden){if(!W)size();draw(t);}if(!RM)requestAnimationFrame(frame);}
-  window.addEventListener('resize',()=>{W=0;size();if(RM)draw(0);barKey='';bar();});
-  size();requestAnimationFrame(frame);if(RM)draw(0);
+  function frame(t){if($('tv').classList.contains('cup')&&!document.hidden){if(!W)fit();draw(t);}if(!RM)requestAnimationFrame(frame);}
+  window.addEventListener('resize',()=>{W=0;fit();if(RM)draw(0);barKey='';bar();});
+  fit();requestAnimationFrame(frame);if(RM)draw(0);
 })();
 boot();
 </script>

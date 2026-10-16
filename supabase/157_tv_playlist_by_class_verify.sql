@@ -12,8 +12,11 @@
 
 begin;
 
+-- the playlist apart from 158's Up next screens (158 puts them first, inside the
+-- class window); everything after them follows 157's rules
 create function pg_temp.pl(p jsonb) returns text language sql immutable as $f$
   select string_agg(x ->> 'screen', ',' order by o) from jsonb_array_elements(p -> 'playlist') with ordinality t(x, o)
+   where x ->> 'screen' not like 'up\_next\_%'
 $f$;
 create function pg_temp.secs(p jsonb) returns int language sql immutable as $f$
   select sum((x ->> 'seconds')::int)::int from jsonb_array_elements(p -> 'playlist') x
@@ -60,7 +63,10 @@ begin
   insert into public.attendance (student_id, class_id, class_date, class_time, class_type, status, class_value, modality, unit_id)
   select x.sid, null, x.d, '18:00', 'alev', 'present', 1.00, 'gi', x.u
     from (values (sa, date '2031-07-01', ua), (sa, date '2031-07-02', ua), (sk, date '2031-07-01', ua),
-                 (sb, date '2031-07-01', ub), (sl, date '2031-07-01', ub)) x(sid, d, u);
+                 (sb, date '2031-07-01', ub), (sl, date '2031-07-01', ub),
+                 -- 158: the battle needs a base (members who trained in the 60 days before)
+                 (sa, date '2031-06-20', ua), (sk, date '2031-06-20', ua),
+                 (sb, date '2031-06-20', ub), (sl, date '2031-06-20', ub)) x(sid, d, u);
   insert into public.competition_awards (student_id, award_key, award_date) values
     (sa, 'social_post', '2031-07-12'), (sk, 'social_post', '2031-07-13');
   -- class_exceptions was created in production outside the repo: read each
