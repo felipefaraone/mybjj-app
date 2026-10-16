@@ -656,6 +656,15 @@ function sLast(){
   return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
   <div class="hl">${hl}</div></div>`;
 }
+// 160: last month's results for one audience: its champion, then 2nd and 3rd
+function sLastAud(aud){
+  const L=P.last_results;if(!L)return '';
+  const rows=(aud==='kids'?L.kids:L.adult)||[];if(!rows.length)return '';
+  const kid=aud==='kids',ch=rows[0],d=pd(L.month_start),mon=MFULL[d.getMonth()].toUpperCase()+' '+d.getFullYear();
+  const hl=rows.slice(1,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,kid)}<div><div class="k">${esc(ord(p.rank).toUpperCase())}</div><div class="nm">${esc(p.name)}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN}${avat(ch,7.4,true,kid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div></div>
+  <div class="hl">${hl}</div></div>`;
+}
 function sRules(){
   const rules=(P.rules||[]);if(!rules.length)return '';
   const rows=rules.map((r,i)=>`<div class="rule in" style="--i:${i}"><div class="ic">${IC[RULE_IC[r.key]]||IC.star}</div><div><div class="t">${esc(r.label)}</div>${r.description?`<div class="d">${esc(r.description)}</div>`:''}</div><div class="pts">+${esc(fmt(r.points))}</div></div>`).join('');
@@ -672,7 +681,8 @@ function sRules(){
 }
 const SCR={race_adults:()=>sRace('adult'),race_kids:()=>sRace('kids'),chase_adults:()=>sChase('adult'),chase_kids:()=>sChase('kids'),
   battle:()=>sBattle(),battle_adults:()=>sBattle('adult'),battle_kids:()=>sBattle('kids'),
-  rules:sRules,feed:()=>sFeed(),feed_adults:()=>sFeed('adult'),gi_nogi:sGi,last_results:sLast,
+  rules:sRules,feed:()=>sFeed(),feed_adults:()=>sFeed('adult'),feed_kids:()=>sFeed('kids'),gi_nogi:sGi,last_results:sLast,
+  last_results_adult:()=>sLastAud('adult'),last_results_kids:()=>sLastAud('kids'),
   up_next_adult:()=>sUpNext('adult'),up_next_kids:()=>sUpNext('kids'),up_next_all:()=>sUpNext('all')};
 function monthName(){const d=pd(isEvent()?today():(comp().period_from||today()));return MFULL[d.getMonth()];}
 function title(s){
@@ -684,7 +694,7 @@ function title(s){
   if(s==='rules')return 'How to score';
   if(/^feed/.test(s))return 'Latest points';
   if(s==='gi_nogi')return 'Top in Gi and No-Gi';
-  if(s==='last_results'){const d=pd(P.last_results.month_start);return MFULL[d.getMonth()]+' race';}
+  if(/^last_results/.test(s)){const d=pd(P.last_results.month_start);return MFULL[d.getMonth()]+' race';}
   return '';
 }
 function sub(s){
@@ -692,6 +702,7 @@ function sub(s){
   if(/^battle/.test(s)){const pr=battlePair(s==='battle_kids'?'kids':'adult');return (s==='battle_kids'?'Kids · ':s==='battle_adults'?'Adults · ':'')+(pr?pr.h.unit+' vs '+pr.o.unit:'');}
   if(/^up_next_/.test(s)){const k=s.slice(8),b=upBlock(k);return (k==='kids'?'Kids':k==='all'?'Adults and kids':'Adults')+(b&&b.starts_at?' · starts '+hm12(b.starts_at):'');}
   if(s==='last_results')return 'Last month';
+  if(/^last_results_/.test(s))return audLabel(audOf(s))+' · last month';
   const who=s==='feed'||s==='rules'?'':(s==='gi_nogi'||s==='feed_adults'?'Adults':audLabel(audOf(s)));
   let left;
   if(isEvent()){
@@ -732,15 +743,33 @@ function usable(pl){
   if(out.length)out[0].seconds+=spare;
   return out;
 }
+// 160: at most 4 screens per 90 s show (about 22 s each). Up next and the races
+// always; the other screens take turns from one show to the next. The show
+// counter lives in localStorage (one more on each page load and each time this
+// loop wraps), so an AbleSign reload moves on to the next slice too.
+const PER_SHOW=4,LS_SHOW='mybjj_tv_show';
+let showN=0;
+function bumpShow(){
+  try{let n=parseInt(lsGet(LS_SHOW)||'0',10);if(!isFinite(n)||n<0)n=0;n++;localStorage.setItem(LS_SHOW,String(n));showN=n;}
+  catch(_){showN=Math.floor(Date.now()/60000);}
+}
+function pickShow(all){
+  const pinned=x=>/^up_next_/.test(x.screen)||/^race_/.test(x.screen);
+  const pin=all.filter(pinned),rest=all.filter(x=>!pinned(x));
+  const n=Math.max(0,PER_SHOW-pin.length),out=pin.slice(),k=Math.min(n,rest.length);
+  for(let i=0;i<k;i++)out.push(rest[(showN*n+i)%rest.length]);
+  const base=Math.floor(90/Math.max(1,out.length));let left=90-base*out.length;
+  return out.map(x=>({screen:x.screen,seconds:base+(left-->0?1:0)}));
+}
 function dots(){$('dots').innerHTML=list.map((_,k)=>`<span class="dot${k<idx?' done':''}"><i id="dt${k}"></i></span>`).join('');}
 function startCycle(){
-  list=P?usable(P.playlist):[];
+  list=P?pickShow(usable(P.playlist)):[];
   if(!P||!list.length){showBoot();return;}
   hideBoot();idx=-1;next();
 }
 function next(){
   idx++;
-  if(idx>=list.length){fetchPayload();startCycle();return;}   // start of a cycle: refetch
+  if(idx>=list.length){bumpShow();fetchPayload();startCycle();return;}   // start of a cycle: the next show, refetch
   paint(list[idx].screen);dwell=list[idx].seconds*1000;dwellStart=performance.now();dots();
 }
 function tick(){
@@ -818,6 +847,7 @@ async function fetchPayload(){
   finally{inflight=false;}
 }
 function boot(){
+  bumpShow();                                                  // 160: a page load is a new show
   $('bootCrest').src=$('crest').src;
   const u=new URL(location.href),t=u.searchParams.get('t');
   if(t&&/^[A-Za-z0-9_-]{16,128}$/.test(t)){

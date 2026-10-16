@@ -140,7 +140,8 @@ begin
   -- 6. All class, and Kids + Adults at once: everything
   p := public._tv_payload(s_bat, '2031-07-15', '20:10');
   v := pg_temp.pl(p);
-  if v not like 'race_adults,race_kids,%' or v not like '%,battle%' or v ~ 'battle_(adults|kids)' or pg_temp.secs(p) <> 90 then
+  -- 160: kids and adults never share a screen, so the battle is battle_adults / battle_kids, never 'battle'
+  if v not like 'race_adults,race_kids,%' or v !~ 'battle_(adults|kids)' or v ~ '(^|,)battle(,|$)' or pg_temp.secs(p) <> 90 then
     raise exception 'FAIL 6: All class: %', v;
   end if;
   p := public._tv_payload(s_bat, '2031-07-15', '21:15');
