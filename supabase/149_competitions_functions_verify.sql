@@ -193,7 +193,11 @@ begin
     v_err := 'accepted';
   exception when insufficient_privilege then v_err := 'insufficient_privilege';
   end;
-  a1 := public.competition_award_add(s3, 'class_challenge', '2031-07-07', gen_random_uuid(), '2031-07-07');
+  -- a class award counts only with a present attendance for that class (152): mark it first.
+  -- A quarter class (0.25), so Cy's points stay below Fi's and the ranks tested in 7 and 8 hold.
+  insert into public.attendance (student_id, class_id, class_date, class_type, status, class_value, modality, unit_id)
+    values (s3, cls, '2031-07-07', 'beg', 'present', 0.25, 'gi', ua);
+  a1 := public.competition_award_add(s3, 'class_challenge', '2031-07-07', cls, '2031-07-07');
   execute 'reset role';
   select * into r from public._competition_scores(ev, null, null) x where x.student_id = s3;
   insert into _v149 values (4, 'social_post by staff refused; class_challenge by staff accepted (award_points 2 + 3)',
@@ -206,7 +210,10 @@ begin
   perform public.competition_award_add(s4, 'social_post', '2031-08-10');
   execute 'reset role';
   perform pg_temp.v_as(u_staff);
-  perform public.competition_award_add(s4, 'class_challenge', '2031-08-11', gen_random_uuid(), '2031-08-11');
+  -- present for that class first (152)
+  insert into public.attendance (student_id, class_id, class_date, class_type, status, class_value, modality, unit_id)
+    values (s4, cls, '2031-08-11', 'beg', 'present', 1.00, 'gi', ua);
+  perform public.competition_award_add(s4, 'class_challenge', '2031-08-11', cls, '2031-08-11');
   execute 'reset role';
   select string_agg(format('%s=%s', x.k, x.v), ' ' order by x.k) into v_txt
     from (select 'E' as k, (select award_points from public._competition_scores(ev, null, null) where student_id = s4) as v
@@ -347,8 +354,9 @@ begin
     into v_ok, v_txt, v_err, n
     from public.competition_unit_battle(ev) b;
   execute 'reset role';
-  insert into _v149 values (11, 'unit battle: avg = total / active (0 when none); unit A adults 6 active / 18 classes / 3; kids 1 / 1 / 1',
-    v_ok and v_txt = '6/18/3.0000' and v_err = '1/1/1.0000' and n = 4, format('A adult %s, A kids %s, rows %s', v_txt, v_err, n));
+  -- (Cy's quarter class for her challenge in 4 makes her active: 7 / 19, not 6 / 18)
+  insert into _v149 values (11, 'unit battle: avg = total / active (0 when none); unit A adults 7 active / 19 classes / 2.7143; kids 1 / 1 / 1',
+    v_ok and v_txt = '7/19/2.7143' and v_err = '1/1/1.0000' and n = 4, format('A adult %s, A kids %s, rows %s', v_txt, v_err, n));
 
   -- finalize: admin only; one row per ranked student, hidden included
   perform pg_temp.v_as(u_staff);

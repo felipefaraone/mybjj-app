@@ -9690,7 +9690,11 @@ function _rLbBattle(bc,scope){
   if(list.length<2)return '';
   const a=list.find(r=>r.unit_id===scope.unit)||list[0];
   const o=list.find(r=>r!==a);
-  const av=Number(a.avg_classes||0),ov=Number(o.avg_classes||0);
+  // 159: points per member over a fixed base (one source, the TV's number too);
+  // average classes only from a server before 159 (no per_member at all).
+  const pm=('per_member' in a)&&('per_member' in o);
+  if(pm&&(a.per_member==null||o.per_member==null))return '';
+  const av=Number((pm?a.per_member:a.avg_classes)||0),ov=Number((pm?o.per_member:o.avg_classes)||0);
   const pct=(av+ov)>0?Math.round(av/(av+ov)*100):50;
   const num=v=>(Math.round(v*10)/10).toFixed(1);
   return '<div class="slbl">Academy battle</div>'
@@ -9700,7 +9704,7 @@ function _rLbBattle(bc,scope){
         +'<div style="text-align:right"><div class="ev-stat-k">'+escHtml(o.unit_name||'')+'</div><div style="font-family:Barlow Condensed,sans-serif;font-size:26px;font-weight:700;line-height:1;color:var(--text2)">'+num(ov)+'</div></div>'
       +'</div>'
       +'<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:10px;background:var(--blue-mid)"><div style="width:'+pct+'%;background:var(--blue)"></div></div>'
-      +'<div style="font-size:12px;color:var(--text3);margin-top:8px">Average classes per member who trained. Bigger gym, no advantage.</div>'
+      +'<div style="font-size:12px;color:var(--text3);margin-top:8px">'+(pm?'Points per member, so it\'s fair for both gyms. Every class you train counts.':'Classes per member who trained.')+'</div>'
     +'</div>';
 }
 // ── owner controls (isOwner = is_admin) ─────────────────────────────────────
