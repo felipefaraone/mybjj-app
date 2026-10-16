@@ -2,7 +2,8 @@
 --
 -- Run AFTER 154, with psql:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/154_competition_notifications_verify.sql
--- One transaction ending in ROLLBACK: nothing persists. Every test prints
+-- One transaction ending in ROLLBACK: nothing persists (case 13 swaps
+-- create_notification for a failing stub and restores it inside it). Every test prints
 -- "PASS ..." (NOTICE); the first failure stops it with "FAIL ...".
 -- Synthetic people (adult member, kid + guardian, referrer, friend) and a
 -- synthetic ACTIVE challenge in July 2031 on the first unit (by name).
@@ -21,6 +22,8 @@ declare
   u_ad uuid := gen_random_uuid(); u_par uuid := gen_random_uuid(); u_ref uuid := gen_random_uuid();
   s_ad uuid; s_kid uuid; s_ref uuid; s_new uuid;
   a1 uuid; a2 uuid; a3 uuid; a4 uuid; b1 uuid; b2 uuid; b3 uuid;
+  u_own uuid := gen_random_uuid(); s_new2 uuid; a5 uuid; a6 uuid; a7 uuid; b4 uuid; b5 uuid;
+  v_def text; v_args text; v_res text; n0 int; n1 int; d0 int; hits int;
   n int; v text; v2 text; v_err text;
 begin
   select u.id into ua from public.units u order by u.name, u.id limit 1;
@@ -167,6 +170,84 @@ begin
     raise exception 'FAIL 12: an internal function is executable by authenticated';
   end if;
   raise notice 'PASS 12: 154 functions closed to clients';
+  -- 13. a failing notification path never blocks the staff write. The path is
+  -- forced to fail: create_notification is swapped for a stub that raises, and
+  -- a temporary trigger makes the dismiss UPDATE raise. Each forced failure
+  -- bumps a temp sequence first (sequences survive the subtransaction
+  -- rollback), so the count proves the path ran and its error was swallowed:
+  -- the 154 handler is the only thing between it and the caller, and it
+  -- prints "WARNING:  154 notify skipped: zz154 forced failure (P0001)" above.
+  insert into auth.users (id, email) values (u_own, 'zz154-owner@example.invalid');
+  insert into public.users (id, email, full_name, role, status, unit_id)
+    values (u_own, 'zz154-owner@example.invalid', 'Zz154 Owner', 'student', 'approved', ua)
+  on conflict (id) do update set email = excluded.email, role = excluded.role, status = excluded.status, unit_id = excluded.unit_id;
+  insert into public.unit_owners (unit_id, user_id) values (ua, u_own) on conflict do nothing;
+  insert into public.students (full_name, first_name, last_name, prog, unit_id, active, standing)
+    values ('Zz154 Hal New','Hal','New','adult',ua,true,'ok') returning id into s_new2;
+  -- healthy path first: a live award notification and a live referral link to remove later
+  insert into public.competition_awards (student_id, award_key, award_date) values (s_ad, 'social_post', '2031-07-12') returning id into a5;
+  insert into public.trial_bookings (unit_id, first_name, last_name, email, phone, trial_status, booked_at, class_id, class_date, class_time, referred_by_student_id)
+    values (ua, 'Ivy', 'Friend', 'zz154-ivy@example.invalid', '0400000157', 'booked', now(), cls, '2031-07-21', '18:00', s_ref) returning id into b4;
+  insert into public.trial_bookings (unit_id, first_name, last_name, email, phone, trial_status, booked_at, class_id, class_date, class_time)
+    values (ua, 'Hal', 'New', 'zz154-hal@example.invalid', '0400000158', 'booked', now(), cls, '2031-07-22', '18:00') returning id into b5;
+  if not exists (select 1 from public.notifications where related_entity_id = a5 and dismissed_at is null)
+     or not exists (select 1 from public.notifications where metadata->>'booking_id' = b4::text and dismissed_at is null) then
+    raise exception 'FAIL 13: setup notifications missing';
+  end if;
+
+  -- break it
+  v_def  := pg_get_functiondef('public.create_notification'::regproc);
+  v_args := pg_get_function_arguments('public.create_notification'::regproc);
+  v_res  := pg_get_function_result('public.create_notification'::regproc);
+  create temp sequence zz154_hits;
+  execute format($f$create or replace function public.create_notification(%s) returns %s
+    language plpgsql security definer set search_path = public as $b$
+    begin perform nextval('pg_temp.zz154_hits'); raise exception 'zz154 forced failure'; end $b$ $f$, v_args, v_res);
+  create function public.zz154_fail_dismiss() returns trigger language plpgsql as $b$
+    begin perform nextval('pg_temp.zz154_hits'); raise exception 'zz154 forced failure'; end $b$;
+  create trigger zz154_fail_dismiss before update on public.notifications
+    for each row execute function public.zz154_fail_dismiss();
+  select count(*) into n0 from public.notifications;
+  select count(*) into d0 from public.notifications where dismissed_at is not null;
+
+  perform pg_temp.v_as(u_own);
+  a6 := public.competition_award_add(s_ad, 'social_post', '2031-07-13');           -- create fails (1)
+  perform public.competition_award_void(a5);                                        -- dismiss fails (2)
+  select count(*) into n from public.competition_award_add_many(array[s_ad, s_ref], 'social_post', '2031-07-14') x
+   where x.result = 'added';                                                        -- 2 creates fail (3, 4)
+  perform public.trial_set_referrer(b5, s_ref);                                     -- link: create fails (5)
+  perform public.trial_set_referrer(b4, null);                                      -- unlink: dismiss fails (6)
+  execute 'reset role';
+  update public.trial_bookings set converted_student_id = s_new2,
+         converted_at = (timestamp '2031-07-15 10:00' at time zone 'Australia/Sydney') where id = b5;  -- conversion: create fails (7)
+  select last_value into hits from pg_temp.zz154_hits;
+
+  if a6 is null or not exists (select 1 from public.competition_awards where id = a6 and voided_at is null) then raise exception 'FAIL 13: award_add row missing'; end if;
+  if not exists (select 1 from public.competition_awards where id = a5 and voided_at is not null) then raise exception 'FAIL 13: award_void did not void'; end if;
+  if n <> 2 or (select count(*) from public.competition_awards where award_date = '2031-07-14' and award_key = 'social_post'
+                 and student_id in (s_ad, s_ref) and voided_at is null) <> 2 then raise exception 'FAIL 13: add_many added %', n; end if;
+  if (select referred_by_student_id from public.trial_bookings where id = b5) is distinct from s_ref then raise exception 'FAIL 13: link not saved'; end if;
+  if (select referred_by_student_id from public.trial_bookings where id = b4) is not null then raise exception 'FAIL 13: unlink not saved'; end if;
+  if (select converted_student_id from public.trial_bookings where id = b5) is distinct from s_new2 then raise exception 'FAIL 13: conversion not saved'; end if;
+  select count(*) into n1 from public.notifications;
+  if n1 <> n0 or (select count(*) from public.notifications where dismissed_at is not null) <> d0 then
+    raise exception 'FAIL 13: notifications changed while failing (% -> %)', n0, n1;
+  end if;
+  if hits <> 7 then raise exception 'FAIL 13: % forced failures swallowed, expected 7', hits; end if;
+  raise notice 'PASS 13: with the notify path failing, award_add, award_void, award_add_many, trial_set_referrer link and unlink and a conversion all succeed; 7 failures swallowed as WARNING, no notification rows created or changed';
+
+  -- 14. restore, then the normal path notifies again
+  drop trigger zz154_fail_dismiss on public.notifications;
+  drop function public.zz154_fail_dismiss();
+  execute v_def;
+  if pg_get_functiondef('public.create_notification'::regproc) <> v_def then raise exception 'FAIL 14: create_notification not restored'; end if;
+  perform pg_temp.v_as(u_own);
+  a7 := public.competition_award_add(s_ad, 'social_post', '2031-07-16');
+  execute 'reset role';
+  select string_agg(n.title || ' | ' || n.body, ' ; ') into v from public.notifications n
+   where n.related_entity_id = a7 and n.user_id = u_ad and n.dismissed_at is null;
+  if v is distinct from 'Social post logged · +2 | Thanks for sharing myBJJ. Zz154 Cup' then raise exception 'FAIL 14: %', v; end if;
+  raise notice 'PASS 14: create_notification restored; competition_award_add notifies again: %', v;
 end $$;
 
 rollback;

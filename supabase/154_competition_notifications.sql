@@ -202,65 +202,72 @@ declare
   v_body text;
   r record;
 begin
-  -- void: remove this award's notifications (existing removal pattern)
-  if TG_OP = 'UPDATE' then
-    if OLD.voided_at is null and NEW.voided_at is not null then
-      update public.notifications n
-         set dismissed_at = coalesce(n.dismissed_at, now())
-       where n.related_entity_type = 'competition_award'
-         and n.related_entity_id = NEW.id
-         and n.dismissed_at is null;
+  -- All notification work (create and dismiss) sits in this block: a failure
+  -- here is a WARNING and rolls back only the notification work, never the
+  -- staff write that fired the trigger. Every path returns NEW.
+  begin
+    -- void: remove this award's notifications (existing removal pattern)
+    if TG_OP = 'UPDATE' then
+      if OLD.voided_at is null and NEW.voided_at is not null then
+        update public.notifications n
+           set dismissed_at = coalesce(n.dismissed_at, now())
+         where n.related_entity_type = 'competition_award'
+           and n.related_entity_id = NEW.id
+           and n.dismissed_at is null;
+      end if;
+      return NEW;
     end if;
-    return NEW;
-  end if;
 
-  if NEW.voided_at is not null
-     or NEW.award_key not in ('class_challenge', 'best_attitude', 'social_post') then
-    return NEW;
-  end if;
-  -- a class award counts only with a present attendance (152)
-  if NEW.class_date is not null and not exists (
-       select 1 from public.attendance a
-        where a.student_id = NEW.student_id and a.status = 'present' and a.class_date = NEW.class_date
-          and ((NEW.class_id is not null and a.class_id = NEW.class_id)
-               or (NEW.class_id is null and a.class_id is null))) then
-    return NEW;
-  end if;
-  select * into v_rule from public._competition_notify_rule(NEW.student_id, NEW.award_date, NEW.award_key) limit 1;
-  if v_rule.competition_id is null then
-    return NEW;
-  end if;
-
-  v_first := public._competition_first_name(NEW.student_id);
-  v_pts   := public._competition_pts(v_rule.points);
-  v_day   := to_char(NEW.award_date, 'Dy FMDD Mon');
-
-  for r in select * from public._competition_notify_recipients(NEW.student_id) loop
-    if NEW.award_key = 'class_challenge' then
-      v_title := case when r.is_guardian then v_first || ' won the class challenge · +' || v_pts
-                      else 'Challenge win · +' || v_pts end;
-      v_body  := v_rule.competition_name || ' · ' || v_day;
-    elsif NEW.award_key = 'best_attitude' then
-      v_title := case when r.is_guardian then v_first || ' got best attitude · +' || v_pts
-                      else 'Best attitude · +' || v_pts end;
-      v_body  := v_rule.competition_name || ' · ' || v_day;
-    else
-      v_title := case when r.is_guardian then v_first || '''s social post logged · +' || v_pts
-                      else 'Social post logged · +' || v_pts end;
-      v_body  := 'Thanks for sharing myBJJ. ' || v_rule.competition_name;
+    if NEW.voided_at is not null
+       or NEW.award_key not in ('class_challenge', 'best_attitude', 'social_post') then
+      return NEW;
     end if;
-    perform public.create_notification(
-      p_user_id             := r.user_id,
-      p_type                := 'competition_points',
-      p_title               := v_title,
-      p_body                := v_body,
-      p_related_entity_type := 'competition_award',
-      p_related_entity_id   := NEW.id,
-      p_metadata            := jsonb_build_object('student_id', NEW.student_id, 'award_key', NEW.award_key,
-                                                  'competition_id', v_rule.competition_id),
-      p_check_prefs         := true
-    );
-  end loop;
+    -- a class award counts only with a present attendance (152)
+    if NEW.class_date is not null and not exists (
+         select 1 from public.attendance a
+          where a.student_id = NEW.student_id and a.status = 'present' and a.class_date = NEW.class_date
+            and ((NEW.class_id is not null and a.class_id = NEW.class_id)
+                 or (NEW.class_id is null and a.class_id is null))) then
+      return NEW;
+    end if;
+    select * into v_rule from public._competition_notify_rule(NEW.student_id, NEW.award_date, NEW.award_key) limit 1;
+    if v_rule.competition_id is null then
+      return NEW;
+    end if;
+
+    v_first := public._competition_first_name(NEW.student_id);
+    v_pts   := public._competition_pts(v_rule.points);
+    v_day   := to_char(NEW.award_date, 'Dy FMDD Mon');
+
+    for r in select * from public._competition_notify_recipients(NEW.student_id) loop
+      if NEW.award_key = 'class_challenge' then
+        v_title := case when r.is_guardian then v_first || ' won the class challenge · +' || v_pts
+                        else 'Challenge win · +' || v_pts end;
+        v_body  := v_rule.competition_name || ' · ' || v_day;
+      elsif NEW.award_key = 'best_attitude' then
+        v_title := case when r.is_guardian then v_first || ' got best attitude · +' || v_pts
+                        else 'Best attitude · +' || v_pts end;
+        v_body  := v_rule.competition_name || ' · ' || v_day;
+      else
+        v_title := case when r.is_guardian then v_first || '''s social post logged · +' || v_pts
+                        else 'Social post logged · +' || v_pts end;
+        v_body  := 'Thanks for sharing myBJJ. ' || v_rule.competition_name;
+      end if;
+      perform public.create_notification(
+        p_user_id             := r.user_id,
+        p_type                := 'competition_points',
+        p_title               := v_title,
+        p_body                := v_body,
+        p_related_entity_type := 'competition_award',
+        p_related_entity_id   := NEW.id,
+        p_metadata            := jsonb_build_object('student_id', NEW.student_id, 'award_key', NEW.award_key,
+                                                    'competition_id', v_rule.competition_id),
+        p_check_prefs         := true
+      );
+    end loop;
+  exception when others then
+    raise warning '154 notify skipped: % (%)', sqlerrm, sqlstate;
+  end;
   return NEW;
 end;
 $$;
@@ -280,8 +287,8 @@ security definer
 set search_path = public
 as $$
 declare
-  v_ref uuid := NEW.referred_by_student_id;
-  v_today date := (now() at time zone 'Australia/Sydney')::date;
+  v_ref uuid;
+  v_today date;
   v_friend text;
   v_trained date;
   v_trial record;
@@ -292,89 +299,99 @@ declare
   v_send_conv boolean := false;
   r record;
 begin
-  -- referrer removed or changed: the old referrer's notifications for this
-  -- booking go (existing removal pattern)
-  if TG_OP = 'UPDATE' and OLD.referred_by_student_id is not null
-     and OLD.referred_by_student_id is distinct from NEW.referred_by_student_id then
-    update public.notifications n
-       set dismissed_at = coalesce(n.dismissed_at, now())
-     where n.related_entity_type = 'trial_referral'
-       and n.metadata->>'booking_id' = NEW.id::text
-       and n.dismissed_at is null;
-  end if;
+  -- All notification work (create and dismiss) sits in this block: a failure
+  -- here is a WARNING and rolls back only the notification work, never the
+  -- staff write that fired the trigger. Every path returns NEW.
+  begin
+    v_ref   := NEW.referred_by_student_id;
+    v_today := (now() at time zone 'Australia/Sydney')::date;
 
-  if v_ref is null then return NEW; end if;
-  -- never when the referee is the referrer themself
-  if NEW.converted_student_id is not null and NEW.converted_student_id = v_ref then return NEW; end if;
+    -- referrer removed or changed: the old referrer's notifications for this
+    -- booking go (existing removal pattern)
+    if TG_OP = 'UPDATE' and OLD.referred_by_student_id is not null
+       and OLD.referred_by_student_id is distinct from NEW.referred_by_student_id then
+      update public.notifications n
+         set dismissed_at = coalesce(n.dismissed_at, now())
+       where n.related_entity_type = 'trial_referral'
+         and n.metadata->>'booking_id' = NEW.id::text
+         and n.dismissed_at is null;
+    end if;
 
-  v_send_link := TG_OP = 'INSERT' or OLD.referred_by_student_id is distinct from v_ref;
-  v_send_conv := NEW.converted_student_id is not null
-                 and (v_send_link or TG_OP = 'INSERT' or OLD.converted_student_id is null);
-  if not v_send_link and not v_send_conv then return NEW; end if;
+    if v_ref is null then return NEW; end if;
+    -- never when the referee is the referrer themself
+    if NEW.converted_student_id is not null and NEW.converted_student_id = v_ref then return NEW; end if;
 
-  v_friend := coalesce(
-    nullif(split_part(btrim(case when NEW.is_kid then coalesce(NEW.kid_name, '') else '' end), ' ', 1), ''),
-    nullif(btrim(coalesce(NEW.first_name, '')), ''),
-    'Your friend');
-  v_trained := public.trial_first_attended_on(NEW.id);
+    v_send_link := TG_OP = 'INSERT' or OLD.referred_by_student_id is distinct from v_ref;
+    v_send_conv := NEW.converted_student_id is not null
+                   and (v_send_link or TG_OP = 'INSERT' or OLD.converted_student_id is null);
+    if not v_send_link and not v_send_conv then return NEW; end if;
 
-  if v_send_link then
-    if v_trained is not null then
-      -- already trained: the trial points, if they count on that day
-      select * into v_trial from public._competition_notify_rule(v_ref, v_trained, 'referral_trial') limit 1;
-      if v_trial.competition_id is not null then
-        v_title := v_friend || ' trained with us · +' || public._competition_pts(v_trial.points);
-        v_body  := v_trial.competition_name;
+    v_friend := coalesce(
+      nullif(split_part(btrim(case when NEW.is_kid then coalesce(NEW.kid_name, '') else '' end), ' ', 1), ''),
+      nullif(btrim(coalesce(NEW.first_name, '')), ''),
+      'Your friend');
+    v_trained := public.trial_first_attended_on(NEW.id);
+
+    if v_send_link then
+      if v_trained is not null then
+        -- already trained: the trial points, if they count on that day
+        select * into v_trial from public._competition_notify_rule(v_ref, v_trained, 'referral_trial') limit 1;
+        if v_trial.competition_id is not null then
+          v_title := v_friend || ' trained with us · +' || public._competition_pts(v_trial.points);
+          v_body  := v_trial.competition_name;
+        end if;
+      else
+        -- not trained yet: what counts today
+        select * into v_trial from public._competition_notify_rule(v_ref, v_today, 'referral_trial') limit 1;
+        select * into v_conv  from public._competition_notify_rule(v_ref, v_today, 'referral_conversion') limit 1;
+        if v_trial.competition_id is not null or v_conv.competition_id is not null then
+          v_title := 'Thanks for the referral';
+          v_body  := concat_ws(' ',
+            case when v_trial.competition_id is not null then 'When ' || v_friend || ' trains with us you get +' || public._competition_pts(v_trial.points) || '.' end,
+            case when v_conv.competition_id is not null then
+              case when v_trial.competition_id is not null then 'If they sign up, +' || public._competition_pts(v_conv.points) || ' more.'
+                   else 'If ' || v_friend || ' signs up, you get +' || public._competition_pts(v_conv.points) || '.' end end);
+        end if;
       end if;
-    else
-      -- not trained yet: what counts today
-      select * into v_trial from public._competition_notify_rule(v_ref, v_today, 'referral_trial') limit 1;
-      select * into v_conv  from public._competition_notify_rule(v_ref, v_today, 'referral_conversion') limit 1;
-      if v_trial.competition_id is not null or v_conv.competition_id is not null then
-        v_title := 'Thanks for the referral';
-        v_body  := concat_ws(' ',
-          case when v_trial.competition_id is not null then 'When ' || v_friend || ' trains with us you get +' || public._competition_pts(v_trial.points) || '.' end,
-          case when v_conv.competition_id is not null then
-            case when v_trial.competition_id is not null then 'If they sign up, +' || public._competition_pts(v_conv.points) || ' more.'
-                 else 'If ' || v_friend || ' signs up, you get +' || public._competition_pts(v_conv.points) || '.' end end);
+      if v_title is not null then
+        for r in select * from public._competition_notify_recipients(v_ref) loop
+          perform public.create_notification(
+            p_user_id             := r.user_id,
+            p_type                := 'competition_points',
+            p_title               := v_title,
+            p_body                := v_body,
+            p_related_entity_type := 'trial_referral',
+            p_related_entity_id   := NEW.id,
+            p_metadata            := jsonb_build_object('booking_id', NEW.id, 'kind', 'link', 'student_id', v_ref),
+            p_check_prefs         := true
+          );
+        end loop;
       end if;
     end if;
-    if v_title is not null then
-      for r in select * from public._competition_notify_recipients(v_ref) loop
-        perform public.create_notification(
-          p_user_id             := r.user_id,
-          p_type                := 'competition_points',
-          p_title               := v_title,
-          p_body                := v_body,
-          p_related_entity_type := 'trial_referral',
-          p_related_entity_id   := NEW.id,
-          p_metadata            := jsonb_build_object('booking_id', NEW.id, 'kind', 'link', 'student_id', v_ref),
-          p_check_prefs         := true
-        );
-      end loop;
-    end if;
-  end if;
 
-  if v_send_conv then
-    select * into v_conv from public._competition_notify_rule(
-      v_ref, coalesce((NEW.converted_at at time zone 'Australia/Sydney')::date, v_today), 'referral_conversion') limit 1;
-    if v_conv.competition_id is not null then
-      for r in select * from public._competition_notify_recipients(v_ref) loop
-        perform public.create_notification(
-          p_user_id             := r.user_id,
-          p_type                := 'competition_points',
-          p_title               := v_friend || ' signed up · +' || public._competition_pts(v_conv.points),
-          p_body                := v_conv.competition_name,
-          p_related_entity_type := 'trial_referral',
-          -- its own entity id (the new member), so create_notification's dedupe
-          -- never folds it into the link notification for the same booking
-          p_related_entity_id   := NEW.converted_student_id,
-          p_metadata            := jsonb_build_object('booking_id', NEW.id, 'kind', 'conversion', 'student_id', v_ref),
-          p_check_prefs         := true
-        );
-      end loop;
+    if v_send_conv then
+      select * into v_conv from public._competition_notify_rule(
+        v_ref, coalesce((NEW.converted_at at time zone 'Australia/Sydney')::date, v_today), 'referral_conversion') limit 1;
+      if v_conv.competition_id is not null then
+        for r in select * from public._competition_notify_recipients(v_ref) loop
+          perform public.create_notification(
+            p_user_id             := r.user_id,
+            p_type                := 'competition_points',
+            p_title               := v_friend || ' signed up · +' || public._competition_pts(v_conv.points),
+            p_body                := v_conv.competition_name,
+            p_related_entity_type := 'trial_referral',
+            -- its own entity id (the new member), so create_notification's dedupe
+            -- never folds it into the link notification for the same booking
+            p_related_entity_id   := NEW.converted_student_id,
+            p_metadata            := jsonb_build_object('booking_id', NEW.id, 'kind', 'conversion', 'student_id', v_ref),
+            p_check_prefs         := true
+          );
+        end loop;
+      end if;
     end if;
-  end if;
+  exception when others then
+    raise warning '154 notify skipped: % (%)', sqlerrm, sqlstate;
+  end;
   return NEW;
 end;
 $$;
