@@ -9552,8 +9552,9 @@ function setLbAud(a){S.lbAud=a==='kids'?'kids':'adult';S.lbShowAll=false;render(
 // The board options, grouped. Now: the current board (the challenge while it
 // runs, else the current month). Past challenges: events that have ended, newest
 // first (never a draft or a challenge that has not started: its board is empty).
-// Past months: the previous 3 months of the monthly board, plus the current
-// month while a challenge runs (the monthly keeps counting in the background).
+// Months: the previous 3 months of the monthly board, plus the current month
+// while a challenge runs (the monthly keeps counting in the background), so the
+// group is not called past.
 // Monthly options are named by month only.
 function _lbPeriodOptions(cur,today){
   const groups=[];
@@ -9568,7 +9569,7 @@ function _lbPeriodOptions(cur,today){
   if(monthly){
     const months=[];
     for(let i=(cur.kind==='event'?0:1);i<=3;i++){const m=new Date(d.getFullYear(),d.getMonth()-i,1);months.push({key:'m:'+monthly.id+':'+dk(m).slice(0,7),label:MFULL[m.getMonth()]});}
-    groups.push({label:'Past months',opts:months});
+    groups.push({label:'Months',opts:months});
   }
   return groups;
 }
@@ -21883,6 +21884,9 @@ async function loadNotifications(){
     if(r&&r.error){console.warn('[mybjj] list_my_notifications:',r.error);NOTIFS=[];}
     else NOTIFS=(r&&r.data)||[];
   }catch(e){console.warn('[mybjj] list_my_notifications exception:',e);NOTIFS=[];}
+  // A points row deep links to the Leaderboard only while _lbVisible(): warm
+  // its cached check now, so the tap does not find it still loading.
+  if(NOTIFS.some(n=>n&&n.type==='competition_points'))_lbVisible();
   await refreshUnreadCount();
   render();
 }
@@ -21903,6 +21907,8 @@ function closeInbox(){S.inboxOpen=false;render();}
 //   photo_approved /
 //   photo_rejected    → Profile side panel → Edit profile
 //   admin_message     → no nav (body has the content)
+//   competition_points → Community → Leaderboard while _lbVisible(), else
+//                        no nav (migration 154)
 // The handler is forgiving: a notification whose target tab isn't
 // reachable for the current role (e.g. a student with no Feedback
 // sub-tab in their Progress view) still lands on the Progress tab —
@@ -21932,7 +21938,7 @@ function openNotif(id){
   }
   // Phase B1 — feedback / promotion about one of MY kids: make that kid the
   // active profile first, so a parent with several kids lands on the right one.
-  if((t==='feedback_received'||t==='promotion')&&md.student_id&&myKidIds().indexOf(md.student_id)>=0){
+  if((t==='feedback_received'||t==='promotion'||t==='competition_points')&&md.student_id&&myKidIds().indexOf(md.student_id)>=0){
     const k=parentChildren().find(x=>x._dbId===md.student_id);
     if(k&&S.parentChild!==k.id){
       S.parentChild=k.id;
@@ -21950,6 +21956,13 @@ function openNotif(id){
     // visible there and the pencil → Edit Profile flow lets them retry
     // upload if needed).
     S.inboxOpen=false;openMyProfile();return;
+  }
+  // Migration 154: points for an award or a referral. The board shows them;
+  // while members cannot see it yet the body says it all, so just close.
+  if(t==='competition_points'){
+    S.inboxOpen=false;
+    if(_lbVisible()){openLeaderboard();return;}
+    render();return;
   }
   // admin_message and any unknown type: just close the inbox so the
   // user returns to whatever they were doing. Mark-as-read already ran.
