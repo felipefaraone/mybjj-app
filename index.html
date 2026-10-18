@@ -1295,6 +1295,43 @@ function holdBadge(s,opts){
   const note=withNote?_holdNote(s):'';
   return '<span style="display:inline-flex;align-items:center;max-width:100%;background:var(--amber-bg);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;margin-left:6px;text-transform:uppercase'+(withNote?'':';white-space:nowrap')+'">On hold'+(note?' · '+escHtml(note):'')+'</span>';
 }
+// DESK FLAG: the single source for "does staff need to check this person at the
+// desk, and why?". Staff only (isStaffOrOwner), so students and parents never see
+// it. On hold wins over casual; visitors are not flagged (for now). VISITORS rows
+// carry no standing or membershipLevel: membershipDef(undefined) is a null key,
+// so they return null without throwing. The roster chip and the Manage count stay
+// on isOnHoldVisible (on hold only).
+function deskFlag(s){
+  if(!s||!isStaffOrOwner())return null;
+  if(isOnHoldVisible(s))return {kind:'on_hold',label:'On hold',note:_holdNote(s)};
+  const m=membershipDef(s.membershipLevel);
+  if(m.key==='casual_dropin'||m.key==='casual_member')return {kind:'casual',label:m.label,note:''};
+  return null;
+}
+// The reason line, on its own line under the belt line (or the roster name row),
+// inside the text column so the pill starts at the name's x. The pill is the
+// holdBadge look on var(--card), so it reads against the amber row. An on-hold
+// note goes underneath, full width, escaped, never truncated.
+function deskFlagLine(s){
+  const f=deskFlag(s);if(!f)return '';
+  return '<div style="margin-top:5px"><div style="display:flex"><span style="display:inline-flex;align-items:center;height:18px;box-sizing:border-box;white-space:nowrap;background:var(--card);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:0 7px;border-radius:4px;text-transform:uppercase">'+escHtml(f.label)+'</span></div>'
+    +(f.note?'<div style="font-size:11px;color:var(--amber-text);margin-top:3px;line-height:1.35;overflow-wrap:anywhere">'+escHtml(f.note)+'</div>':'')
+    +'</div>';
+}
+// The flagged row's look: amber wash, a 3px amber bar on the left (inset shadow,
+// so nothing moves) and its divider in amber. inset = the container's horizontal
+// padding: the row grows into it with a matching negative margin, so the tint
+// reaches the card's inner edges while avatar, text and buttons keep their x.
+// opts.card: the element IS the card (roster), so keep the card's own shadow.
+// Appended after the row's own style, so it wins; a dim (opacity) stays on top.
+function deskRowStyle(s,inset,opts){
+  if(!deskFlag(s))return '';
+  const x=Number(inset)||0;
+  const card=!!(opts&&opts.card);
+  return ';background:var(--amber-bg);border-color:var(--amber-border)'
+    +(card?';box-shadow:inset 3px 0 0 var(--amber),var(--sh)':';box-shadow:inset 3px 0 0 var(--amber)')
+    +(x?';margin-left:-'+x+'px;margin-right:-'+x+'px;padding-left:'+x+'px;padding-right:'+x+'px':'');
+}
 function membershipBadge(s){
   const m=membershipDef(s&&s.membershipLevel);
   if(!m.label)return '';
@@ -4185,15 +4222,16 @@ function rAttsStaff(rows,cid,occ){
   // it is non-zero. Built from the SAME `visible` set, the SAME student resolution
   // (STUDENTS then VISITORS) and the SAME predicate the per-row badge uses, so the
   // number can never disagree with the badges below it.
+  // 'N to check': the same rows the amber tint marks (deskFlag: on hold or casual).
   const onHoldCount=visible.reduce(function(n,r){
     const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];
-    return n+(isOnHoldVisible(s)?1:0);
+    return n+(deskFlag(s)?1:0);
   },0);
   // Mark the exception, not the OK state: zero renders nothing at all — no chip,
   // no "0 on hold". Same type grammar as the "N GOING" label beside it, in amber
   // to match the badge.
   const onHoldTally=onHoldCount
-    ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--amber-text)">${onHoldCount} on hold</span>`
+    ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--amber-text)">${onHoldCount} to check</span>`
     :'';
   const P=6;
   const restG=goingRows.length-P;
@@ -4285,7 +4323,7 @@ function rAttsStaff(rows,cid,occ){
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
     const _firstRow=!_rowShown;_rowShown=true;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${bdayPill(s)}${safetyPill(s)}${holdBadge(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div>${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px${deskRowStyle(s,16)}" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${bdayPill(s)}${safetyPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div>${deskFlagLine(s)}${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   // Bulk move — expanded only, so the collapsed card is untouched. Same
   // staff + isClassLocked gate markAllPresent uses (openAttMove re-checks both;
@@ -13478,17 +13516,15 @@ function rARosterListInner(){
     // Wrapper, onclick and data-sid are unchanged — the whole card still opens
     // the profile. hideCaption=true on bb(): the belt band alone carries the
     // rank here, matching the People and Wall cards.
-    return '<div class="card rcard" style="cursor:pointer" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
+    return '<div class="card rcard" style="cursor:pointer'+deskRowStyle(s,0,{card:true})+'" onclick="viewStu(this.dataset.sid,\'roster\')" data-sid="'+s.id+'">'
       +'<div class="rc-id">'+avStu(s,34)
       // One row, never wrapping: the name shrinks to an ellipsis (_nameClipHtml), the
-      // hold badge and the belt bar never shrink, the belt stays right-aligned.
-      // padding-left keeps a minimum gap when a long name reaches the belt.
-      // The badge here is "On hold" only: a long note inside a non-shrinking badge
-      // squeezed the name to nothing and pushed the belt off the card. The full
-      // note goes on its own line below the name row, never truncated.
-      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;flex-wrap:nowrap">'+_nameClipHtml(s.name)+(isOnHoldVisible(s)?'<span style="flex-shrink:0;display:inline-flex">'+holdBadge(s,{withNote:false})+'</span>':'')
+      // belt bar never shrinks and stays right-aligned. padding-left keeps a minimum
+      // gap when a long name reaches the belt. The desk flag (on hold or casual,
+      // with the full note) goes on its own line under the name row.
+      +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;flex-wrap:nowrap">'+_nameClipHtml(s.name)
       +'<span style="margin-left:auto;padding-left:8px;flex-shrink:0;display:inline-flex">'+bb(s.belt,s.deg||0,s.prog,'left',true)+'</span></div>'
-      +((isOnHoldVisible(s)&&_holdNote(s))?'<div style="font-size:11px;color:var(--amber-text);margin-top:2px;line-height:1.35;overflow-wrap:anywhere">'+escHtml(_holdNote(s))+'</div>':'')
+      +deskFlagLine(s)
       +(_showCtx?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div>':'')
       +statLine
       +(_flagsHtml?'<div class="rc-flags">'+_flagsHtml+'</div>':'')
@@ -21954,13 +21990,14 @@ function _memberPickRowHTML(s,opts){
   const b=beltDef(s.belt,s.prog);
   const progChip='<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;color:'+(s.prog==='kids'?'var(--amber-text)':'var(--text3)')+';letter-spacing:.5px;margin-left:6px">'+s.prog.toUpperCase()+'</span>';
   const unitChip=visitorUnit?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:6px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px">'+String(visitorUnit).toUpperCase()+'</span>':'';
-  return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);'+dim+'" '+onclick+'>'
+  // opts.desk (Add student to class only): the desk flag line and the amber row.
+  // It informs the instructor; it does NOT gate the row (still addable). The row
+  // already spans the scroll box, so no inset; the dim is appended last.
+  const desk=!!opts.desk;
+  return '<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border)'+(desk?deskRowStyle(s,0):'')+';'+dim+'" '+onclick+'>'
     +avStu(s,34)
-    // holdBadge sits with the other chips and follows the same grammar (each
-    // chip carries its own margin-left:6px). It informs the instructor; it does
-    // NOT gate the row — an on-hold student is still addable.
-    +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+escHtml(s.name)+progChip+unitChip+holdBadge(s)+tag+'</div>'
-    +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt</div></div>'
+    +'<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:500;display:flex;align-items:center;flex-wrap:wrap">'+escHtml(s.name)+progChip+unitChip+tag+'</div>'
+    +'<div style="font-size:11px;color:var(--text3)">'+b.label+' belt</div>'+(desk?deskFlagLine(s):'')+'</div>'
     +(opts.right||'')
     +'</div>';
 }
@@ -22022,7 +22059,7 @@ function _classAddListHTML(){
     const dim=already?'opacity:.5;cursor:not-allowed':'cursor:pointer';
     const onclick=already?'':`onclick="addStudentToClass('${cid}','${s.id}')"`;
     const tag=already?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">ALREADY IN</span>':'';
-    return _memberPickRowHTML(s,{visitorUnit,tag,dim,onclick});
+    return _memberPickRowHTML(s,{visitorUnit,tag,dim,onclick,desk:true});
   };
   const localHTML=list.slice(0,50).map(s=>rowHTML(s,null)).join('');
   const extraHTML=extraRows.slice(0,30).map(s=>rowHTML(s,s._unitName)).join('');
