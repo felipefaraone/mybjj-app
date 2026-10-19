@@ -1297,24 +1297,28 @@ function holdBadge(s,opts){
 }
 // DESK FLAG: the single source for "does staff need to check this person at the
 // desk, and why?". Staff only (isStaffOrOwner), so students and parents never see
-// it. On hold wins over casual; visitors are not flagged (for now). VISITORS rows
-// carry no standing or membershipLevel: membershipDef(undefined) is a null key,
-// so they return null without throwing. The roster chip and the Manage count stay
+// it. On hold wins over any membership level; then the four non-member levels
+// (_MEMBERSHIP_NON_MEMBER: both visitors and both casual tiers), labelled by
+// membershipDef. VISITORS rows (another unit's members) carry no standing or
+// membershipLevel: membershipDef(undefined) is a null key, so they return null
+// without throwing and are never flagged. The roster chip and the Manage count stay
 // on isOnHoldVisible (on hold only).
 function deskFlag(s){
   if(!s||!isStaffOrOwner())return null;
   if(isOnHoldVisible(s))return {kind:'on_hold',label:'On hold',note:_holdNote(s)};
   const m=membershipDef(s.membershipLevel);
-  if(m.key==='casual_dropin'||m.key==='casual_member')return {kind:'casual',label:m.label,note:''};
+  if(m.key&&_MEMBERSHIP_NON_MEMBER.indexOf(m.key)>=0)return {kind:'membership',label:m.label,note:''};
   return null;
 }
 // The reason line, on its own line under the belt line (or the roster name row),
 // inside the text column so the pill starts at the name's x. The pill is the
-// holdBadge look on var(--card), so it reads against the amber row. An on-hold
+// holdBadge look on var(--card), so it reads against the amber row. 18px on one
+// line; a label wider than the text column (VISITOR (OTHER MYBJJ GYM) beside the
+// class buttons at 375px) wraps inside its own box, never truncated. An on-hold
 // note goes underneath, full width, escaped, never truncated.
 function deskFlagLine(s){
   const f=deskFlag(s);if(!f)return '';
-  return '<div style="margin-top:5px"><div style="display:flex"><span style="display:inline-flex;align-items:center;height:18px;box-sizing:border-box;white-space:nowrap;background:var(--card);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:0 7px;border-radius:4px;text-transform:uppercase">'+escHtml(f.label)+'</span></div>'
+  return '<div style="margin-top:5px"><div style="display:flex"><span style="display:inline-flex;align-items:center;min-height:18px;max-width:100%;box-sizing:border-box;line-height:14px;overflow-wrap:anywhere;background:var(--card);color:var(--amber-text);border:1px solid var(--amber-border);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:1px 7px;border-radius:4px;text-transform:uppercase">'+escHtml(f.label)+'</span></div>'
     +(f.note?'<div style="font-size:11px;color:var(--amber-text);margin-top:3px;line-height:1.35;overflow-wrap:anywhere">'+escHtml(f.note)+'</div>':'')
     +'</div>';
 }
