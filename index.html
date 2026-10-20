@@ -10264,13 +10264,12 @@ function _rEvChallengeCard(){
 }
 // ── visibility ─────────────────────────────────────────────────────────────
 // Who sees the Leaderboard at all: owners (is_admin, the same check as the owner
-// controls) always; everyone else only once a challenge has gone live (an event,
-// active or archived, that has started). RLS already hides drafts from members.
-// One small select, cached like the rest; once true it stays true for the
-// session (an archived challenge keeps it on, so the monthly board shows after
-// the Cup). While it is unknown the answer is false: no segment, no other fetch.
-const LB_VIS={};let _lbSeenLive=false;
-// Device-only preview of the member view, before any challenge is live. Open the
+// controls) always; approved members and parents whenever any competition is
+// active (the monthly race always is). Read from the competitions list the board
+// already caches (_lbComps): RLS returns rows only to approved accounts and hides
+// drafts from members, so a pending account sees nothing. While it is unknown
+// the answer is false: no segment.
+// Device-only preview of the member view, before the board shows for members. Open the
 // app once with ?preview=leaderboard to turn it on for THIS device (localStorage
 // 'mybjj_lb_preview' = '1'), ?preview=off to turn it off; the parameter is then
 // removed from the URL without a reload. It changes visibility only: no owner
@@ -10292,13 +10291,8 @@ function _lbPreview(){try{return localStorage.getItem('mybjj_lb_preview')==='1';
 function _lbVisible(){
   if(isOwner())return true;
   if(_lbPreview())return true;
-  if(_lbSeenLive)return true;
-  const today=dk(TODAY);
-  const e=_lbGet(LB_VIS,'live',()=>_lbSelect(initSupabase().from('competitions').select('id,starts_on')
-    .eq('kind','event').in('status',['active','archived']).lte('starts_on',today)
-    .order('starts_on',{ascending:true}).order('id',{ascending:true}).limit(1)));
-  if(e&&Array.isArray(e.data)&&e.data.length)_lbSeenLive=true;
-  return _lbSeenLive;
+  const comps=_lbComps();
+  return !!(comps&&comps.some(c=>c&&c.status==='active'));
 }
 // ── the tab ───────────────────────────────────────────────────────────────
 function rLeaderboard(){
