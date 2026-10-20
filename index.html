@@ -9520,6 +9520,18 @@ function _lbChaseLine(me,above,rules){
   return _compPts(gap)+' point'+(gap===1?'':'s')+' to pass '+name+(parts.length?': '+parts.join(', or '):'')+'.';
 }
 // ── member / kid card ───────────────────────────────────────────────────────
+// The member's points by source ("Classes 6 · Bonus 2 · Friends 3 · Check ins 2"),
+// each part only when > 0. One source for the member card and the closing card.
+// checkin_points (163) is in points; a server row without it reads the remainder,
+// so the parts always add up to the total shown.
+function _lbPartsLine(me){
+  if(!me)return '';
+  const n=v=>Number(v)||0;
+  const ch=me.checkin_points!=null?n(me.checkin_points)
+    :Math.max(0,Math.round((n(me.points)-n(me.class_points)-n(me.award_points)-n(me.referral_points))*100)/100);
+  return [['Classes',me.class_points],['Bonus',me.award_points],['Friends',me.referral_points],['Check ins',ch]]
+    .filter(x=>n(x[1])>0).map(x=>x[0]+' '+_compPts(x[1])).join(' · ');
+}
 function _lbStat(k,v){return '<div class="ev-stat"><div class="ev-stat-k">'+escHtml(k)+'</div><div style="font-family:Barlow Condensed,sans-serif;font-size:26px;font-weight:700;line-height:1;color:var(--text)">'+escHtml(v)+'</div></div>';}
 function _lbHowToScore(comp,rules,divName){
   const cat=_lbCatalog();if(!cat||!rules)return '';
@@ -9577,8 +9589,7 @@ function _rLbMemberCard(){
         const nm=escHtml(_lbFirst(chaseAbove.display_name));const idA=_lbIdentity(chaseAbove);
         if(nm&&idA.tap&&chaseHtml.indexOf(nm)>=0)chaseHtml=chaseHtml.replace(nm,'<span '+idA.tap+' style="cursor:pointer">'+nm+'</span>');
       }
-      const src=[['Classes',me.class_points],['Bonus',me.award_points],['Friends',me.referral_points]]
-        .filter(x=>Number(x[1])>0).map(x=>x[0]+' '+_compPts(x[1])).join(' · ');
+      const src=_lbPartsLine(me);
       const staffLine=me.prize_eligible===false?'<div style="font-size:13px;color:var(--text2);margin-top:6px">Staff don\'t win prizes. You\'re on the board so everyone can chase you.</div>':'';
       const hiddenLine=me.leaderboard_hidden?'<div style="font-size:13px;color:var(--text2);margin-top:6px">Hidden from other members. Coaches still see you.</div>':'';
       const busy=_compBusy()['lbhide|'+p.s._dbId];
@@ -10329,7 +10340,7 @@ function _rLbClosingCard(){
   const line=prize
     ?(p.self?'You won '+_lbOrd(me.prize_rank)+' prize. Congratulations, the team will be in touch about it.':first+' won '+_lbOrd(me.prize_rank)+' prize. Well done '+first+'!')
     :(me.prize_eligible===false?'Staff don\'t win prizes. Thanks for leading the way.':'Thanks for training. See you at the next challenge.');
-  const src=[['Classes',me.class_points],['Bonus',me.award_points],['Friends',me.referral_points]].filter(x=>Number(x[1])>0).map(x=>x[0]+' '+_compPts(x[1])).join(' · ');
+  const src=_lbPartsLine(me);
   const _fix={white:'#B8BEC7',black:'#374151'};
   const tint=prize?_tintClassFor(me.belt||'',prog):'';
   const base=String(me.belt||'').split('/')[0];
