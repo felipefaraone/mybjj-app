@@ -11,6 +11,9 @@
 --   18:10 Adults Gi      19:15 All Open Mat
 -- The window: 30 minutes before a start until 15 after (Sydney). _checkin is
 -- called with a fixed time (checkin_arrive passes now()).
+-- Since 165 the check in takes the next class today (no 30/15 window; that stays
+-- the TV's) and returns checked_in / already; the expectations below that 165
+-- changes are marked "165".
 
 begin;
 
@@ -98,7 +101,7 @@ begin
            a.status, a.class_id = c3, a.class_legacy_id, a.class_date, a.class_time, a.class_type, a.modality, a.gi,
            a.unit_id = ua, a.class_value = 1, a.created_by = u_a1, a.arrived_via), ','))
     into v from public.attendance a where a.student_id = a1;
-  if v <> 'arrived 18:00 No-Gi · All Levels | going/t/zz164a/2031-07-16/18:00/nogi/nogi/f/t/t/t/qr'
+  if v <> 'checked_in 18:00 No-Gi · All Levels | going/t/zz164a/2031-07-16/18:00/nogi/nogi/f/t/t/t/qr'   -- 165: checked_in
      or r.arrived_at <> pg_temp.at('17:40') then
     raise exception 'FAIL 1: % (arrived %)', v, r.arrived_at;
   end if;
@@ -115,7 +118,7 @@ begin
   select count(*) into n from public.attendance a
    where a.student_id in (k1, k2) and a.class_id is null and a.class_time = '17:00' and a.status = 'going'
      and a.created_by = u_par and a.class_type is null and a.modality = 'nogi' and a.gi = false and a.arrived_via = 'qr';
-  if v <> 'arrived 17:00 t, arrived 17:00 t' or n <> 2 then raise exception 'FAIL 2: % (rows %)', v, n; end if;
+  if v <> 'checked_in 17:00 t, checked_in 17:00 t' or n <> 2 then raise exception 'FAIL 2: % (rows %)', v, n; end if;   -- 165: checked_in
   raise notice 'PASS 2: a parent checks in each kid separately (one-off, guardian as creator): %', v;
 
   -- 3. a stranger: not allowed, nothing written
@@ -137,15 +140,15 @@ begin
 
   -- 5. outside the window: no_class with when the next fitting class opens
   perform pg_temp.by(u_a4);
-  select format('%s %s %s', x.result, x.class_time, x.opens_at) into v from public._checkin(ua, array[a4], 'qr', null, pg_temp.at('15:00'), true) x;
+  select format('%s %s %s', x.result, x.class_time, x.opens_at) into v from public._checkin(ua, array[a4], 'qr', null, pg_temp.at('19:31'), true) x;   -- 165: after the last class
   perform pg_temp.by(u_par);
   select v || ' | ' || format('%s %s %s', x.result, x.class_time, x.opens_at) into v
-    from public._checkin(ua, array[k1], 'qr', null, pg_temp.at('17:40'), true) x;
+    from public._checkin(ua, array[k1], 'qr', null, pg_temp.at('19:31'), true) x;
   perform pg_temp.by(null);
-  if v <> 'no_class 18:00 17:30 | no_class 19:15 18:45' or exists (select 1 from public.attendance where student_id = a4) then
+  if v <> 'no_class_today   | no_class_today  ' or exists (select 1 from public.attendance where student_id = a4) then   -- 165
     raise exception 'FAIL 5: %', v;
   end if;
-  raise notice 'PASS 5: no class in the window: % (adult at 15:00 | kid at 17:40, the adults class does not fit)', v;
+  raise notice 'PASS 5: no class left today: % (adult and kid at 19:31)', v;
 
   -- 6. an existing going row keeps its status and only gains arrived_at
   perform pg_temp.by(u_a2);
@@ -153,7 +156,7 @@ begin
   perform pg_temp.by(null);
   select format('%s %s %s %s', r.result, a.status, a.created_by = u_a2, a.arrived_via) into v
     from public.attendance a where a.student_id = a2;
-  if v <> 'arrived going t app' or (select count(*) from public.attendance where student_id = a2) <> 1 then raise exception 'FAIL 6: %', v; end if;
+  if v <> 'already going t app' or (select count(*) from public.attendance where student_id = a2) <> 1 then raise exception 'FAIL 6: %', v; end if;   -- 165: the row existed
   raise notice 'PASS 6: an existing going row: % (no second row)', v;
 
   -- 7. a second scan keeps the first arrival
@@ -172,23 +175,23 @@ begin
   select x.result into v from public._checkin(ua, array[a3], 'qr', null, pg_temp.at('17:50'), true) x;
   perform pg_temp.by(null);
   select v || ' ' || a.status into v from public.attendance a where a.student_id = a3;
-  if v <> 'arrived absent' then raise exception 'FAIL 8: %', v; end if;
+  if v <> 'already absent' then raise exception 'FAIL 8: %', v; end if;   -- 165: the row existed
   raise notice 'PASS 8: an absent row stays absent (%)', v;
 
   -- 9. the class: nearest by default; a chosen class in the window; one outside refused
   perform pg_temp.by(u_a5);
   select format('%s %s', x.result, x.class_time) into v from public._checkin(ua, array[a5], 'qr', null, pg_temp.at('17:50'), false) x;
   select v || ' | ' || format('%s %s', x.result, x.class_time) into v
-    from public._checkin(ua, array[a5], 'qr', jsonb_build_object('class_id', c4), pg_temp.at('17:50'), true) x;
+    from public._checkin(ua, array[a5], 'qr', jsonb_build_object('class_id', c3), pg_temp.at('18:20'), true) x;   -- 165: a class gone
   select v || ' | ' || format('%s %s', x.result, x.class_time) into v
     from public._checkin(ua, array[a5], 'qr', jsonb_build_object('class_id', c5), pg_temp.at('17:50'), true) x;
   perform pg_temp.by(null);
-  if v <> 'ready 18:00 | invalid_class  | arrived 18:10'
+  if v <> 'ready 18:00 | invalid_class  | checked_in 18:10'   -- 165
      or (select count(*) from public.attendance where student_id = a5) <> 1
      or not exists (select 1 from public.attendance where student_id = a5 and class_id = c5) then
     raise exception 'FAIL 9: %', v;
   end if;
-  raise notice 'PASS 9: nearest is 18:00; 19:15 (outside the window) refused; 18:10 chosen: %', v;
+  raise notice 'PASS 9: the earliest is 18:00; 18:00 at 18:20 (gone) refused; 18:10 chosen: %', v;
 
   -- 9.1 kids vs adults: at 18:50 the All class fits both; at 16:50 the adult has nothing
   perform pg_temp.by(u_par);
@@ -197,7 +200,7 @@ begin
   select v || ' | ' || format('%s %s', x.result, x.class_time) into v from public._checkin(ua, array[a4], 'qr', null, pg_temp.at('18:50'), false) x;
   select v || ' | ' || format('%s %s', x.result, x.opens_at) into v from public._checkin(ua, array[a4], 'qr', null, pg_temp.at('16:50'), false) x;
   perform pg_temp.by(null);
-  if v <> 'ready 19:15 | ready 19:15 | no_class 17:30' then raise exception 'FAIL 9.1: %', v; end if;
+  if v <> 'ready 19:15 | ready 19:15 | ready ' then raise exception 'FAIL 9.1: %', v; end if;   -- 165: at 16:50 the adult gets 18:00
   raise notice 'PASS 9.1: audience: %', v;
 
   -- 9.2 preview writes nothing and lists the fitting window classes
@@ -205,7 +208,7 @@ begin
   select format('%s %s %s', x.result, x.class_time, (select string_agg(o ->> 'time', ',') from jsonb_array_elements(x.options) o)) into v
     from public._checkin(ua, array[a4], 'qr', null, pg_temp.at('17:50'), false) x;
   perform pg_temp.by(null);
-  if v <> 'ready 18:00 18:00,18:10' or exists (select 1 from public.attendance where student_id = a4) then raise exception 'FAIL 9.2: %', v; end if;
+  if v <> 'ready 18:00 18:00,18:10,19:15' or exists (select 1 from public.attendance where student_id = a4) then raise exception 'FAIL 9.2: %', v; end if;   -- 165: every class left today
   raise notice 'PASS 9.2: preview: % (nothing written)', v;
 
   -- 10. the TV: Up next counts an arrival as here; arrivals lists them, never the hidden or the absent
