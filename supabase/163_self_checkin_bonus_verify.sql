@@ -331,7 +331,7 @@ begin
   -- 10. the catalog row, between class_attended and social_post
   select format('%s|%s|%s|%s|%s|%s', k.label, k.description, k.how_to_score, k.source, k.default_points, k.default_params) into v
     from public.competition_rule_catalog k where k.key = 'self_checkin';
-  if v is distinct from 'Self check in|Check yourself in on the app and get a bonus point once your coach marks you present.|Check in on the app: {points} bonus per class|attendance|1|{}'
+  if v is distinct from 'Check in on the app|Tap I''m going before class. The bonus counts once your coach marks you present.|Check in on the app: {points} bonus per class|attendance|1|{}'
      or (select sort from public.competition_rule_catalog where key = 'self_checkin')
           not between (select sort + 1 from public.competition_rule_catalog where key = 'class_attended')
                   and (select sort - 1 from public.competition_rule_catalog where key = 'social_post') then

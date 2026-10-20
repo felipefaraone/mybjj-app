@@ -192,8 +192,8 @@ revoke all on function public._attendance_is_self(uuid, uuid) from public, anon,
 -- 3. The catalog rule
 -- ---------------------------------------------------------------------------
 insert into public.competition_rule_catalog (key, label, description, how_to_score, source, default_points, default_params, sort)
-select 'self_checkin', 'Self check in',
-       'Check yourself in on the app and get a bonus point once your coach marks you present.',
+select 'self_checkin', 'Check in on the app',
+       'Tap I''m going before class. The bonus counts once your coach marks you present.',
        'Check in on the app: {points} bonus per class', 'attendance', 1, '{}'::jsonb,
        (select (a.sort + b.sort) / 2 from public.competition_rule_catalog a, public.competition_rule_catalog b
          where a.key = 'class_attended' and b.key = 'social_post')
