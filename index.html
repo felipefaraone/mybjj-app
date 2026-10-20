@@ -8215,12 +8215,6 @@ function rClass(){
     const startMin=_ch*60+_cm;
     const endMin=startMin+(c.dur||60);
     const isEnded=isT&&_now!=null&&_now>endMin;
-    // 164: the arrival window (30 min before the start until 15 after, the TV's).
-    // Shows "I'm here"; the server checks the window again and stamps the time.
-    const inWin=isT&&_now!=null&&_now>=startMin-30&&_now<startMin+15;
-    const arrivedAt=myRow&&myRow.status!=='absent'?myRow.arrivedAt:null;
-    const _busyHere=!!(S.arriveBusy&&S.arriveBusy[c.id]);
-    const hereBtn=`<button class="bblue" onclick="arriveHere('${c.id}')"${_busyHere?' disabled':''}>${_busyHere?'…':'I\'m here'}</button>`;
     let cc='card';let btn='';
     // The self check-in column renders ONLY for a viewer with their own
     // students row (myStu). No row → no button (dev-admin staff, or a parent
@@ -8236,11 +8230,8 @@ function rClass(){
       // days stay static-disabled (no retroactive uncheck).
       const skSd=dk(sd);
       const canUndo=skSd===dk(TODAY)||skSd===dk(TOMORROW);
-      if(arrivedAt){
-        // 164: arrived, the coach still confirms
-        btn=_chkHereBox(arrivedAt,'Awaiting confirmation');
-      } else if(canUndo){
-        btn=`${inWin&&!onHoldBlock?`<div style="margin-bottom:6px">${hereBtn}</div>`:''}<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;
+      if(canUndo){
+        btn=`<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;
       } else {
         // Past day — static read-only "Checked in". undoCI is guarded
         // both client-side (window) and server-side; this stops the UI
@@ -8270,7 +8261,7 @@ function rClass(){
         btn=`<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);text-align:center;width:100%;line-height:1.2;background:var(--bg)">Check-in opens ${openLbl}</div>`;
       }
     }
-    else{btn=onHoldBlock?onHoldPill:(inWin?hereBtn:`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`);}   // 164: I'm here in the window
+    else{btn=onHoldBlock?onHoldPill:`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
     // Batch — kids privacy hardening (E1, per-audience). Three-way
     // split for non-staff viewers: 'Kids' classes stay fully
     // count-only; 'All' (open-mat / mixed-age, e.g. Sat 9:30) shows
@@ -9624,7 +9615,7 @@ function _rLbMemberCard(){
   const aud=_lbAudOf(p.s,rows);
   const divName=_lbDivName(home,aud);
   const title=comp.kind==='event'?comp.name:MFULL[_parseISODate(today).getMonth()];
-  const meta=(comp.kind==='event'?(_lbDM(comp.starts_on)+' to '+_lbDM(comp.ends_on)):'Classes and friends this month')+' · '+divName;
+  const meta=(comp.kind==='event'?(_lbDM(comp.starts_on)+' to '+_lbDM(comp.ends_on)):'Points this month')+' · '+divName;
   let body='',memberFoot='';
   if(!rows){
     body='<div class="ev-part" style="font-size:13px;color:var(--text3)">Loading…</div>';
@@ -19198,7 +19189,7 @@ function _mapAttRow(r){
     classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',
     confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,
     classValue:r.class_value!=null?Number(r.class_value):1,
-    arrivedAt:r.arrived_at||null};   // 164: door QR / I'm here (server time)
+    arrivedAt:r.arrived_at||null};   // 164: arrival from the door QR (server time; staff see it)
 }
 function _mapExcRow(r){
   return {id:r.id,unitId:r.unit_id||null,classId:r.class_id||null,exceptionDate:r.exception_date,kind:r.kind,
@@ -20570,7 +20561,8 @@ function authHero(){
 
 // Etapa 3 — demo login cards deleted.
 
-// 164: signed out after scanning the door QR. Point app users at "I'm here",
+// 164: signed out after scanning the door QR (the phone camera opens the browser,
+// not the home screen app). Point app users at "I'm going",
 // then the usual sign in; the sheet opens once signed in (_checkinMaybeOpen).
 function _checkinAuthBlock(){
   const u=_checkinPending();if(!u)return '';
@@ -20578,8 +20570,8 @@ function _checkinAuthBlock(){
   return '<div style="margin-bottom:16px">'
     +(unit?'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:11px;letter-spacing:2px;color:var(--blue);text-transform:uppercase">'+escHtml(unit.name)+'</div>':'')
     +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:30px;line-height:1.05;letter-spacing:.5px;color:var(--text);margin:4px 0 2px">Welcome in</div>'
-    +'<div style="font-size:13px;color:var(--text2);line-height:1.45;margin-top:10px">Use the myBJJ app? Open it and tap I\'m here on your class.</div>'
-    +'<div style="font-size:13px;color:var(--text2);line-height:1.45;margin-top:14px">Or sign in here.</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.45;margin-top:10px">Use the myBJJ app? Open it and tap I\'m going on your class.</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.45;margin-top:14px">First time scanning on this phone? Sign in once and you won\'t need to again.</div>'
   +'</div>';
 }
 function rAuth(){
@@ -20645,7 +20637,7 @@ ${msg}
   // OAuth). Real test accounts (felipefaraone+profteste, +parentteste,
   // felipefaraone, admin.mybjj) cover the testing matrix.
   const privacyDisclosure=`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:20px;line-height:1.5">By continuing you agree to our <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Privacy Policy</a></div>`;
-  return `<div class="lw">${authHero()}<div class="lbody">${_checkinAuthBlock()}<div class="inv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Access is by invitation only. Your instructor creates your account and sends you a login link.</span></div>${form}${privacyDisclosure}</div></div>`;
+  return `<div class="lw">${authHero()}<div class="lbody">${_checkinAuthBlock()}${_checkinPending()?'':`<div class="inv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Access is by invitation only. Your instructor creates your account and sends you a login link.</span></div>`}${form}${privacyDisclosure}</div></div>`;
 }
 
 function rPending(){
@@ -21072,11 +21064,12 @@ function _startQueueTimer(){
   },30000);
 }
 
-// ── Arrival check in (164): the door QR sheet and "I'm here" ─────────────────
-// Arrived is not Present: the coach still confirms, and only Present counts.
-// The server picks the class (checkin_preview / checkin_arrive, one rule) and
-// stamps the time; the phone's clock is never used. No offline queue: a late
-// arrival time would be wrong, so a network failure just says try again.
+// ── Check in from the door QR (164, 165) ──────────────────────────────────────
+// The QR is a shortcut to the same check in as "I'm going": the server picks the
+// next class today (checkin_preview / checkin_arrive, one rule) and writes the
+// going row; within an hour of the start it also stamps the arrival (server
+// time, shown to staff only). The coach still marks Present. No offline queue: a
+// late arrival time would be wrong, so a network failure just says try again.
 const _CHK_HOLD_TXT='On hold — contact office';
 function _chkNetErr(e){
   const m=String((e&&e.message)||e||'').toLowerCase();
@@ -21092,11 +21085,9 @@ function _chkHM(iso){
   const h=(parts.find(x=>x.type==='hour')||{}).value||'00',m=(parts.find(x=>x.type==='minute')||{}).value||'00';
   return _chk12((h==='24'?'00':h)+':'+m);
 }
-// The green "Here 5:48 PM" block (class card and sheet). sub: the small line.
-function _chkHereBox(iso,sub){
-  return '<div style="width:100%;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:10px;padding:9px 11px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;line-height:1.3;text-align:center">'
-    +escHtml('Here '+_chkHM(iso))
-    +(sub?'<div style="font-family:Barlow,sans-serif;font-weight:400;font-size:10px;opacity:.8;margin-top:2px">'+escHtml(sub)+'</div>':'')+'</div>';
+// The sheet's green state ("Checked in · arrived 5:48 PM", "Already checked in").
+function _chkDoneBox(text){
+  return '<div style="width:100%;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:10px;padding:8px 10px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;line-height:1.25;text-align:center">'+escHtml(text)+'</div>';
 }
 function _chkHoldPill(){return '<div style="background:var(--amber-bg);color:var(--amber-text);border-radius:10px;padding:10px 12px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;text-align:center;width:100%;line-height:1.2;cursor:default">'+_CHK_HOLD_TXT+'</div>';}
 // Who this account checks in, as the profile switcher lists them: the user if
@@ -21201,7 +21192,7 @@ async function checkinTap(sid){
     const rows=await _lbRpc('checkin_arrive',{p_unit:m.unit,p_student_ids:[sid],p_via:'qr',p_class:{class_id:r0.class_id||null,time:r0.class_time}})||[];
     const r=rows[0];
     if(S.checkin!==m)return;
-    if(r){m.res[sid]=r;if(r.result==='arrived'||r.result==='already')_chkMergeAtt(r,m.unit);}
+    if(r){m.res[sid]=r;if(r.result==='checked_in'||r.result==='already')_chkMergeAtt(r,m.unit);}
   }catch(e){
     if(S.checkin===m)m.err=_chkNetErr(e)?'No connection, try again':_compErr(e);
   }finally{
@@ -21226,7 +21217,7 @@ function rCheckinSheet(){
     body=(unitName?eye:'')+ttl('Welcome in')+muted('Loading…');
   }else{
     const profs=_chkProfiles().filter(p=>(m.ids||[]).indexOf(p._dbId)>=0);
-    const withClass=profs.map(p=>m.res[p._dbId]).filter(r=>r&&(r.result==='ready'||r.result==='arrived'||r.result==='already'));
+    const withClass=profs.map(p=>m.res[p._dbId]).filter(r=>r&&(r.result==='ready'||r.result==='checked_in'||r.result==='already'));
     const top=withClass[0]||null;
     const row=(p,right,meta)=>'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--border)">'
       +'<div style="display:flex;align-items:center;gap:10px;min-width:0">'+avStu(p,34)
@@ -21235,13 +21226,11 @@ function rCheckinSheet(){
       +'<div style="flex-shrink:0;min-width:'+(right.indexOf(_CHK_HOLD_TXT)>=0?140:96)+'px">'+right+'</div></div>';
     const beltOf=p=>{const b=beltDef(p.belt,p.prog);return (b&&b.label?b.label+' belt':'');};
     if(!top){
-      // nothing in the window for anyone: when the next class opens
-      // (on hold is answered before any class is looked at: all on hold = Welcome in)
-      const nx=profs.map(p=>m.res[p._dbId]).find(r=>r&&r.result==='no_class'&&r.opens_at);
+      // no class left today for anyone (on hold is answered before any class is
+      // looked at: all on hold = just their pills)
       const anyNo=profs.some(p=>m.res[p._dbId]&&m.res[p._dbId].result!=='on_hold');
-      body=(unitName?eye:'')+(anyNo
-        ?ttl('No class starting soon')+muted(nx?('Next class '+_chk12(nx.class_time)+'. You can say you\'re here from '+_chk12(nx.opens_at)+'.'):'No more classes here today.')
-        :ttl('Welcome in'));
+      body=(unitName?eye:'')+ttl('Welcome in')
+        +(anyNo?muted('No more classes today'+(unitName?' at '+unitName:'')+'.'):'');
       const held=profs.filter(p=>m.res[p._dbId]&&m.res[p._dbId].result==='on_hold');
       if(held.length)body+='<div style="margin-top:12px">'+held.map(p=>row(p,_chkHoldPill(),beltOf(p))).join('')+'</div>';
     }else{
@@ -21256,12 +21245,14 @@ function rCheckinSheet(){
       const rows=profs.map(p=>{
         const r=m.res[p._dbId];if(!r)return '';
         const differs=r.class_time&&(_chkKey({class_id:r.class_id,time:r.class_time})!==_chkKey({class_id:top.class_id,time:top.class_time}));
-        const meta=beltOf(p)+(differs&&(r.result==='ready'||r.result==='arrived'||r.result==='already')?' · '+_chk12(r.class_time)+' class':'');
+        const meta=beltOf(p)+(differs&&(r.result==='ready'||r.result==='checked_in'||r.result==='already')?' · '+_chk12(r.class_time)+' class':'');
+        const arr=r.arrived_at?' · arrived '+_chkHM(r.arrived_at):'';
         let right='';
         if(r.result==='on_hold')right=_chkHoldPill();
-        else if(r.result==='arrived'||r.result==='already')right=_chkHereBox(r.arrived_at,'');
-        else if(r.result==='ready')right='<button class="bblue" data-sid="'+escAttr(p._dbId)+'" onclick="checkinTap(this.dataset.sid)"'+(m.busy[p._dbId]?' disabled':'')+' style="padding:8px 10px;font-size:13px">'+(m.busy[p._dbId]?'…':'I\'m here')+'</button>';
-        else right='<div style="font-size:12px;color:var(--text3);text-align:right">No class now</div>';
+        else if(r.result==='checked_in')right=_chkDoneBox('Checked in'+(r.arrival_recorded?arr:''));
+        else if(r.result==='already')right=_chkDoneBox('Already checked in'+arr);
+        else if(r.result==='ready')right='<button class="bblue" data-sid="'+escAttr(p._dbId)+'" onclick="checkinTap(this.dataset.sid)"'+(m.busy[p._dbId]?' disabled':'')+' style="padding:8px 10px;font-size:13px">'+(m.busy[p._dbId]?'…':'Check in')+'</button>';
+        else right='<div style="font-size:12px;color:var(--text3);text-align:right">No more classes today</div>';
         return row(p,right,meta);
       }).join('');
       body=(unitName?eye:'')+ttl('Welcome in')+cls+'<div>'+rows.replace('border-top:1px solid var(--border)','border-top:0')+'</div>';
@@ -21272,29 +21263,6 @@ function rCheckinSheet(){
     +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:20px 16px 24px;max-height:86vh;overflow-y:auto">'
       +close+'<div style="padding-right:40px"></div>'+body+err
     +'</div></div>';
-}
-// The class card's "I'm here" (the active profile, inside the window).
-async function arriveHere(cid){
-  const stu=myStudentRow();if(!stu||!stu._dbId)return;
-  if(stu.standing==='on_hold'&&!isStaffOrOwner()){showSaveToast2('Your account is on hold. Please contact info@mybjj.com.au to check in.','error');return;}
-  const c=_parseCID(cid);if(!c)return;
-  const t=_occFor(cid);
-  const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
-  const unit=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
-  if(!unit)return;
-  S.arriveBusy=S.arriveBusy||{};if(S.arriveBusy[cid])return;
-  S.arriveBusy[cid]=true;render();
-  try{
-    const rows=await _lbRpc('checkin_arrive',{p_unit:unit,p_student_ids:[stu._dbId],p_via:'app',p_class:{class_id:t.classId||null,time:c.time}})||[];
-    const r=rows[0];
-    if(r&&(r.result==='arrived'||r.result==='already'))_chkMergeAtt(r,unit);
-    else if(r&&r.result==='on_hold')showSaveToast2('Your account is on hold. Please contact info@mybjj.com.au to check in.','error');
-    else showSaveToast2('This class is not open for I\'m here right now.','error');
-  }catch(e){
-    showSaveToast2(_chkNetErr(e)?'No connection, try again':_compErr(e),'error');
-  }finally{
-    delete S.arriveBusy[cid];render();
-  }
 }
 async function doCI(id){
   // G1-B + G16-new — defence in depth. Self check-in window is
