@@ -124,9 +124,15 @@ begin
   end if;
   raise notice 'PASS 4: before the start the monthly race; once started the Cup (live, 3 places, theme christmas)';
 
-  -- 5. the hidden member appears nowhere (boards, feed, gi / no-gi, going)
+  -- 5. the hidden member's name and photo appear nowhere (boards, feed, gi / no-gi,
+  --    going); since 166 their spot shows as "Anonymous" (rank 1, no id / photo / belt)
   if p::text like '%Hid Den%' or p::text like '%hid.jpg%' then raise exception 'FAIL 5: hidden member on the TV'; end if;
-  raise notice 'PASS 5: leaderboard_hidden member absent from the whole payload';
+  if not exists (select 1 from jsonb_array_elements(p -> 'boards' -> 'adult' -> 'rows') e
+                  where e ->> 'name' = 'Anonymous' and (e ->> 'rank')::int = 1 and (e ->> 'anonymous')::boolean
+                    and e ->> 'photo_path' is null and e ->> 'belt' is null and not e ? 'sid') then
+    raise exception 'FAIL 5: the hidden member''s spot is not Anonymous: %', p -> 'boards' -> 'adult' -> 'rows';
+  end if;
+  raise notice 'PASS 5: leaderboard_hidden member: no name or photo anywhere; their spot (rank 1) shows as Anonymous (166)';
 
   -- 6. adults board: real positions, staff flagged, prize places skip staff, photo path
   select string_agg((e ->> 'rank') || ':' || (e ->> 'name') || ':' || (e ->> 'points') || ':' || coalesce(e ->> 'prize_rank', '-')
@@ -165,12 +171,15 @@ begin
   raise notice 'PASS 8: award without presence counts nowhere; feed %', v;
 
   -- 9. chase, gi / no-gi, battle, next class
-  if p -> 'chase' -> 'adult' ->> 'kind' is distinct from 'first' or p -> 'chase' -> 'adult' -> 'a' ->> 'name' <> 'Ann Alpha'
-     or (p -> 'chase' -> 'adult' ->> 'place')::int <> 2
-     or (p -> 'chase' -> 'adult' ->> 'gap')::numeric <> 1 or p -> 'chase' -> 'adult' -> 'a' ? 'sid' then
+  -- 166: the hidden leader is in the chase as Anonymous (9) against Ann (6)
+  if p -> 'chase' -> 'adult' ->> 'kind' is distinct from 'first' or p -> 'chase' -> 'adult' -> 'a' ->> 'name' <> 'Anonymous'
+     or p -> 'chase' -> 'adult' -> 'b' ->> 'name' <> 'Ann Alpha'
+     or (p -> 'chase' -> 'adult' ->> 'place')::int <> 1
+     or (p -> 'chase' -> 'adult' ->> 'gap')::numeric <> 3 or p -> 'chase' -> 'adult' -> 'a' ? 'sid' then
     raise exception 'FAIL 9: chase %', p -> 'chase' -> 'adult';
   end if;
-  if p -> 'gi_nogi' -> 'gi' -> 0 ->> 'name' is distinct from 'Ann Alpha' or p -> 'gi_nogi' -> 'nogi' -> 0 ->> 'name' is distinct from 'Cal Coach' then
+  if p -> 'gi_nogi' -> 'gi' -> 0 ->> 'name' is distinct from 'Anonymous' or p -> 'gi_nogi' -> 'gi' -> 1 ->> 'name' is distinct from 'Ann Alpha'   -- 166
+     or p -> 'gi_nogi' -> 'nogi' -> 0 ->> 'name' is distinct from 'Cal Coach' then
     raise exception 'FAIL 9: gi / no-gi %', p -> 'gi_nogi';
   end if;
   if not exists (select 1 from jsonb_array_elements(p -> 'battle' -> 'adult') x where (x ->> 'here')::boolean and (x ->> 'active')::int >= 3) then
@@ -181,7 +190,7 @@ begin
      or v is distinct from 'Ann Alpha, Kit K.' then
     raise exception 'FAIL 9: next class % going %', p -> 'next_class', v;
   end if;
-  raise notice 'PASS 9: chase for 2nd (hidden leader keeps 1st; gap 1), gi Ann / no-gi Cal, battle, next class 23:30 Gi · All Levels going: %', v;
+  raise notice 'PASS 9: chase for 1st (the hidden leader as Anonymous vs Ann; gap 3), gi Anonymous then Ann / no-gi Cal, battle, next class 23:30 Gi · All Levels going: %', v;
 
   -- Cases 10 to 12 test the full playlist, so no class may be "on" (157 narrows
   -- the playlist to a Kids or an Adults class running or starting within 30
@@ -231,11 +240,12 @@ begin
   select string_agg(x ->> 'screen', ',') into v from jsonb_array_elements(p -> 'playlist') x;
   if p -> 'competition' ->> 'kind' <> 'monthly' or v like '%feed%' or v not like '%last_results%'
      or p -> 'last_results' ->> 'month_start' <> '2031-07-01'
-     or p -> 'last_results' -> 'adult' -> 0 ->> 'name' is distinct from 'Cal Coach'
+     or p -> 'last_results' -> 'adult' -> 0 ->> 'name' is distinct from 'Anonymous'   -- 166: the hidden member's spot
+     or p -> 'last_results' -> 'adult' -> 1 ->> 'name' is distinct from 'Cal Coach'
      or p::text like '%Hid Den%' then
     raise exception 'FAIL 12: % last %', v, p -> 'last_results';
   end if;
-  raise notice 'PASS 12: in August the monthly race, July''s top 3 shown, nothing new so no feed: %', v;
+  raise notice 'PASS 12: in August the monthly race, July''s top 3 shown (the hidden member as Anonymous), nothing new so no feed: %', v;
 end $$;
 
 rollback;

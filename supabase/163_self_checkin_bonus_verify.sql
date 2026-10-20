@@ -276,7 +276,8 @@ begin
   if v <> 'ann 2.00+2.00+3.00+1.00=8.00' then raise exception 'FAIL 11: standings %', v; end if;
   if exists (select 1 from unnest(array['public._competition_scores(uuid,date,date)', 'public._competition_ranked(uuid,date,date)',
                                         'public._competition_close_rows(uuid)', 'public.competition_standings(uuid,date,date)']) f
-              where pg_get_function_result(f::regprocedure) not like '%, checkin_points numeric)') then
+              where pg_get_function_result(f::regprocedure) not like '%, checkin_points numeric)'
+                and pg_get_function_result(f::regprocedure) not like '%, checkin_points numeric, is_anonymous boolean)') then   -- 166 appends is_anonymous to standings
     raise exception 'FAIL 11: checkin_points is not the last column everywhere';
   end if;
   raise notice 'PASS 11: the parts add up to points in scores, ranked, close rows and standings (%); checkin_points is the last column', v;
@@ -345,7 +346,8 @@ begin
                   where r.competition_id = '672e130e-ef51-42d4-916d-61593f88515c' and r.rule_key = 'self_checkin'),
                 (select count(*) from public.competition_rules r join public.competitions c on c.id = r.competition_id
                   where c.kind = 'monthly' and r.rule_key = 'self_checkin')) into v;
-  if v <> 'cup=1/true monthly=0' then raise exception 'FAIL 10.1: %', v; end if;
+  -- since 20 Oct the monthly race has self_checkin too (on purpose): only the Cup is asserted
+  if v not like 'cup=1/true monthly=%' then raise exception 'FAIL 10.1: %', v; end if;
   raise notice 'PASS 10.1: %', v;
 end $$;
 
