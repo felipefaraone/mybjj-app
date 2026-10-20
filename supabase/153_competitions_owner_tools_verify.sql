@@ -163,8 +163,9 @@ begin
   if v_txt <> 'not_allowed' or v_err <> 'refused' then raise exception 'FAIL 6.1: % / %', v_txt, v_err; end if;
   raise notice 'PASS 6.1: unknown student = not_allowed; class awards refused';
 
-  -- 7. catalog copy
-  select string_agg(k.key || '=' || k.label || '|' || coalesce(k.description, '-'), '; ' order by k.sort) into v_txt from public.competition_rule_catalog k;
+  -- 7. catalog copy (153's six rules; later rules, such as 163's self_checkin, carry their own copy)
+  select string_agg(k.key || '=' || k.label || '|' || coalesce(k.description, '-'), '; ' order by k.sort) into v_txt from public.competition_rule_catalog k
+   where k.key in ('class_attended', 'social_post', 'class_challenge', 'best_attitude', 'referral_trial', 'referral_conversion');
   if v_txt <> 'class_attended=Train a class|Part classes count as marked (½ or ¼). A private counts as 1.; social_post=Post, story or reel about myBJJ|Once a day counts; class_challenge=Win the class challenge|-; best_attitude=Best attitude in class|Picked by the coach; referral_trial=Bring a friend to a trial|-; referral_conversion=Your friend signs up|On top of the trial points' then
     raise exception 'FAIL 7: %', v_txt; end if;
   raise notice 'PASS 7: catalog copy updated';
