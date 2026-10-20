@@ -499,19 +499,18 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .lbs-parts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .lbs-part{font-size:12px;color:var(--text2);background:var(--card);border:1px solid var(--border);border-radius:99px;padding:3px 10px}
 .lbs-part b{color:var(--text);font-weight:600}
-.lbs-hts{margin-top:16px}
+.lbs-hts{margin-top:16px;container-type:inline-size}
 .lbs-rules{display:grid;grid-template-columns:minmax(0,1fr)}
 .lbs-rule{display:flex;align-items:center;gap:12px;height:68px;box-sizing:border-box;border-top:1px solid var(--border)}
 .lbs-rules .lbs-rule:first-child{border-top:0}
 .lbs-ic{width:34px;height:34px;border-radius:10px;background:var(--input-bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--blue)}
 .lbs-ic svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .lbs-rt{flex:1;min-width:0}
-.lbs-rt b{display:block;font-size:14px;font-weight:600;color:var(--text)}
+.lbs-rt b{display:block;font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lbs-rt span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:12px;color:var(--text3);margin-top:1px;line-height:1.35}
 .lbs-pp{font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:var(--blue);min-width:34px;text-align:right}
-@media(min-width:600px){.lbs-rules{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:24px}.lbs-rules .lbs-rule:nth-child(-n+2){border-top:0}}
-.lbs-foot{display:flex;justify-content:flex-end;margin-top:8px}
-.lbs-quiet{background:none;border:none;padding:4px 0;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;color:var(--text3);text-transform:uppercase;cursor:pointer}
+/* two columns only when How to score itself is 640px wide or more (not the viewport) */
+@container (min-width:640px){.lbs-rules{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:24px}.lbs-rules .lbs-rule:nth-child(-n+2){border-top:0}}
 .ev-acts{display:flex;gap:8px;margin-top:12px}
 .ev-btn{flex:1;height:var(--ctrl-h);border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .ev-btn.is-comp{color:var(--blue);border-color:var(--blue)}
@@ -9496,15 +9495,6 @@ function _lbPerson(){
   return me?{s:me,self:true}:null;
 }
 function _lbHomeUnit(s){return ((UNITS.find(u=>u&&u.id===s.unit)||{})._dbId)||null;}
-// May this viewer hide / show this person (set_leaderboard_hidden: the person's
-// own account, a guardian with manage access, or an owner)?
-function _lbCanHide(s){
-  if(!s||!s._dbId)return false;
-  const uid=S.profile&&S.profile.id;
-  if(uid&&s._userId===uid)return true;
-  if(isOwner())return true;
-  return (GUARDIANSHIPS||[]).some(g=>g&&g.student_id===s._dbId&&g.guardian_user_id===uid&&g.status==='active'&&g.access==='manage');
-}
 // ── the five function sources ─────────────────────────────────────────────
 // The viewer's row (or the active kid's) among standings rows.
 // Which board a person is on (156: adult belts board with adults): the audience
@@ -9617,7 +9607,7 @@ function _rLbMemberCard(){
   const divName=_lbDivName(home,aud);
   const title=comp.kind==='event'?comp.name:MFULL[_parseISODate(today).getMonth()];
   const meta=(comp.kind==='event'?(_lbDM(comp.starts_on)+' to '+_lbDM(comp.ends_on)):'Points this month')+' · '+divName;
-  let body='',memberFoot='';
+  let body='';
   if(!rows){
     body='<div class="ev-part" style="font-size:13px;color:var(--text3)">Loading…</div>';
   }else{
@@ -9664,20 +9654,12 @@ function _rLbMemberCard(){
       const parts=_lbParts(me);
       const pills=parts.length?'<div class="lbs-parts">'+parts.map(x=>'<span class="lbs-part">'+escHtml(x[0])+' <b>'+escHtml(_compPts(x[1]))+'</b></span>').join('')+'</div>':'';
       const staffLine=me.prize_eligible===false?'<div style="font-size:13px;color:var(--text2);margin-top:10px">Staff don\'t win prizes. You\'re on the board so everyone can chase you.</div>':'';
-      // 166: what hiding really does (the spot stays, as Anonymous)
-      const hiddenLine=me.leaderboard_hidden?'<div style="font-size:13px;color:var(--text2);margin-top:10px">'+escHtml(p.self
-        ?'Your name and photo come off the board. Your spot still shows as Anonymous and your points keep counting.'
-        :_lbFirst(p.s.firstName||p.s.name)+'\'s name and photo come off the board. Their spot still shows as Anonymous and their points keep counting.')+'</div>':'';
-      const busy=_compBusy()['lbhide|'+p.s._dbId];
-      const hideAct=label=>'<button class="lbs-quiet" data-sid="'+escAttr(p.s._dbId)+'" onclick="lbSetHidden(this.dataset.sid,'+(me.leaderboard_hidden?'false':'true')+')"'+(busy?' disabled':'')+'>'+label+'</button>';
-      // hidden: "Show me on the board again" stays under the hidden line; else the
-      // quiet "Hide me" link sits at the bottom right of the card (memberFoot)
-      const showAgain=_lbCanHide(p.s)&&me.leaderboard_hidden?'<div style="margin-top:4px">'+hideAct('Show me on the board again')+'</div>':'';
-      memberFoot=_lbCanHide(p.s)&&!me.leaderboard_hidden?'<div class="lbs-foot">'+hideAct('Hide me from the board')+'</div>':'';
+      // 168: members no longer hide themselves (staff do, on request); a member
+      // hidden by staff sees nothing about it here
       body=hero+meter
         +(chase?'<div class="lbs-chase">'+chaseHtml+'</div>':'')
         +pills+'</div>'
-        +staffLine+hiddenLine+showAgain;
+        +staffLine;
     }
   }
   return '<div class="card" style="margin-bottom:12px;padding:14px 16px">'
@@ -9686,27 +9668,7 @@ function _rLbMemberCard(){
     +'<div style="font-size:13px;color:var(--text2);margin-top:4px">'+escHtml(meta)+'</div>'
     +body
     +_lbHowToScore(comp,rules,divName)
-    +memberFoot
   +'</div>';
-}
-async function lbSetHidden(studentDbId,hidden){
-  const p=_lbPerson();if(!p||p.s._dbId!==studentDbId||!_lbCanHide(p.s))return;
-  const busy=_compBusy();const bk='lbhide|'+studentDbId;if(busy[bk])return;
-  busy[bk]=true;render();
-  try{
-    await _lbRpc('set_leaderboard_hidden',{p_student:studentDbId,p_hidden:!!hidden});
-    // Confirm on a fresh read of the person's own board.
-    const home=_lbHomeUnit(p.s);const today=dk(TODAY);
-    const b=_lbBoardFor(home,today);const comp=b&&b.comp;
-    if(comp){
-      const per=_lbPeriodOf(comp,today);
-      const rows=await _lbRpc('competition_standings',{p_competition:comp.id,p_from:per.from,p_to:per.to});
-      const me=(rows||[]).find(r=>r.student_id===studentDbId);
-      if(me&&!!me.leaderboard_hidden!==!!hidden)throw new Error('change not confirmed');
-    }
-    Object.keys(LB_STAND).forEach(k=>{delete LB_STAND[k];});
-  }catch(e){showSaveToast2(_compErr(e),'error');}
-  finally{delete busy[bk];render();}
 }
 // ── board ─────────────────────────────────────────────────────────────────
 // Which board this viewer sees: staff pick Adults / Kids at the unit picked at
