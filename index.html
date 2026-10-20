@@ -18679,6 +18679,27 @@ function _photoMenuPick(useCamera){
   if(_hasCameraCapture()){triggerPhotoUpload(sid,true);return;}
   if(_hasGetUserMedia()){openWebcam(sid);return;}
 }
+// 167: a photo belongs to the person. The in-memory rows of one login that show
+// it: the profile, every staff row and every adult students row (kids rows never),
+// the same set the database writes (_publish_person_photo). Returns a restore
+// function for a failed write.
+function _setPersonPhotoLocal(userId,path){
+  if(!userId)return function(){};
+  const rows=[];
+  STAFF.forEach(x=>{if(x&&x._userId===userId)rows.push(x);});
+  STUDENTS.forEach(x=>{if(x&&x._userId===userId&&x.prog!=='kids')rows.push(x);});
+  if(MY_STUDENT&&MY_STUDENT._userId===userId&&MY_STUDENT.prog!=='kids'&&rows.indexOf(MY_STUDENT)<0)rows.push(MY_STUDENT);
+  const prev=rows.map(x=>x.photoUrl);
+  const self=S.profile&&S.profile.id===userId;
+  const prevProfile=self?(S.profile.photo_url||null):null,prevMe=self&&S.me?(S.me.photoUrl||null):null;
+  rows.forEach(x=>{x.photoUrl=path||null;});
+  if(self){S.profile.photo_url=path||null;if(S.me)S.me.photoUrl=path||null;}
+  Object.keys(LB_STAND).forEach(k=>{delete LB_STAND[k];});        // the board re-reads the photo
+  return function(){
+    rows.forEach((x,i)=>{x.photoUrl=prev[i];});
+    if(self){S.profile.photo_url=prevProfile;if(S.me)S.me.photoUrl=prevMe;}
+  };
+}
 async function removePhoto(sid){
   const cli=initSupabase();
   if(!cli){showSaveToast2('Connection issue','error');return;}
@@ -18690,19 +18711,18 @@ async function removePhoto(sid){
     const linkedStudent=linkedStaff?null:((S.profile&&S.profile.id)?STUDENTS.find(x=>x._userId===S.profile.id):null);
     const prevSubject=linkedStaff?linkedStaff.photoUrl:(linkedStudent?linkedStudent.photoUrl:null);
     const urlForDelete=prevSubject||prevMe;
+    // 167: every row of the person (staff and adult students rows), not just one
+    const restore=_setPersonPhotoLocal(S.profile&&S.profile.id,null);
     if(S.me)S.me.photoUrl=null;
     if(S.profile)S.profile.photo_url=null;
-    if(linkedStaff)linkedStaff.photoUrl=null;
-    if(linkedStudent)linkedStudent.photoUrl=null;
     render();
     const r=await cli.rpc('remove_photo');
     if(r&&r.error){
       console.warn('[mybjj] remove_photo (self):',r.error);
       showSaveToast2(friendlyMutationError(r.error),'error');
+      restore();
       if(S.me)S.me.photoUrl=prevMe;
       if(S.profile)S.profile.photo_url=prevProfile;
-      if(linkedStaff)linkedStaff.photoUrl=prevSubject;
-      if(linkedStudent)linkedStudent.photoUrl=prevSubject;
       render();
       return;
     }
@@ -18985,6 +19005,8 @@ async function uploadCroppedPhoto(){
       // Private bucket — warm a signed URL for the just-uploaded path before
       // render() so a staff/owner self-photo doesn't blank until next hydrate.
       await resolveSignedUrls([path]);
+      // 167: the database published it to every row of the person; mirror that
+      _setPersonPhotoLocal(S.profile.id,path);
       S.cropOpen=false;_crop.img=null;_crop.sid=null;
       showSaveToast2('Photo updated.');
       loadMyPhotoApproval();
@@ -19112,7 +19134,7 @@ async function approvePhoto(id){
     const upd=await cli.from('students').update({photo_url:row.photo_url}).eq('id',row.student_id);
     if(upd&&upd.error)console.warn('[mybjj] student photo_url update:',upd.error);
     else await dropSuperseded(prevPath);
-    if(s){s.photoUrl=row.photo_url;render();}
+    if(s){s.photoUrl=row.photo_url;_setPersonPhotoLocal(s._userId,row.photo_url);render();}   // 167
   } else if(row.staff_id){
     const s=STAFF.find(x=>x._dbId===row.staff_id);
     const prevPath=s?s.photoUrl:null;
@@ -19122,6 +19144,7 @@ async function approvePhoto(id){
     if(s){
       s.photoUrl=row.photo_url;
       if(isStaffSelf(s)){S.me.photoUrl=row.photo_url;if(S.profile)S.profile.photo_url=row.photo_url;}
+      _setPersonPhotoLocal(s._userId,row.photo_url);                     // 167
       render();
     }
   } else {
@@ -19132,6 +19155,7 @@ async function approvePhoto(id){
     const upd=await cli.from('users').update({photo_url:row.photo_url}).eq('id',row.user_id);
     if(upd&&upd.error)console.warn('[mybjj] users photo_url update:',upd.error);
     else await dropSuperseded(prevPath);
+    _setPersonPhotoLocal(row.user_id,row.photo_url);                       // 167
     if(S.profile&&S.profile.id===row.user_id){
       S.profile.photo_url=row.photo_url;S.me.photoUrl=row.photo_url;render();
     }
