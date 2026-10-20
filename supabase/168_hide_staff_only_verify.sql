@@ -52,7 +52,7 @@ begin
     values ('Zz168 Ben B','Ben','B','adult',ua,true,'ok') returning id into s_ben;
   insert into public.students (full_name, first_name, last_name, prog, unit_id, active, standing, parent_user_id)
     values ('Zz168 Kit K','Kit','K','kids',ua,true,'ok',u_gil) returning id into s_kit;
-  insert into public.guardianships (student_id, guardian_user_id, status, origin, access) values (s_kit, u_gil, 'active', 'legacy_sync', 'manage');
+  insert into public.guardianships (student_id, guardian_user_id, status, origin, access) values (s_kit, u_gil, 'active', 'legacy_sync', 'manage') on conflict do nothing;
 
   insert into public.competitions (name, kind, starts_on, ends_on, finale_on, status, prizes)
     values ('Zz168 Cup', 'event', '2031-07-01', '2031-07-31', '2031-08-01', 'active', '[{"place":1,"label":"1st"}]') returning id into comp;
