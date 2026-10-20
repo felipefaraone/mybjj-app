@@ -96,8 +96,9 @@ begin
 
   -- 8. signature and return columns identical to 149
   res := pg_get_function_result('public._competition_scores(uuid, date, date)'::regprocedure);
-  -- 156 appends minor as the LAST column; everything before it stays 149's
-  if res is distinct from expected and res is distinct from replace(expected, 'degree integer)', 'degree integer, minor boolean)') then
+  -- 156 appends minor as the LAST column, 163 then checkin_points; everything before stays 149's
+  if res is distinct from expected and res is distinct from replace(expected, 'degree integer)', 'degree integer, minor boolean)')
+     and res is distinct from replace(expected, 'degree integer)', 'degree integer, minor boolean, checkin_points numeric)') then
     raise exception 'FAIL 8: return columns changed: %', res;
   end if;
   if pg_get_function_identity_arguments('public._competition_scores(uuid, date, date)'::regprocedure) <> 'p_competition uuid, p_from date, p_to date' then

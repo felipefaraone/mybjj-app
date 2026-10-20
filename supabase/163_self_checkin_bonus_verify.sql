@@ -6,14 +6,16 @@
 -- "PASS ..." (NOTICE); the first failure stops it with "FAIL ...".
 -- Three events in March 2001 (really ended, no real attendance then) on the
 -- first unit by name, all with class_attended 1:
---   Zz163 Cup    + self_checkin 1, enabled
---   Zz163 Plain  no self_checkin rule
+--   Zz163 Cup    + self_checkin 1, enabled; social_post 2, referral_trial 3
+--   Zz163 Plain  no self_checkin rule;     social_post 2, referral_trial 3
 --   Zz163 Off    self_checkin 1, disabled
 -- People (first unit): Ann, Bob, Cal, Dan, Eve adults with logins (Dan's rows
 -- have no creator); Kit, Kev, Kai kids with no login: Kit's guardian has an
 -- active guardianship, Kev's is the legacy parent_user_id, Kai's guardianship
--- is revoked. Sid is staff. The bonus is read back as
--- points - class_points - award_points - referral_points.
+-- is revoked. Sid is staff. Ann also has a post (award 2), a friend's trial
+-- (referral 3) and a class the coach marked as not counting (class_value 0).
+-- The bonus is read back as points - class_points - award_points - referral_points,
+-- and the new checkin_points column must make the parts add up to points.
 
 begin;
 
@@ -41,7 +43,7 @@ declare
   u_dan uuid := gen_random_uuid(); u_eve uuid := gen_random_uuid();
   u_gkit uuid := gen_random_uuid(); u_gkev uuid := gen_random_uuid(); u_gkai uuid := gen_random_uuid();
   s_ann uuid; s_bob uuid; s_cal uuid; s_dan uuid; s_eve uuid; s_kit uuid; s_kev uuid; s_kai uuid;
-  a_eve uuid; a_cal2 uuid; a_null uuid;
+  a_eve uuid; a_cal2 uuid; a_null uuid; cls uuid; scr uuid; p jsonb;
   v text; w text; n numeric; m numeric;
 begin
   select u.id into ua from public.units u order by u.name, u.id limit 1;
@@ -58,7 +60,8 @@ begin
   select c, ua, x.aud, 'Zz163 ' || x.aud from unnest(array[comp, plain, off]) c, (values ('adult'), ('kids')) x(aud);
   insert into public.competition_rules (competition_id, rule_key, points, enabled) values
     (comp, 'class_attended', 1, true), (comp, 'self_checkin', 1, true),
-    (plain, 'class_attended', 1, true),
+    (comp, 'social_post', 2, true), (comp, 'referral_trial', 3, true),
+    (plain, 'class_attended', 1, true), (plain, 'social_post', 2, true), (plain, 'referral_trial', 3, true),
     (off, 'class_attended', 1, true), (off, 'self_checkin', 1, false);
 
   insert into auth.users (id, email)
@@ -124,7 +127,13 @@ begin
     (s_ann, null, '2001-03-05', '18:00', 'alev',    'present', 1.00, 'gi',   ua),
     (s_ann, null, '2001-03-06', '18:00', 'alev',    'going',   1.00, 'gi',   ua),
     (s_ann, null, '2001-03-07', '18:00', 'alev',    'absent',  1.00, 'gi',   ua),
-    (s_ann, null, '2001-03-08', '07:00', 'private', 'present', 1.00, 'gi',   ua);
+    (s_ann, null, '2001-03-08', '07:00', 'private', 'present', 1.00, 'gi',   ua),
+    (s_ann, null, '2001-03-12', '18:00', 'alev',    'present', 0.00, 'gi',   ua);   -- the coach: doesn't count
+  -- class_value is NOT NULL in production; where it is nullable, a null row earns nothing either
+  if not (select attnotnull from pg_attribute where attrelid = 'public.attendance'::regclass and attname = 'class_value') then
+    execute format('insert into public.attendance (student_id, class_id, class_date, class_time, class_type, status, class_value, modality, unit_id)
+                    values (%L, null, %L, %L, %L, %L, null, %L, %L)', s_ann, '2001-03-13', '18:00', 'alev', 'present', 'gi', ua);
+  end if;
   -- Cal (himself): two classes on the same day
   perform pg_temp.by(u_cal);
   insert into public.attendance (student_id, class_id, class_date, class_time, class_type, status, class_value, modality, unit_id) values
@@ -135,6 +144,15 @@ begin
   perform pg_temp.by(u_sid);
   insert into public.attendance (student_id, class_id, class_date, class_time, class_type, status, class_value, modality, unit_id) values
     (s_bob, null, '2001-03-05', '18:00', 'alev', 'present', 1.00, 'gi', ua);
+  -- Ann: a post and a friend's trial (both events score them)
+  perform pg_temp.by(null);
+  insert into public.competition_awards (student_id, award_key, award_date) values (s_ann, 'social_post', '2001-03-10');
+  select c.id into cls from public.classes c where c.unit_id = ua order by c.id limit 1;
+  if cls is null then raise exception 'FAIL setup: no class at the first unit'; end if;
+  insert into public.trial_bookings (unit_id, first_name, last_name, email, phone, trial_status, booked_at, class_id, class_date, class_time,
+                                     attended_at, referred_by_student_id)
+    values (ua, 'Re', 'Zz163', 'zz163-ref@example.invalid', '0400000163', 'booked', now(), cls, '2001-03-14', '18:00',
+            timestamp '2001-03-14 19:00' at time zone 'Australia/Sydney', s_ann);
   -- the kids, each checked in by the guardian on record
   perform pg_temp.by(u_gkit);
   insert into public.attendance (student_id, class_id, class_date, class_time, class_type, status, class_value, modality, unit_id) values
@@ -174,6 +192,14 @@ begin
   if v <> 'ann classes=2.00 bonus=1.00' then raise exception 'FAIL 4.1: %', v; end if;
   raise notice 'PASS 4.1: a going row, an absent row and a private lesson earn no bonus (%)', v;
 
+  -- 4.3 a class the coach marked as not counting (class_value 0) earns no bonus
+  select format('rows=%s bonus=%s',
+                (select count(*) from public.attendance a where a.student_id = s_ann and a.status = 'present'
+                    and coalesce(a.class_value, 0) = 0 and a.created_by = u_ann),
+                pg_temp.bonus(comp, s_ann)) into v;
+  if v not in ('rows=1 bonus=1.00', 'rows=2 bonus=1.00') then raise exception 'FAIL 4.3: %', v; end if;
+  raise notice 'PASS 4.3: Ann''s own present row on a class that doesn''t count earns nothing (%)', v;
+
   -- 4.2 a competition without the rule, or with it disabled: nobody gets a bonus
   select format('plain=%s off=%s',
                 (select sum(s.points - s.class_points - s.award_points - s.referral_points) from public._competition_scores(plain, null, null) s),
@@ -211,7 +237,7 @@ begin
   select format('ann=%s cal=%s', max(x.points) filter (where x.student_id = s_ann), max(x.points) filter (where x.student_id = s_cal)) into v
     from public.competition_standings(comp, null, null) x;
   execute 'reset role';
-  if v <> 'ann=3.00 cal=4.00' then raise exception 'FAIL 8: standings %', v; end if;
+  if v <> 'ann=8.00 cal=4.00' then raise exception 'FAIL 8: standings %', v; end if;
   raise notice 'PASS 8: standings include the bonus (%)', v;
 
   select format('%s', b.points) into v from public._competition_battle(comp, null, null, '2001-04-30') b where b.unit_id = ua and b.audience = 'adult';
@@ -224,6 +250,73 @@ begin
   execute 'reset role';
   if v <> 'cal=4.00' then raise exception 'FAIL 8.2: review %', v; end if;
   raise notice 'PASS 8.2: review includes the bonus (%)', v;
+
+  -- 11. the parts add up: class + award + referral + checkin = points, in every
+  --     function that passes the parts through (checkin_points is their last column)
+  select string_agg(x.f || '=' || x.ok, ' ' order by x.f) into v from (
+    select 'scores' as f, bool_and(s.class_points + s.award_points + s.referral_points + s.checkin_points = s.points)
+                          and max(s.checkin_points) filter (where s.student_id = s_ann) = 1
+                          and max(s.award_points) filter (where s.student_id = s_ann) = 2
+                          and max(s.referral_points) filter (where s.student_id = s_ann) = 3
+                          and max(s.class_points) filter (where s.student_id = s_ann) = 2 as ok
+      from public._competition_scores(comp, null, null) s
+    union all
+    select 'ranked', bool_and(r.class_points + r.award_points + r.referral_points + r.checkin_points = r.points)
+                     and max(r.checkin_points) filter (where r.student_id = s_cal) = 2
+      from public._competition_ranked(comp, null, null) r
+    union all
+    select 'close_rows', bool_and(c.class_points + c.award_points + c.referral_points + c.checkin_points = c.points)
+                         and max(c.checkin_points) filter (where c.student_id = s_ann) = 1
+      from public._competition_close_rows(comp) c) x;
+  if v <> 'close_rows=true ranked=true scores=true' then raise exception 'FAIL 11: %', v; end if;
+  perform pg_temp.v_as(u_adm);
+  select format('ann %s+%s+%s+%s=%s', x.class_points::numeric(10,2), x.award_points::numeric(10,2), x.referral_points::numeric(10,2), x.checkin_points::numeric(10,2), x.points::numeric(10,2)) into v
+    from public.competition_standings(comp, null, null) x where x.student_id = s_ann;
+  execute 'reset role';
+  if v <> 'ann 2.00+2.00+3.00+1.00=8.00' then raise exception 'FAIL 11: standings %', v; end if;
+  if exists (select 1 from unnest(array['public._competition_scores(uuid,date,date)', 'public._competition_ranked(uuid,date,date)',
+                                        'public._competition_close_rows(uuid)', 'public.competition_standings(uuid,date,date)']) f
+              where pg_get_function_result(f::regprocedure) not like '%, checkin_points numeric)') then
+    raise exception 'FAIL 11: checkin_points is not the last column everywhere';
+  end if;
+  raise notice 'PASS 11: the parts add up to points in scores, ranked, close rows and standings (%); checkin_points is the last column', v;
+
+  -- 12. competition_finalize keeps checkin_points in its snapshot
+  perform pg_temp.v_as(u_adm);
+  perform public.competition_finalize(comp, null, null);
+  execute 'reset role';
+  select format('ann=%s cal=%s sums=%s',
+                max((cr.payload ->> 'checkin_points')::numeric(10,2)) filter (where cr.student_id = s_ann),
+                max((cr.payload ->> 'checkin_points')::numeric(10,2)) filter (where cr.student_id = s_cal),
+                bool_and((cr.payload ->> 'class_points')::numeric + (cr.payload ->> 'award_points')::numeric
+                         + (cr.payload ->> 'referral_points')::numeric + (cr.payload ->> 'checkin_points')::numeric = cr.points)) into v
+    from public.competition_results cr where cr.competition_id = comp;
+  if v <> 'ann=1.00 cal=2.00 sums=t' then raise exception 'FAIL 12: %', v; end if;
+  raise notice 'PASS 12: the finalize snapshot stores checkin_points (%)', v;
+
+  -- 13. the TV's Cup "bonus points" (provisional) counts check ins: everything but class points
+  update public.competitions set status = 'draft' where id in (plain, off);   -- one ended event at the unit
+  insert into public.tv_screens (name, unit_id, token_hash, show_battle)
+    values ('zz163 tv', ua, encode(sha256('zz163-a'::bytea), 'hex'), true) returning id into scr;
+  select sum(s.points - s.class_points) into n from public._competition_scores(comp, null, null) s where s.unit_id = ua and s.audience = 'adult';
+  p := public._tv_payload(scr, '2001-04-05', '10:00');
+  if p -> 'cup' ->> 'phase' is distinct from 'provisional' or (p -> 'cup' -> 'adult' -> 'numbers' ->> 'bonus')::numeric is distinct from n then
+    raise exception 'FAIL 13: cup % (expected bonus %)', p -> 'cup', n;
+  end if;
+  raise notice 'PASS 13: TV Cup bonus (provisional) = points less class points = %', n;
+
+  -- 14. publish: the frozen snapshot adds up and the TV reads it
+  perform pg_temp.v_as(u_adm);
+  perform public.competition_publish(comp, '[]'::jsonb);
+  select format('ann %s+%s+%s+%s=%s', x.class_points::numeric(10,2), x.award_points::numeric(10,2), x.referral_points::numeric(10,2), x.checkin_points::numeric(10,2), x.points::numeric(10,2)) into v
+    from public.competition_standings(comp, null, null) x where x.student_id = s_ann;
+  execute 'reset role';
+  if v <> 'ann 2.00+2.00+3.00+1.00=8.00' then raise exception 'FAIL 14: frozen standings %', v; end if;
+  p := public._tv_payload(scr, '2001-04-05', '10:00');
+  if p -> 'cup' ->> 'phase' is distinct from 'published' or (p -> 'cup' -> 'adult' -> 'numbers' ->> 'bonus')::numeric is distinct from n then
+    raise exception 'FAIL 14: cup % (expected bonus %)', p -> 'cup', n;
+  end if;
+  raise notice 'PASS 14: published: frozen standings add up (%), TV Cup bonus %', v, n;
 
   -- 9. internal functions: no client can execute them
   if has_function_privilege('anon', 'public._attendance_is_self(uuid, uuid)', 'execute')
