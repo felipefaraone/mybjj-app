@@ -9538,8 +9538,9 @@ function _lbChaseLine(me,above,rules){
   if(!me)return '';
   const pts=Number(me.points||0);
   if(pts<=0)return 'Train one class to get on the board.';
-  if(!above)return 'You\'re in first. Keep training to stay there.';
-  const name=_lbFirst(above.display_name);
+  // 166: "first" only at rank 1 (a hidden member above is a row like any other)
+  if(!above)return Number(me.rank)===1?'You\'re in first. Keep training to stay there.':'Keep training to move up.';
+  const name=(above.is_anonymous===true||(!above.student_id&&above.display_name==='Anonymous'))?'a hidden member':_lbFirst(above.display_name);
   const gap=Math.round((Number(above.points||0)-pts)*100)/100;
   if(gap<=0)return 'Level with '+name+'. One more class puts you ahead.';
   const rule=k=>(rules||[]).find(r=>r&&r.rule_key===k&&r.enabled===true&&Number(r.points)>0);
@@ -9663,7 +9664,10 @@ function _rLbMemberCard(){
       const parts=_lbParts(me);
       const pills=parts.length?'<div class="lbs-parts">'+parts.map(x=>'<span class="lbs-part">'+escHtml(x[0])+' <b>'+escHtml(_compPts(x[1]))+'</b></span>').join('')+'</div>':'';
       const staffLine=me.prize_eligible===false?'<div style="font-size:13px;color:var(--text2);margin-top:10px">Staff don\'t win prizes. You\'re on the board so everyone can chase you.</div>':'';
-      const hiddenLine=me.leaderboard_hidden?'<div style="font-size:13px;color:var(--text2);margin-top:10px">Hidden from other members. Coaches still see you.</div>':'';
+      // 166: what hiding really does (the spot stays, as Anonymous)
+      const hiddenLine=me.leaderboard_hidden?'<div style="font-size:13px;color:var(--text2);margin-top:10px">'+escHtml(p.self
+        ?'Your name and photo come off the board. Your spot still shows as Anonymous and your points keep counting.'
+        :_lbFirst(p.s.firstName||p.s.name)+'\'s name and photo come off the board. Their spot still shows as Anonymous and their points keep counting.')+'</div>':'';
       const busy=_compBusy()['lbhide|'+p.s._dbId];
       const hideAct=label=>'<button class="lbs-quiet" data-sid="'+escAttr(p.s._dbId)+'" onclick="lbSetHidden(this.dataset.sid,'+(me.leaderboard_hidden?'false':'true')+')"'+(busy?' disabled':'')+'>'+label+'</button>';
       // hidden: "Show me on the board again" stays under the hidden line; else the
@@ -9793,26 +9797,32 @@ function _lbIdentity(r){
 // Board row: the People member row anatomy (avatar 40, Barlow Condensed 16/700
 // name on one line with ellipsis, bb(...) belt exactly as People) with the rank
 // on the left and the points on the right. The name gives way first.
+// 166: the neutral avatar of an Anonymous row: a person outline in --text3.
+function _lbAnonAv(size){
+  return '<div aria-hidden="true" style="width:'+size+'px;height:'+size+'px;border-radius:50%;flex-shrink:0;background:var(--input-bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text3)">'
+    +'<svg width="'+Math.round(size*.5)+'" height="'+Math.round(size*.5)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c.6-4 3.8-6.5 8-6.5s7.4 2.5 8 6.5"/></svg></div>';
+}
 function _lbRowHtml(r,comp,mine,first){
-  // 161: a published board's hidden prize winner (no id): Anonymous, no photo,
-  // no belt, no tap. Prize badges only once an ended event is published.
-  const anon=!r.student_id&&r.display_name==='Anonymous';
+  // 166: a hidden member (is_anonymous; 161's published rows too): "Anonymous" in
+  // their spot with a neutral avatar, no belt, no badges, no tap; rank and points
+  // as on any row. Prize badges only once an ended event is published.
+  const anon=r.is_anonymous===true||(!r.student_id&&r.display_name==='Anonymous');
   const id=anon?{s:null,st:null,tap:''}:_lbIdentity(r);
   const minor=_lbRowMinor(r,id.s);
   // a minor's avatar is initials on the belt colour, never a photo (avStu's kids rule)
   const prog=minor?'kids':'adult';
   const fallback={name:r.display_name||'',initials:(String(r.display_name||'').split(/\s+/).map(w=>w[0]||'').slice(0,2).join('')||'?').toUpperCase(),photoUrl:minor?null:(r.photo_url||null),belt:r.belt||'',prog};
-  const avh=anon?av('?','',40):(id.st?avStaff(id.st,40):avStu(id.s?(minor?Object.assign({},id.s,{prog:'kids',photoUrl:null}):id.s):fallback,40));
+  const avh=anon?_lbAnonAv(40):(id.st?avStaff(id.st,40):avStu(id.s?(minor?Object.assign({},id.s,{prog:'kids',photoUrl:null}):id.s):fallback,40));
   const places=_lbProvisional(comp)?0:_lbPlaces(comp);
-  const badges=(r.prize_rank&&places&&r.prize_rank<=places?_lbBadge(_lbPlaceLabel(comp,r.prize_rank),'blue'):'')
-    +(r.prize_eligible===false?_lbBadge('STAFF'):'');
+  const badges=anon?'':((r.prize_rank&&places&&r.prize_rank<=places?_lbBadge(_lbPlaceLabel(comp,r.prize_rank),'blue'):'')
+    +(r.prize_eligible===false?_lbBadge('STAFF'):''));
   return '<div '+(id.tap?id.tap+' ':'')+'style="display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:60px'+(first?'':';border-top:1px solid var(--border)')+(mine?';background:var(--blue-tint)':'')+(id.tap?';cursor:pointer':'')+'">'
     +'<div style="width:22px;flex-shrink:0;text-align:right;font-family:Barlow Condensed,sans-serif;font-size:16px;font-weight:700;color:var(--text2)">'+escHtml(String(r.rank))+'</div>'
     +avh
     // two lines: the name alone (full width), then the belt and the badges under it
     +'<div style="flex:1;min-width:0">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.display_name||'')+'</div>'
-      +((r.belt||badges)?'<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:'+(anon?'var(--text2)':'var(--text)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(anon?'Anonymous':(r.display_name||''))+'</div>'
+      +((!anon&&(r.belt||badges))?'<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'
         +(r.belt?'<div style="flex-shrink:0;display:flex">'+bb(r.belt,Number(r.degree)||0,prog,'left',true)+'</div>':'')
         +badges
       +'</div>':'')
