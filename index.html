@@ -4327,7 +4327,7 @@ function rAttsStaff(rows,cid,occ){
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
     const _firstRow=!_rowShown;_rowShown=true;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px${deskRowStyle(s,16)}" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${bdayPill(s)}${safetyPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}</div>${deskFlagLine(s)}${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px${deskRowStyle(s,16)}" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${bdayPill(s)}${safetyPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}${r.arrivedAt&&r.status!=='absent'?` · <span style="color:var(--green-text)">Arrived ${escHtml(_chkHM(r.arrivedAt))}</span>`:''}</div>${deskFlagLine(s)}${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   // Bulk move — expanded only, so the collapsed card is untouched. Same
   // staff + isClassLocked gate markAllPresent uses (openAttMove re-checks both;
@@ -8184,6 +8184,12 @@ function rClass(){
     const startMin=_ch*60+_cm;
     const endMin=startMin+(c.dur||60);
     const isEnded=isT&&_now!=null&&_now>endMin;
+    // 164: the arrival window (30 min before the start until 15 after, the TV's).
+    // Shows "I'm here"; the server checks the window again and stamps the time.
+    const inWin=isT&&_now!=null&&_now>=startMin-30&&_now<startMin+15;
+    const arrivedAt=myRow&&myRow.status!=='absent'?myRow.arrivedAt:null;
+    const _busyHere=!!(S.arriveBusy&&S.arriveBusy[c.id]);
+    const hereBtn=`<button class="bblue" onclick="arriveHere('${c.id}')"${_busyHere?' disabled':''}>${_busyHere?'…':'I\'m here'}</button>`;
     let cc='card';let btn='';
     // The self check-in column renders ONLY for a viewer with their own
     // students row (myStu). No row → no button (dev-admin staff, or a parent
@@ -8199,8 +8205,11 @@ function rClass(){
       // days stay static-disabled (no retroactive uncheck).
       const skSd=dk(sd);
       const canUndo=skSd===dk(TODAY)||skSd===dk(TOMORROW);
-      if(canUndo){
-        btn=`<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;
+      if(arrivedAt){
+        // 164: arrived, the coach still confirms
+        btn=_chkHereBox(arrivedAt,'Awaiting confirmation');
+      } else if(canUndo){
+        btn=`${inWin&&!onHoldBlock?`<div style="margin-bottom:6px">${hereBtn}</div>`:''}<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;
       } else {
         // Past day — static read-only "Checked in". undoCI is guarded
         // both client-side (window) and server-side; this stops the UI
@@ -8230,7 +8239,7 @@ function rClass(){
         btn=`<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--text3);text-align:center;width:100%;line-height:1.2;background:var(--bg)">Check-in opens ${openLbl}</div>`;
       }
     }
-    else{btn=onHoldBlock?onHoldPill:`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`;}
+    else{btn=onHoldBlock?onHoldPill:(inWin?hereBtn:`<button class="bblue" onclick="doCI('${c.id}')">I'm going</button>`);}   // 164: I'm here in the window
     // Batch — kids privacy hardening (E1, per-audience). Three-way
     // split for non-staff viewers: 'Kids' classes stay fully
     // count-only; 'All' (open-mat / mixed-age, e.g. Sat 9:30) shows
@@ -10298,6 +10307,32 @@ function _rEvChallengeCard(){
     history.replaceState(history.state,'',u.pathname+u.search+u.hash);
   }catch(_){}
 })();
+// ── Arrival check in (164) ────────────────────────────────────────────────
+// The door QR opens https://mybjj-app.com/?checkin=<unit id>. Read it once at
+// boot, drop it from the URL, and keep it in localStorage for an hour so it
+// survives the sign in (Google and the email link come back without it, and the
+// email link may open a new tab). Cleared when the sheet opens.
+const _CHECKIN_KEY='mybjj_checkin';
+(function(){
+  try{
+    const u=new URL(location.href);
+    const v=u.searchParams.get('checkin');
+    if(v==null)return;
+    const id=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)?v.toLowerCase():'bad';
+    try{localStorage.setItem(_CHECKIN_KEY,JSON.stringify({u:id,t:Date.now()}));}catch(_){}
+    u.searchParams.delete('checkin');
+    history.replaceState(history.state,'',u.pathname+u.search+u.hash);
+  }catch(_){}
+})();
+function _checkinPending(){
+  try{
+    const o=JSON.parse(localStorage.getItem(_CHECKIN_KEY)||'null');
+    if(!o||!o.u)return null;
+    if(Date.now()-Number(o.t||0)>3600000){localStorage.removeItem(_CHECKIN_KEY);return null;}
+    return o.u;
+  }catch(_){return null;}
+}
+function _checkinClearPending(){try{localStorage.removeItem(_CHECKIN_KEY);}catch(_){}}
 function _lbPreview(){try{return localStorage.getItem('mybjj_lb_preview')==='1';}catch(_){return false;}}
 function _lbVisible(){
   if(isOwner())return true;
@@ -14969,7 +15004,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.lbEdit?rLbEditPage():''}${S.lbActivate?rLbActivateSheet():''}${S.lbReview?rLbReviewPage():''}${S.lbPublish?rLbPublishSheet():''}${S.lbPosts?rLbPostsModal():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.lbEdit?rLbEditPage():''}${S.lbActivate?rLbActivateSheet():''}${S.lbReview?rLbReviewPage():''}${S.lbPublish?rLbPublishSheet():''}${_checkinMaybeOpen()}${S.checkin?rCheckinSheet():''}${S.lbPosts?rLbPostsModal():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;border-radius:50%;overflow:hidden">${me.photoUrl?`<div style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${(_avBeltPair(me.belt)[2]||_avBeltPair(me.belt)[0])}"><img src="${photoSrc(me.photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,'${_avq(me.initials)}','${_avq(me.belt)}',36)"/></div>`:av(me.initials,me.belt,36)}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -19087,7 +19122,8 @@ function _mapAttRow(r){
   return {_dbId:r.id,unitId:r.unit_id||null,studentDbId:r.student_id,classId:r.class_id||null,
     classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',
     confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,
-    classValue:r.class_value!=null?Number(r.class_value):1};
+    classValue:r.class_value!=null?Number(r.class_value):1,
+    arrivedAt:r.arrived_at||null};   // 164: door QR / I'm here (server time)
 }
 function _mapExcRow(r){
   return {id:r.id,unitId:r.unit_id||null,classId:r.class_id||null,exceptionDate:r.exception_date,kind:r.kind,
@@ -19202,7 +19238,7 @@ async function ensureDayLoaded(dateKey){
 }
 async function _fetchAllAttendance(c, fromDate, toDate){
   const PAGE = 1000;
-  const COLS = 'id,unit_id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value';
+  const COLS = 'id,unit_id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value,arrived_at';
   let all = [], from = 0;
   for (let page = 0; page < 10; page++) {          // safety cap: 10 pages / 10k rows
     const r = await c.from('attendance').select(COLS)
@@ -20459,6 +20495,18 @@ function authHero(){
 
 // Etapa 3 — demo login cards deleted.
 
+// 164: signed out after scanning the door QR. Point app users at "I'm here",
+// then the usual sign in; the sheet opens once signed in (_checkinMaybeOpen).
+function _checkinAuthBlock(){
+  const u=_checkinPending();if(!u)return '';
+  const unit=UNITS.find(x=>x._dbId===u);
+  return '<div style="margin-bottom:16px">'
+    +(unit?'<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:11px;letter-spacing:2px;color:var(--blue);text-transform:uppercase">'+escHtml(unit.name)+'</div>':'')
+    +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:30px;line-height:1.05;letter-spacing:.5px;color:var(--text);margin:4px 0 2px">Welcome in</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.45;margin-top:10px">Use the myBJJ app? Open it and tap I\'m here on your class.</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.45;margin-top:14px">Or sign in here.</div>'
+  +'</div>';
+}
 function rAuth(){
   const busy=S.authBusy?'disabled':'';
   // Label swap follows the file's submitting-button pattern (:4338 'Saving…',
@@ -20522,7 +20570,7 @@ ${msg}
   // OAuth). Real test accounts (felipefaraone+profteste, +parentteste,
   // felipefaraone, admin.mybjj) cover the testing matrix.
   const privacyDisclosure=`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:20px;line-height:1.5">By continuing you agree to our <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Privacy Policy</a></div>`;
-  return `<div class="lw">${authHero()}<div class="lbody"><div class="inv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Access is by invitation only. Your instructor creates your account and sends you a login link.</span></div>${form}${privacyDisclosure}</div></div>`;
+  return `<div class="lw">${authHero()}<div class="lbody">${_checkinAuthBlock()}<div class="inv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Access is by invitation only. Your instructor creates your account and sends you a login link.</span></div>${form}${privacyDisclosure}</div></div>`;
 }
 
 function rPending(){
@@ -20949,6 +20997,230 @@ function _startQueueTimer(){
   },30000);
 }
 
+// ── Arrival check in (164): the door QR sheet and "I'm here" ─────────────────
+// Arrived is not Present: the coach still confirms, and only Present counts.
+// The server picks the class (checkin_preview / checkin_arrive, one rule) and
+// stamps the time; the phone's clock is never used. No offline queue: a late
+// arrival time would be wrong, so a network failure just says try again.
+const _CHK_HOLD_TXT='On hold — contact office';
+function _chkNetErr(e){
+  const m=String((e&&e.message)||e||'').toLowerCase();
+  return (typeof navigator!=='undefined'&&navigator.onLine===false)||e instanceof TypeError||/failed to fetch|network|fetch|timeout|offline|load failed/.test(m);
+}
+// "18:00" as "6:00 PM" (the check in copy: Here 5:48 PM, Next class 6:00 PM).
+function _chk12(t){return fmtT12(t).replace(/\s*(am|pm)$/i,(_,x)=>' '+x.toUpperCase());}
+// An arrival time (timestamptz) as Sydney's "5:48 PM".
+function _chkHM(iso){
+  if(!iso)return '';
+  const d=new Date(iso);if(isNaN(d))return '';
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Australia/Sydney',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(d);
+  const h=(parts.find(x=>x.type==='hour')||{}).value||'00',m=(parts.find(x=>x.type==='minute')||{}).value||'00';
+  return _chk12((h==='24'?'00':h)+':'+m);
+}
+// The green "Here 5:48 PM" block (class card and sheet). sub: the small line.
+function _chkHereBox(iso,sub){
+  return '<div style="width:100%;background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:10px;padding:9px 11px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:13px;line-height:1.3;text-align:center">'
+    +escHtml('Here '+_chkHM(iso))
+    +(sub?'<div style="font-family:Barlow,sans-serif;font-weight:400;font-size:10px;opacity:.8;margin-top:2px">'+escHtml(sub)+'</div>':'')+'</div>';
+}
+function _chkHoldPill(){return '<div style="background:var(--amber-bg);color:var(--amber-text);border-radius:10px;padding:10px 12px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;text-align:center;width:100%;line-height:1.2;cursor:default">'+_CHK_HOLD_TXT+'</div>';}
+// Who this account checks in, as the profile switcher lists them: the user if
+// they train (their own students row), then each linked kid.
+function _chkProfiles(){
+  const out=[];
+  const uid=S.profile&&S.profile.id;
+  const self=uid?(STUDENTS.find(x=>x._userId===uid)||(MY_STUDENT&&MY_STUDENT._userId===uid?MY_STUDENT:null)):null;
+  if(self&&self._dbId)out.push(self);
+  for(const k of (typeof parentChildren==='function'?parentChildren():[])){
+    if(k&&k._dbId&&!out.some(x=>x._dbId===k._dbId))out.push(k);
+  }
+  return out;
+}
+// A row the server returned (arrived / already) into the local attendance, so
+// the class card and the coach's list update without a reload.
+function _chkMergeAtt(r,unitDbId){
+  if(!r||!r.attendance_id)return;
+  const a=ATTENDANCE.find(x=>x&&x._dbId===r.attendance_id);
+  if(a){a.arrivedAt=r.arrived_at||a.arrivedAt||null;if(r.status)a.status=r.status;return;}
+  ATTENDANCE.push({_dbId:r.attendance_id,unitId:unitDbId||null,studentDbId:r.student_id,classId:r.class_id||null,
+    classDate:r.class_date,classTime:r.class_time,classType:null,status:r.status||'going',
+    confirmedBy:null,confirmedAt:null,classValue:1,arrivedAt:r.arrived_at||null});
+}
+// The coach of a window class, from the timetable the app already holds (an
+// instructor override or a one-off's substitute wins). '' when unknown.
+function _chkCoach(r,unitDbId){
+  if(!r)return '';
+  const subName=id=>{const s=id&&STAFF.find(x=>x._dbId===id);return s?s.name:'';};
+  const ex=(CEXC[r.class_date]||[]).filter(e=>!unitDbId||e.unitId===unitDbId);
+  if(r.class_id){
+    const o=ex.find(e=>e.kind==='instructor_override'&&e.classId===r.class_id);
+    if(o&&subName(o.substituteInstructorId))return subName(o.substituteInstructorId);
+    const row=CLASSES.find(cl=>cl.id===r.class_id);
+    if(row&&row.instructor)return staffDisplayName({name:row.instructor.full_name,belt:row.instructor.belt,deg:row.instructor.degree,role:'instructor',roleTitle:row.instructor.role_title||'Professor'});
+    return '';
+  }
+  const leg=String(r.class_legacy_id||'');const exId=leg.indexOf('_oneoff_')>=0?leg.slice(leg.indexOf('_oneoff_')+8):'';
+  const o=exId?ex.find(e=>e.id===exId):null;
+  return o?subName(o.substituteInstructorId):'';
+}
+function _chkKey(o){return o?((o.class_id||'')+'|'+(o.time||o.class_time||'')):'';}
+// Open from the QR (rApp calls this on every render; it acts once).
+function _checkinMaybeOpen(){
+  if(S.checkin||S.hydrating||!S.loggedIn)return '';
+  const u=_checkinPending();if(!u)return '';
+  _checkinClearPending();
+  S.checkin={unit:u,loading:true,res:{},busy:{},err:'',choice:null,changing:false};
+  setTimeout(_checkinLoad,0);
+  return '';
+}
+function closeCheckin(){S.checkin=null;render();}
+async function _checkinLoad(){
+  const m=S.checkin;if(!m)return;
+  m.loading=true;m.err='';
+  if(m.unit==='bad'){m.loading=false;m.unknown=true;render();return;}
+  const profs=_chkProfiles();
+  m.ids=profs.map(x=>x._dbId);
+  if(!m.ids.length){m.loading=false;m.none=true;render();return;}
+  try{
+    const rows=await _lbRpc('checkin_preview',{p_unit:m.unit,p_student_ids:m.ids,p_class:null})||[];
+    const res={};rows.forEach(r=>{res[r.student_id]=r;});
+    // a class chosen with "Change": for everyone it fits (its options hold it)
+    if(m.choice){
+      const fits=rows.filter(r=>(r.options||[]).some(o=>_chkKey({class_id:o.class_id,time:o.time})===_chkKey(m.choice))).map(r=>r.student_id);
+      if(fits.length){
+        const again=await _lbRpc('checkin_preview',{p_unit:m.unit,p_student_ids:fits,p_class:m.choice})||[];
+        again.forEach(r=>{res[r.student_id]=r;});
+      }
+    }
+    if(S.checkin!==m)return;
+    m.res=res;m.loading=false;
+  }catch(e){
+    if(S.checkin!==m)return;
+    m.loading=false;
+    if(/unknown unit/i.test(String((e&&e.message)||'')))m.unknown=true;
+    else m.err=_chkNetErr(e)?'No connection, try again':_compErr(e);
+  }
+  render();
+}
+function checkinChange(){const m=S.checkin;if(!m||m.loading)return;m.changing=!m.changing;render();}
+function checkinPick(i){
+  const m=S.checkin;if(!m)return;
+  const o=_chkOptions(m)[Number(i)];if(!o)return;
+  m.choice={class_id:o.class_id||null,time:o.time};m.changing=false;
+  _checkinLoad();render();
+}
+// Every window class any profile could take, nearest first, once each.
+function _chkOptions(m){
+  const seen={},out=[];
+  for(const id of (m.ids||[])){
+    const r=m.res[id];
+    for(const o of ((r&&r.options)||[])){const k=_chkKey({class_id:o.class_id,time:o.time});if(!seen[k]){seen[k]=1;out.push(o);}}
+  }
+  return out;
+}
+async function checkinTap(sid){
+  const m=S.checkin;if(!m||m.busy[sid])return;
+  const r0=m.res[sid];if(!r0||r0.result!=='ready')return;
+  m.busy[sid]=true;m.err='';render();
+  try{
+    const rows=await _lbRpc('checkin_arrive',{p_unit:m.unit,p_student_ids:[sid],p_via:'qr',p_class:{class_id:r0.class_id||null,time:r0.class_time}})||[];
+    const r=rows[0];
+    if(S.checkin!==m)return;
+    if(r){m.res[sid]=r;if(r.result==='arrived'||r.result==='already')_chkMergeAtt(r,m.unit);}
+  }catch(e){
+    if(S.checkin===m)m.err=_chkNetErr(e)?'No connection, try again':_compErr(e);
+  }finally{
+    if(S.checkin===m)delete m.busy[sid];
+    render();
+  }
+}
+function rCheckinSheet(){
+  const m=S.checkin;if(!m)return '';
+  const unitRow=UNITS.find(u=>u._dbId===m.unit);
+  const unitName=unitRow?unitRow.name:'';
+  const eye='<div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:11px;letter-spacing:2px;color:var(--blue);text-transform:uppercase">'+escHtml(unitName)+'</div>';
+  const ttl=t=>'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:30px;line-height:1.05;letter-spacing:.5px;color:var(--text);margin:4px 0 2px">'+escHtml(t)+'</div>';
+  const muted=t=>'<div style="font-size:13px;color:var(--text2);line-height:1.45;margin-top:10px">'+escHtml(t)+'</div>';
+  const close='<button onclick="closeCheckin()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+  let body='';
+  if(m.unknown){
+    body=ttl('Check in')+muted('This code is not for a myBJJ academy we know. Ask at the front desk.');
+  }else if(m.none){
+    body=(unitName?eye:'')+ttl('Welcome in')+muted('There is no member profile on this account to check in. Ask at the front desk.');
+  }else if(m.loading&&!Object.keys(m.res).length){
+    body=(unitName?eye:'')+ttl('Welcome in')+muted('Loading…');
+  }else{
+    const profs=_chkProfiles().filter(p=>(m.ids||[]).indexOf(p._dbId)>=0);
+    const withClass=profs.map(p=>m.res[p._dbId]).filter(r=>r&&(r.result==='ready'||r.result==='arrived'||r.result==='already'));
+    const top=withClass[0]||null;
+    const row=(p,right,meta)=>'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--border)">'
+      +'<div style="display:flex;align-items:center;gap:10px;min-width:0">'+avStu(p,34)
+        +'<div style="min-width:0"><div style="font-size:14px;font-weight:500;color:var(--text)">'+escHtml(p.name||'')+'</div>'
+        +'<div style="font-size:11px;color:var(--text3)">'+escHtml(meta)+'</div></div></div>'
+      +'<div style="flex-shrink:0;min-width:'+(right.indexOf(_CHK_HOLD_TXT)>=0?140:96)+'px">'+right+'</div></div>';
+    const beltOf=p=>{const b=beltDef(p.belt,p.prog);return (b&&b.label?b.label+' belt':'');};
+    if(!top){
+      // nothing in the window for anyone: when the next class opens
+      // (on hold is answered before any class is looked at: all on hold = Welcome in)
+      const nx=profs.map(p=>m.res[p._dbId]).find(r=>r&&r.result==='no_class'&&r.opens_at);
+      const anyNo=profs.some(p=>m.res[p._dbId]&&m.res[p._dbId].result!=='on_hold');
+      body=(unitName?eye:'')+(anyNo
+        ?ttl('No class starting soon')+muted(nx?('Next class '+_chk12(nx.class_time)+'. You can say you\'re here from '+_chk12(nx.opens_at)+'.'):'No more classes here today.')
+        :ttl('Welcome in'));
+      const held=profs.filter(p=>m.res[p._dbId]&&m.res[p._dbId].result==='on_hold');
+      if(held.length)body+='<div style="margin-top:12px">'+held.map(p=>row(p,_chkHoldPill(),beltOf(p))).join('')+'</div>';
+    }else{
+      const coach=_chkCoach(top,m.unit);
+      const opts=_chkOptions(m);
+      const cls='<div style="margin:14px 0 6px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--input-bg)">'
+        +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;line-height:1;color:var(--text)">'+escHtml(_chk12(top.class_time))+'</div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:4px">'+escHtml([top.class_label,top.class_audience,coach].filter(Boolean).join(' · '))+'</div>'
+        +(opts.length>1?'<button onclick="checkinChange()" style="background:none;border:none;padding:0;margin-top:6px;font-size:12px;color:var(--blue);cursor:pointer;font-family:Barlow,sans-serif">'+(m.changing?'Keep this class':'Not this class? Change')+'</button>':'')
+        +(m.changing?'<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">'+opts.map((o,i)=>'<button data-i="'+i+'" onclick="checkinPick(this.dataset.i)" style="text-align:left;background:var(--card);border:1px solid '+(_chkKey(o)===_chkKey({class_id:top.class_id,time:top.class_time})?'var(--blue)':'var(--border)')+';border-radius:8px;padding:8px 10px;cursor:pointer;color:var(--text);font-family:Barlow,sans-serif;font-size:13px">'+escHtml(_chk12(o.time)+' · '+(o.label||'')+' · '+(o.aud||''))+'</button>').join('')+'</div>':'')
+        +'</div>';
+      const rows=profs.map(p=>{
+        const r=m.res[p._dbId];if(!r)return '';
+        const differs=r.class_time&&(_chkKey({class_id:r.class_id,time:r.class_time})!==_chkKey({class_id:top.class_id,time:top.class_time}));
+        const meta=beltOf(p)+(differs&&(r.result==='ready'||r.result==='arrived'||r.result==='already')?' · '+_chk12(r.class_time)+' class':'');
+        let right='';
+        if(r.result==='on_hold')right=_chkHoldPill();
+        else if(r.result==='arrived'||r.result==='already')right=_chkHereBox(r.arrived_at,'');
+        else if(r.result==='ready')right='<button class="bblue" data-sid="'+escAttr(p._dbId)+'" onclick="checkinTap(this.dataset.sid)"'+(m.busy[p._dbId]?' disabled':'')+' style="padding:8px 10px;font-size:13px">'+(m.busy[p._dbId]?'…':'I\'m here')+'</button>';
+        else right='<div style="font-size:12px;color:var(--text3);text-align:right">No class now</div>';
+        return row(p,right,meta);
+      }).join('');
+      body=(unitName?eye:'')+ttl('Welcome in')+cls+'<div>'+rows.replace('border-top:1px solid var(--border)','border-top:0')+'</div>';
+    }
+  }
+  const err=m.err?'<div style="font-size:12.5px;color:var(--red-text);margin-top:12px">'+escHtml(m.err)+'</div>':'';
+  return '<div class="cov" onclick="closeCheckin()" style="align-items:flex-end;z-index:305">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:20px 16px 24px;max-height:86vh;overflow-y:auto">'
+      +close+'<div style="padding-right:40px"></div>'+body+err
+    +'</div></div>';
+}
+// The class card's "I'm here" (the active profile, inside the window).
+async function arriveHere(cid){
+  const stu=myStudentRow();if(!stu||!stu._dbId)return;
+  if(stu.standing==='on_hold'&&!isStaffOrOwner()){showSaveToast2('Your account is on hold. Please contact info@mybjj.com.au to check in.','error');return;}
+  const c=_parseCID(cid);if(!c)return;
+  const t=_occFor(cid);
+  const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
+  const unit=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
+  if(!unit)return;
+  S.arriveBusy=S.arriveBusy||{};if(S.arriveBusy[cid])return;
+  S.arriveBusy[cid]=true;render();
+  try{
+    const rows=await _lbRpc('checkin_arrive',{p_unit:unit,p_student_ids:[stu._dbId],p_via:'app',p_class:{class_id:t.classId||null,time:c.time}})||[];
+    const r=rows[0];
+    if(r&&(r.result==='arrived'||r.result==='already'))_chkMergeAtt(r,unit);
+    else if(r&&r.result==='on_hold')showSaveToast2('Your account is on hold. Please contact info@mybjj.com.au to check in.','error');
+    else showSaveToast2('This class is not open for I\'m here right now.','error');
+  }catch(e){
+    showSaveToast2(_chkNetErr(e)?'No connection, try again':_compErr(e),'error');
+  }finally{
+    delete S.arriveBusy[cid];render();
+  }
+}
 async function doCI(id){
   // G1-B + G16-new — defence in depth. Self check-in window is
   // today OR tomorrow. Day+2+ must still be refused even if a stale
