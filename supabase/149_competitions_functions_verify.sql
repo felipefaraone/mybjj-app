@@ -303,8 +303,8 @@ begin
   insert into _v149 values (7.2, 'class award with NULL class_id accepted once per day, second refused; no class_date refused',
     a1 is not null and v_err = 'unique_violation' and v_txt = 'invalid_parameter_value', format('second: %s; no date: %s', v_err, v_txt));
 
-  -- 8. hidden student (Gu hides himself through the RPC)
-  perform pg_temp.v_as(u_hid);
+  -- 8. hidden student (staff hide Gu through the RPC; since 168 only staff / admin may)
+  perform pg_temp.v_as(u_staff);
   perform public.set_leaderboard_hidden(s7, true);
   execute 'reset role';
   perform pg_temp.v_as(u_peer);
