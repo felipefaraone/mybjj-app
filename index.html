@@ -1992,6 +1992,14 @@ function getEligibilityStatus(student){
     months_target:next.months
   };
 }
+// THE one answer to "is this person ready for their next stripe/belt": the
+// getEligibilityStatus result when it is 'eligible', otherwise null. Every
+// surface (promo banner count, Roster "Eligible only", class list line and
+// tally) calls this rather than re-testing .status inline.
+function promoReady(s){
+  const e=getEligibilityStatus(s);
+  return (e&&e.status==='eligible')?e:null;
+}
 // G9 Phase 1 — derived fields the legacy progress / stat surfaces
 // (rStuProf detail panel, rParentChildView, rProgress's rank tab)
 // expect: pct, barPct, isReady, isPending, label, reason. Wraps
@@ -4267,6 +4275,18 @@ function rAttsStaff(rows,cid,occ){
   const onHoldTally=onHoldCount
     ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--amber-text)">${onHoldCount} to check</span>`
     :'';
+  // 'N ready': promotion-ready members in this class. ONE predicate (_readyFor)
+  // feeds both this tally and the per-row line, so they can never disagree.
+  // STUDENTS only — VISITORS carry incomplete counts/journey, so no verdict.
+  const _readyFor=r=>{
+    if(!isStaffOrOwner())return null;
+    const s=STUDENTS.find(x=>x._dbId===r.studentDbId);
+    return s?promoReady(s):null;
+  };
+  const readyCount=visible.reduce((n,r)=>n+(_readyFor(r)?1:0),0);
+  const readyTally=readyCount
+    ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--green-text)">${readyCount} ready</span>`
+    :'';
   const P=6;
   const restG=goingRows.length-P;
   const chevron=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;transition:transform .15s;transform:rotate(${exp?90:0}deg)"><polyline points="9 18 15 12 9 6"/></svg>`;
@@ -4275,6 +4295,7 @@ function rAttsStaff(rows,cid,occ){
       +(exp
         ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3)">${goingRows.length} going</span>`
         :`<div class="ast">${goingRows.slice(0,P).map(r=>{const s=STUDENTS.find(x=>x._dbId===r.studentDbId)||VISITORS[r.studentDbId];return s?_stkAv(s,false):'';}).join('')}${restG>0?`<div class="amor">+${restG}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${goingRows.length} going</span>`)
+      +readyTally
       +onHoldTally
       +`<span style="margin-left:auto;display:inline-flex;align-items:center">${chevron}</span></div>`
     :'';
@@ -4309,9 +4330,9 @@ function rAttsStaff(rows,cid,occ){
       +removeBtn;
   };
   const statusPill=r=>{
-    if(r.status==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px;margin-left:6px">PRESENT</span>';
-    if(r.status==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px;margin-left:6px">ABSENT</span>';
-    return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;margin-left:6px">GOING</span>';
+    if(r.status==='present')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--green-text);background:var(--green-bg);border:1px solid var(--green-border);padding:1px 6px;border-radius:4px">PRESENT</span>';
+    if(r.status==='absent')return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--red-text);background:var(--red-bg);border:1px solid var(--red-border);padding:1px 6px;border-radius:4px">ABSENT</span>';
+    return '<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--text3);background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px">GOING</span>';
   };
   // G9.2 — class_value chip only when the present row was marked at a
   // non-default tier (≠ 1.00). The standard PRESENT pill already
@@ -4325,19 +4346,19 @@ function rAttsStaff(rows,cid,occ){
     const accent=isZero?'var(--text3)':(v>1?'var(--blue)':'var(--amber-text)');
     const bg=isZero?'var(--bg)':(v>1?'var(--blue-tint)':'var(--amber-bg)');
     const border=isZero?'var(--border)':(v>1?'var(--blue-mid)':'var(--amber-border)');
-    return '<span title="class_value = '+v.toFixed(2)+'" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:'+accent+';background:'+bg+';border:1px solid '+border+';padding:1px 6px;border-radius:4px;margin-left:6px">'+lbl+'</span>';
+    return '<span title="class_value = '+v.toFixed(2)+'" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:'+accent+';background:'+bg+';border:1px solid '+border+';padding:1px 6px;border-radius:4px">'+lbl+'</span>';
   };
   // Migration 99 — SAFETY pill (word, not just the dot) once the list is expanded
   // to manage the class. Same grammar as the status pills. VISITORS (cross-unit)
   // carry no _safety, so the s&&s._safety guard keeps them clear.
   const safetyPill=s=>(s&&s._safety===true)
-    ?'<span aria-label="Has safety flags" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px;margin-left:6px">SAFETY</span>'
+    ?'<span aria-label="Has safety flags" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px">SAFETY</span>'
     :'';
   // Birthday pill on the class's own date (not today). Staff only; visitors
   // carry no dob, so _isBirthdayOn is false for them.
   const _bdDate=(()=>{const pc=_parseCID(cid);return pc?_parseISODate(pc.date):null;})();
   const bdayPill=s=>(isStaffOrOwner()&&_bdDate&&_isBirthdayOn(s,_bdDate))
-    ?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px;margin-left:6px">BIRTHDAY</span>'
+    ?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px">BIRTHDAY</span>'
     :'';
   // Expanded: going row (with rotated chevron) + per-student list, then the
   // SAME footer, still last. Only the middle grew — the footer did not move
@@ -4357,7 +4378,9 @@ function rAttsStaff(rows,cid,occ){
     const isZero=r.status==='present'&&r.classValue===0;
     const nameStyle=isZero?'text-decoration:line-through;color:var(--text2)':'color:var(--text)';
     const _firstRow=!_rowShown;_rowShown=true;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px${deskRowStyle(s,16)}" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;${nameStyle}">${escHtml(s.name)}${bdayPill(s)}${safetyPill(s)}${statusPill(r)}${cvChip(r)}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}${r.arrivedAt?` · <span style="color:var(--green-text)">Arrived ${escHtml(_chkHM(r.arrivedAt))}</span>`:''}</div>${deskFlagLine(s)}${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    const _pills=bdayPill(s)+safetyPill(s)+statusPill(r)+cvChip(r);
+    const _ready=_readyFor(r);
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px${deskRowStyle(s,16)}" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;column-gap:6px;row-gap:3px"><span style="${nameStyle}">${escHtml(s.name)}</span>${_pills?`<span style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:3px 6px">${_pills}</span>`:''}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}${r.arrivedAt?` · <span style="color:var(--green-text)">Arrived ${escHtml(_chkHM(r.arrivedAt))}</span>`:''}</div>${_ready?`<div style="display:flex;align-items:center;gap:5px;margin-top:3px;font-size:11px;font-weight:600;color:var(--green-text)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>Ready for ${escHtml(_ready.label)}</div>`:''}${deskFlagLine(s)}${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   // Bulk move — expanded only, so the collapsed card is untouched. Same
   // staff + isClassLocked gate markAllPresent uses (openAttMove re-checks both;
@@ -13457,7 +13480,7 @@ function rARosterListInner(){
   const curU=UNITS.find(u=>u.name===S.unit);const rfUnit=curU?curU.id:'all';
   const rfBelt=S.rfBelt||'all';
   const rfNear=!!S.rfNear;
-  const rfEligible=!!S.rfEligible&&canEditClassCounts();
+  const rfEligible=!!S.rfEligible&&isStaffOrOwner();
   // Gated in the SAME expression as the chip below, so the filter can never be
   // stuck on for someone who has no chip to switch it off with.
   const rfAwaiting=!!S.rfAwaiting&&isStaffOrOwner();
@@ -13478,7 +13501,7 @@ function rARosterListInner(){
   // _egDisplay / getEligibilityStatus. studentEligibility (legacy
   // 25/30 thresholds) no longer fed any UI as of this batch.
   if(rfNear)list=list.filter(s=>{const e=_egDisplay(s);return (e.pct||0)>=80;});
-  if(rfEligible)list=list.filter(s=>{const e=getEligibilityStatus(s);return e&&e.status==='eligible';});
+  if(rfEligible)list=list.filter(s=>!!promoReady(s));
   if(rfAwaiting)list=list.filter(_awaitingSignInRoster);
   if(rfOnHold)list=list.filter(isOnHoldVisible);
   if(q)list=list.filter(s=>s.name.toLowerCase().includes(q));
@@ -14771,7 +14794,7 @@ function rARoster(){
   const rfAwaiting=!!S.rfAwaiting&&isStaffOrOwner();
   const rfOnHold=!!S.rfOnHold&&isStaffOrOwner();
   const rfNear=!!S.rfNear;
-  const rfEligible=!!S.rfEligible&&canEditClassCounts();
+  const rfEligible=!!S.rfEligible&&isStaffOrOwner();
   // Multi-unit — scope the count to the ACTIVE UNIT explicitly (same
   // resolution rMembers uses: UNITS.find(name)→id, compared with s.unit)
   // rather than relying on STUDENTS happening to hold only the active
@@ -14828,7 +14851,7 @@ function rARoster(){
     +beltChipsHtml
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'
     +'<button onclick="toggleRFNear()" style="'+chipBase+';background:'+(rfNear?'#1A5DAD15':'transparent')+';border-color:'+(rfNear?'var(--blue)':'var(--border)')+';color:'+(rfNear?'var(--blue)':'var(--text3)')+'">Near grad'+(rfNear?' ✕':'')+'</button>'
-    +(canEditClassCounts()?'<button onclick="toggleRFEligible()" style="'+chipBase+';background:'+(rfEligible?'var(--green-bg)':'transparent')+';border-color:'+(rfEligible?'var(--green-text)':'var(--border)')+';color:'+(rfEligible?'var(--green-text)':'var(--text3)')+'">Eligible only'+(rfEligible?' ✕':'')+'</button>':'')
+    +(isStaffOrOwner()?'<button onclick="toggleRFEligible()" style="'+chipBase+';background:'+(rfEligible?'var(--green-bg)':'transparent')+';border-color:'+(rfEligible?'var(--green-text)':'var(--border)')+';color:'+(rfEligible?'var(--green-text)':'var(--text3)')+'">Eligible only'+(rfEligible?' ✕':'')+'</button>':'')
     +(canEditClassCounts()?'<button onclick="toggleRFInactive()" style="'+chipBase+';background:'+(S.rfInactive?'var(--amber-bg)':'transparent')+';border-color:'+(S.rfInactive?'var(--amber-border)':'var(--border)')+';color:'+(S.rfInactive?'var(--amber-text)':'var(--text3)')+'">Show inactive'+(S.rfInactive?' ✕':'')+'</button>':'')
     // Same copy as the badge on the card ("Awaiting sign-in") and the same
     // "Label (N)" count shape the Adults/Kids toggle uses below. A state, not an
@@ -15367,8 +15390,8 @@ function getPromoReady(){
   STUDENTS.filter(function(s){return s._active!==false&&s.unit===unitId;}).forEach(function(s){
     // G9 Phase 1 consolidation — alert count sourced from
     // PROMO_CRITERIA. Excludes kids (pending) and black belt (null).
-    var eg=getEligibilityStatus(s);
-    if(eg&&eg.status==='eligible'){
+    var eg=promoReady(s);
+    if(eg){
       var isProm=s.deg>=(MAXD[s.belt]||4);
       ready.push({name:s.name,id:s.id,belt:s.belt,deg:s.deg,pct:100,grade:eg.classes_done,goal:eg.classes_target,isProm:isProm,prog:s.prog});
     }
