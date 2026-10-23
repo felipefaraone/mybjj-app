@@ -4272,8 +4272,13 @@ function rAttsStaff(rows,cid,occ){
   // Mark the exception, not the OK state: zero renders nothing at all — no chip,
   // no "0 on hold". Same type grammar as the "N GOING" label beside it, in amber
   // to match the badge.
+  // Type follows the label it sits beside: collapsed "4 going" is plain 12px
+  // body text, expanded "4 GOING" is condensed uppercase. Colour stays.
+  const _tallyType=exp
+    ?`font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase`
+    :`font-size:12px`;
   const onHoldTally=onHoldCount
-    ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--amber-text)">${onHoldCount} to check</span>`
+    ?`<span style="${_tallyType};color:var(--amber-text)">${onHoldCount} to check</span>`
     :'';
   // 'N ready': promotion-ready members in this class. ONE predicate (_readyFor)
   // feeds both this tally and the per-row line, so they can never disagree.
@@ -4285,7 +4290,7 @@ function rAttsStaff(rows,cid,occ){
   };
   const readyCount=visible.reduce((n,r)=>n+(_readyFor(r)?1:0),0);
   const readyTally=readyCount
-    ?`<span style="font-size:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--green-text)">${readyCount} ready</span>`
+    ?`<span style="${_tallyType};color:var(--green-text)">${readyCount} ready</span>`
     :'';
   const P=6;
   const restG=goingRows.length-P;
@@ -4354,6 +4359,16 @@ function rAttsStaff(rows,cid,occ){
   const safetyPill=s=>(s&&s._safety===true)
     ?'<span aria-label="Has safety flags" style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;color:var(--amber-text);background:var(--amber-bg);border:1px solid var(--amber-border);padding:1px 6px;border-radius:4px">SAFETY</span>'
     :'';
+  // "Ready for X" line under the belt line. For those who can promote it is a
+  // shortcut straight into the Promote modal, pre-set to that step; stopPropagation
+  // keeps the row's viewStu (on an ancestor) from firing too. Everyone else gets
+  // the plain line. padding:0 keeps the text on the name's x.
+  const _readyIcon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>';
+  const _readyLine=(s,rd)=>{
+    if(!rd)return '';
+    if(!canEditClassCounts())return `<div style="display:flex;align-items:center;gap:5px;margin-top:3px;font-size:11px;font-weight:600;color:var(--green-text)">${_readyIcon}Ready for ${escHtml(rd.label)}</div>`;
+    return `<button onclick="event.stopPropagation();openPromoteModal('${s.id}',{fromReady:true})" style="display:flex;align-items:center;gap:5px;min-height:28px;margin:0;padding:0;background:transparent;border:none;cursor:pointer;font-family:inherit;font-size:11px;font-weight:600;color:var(--green-text);text-align:left">${_readyIcon}Ready for ${escHtml(rd.label)}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg></button>`;
+  };
   // Birthday pill on the class's own date (not today). Staff only; visitors
   // carry no dob, so _isBirthdayOn is false for them.
   const _bdDate=(()=>{const pc=_parseCID(cid);return pc?_parseISODate(pc.date):null;})();
@@ -4380,7 +4395,7 @@ function rAttsStaff(rows,cid,occ){
     const _firstRow=!_rowShown;_rowShown=true;
     const _pills=bdayPill(s)+safetyPill(s)+statusPill(r)+cvChip(r);
     const _ready=_readyFor(r);
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px${deskRowStyle(s,16)}" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;column-gap:6px;row-gap:3px"><span style="${nameStyle}">${escHtml(s.name)}</span>${_pills?`<span style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:3px 6px">${_pills}</span>`:''}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}${r.arrivedAt?` · <span style="color:var(--green-text)">Arrived ${escHtml(_chkHM(r.arrivedAt))}</span>`:''}</div>${_ready?`<div style="display:flex;align-items:center;gap:5px;margin-top:3px;font-size:11px;font-weight:600;color:var(--green-text)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>Ready for ${escHtml(_ready.label)}</div>`:''}${deskFlagLine(s)}${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:8px${deskRowStyle(s,16)}" class="${_firstRow?'':'divider'}"><div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0" onclick="viewStu('${s.id}','class')">${avStu(s,34)}<div style="min-width:0"><div style="font-size:14px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;column-gap:6px;row-gap:3px"><span style="${nameStyle}">${escHtml(s.name)}</span>${_pills?`<span style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:3px 6px">${_pills}</span>`:''}</div><div style="font-size:11px;color:var(--text3)">${b.label} belt · ${s.prog}${r.arrivedAt?` · <span style="color:var(--green-text)">Arrived ${escHtml(_chkHM(r.arrivedAt))}</span>`:''}</div>${_readyLine(s,_ready)}${deskFlagLine(s)}${_compClassCtl(cid,r,s._dbId)}</div></div><div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${btnFor(r,s)}</div></div>`;
   }).join('')}</div>`;
   // Bulk move — expanded only, so the collapsed card is untouched. Same
   // staff + isClassLocked gate markAllPresent uses (openAttMove re-checks both;
@@ -7292,10 +7307,32 @@ function openPromoteModal(sid, opts){
   // savePromote takes its Mode 3 path: records a past grading date as a hidden
   // promotions row + recompute, WITHOUT changing the current belt. Callers that
   // pass no opts keep the default current-belt promotion mode.
+  // Stripe: same s.degree/s.deg resolution getNextMarker uses. Date: the
+  // viewer's LOCAL calendar day (dk) — toISOString() is UTC, which dated any
+  // Sydney promotion before 10/11 am as yesterday.
+  let belt=s.belt||'white';
+  let deg=Number(s.degree!=null?s.degree:(s.deg!=null?s.deg:0))||0;
+  // opts.fromReady (the class list's "Ready for X" line) pre-selects the step the
+  // person is ready for. Stripe markers keep the belt; 'promotion' takes the next
+  // belt from the SAME order the dropdown lists (_promoteBeltOrder), accepted only
+  // when its name matches the criteria label — otherwise (e.g. a kid on white whose
+  // next step is the adult blue) the current belt/stripe stay and staff pick.
+  if(opts&&opts.fromReady){
+    const nx=getNextMarker(s);
+    const si=nx?['1st_stripe','2nd_stripe','3rd_stripe','4th_stripe'].indexOf(nx.marker):-1;
+    if(si>=0){deg=si+1;}
+    else if(nx&&nx.marker==='promotion'){
+      const ORDER=_promoteBeltOrder(s);
+      const i=ORDER.indexOf(s.belt);
+      const nb=i>=0?ORDER[i+1]:null;
+      const nbLabel=nb?((BA[nb]||BK[nb]||{label:nb}).label+' belt'):'';
+      if(nb&&nbLabel.toLowerCase()===String(nx.label||'').toLowerCase()){belt=nb;deg=0;}
+    }
+  }
   S.promoteForm={
-    belt:s.belt||'white',
-    deg:Number.isFinite(s.deg)?s.deg:0,
-    date:new Date().toISOString().slice(0,10),
+    belt:belt,
+    deg:deg,
+    date:dk(new Date()),
     setCurrent:!(opts&&opts.backfill),
     backfill:!!(opts&&opts.backfill)
   };
