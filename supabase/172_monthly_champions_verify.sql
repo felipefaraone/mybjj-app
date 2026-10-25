@@ -120,7 +120,7 @@ begin
     raise exception 'FAIL 0: grants';
   end if;
   select format('%s | %s | %s', j.schedule, j.command, j.active) into v from cron.job j where j.jobname = 'monthly-close';
-  if v is distinct from '0 * 2-4 * * | select public.monthly_close_due() | true' then
+  if v is distinct from '0 * 2-4 * * | select public.monthly_close_due() | t' then
     raise exception 'FAIL 0: cron job monthly-close is %', v;
   end if;
   raise notice 'PASS 0: table (RLS, no client read), grants (close internal, champions for authenticated), cron %', v;
