@@ -1797,6 +1797,21 @@ function formatStat(v){
   return n%1===0?String(Math.round(n)):n.toFixed(2).replace(/\.?0+$/,'');
 }
 // Compact chip label for a non-default class_value on attendee rows.
+// 171 — an open mat always counts 0.25 and is never effort-marked (head
+// instructor's rule; the database enforces it in trg_attendance_open_mat_value).
+// THE one frontend check, mirroring public._is_open_mat: the class's level, or
+// the one-off's. t is an occurrence (_occFor / a TT card) or _attRowOcc(...).
+const OPEN_MAT_CLASS_VALUE=0.25;
+function _isOpenMatOcc(t){return !!(t&&t.level==='Open Mat');}
+// The occurrence of a stored attendance row, as far as _isOpenMatOcc reads it:
+// its class (class_id), else the one-off its legacy id names ('_oneoff_<id>').
+function _attRowOcc(classId,legacyId,date){
+  if(classId){const c=CLASSES.find(x=>x&&x.id===classId);return {level:(c&&c.level)||null};}
+  const k=_oneoffKey(legacyId);if(!k)return {};
+  const exId=k.slice('_oneoff_'.length);
+  const e=(CEXC[date]||[]).find(x=>x&&x.kind==='oneoff'&&x.id===exId);
+  return {level:(e&&e.oneoffLevel)||null};
+}
 function _cvChipLabel(v){
   if(v===2)return '2.0';
   if(v===0.5)return '½';
@@ -4397,7 +4412,7 @@ function rAttsStaff(rows,cid,occ){
   // non-default tier (≠ 1.00). The standard PRESENT pill already
   // implies 1.00; adding the chip there would clutter the row.
   const cvChip=r=>{
-    if(r.status!=='present')return '';
+    if(r.status!=='present'||_isOpenMatOcc(occ))return '';   // 171: an open mat has no effort tier
     const v=typeof r.classValue==='number'?r.classValue:1;
     const lbl=_cvChipLabel(v);
     if(!lbl)return '';
@@ -6694,7 +6709,7 @@ async function _fetchStuAtt(){
   }
   try{
     let q=cli.from('attendance')
-      .select('id,class_date,class_time,class_type,modality,status,confirmed_by,confirmed_at,class_value')
+      .select('id,class_id,class_legacy_id,class_date,class_time,class_type,modality,status,confirmed_by,confirmed_at,class_value')
       .eq('student_id',s._dbId)
       .in('status',['present','going','absent'])
       .order('class_date',{ascending:false})
@@ -6711,6 +6726,26 @@ async function _fetchStuAtt(){
       stl.rows=[];stl.error="Couldn't load attendance";
     }else{
       stl.rows=(r&&r.data)||[];stl.error=null;
+      // 171 — valueMark asks _attRowOcc whether a row is an open mat; a one-off
+      // older than the loaded window has no exception in CEXC yet. Read those
+      // (by id, read only) and merge them as ensureDayLoaded does.
+      const _need=[];
+      for(const x of stl.rows){
+        const k=x&&!x.class_id&&_oneoffKey(x.class_legacy_id);if(!k)continue;
+        const id=k.slice('_oneoff_'.length);
+        if(!(CEXC[x.class_date]||[]).some(e=>e&&e.id===id)&&_need.indexOf(id)<0)_need.push(id);
+      }
+      if(_need.length){
+        try{
+          const ce=await cli.from('class_exceptions').select(_EXC_SELECT).in('id',_need);
+          for(const e of ((ce&&!ce.error&&ce.data)||[])){
+            if(!e||!e.exception_date)continue;
+            const arr=CEXC[e.exception_date]||(CEXC[e.exception_date]=[]);
+            if(!arr.some(x=>x&&x.id===e.id))arr.push(_mapExcRow(e));
+          }
+        }catch(_){}
+        if(!S.stuAttList||S.stuAttList!==stl)return;
+      }
     }
   }catch(e){
     console.warn('[mybjj] stuatt fetch exception:',e);
@@ -6897,6 +6932,7 @@ function rStuAttList(){
       // never writes; no grading change.
       const valueMark=r=>{
         if(r.status!=='present'||r.class_type==='private')return '';
+        if(_isOpenMatOcc(_attRowOcc(r.class_id,r.class_legacy_id,r.class_date)))return '';   // 171: open mat, no effort tier
         const v=r.class_value!=null?Number(r.class_value):1;
         if(!(v<1))return '';                                      // 1.0+ → no mark
         const tier=CLASS_VALUE_TIERS.find(t=>t.value===v);
@@ -8383,7 +8419,7 @@ function rClass(){
     // full roster. Staff path is unchanged.
     let attBlock;
     if(isStaff){
-      attBlock=rAttsStaff(rows,c.id,{classId:c.classId||null,unitDbId:_clsUnit||meUnitDbId(),date:c.date});
+      attBlock=rAttsStaff(rows,c.id,{classId:c.classId||null,unitDbId:_clsUnit||meUnitDbId(),date:c.date,level:c.level||null});
     }else if(c.aud==='Kids'){
       attBlock=rAttsCountOnly(all);
     }else if(c.aud==='All'){
@@ -19619,8 +19655,11 @@ function _mapAttRow(r){
 // local row carries exactly the fields a fetched one does (unitId = the payload's
 // unit_id, classLegacyId = its class_legacy_id). _dbId is a 'local-' id until the
 // write round-trips; pass `id` to use a real one (a server-returned row).
+let _localAttSeq=0;
 function _localAttRow(dbRow){
-  return _mapAttRow(Object.assign({id:'local-'+Date.now()},dbRow));
+  // The counter keeps two rows made in the same millisecond (Mark all) apart: the
+  // drain reconciles by this id, and a shared one left the second row local-.
+  return _mapAttRow(Object.assign({id:'local-'+Date.now()+'-'+(++_localAttSeq)},dbRow));
 }
 function _mapExcRow(r){
   return {id:r.id,unitId:r.unit_id||null,classId:r.class_id||null,exceptionDate:r.exception_date,kind:r.kind,
@@ -19733,9 +19772,10 @@ async function ensureDayLoaded(dateKey){
     DAYCHUNKS[key]='error';render();
   }
 }
+const _ATT_COLS='id,unit_id,student_id,class_id,class_legacy_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value,arrived_at';
 async function _fetchAllAttendance(c, fromDate, toDate){
   const PAGE = 1000;
-  const COLS = 'id,unit_id,student_id,class_id,class_legacy_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value,arrived_at';
+  const COLS = _ATT_COLS;
   let all = [], from = 0;
   for (let page = 0; page < 10; page++) {          // safety cap: 10 pages / 10k rows
     const r = await c.from('attendance').select(COLS)
@@ -21369,6 +21409,13 @@ function queueCount(){
   if(!uid)return arr.length;
   return arr.filter(x=>x&&(!x.userId||x.userId===uid)).length;
 }
+// 171 — the offline queue is ONLY for a write the server never answered: it
+// threw, or postgrest-js returned its network error (status 0, no HTTP reply).
+// A request that got an answer — success or error — is handled by its caller.
+// navigator.onLine is not consulted: it can read false while the request went
+// through, which queued an answered (error) write that the drain then dropped
+// as a constraint, leaving the mark shown as saved.
+function _writeUnanswered(r,caught){return !!caught||!r||!(r.status>0);}
 function queueFindByLocalId(localDbId){
   if(!localDbId)return null;
   const arr=queueRead();
@@ -21392,6 +21439,24 @@ function _queueClassifyError(err){
   return 'network';
 }
 
+// 171 — a queued write that will never land must not stay on screen as saved.
+// An unsaved insert's local row goes; an update or delete re-reads the row so
+// the screen shows what the database holds. The user is told either way.
+async function _attQueueDropped(item,cli){
+  try{
+    if(item.localDbId){
+      for(let i=ATTENDANCE.length-1;i>=0;i--)if(ATTENDANCE[i]&&ATTENDANCE[i]._dbId===item.localDbId)ATTENDANCE.splice(i,1);
+    }else if(item.rowId&&cli){
+      const f=await cli.from(item.table||'attendance').select(_ATT_COLS).eq('id',item.rowId).maybeSingle();
+      if(f&&!f.error){
+        const ix=ATTENDANCE.findIndex(a=>a&&a._dbId===item.rowId);
+        if(f.data){if(ix>=0)ATTENDANCE[ix]=_mapAttRow(f.data);else ATTENDANCE.push(_mapAttRow(f.data));}
+        else if(ix>=0)ATTENDANCE.splice(ix,1);
+      }
+    }
+  }catch(_){}
+  try{showSaveToast2('Some attendance could not be saved. Check the class and mark it again.','error');}catch(_){}
+}
 async function drainAttendanceQueue(){
   if(_draining)return;
   if(typeof navigator!=='undefined'&&navigator.onLine===false)return;
@@ -21410,7 +21475,14 @@ async function drainAttendanceQueue(){
         if(item.op==='upsert'){
           const ignore=!!item.ignoreDuplicates;
           const r=await cli.from(tbl).upsert(item.payload,{onConflict:item.onConflict||'student_id,class_id,class_date',ignoreDuplicates:ignore}).select('id');
-          if(r&&r.error){err=r.error;}
+          if(r&&r.error&&_isVirtualOccDup(r.error,item.payload)){
+            // 171 — a one-off replay meets the row already there (169 index): adopt
+            // it, applying the mark as the live path does, instead of dropping it.
+            const p=item.payload,f={};
+            for(const k of ['status','confirmed_by','confirmed_at','class_value'])if(k in p)f[k]=p[k];
+            realId=await _adoptVirtualOccRow(cli,p,ignore?null:f);
+            if(!realId)err=r.error;
+          }else if(r&&r.error){err=r.error;}
           else{
             realId=r&&r.data&&r.data[0]&&r.data[0].id;
             if(!realId&&ignore&&item.payload&&item.payload.class_id){
@@ -21418,11 +21490,14 @@ async function drainAttendanceQueue(){
                 const f=await cli.from(tbl).select('id').eq('student_id',item.payload.student_id).eq('class_id',item.payload.class_id).maybeSingle();
                 if(f&&f.data&&f.data.id)realId=f.data.id;
               }catch(_){}
+            }else if(!realId&&ignore&&item.payload&&item.payload.class_legacy_id){
+              realId=await _adoptVirtualOccRow(cli,item.payload,null);   // 171: a one-off's ignored conflict
             }
           }
         }else if(item.op==='update'){
           const r=await cli.from(tbl).update(item.payload).eq('id',item.rowId).select('id');
           if(r&&r.error)err=r.error;
+          else if(!r||!r.data||!r.data.length)err={code:'PGRST116',message:'0 rows updated (RLS or stale id)'};   // 171: not saved
           else realId=item.rowId;
         }else if(item.op==='delete'){
           const r=await cli.from(tbl).delete().eq('id',item.rowId);
@@ -21436,6 +21511,7 @@ async function drainAttendanceQueue(){
         if(kind==='constraint'){
           console.warn('[mybjj] queue drop (constraint):',err);
           queueRemove(item.qid);
+          await _attQueueDropped(item,cli);
           continue;
         }
         if(kind==='auth'){
@@ -21449,6 +21525,7 @@ async function drainAttendanceQueue(){
         if(_nextRetries>=MAX_QUEUE_RETRIES){
           console.warn('[mybjj] dropping queue item after max retries:',item.qid,String(err.message||err));
           queueRemove(item.qid);
+          await _attQueueDropped(item,cli);
           if(!_queueDeadLetterToastShown){
             _queueDeadLetterToastShown=true;
             try{showSaveToast2('Some actions could not be saved. Please refresh and try again.','error');}catch(_){}
@@ -21464,6 +21541,14 @@ async function drainAttendanceQueue(){
       if(item.localDbId){
         const localRow=ATTENDANCE.find(a=>a&&a._dbId===item.localDbId);
         if(localRow&&realId)localRow._dbId=realId;
+        else if(localRow&&!realId){queueRemove(item.qid);await _attQueueDropped(item,cli);continue;}   // 171: no row to point at
+        // 171 — a mark merged into this item while it was in flight was not in
+        // the payload just sent: keep it queued as an update of the real row.
+        const cur=queueRead().find(x=>x&&x.qid===item.qid);
+        if(realId&&cur&&JSON.stringify(cur.payload)!==JSON.stringify(item.payload)){
+          queueUpdate(item.qid,{op:'update',rowId:realId,localDbId:null,retries:0});
+          continue;
+        }
       }
       queueRemove(item.qid);
     }
@@ -21718,6 +21803,7 @@ async function _adoptVirtualOccRow(cli,payload,fields){
     const f=await cli.from('attendance').select('id').eq('student_id',payload.student_id).eq('class_date',payload.class_date).is('class_id',null).eq('class_legacy_id',payload.class_legacy_id).maybeSingle();
     const id=f&&!f.error&&f.data&&f.data.id;
     if(!id)return null;
+    if(!fields)return id;   // adopt only (an ignoreDuplicates write: the existing row wins)
     const u=await cli.from('attendance').update(fields).eq('id',id).select('id');
     if(!u||u.error||!u.data||!u.data.length)return null;
     return id;
@@ -21784,7 +21870,7 @@ async function doCI(id){
   // Batch A.2 — network failure (fetch throw / offline): enqueue and
   // keep the local-prefix row visible. The drain replaces _dbId with
   // the real id once we're back online.
-  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+  if(_writeUnanswered(r,_caught)){
     queueEnqueue({
       op:'upsert',table:'attendance',
       ignoreDuplicates:true,onConflict:'student_id,class_id,class_date',
@@ -21896,7 +21982,7 @@ async function undoCI(id){
   }catch(e){_caught=e;}
   // Network failure → enqueue. We don't restore the local row because
   // the user explicitly removed it; the queue absorbs the DB sync.
-  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+  if(_writeUnanswered(r,_caught)){
     queueEnqueue({
       op:'delete',table:'attendance',
       rowId:removed._dbId,
@@ -22139,7 +22225,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
   // whatever tier the prior present row carried).
   const isPresent=newStatus==='present';
   const cvNum=Number(classValue);
-  const cv=isPresent?(Number.isFinite(cvNum)?cvNum:1):null;
+  const cv=isPresent?(_isOpenMatOcc(t)?OPEN_MAT_CLASS_VALUE:(Number.isFinite(cvNum)?cvNum:1)):null;   // 171
   const cli=initSupabase();
   if(!row){
     // Batch A — keep gi consistent with modality on every new write.
@@ -22156,7 +22242,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
     try{
       r=await cli.from('attendance').upsert(payload,{onConflict:'student_id,class_id,class_date',ignoreDuplicates:false}).select('id').single();
     }catch(e){_caught=e;}
-    if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+    if(_writeUnanswered(r,_caught)){
       queueEnqueue({
         op:'upsert',table:'attendance',
         ignoreDuplicates:false,onConflict:'student_id,class_id,class_date',
@@ -22202,9 +22288,14 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
     if(pending){
       const mergedPayload=Object.assign({},pending.payload||{},updatePayload);
       queueUpdate(pending.qid,{payload:mergedPayload,ignoreDuplicates:false});
+      try{render();}catch(_){}
+      return;   // shown with "Pending sync" until the drain lands it
     }
-    try{render();}catch(_){}
-    return;
+    // 171 — nothing queued for this local row: its write never landed. Don't
+    // claim the mark; drop the row and write this mark as a new one (the upsert,
+    // or for a one-off the adopt of the row already in the database).
+    const ix=ATTENDANCE.indexOf(row);if(ix>=0)ATTENDANCE.splice(ix,1);
+    return _setAttStatus(cid,sid,newStatus,classValue,opts);
   }
   // .select() returns the modified rows. RLS-hidden rows give 0
   // rowcount with no error — rolling back keeps local state in sync
@@ -22213,7 +22304,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
   try{
     r=await cli.from('attendance').update(updatePayload).eq('id',row._dbId).select('id');
   }catch(e){_caught=e;}
-  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+  if(_writeUnanswered(r,_caught)){
     queueEnqueue({
       op:'update',table:'attendance',
       rowId:row._dbId,payload:updatePayload,
@@ -22472,14 +22563,15 @@ async function _moveAttRow(row,dst,cli){
   // single canonical upsert drains, exactly as _setAttStatus does.
   if(String(row._dbId).startsWith('local-')){
     const pending=queueFindByLocalId(row._dbId);
-    if(pending)queueUpdate(pending.qid,{payload:Object.assign({},pending.payload||{},payload)});
+    if(!pending){Object.assign(row,prev);return 'fail';}   // 171: never saved, nothing to move
+    queueUpdate(pending.qid,{payload:Object.assign({},pending.payload||{},payload)});
     return 'ok';
   }
   let r=null,_caught=null;
   try{
     r=await cli.from('attendance').update(payload).eq('id',row._dbId).select('id');
   }catch(e){_caught=e;}
-  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+  if(_writeUnanswered(r,_caught)){
     queueEnqueue({op:'update',table:'attendance',rowId:row._dbId,payload:payload,userId:(S.profile&&S.profile.id)||null});
     return 'ok';
   }
@@ -22529,7 +22621,12 @@ async function _doAttMove(){
 // G9.2 — Mark Present now opens the 5-tier picker sheet instead of
 // going straight to class_value=1.00. Tap a row → openMarkPSheet →
 // confirmMarkPresent(value) → _setAttStatus(cid, sid, 'present', value).
-function markP(cid,sid){openMarkPSheet(cid,sid,false);}
+function markP(cid,sid){
+  const c=_parseCID(cid);
+  // 171 — an open mat has no effort choice: one tap, 0.25, no sheet.
+  if(c&&_isOpenMatOcc(_occFor(c.date+'_'+c.time+'_'+c.legacy)))return _setAttStatus(cid,sid,'present',OPEN_MAT_CLASS_VALUE);
+  openMarkPSheet(cid,sid,false);
+}
 function markG(cid,sid){return _setAttStatus(cid,sid,'going');}
 // G9.3 — Absent is a direct write, no picker sheet. Routes through
 // _setAttStatus → DB INSERT/UPDATE with status='absent'. No
@@ -22557,7 +22654,8 @@ async function markAllPresent(cid){
   const targets=ATTENDANCE.filter(a=>a.status==='going'&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId,t.id));
   const sids=targets.map(a=>{const s=STUDENTS.find(x=>x._dbId===a.studentDbId)||VISITORS[a.studentDbId];return s?s.id:null;}).filter(Boolean);
   if(!sids.length)return;
-  await Promise.all(sids.map(sid=>_setAttStatus(cid,sid,'present',1,{silentToast:true})));
+  const cvAll=_isOpenMatOcc(t)?OPEN_MAT_CLASS_VALUE:1;   // 171: an open mat counts 0.25
+  await Promise.all(sids.map(sid=>_setAttStatus(cid,sid,'present',cvAll,{silentToast:true})));
   showSaveToast2(sids.length+' marked present');
 }
 // Remove-from-class — a real DELETE of the attendance row (unlike markG,
@@ -22602,7 +22700,7 @@ async function _doRemoveAtt(studentDbId,classId,date,time,unitDbId,first,occLega
     r=await cli.from('attendance').delete().eq('id',removed._dbId);
   }catch(e){_caught=e;}
   // Network failure → enqueue the delete; don't restore (user removed it).
-  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+  if(_writeUnanswered(r,_caught)){
     queueEnqueue({op:'delete',table:'attendance',rowId:removed._dbId,userId:(S.profile&&S.profile.id)||null});
     try{render();}catch(_){}
     return;
@@ -22907,6 +23005,7 @@ async function addStudentToClass(cid,legacyId){
   const _unitId=(tt.classId?(CLASSES.find(cl=>cl.id===tt.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,tt.classId||null,c.date,c.time,_unitId,tt.id));
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
+  if(_isOpenMatOcc(tt))return _doAddStudentToClass(cid,legacyId,OPEN_MAT_CLASS_VALUE);   // 171: no effort sheet
   openMarkPSheet(cid,legacyId,true);
 }
 async function _doAddStudentToClass(cid,legacyId,classValue){
@@ -22927,7 +23026,7 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
   S.classAdd.saving=true;
   const nowISO=new Date().toISOString();
-  const cv=typeof classValue==='number'?classValue:1;
+  const cv=_isOpenMatOcc(tt)?OPEN_MAT_CLASS_VALUE:(typeof classValue==='number'?classValue:1);   // 171
   // Batch A — upsert so an admin-add upgrades any existing 'going'
   // row to 'present' in place, and never duplicates. gi mirrors
   // modality on every write so the canonical/derived pair never drifts.
@@ -22958,7 +23057,7 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   }catch(e){_caught=e;}
   // Batch A.2 — offline / network fail: enqueue, keep the optimistic
   // ATTENDANCE row visible. Drain later upgrades the local-prefix id.
-  if(_caught||(typeof navigator!=='undefined'&&navigator.onLine===false)){
+  if(_writeUnanswered(r,_caught)){
     queueEnqueue({
       op:'upsert',table:'attendance',
       ignoreDuplicates:false,onConflict:'student_id,class_id,class_date',
