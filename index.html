@@ -8048,11 +8048,11 @@ function _bdayWeek(sd){
   return out.sort((a,b)=>a.off-b.off||String(a.s.name||'').localeCompare(String(b.s.name||'')));
 }
 function _bdayIsRealToday(d){return dk(d)===dk(TODAY);}
-// Panel open state: S.bdayOpen null = default (open when a birthday in the week
-// is real TODAY, closed otherwise); a tap stores the explicit choice.
+// Panel open state: closed unless opened by a tap this session (S.bdayOpen is
+// set only by toggleBdayPanel), even with a birthday today (owner's call).
+// week stays in the signature for the callers.
 function _bdayPanelOpen(week){
-  if(S.bdayOpen===true||S.bdayOpen===false)return S.bdayOpen;
-  return week.some(x=>_bdayIsRealToday(x.date));
+  return S.bdayOpen===true;
 }
 function toggleBdayPanel(){
   const sd=S.selDay||TODAY;
@@ -16997,7 +16997,9 @@ function enrichMeFromHydrate(){
 // G1-C — one source function per state of "what happened to my own photo?".
 // S.myPhotoApproval is the latest photo_approvals row for the signed-in
 // user ({status, submitted_at} or null) — see loadMyPhotoApproval. status is
-// constrained to 'pending' / 'approved' / 'rejected' (01_schema.sql:174).
+// constrained to 'pending' / 'approved' / 'rejected' (01_schema.sql:174), plus
+// 'superseded' since 170 (a pending photo replaced by a newer one for the same
+// person; it reads as neither pending nor rejected here).
 // Every surface calls these, never the raw S.myPhotoApproval shape.
 function myPhotoPending(){
   return !!(S.myPhotoApproval&&S.myPhotoApproval.status==='pending');
@@ -19152,6 +19154,7 @@ function _cropStart(file){
       _crop.scale=_crop.fit;
       _crop.x=(_CROP_SIZE-w*_crop.scale)/2;
       _crop.y=(_CROP_SIZE-h*_crop.scale)/2;
+      _cropPendingCheck(_crop.sid);   // sets S.cropPendingPrev now, refines it after a query
       S.cropOpen=true;render();
       _cropFirstPaint(im);
     };
@@ -19249,6 +19252,40 @@ function _cropPanMove(ev){
 function _cropPanEnd(){_crop.panning=false;_pinch=null;}
 function _cropZoom(ev){ev.preventDefault();_cropApplyZoom(_crop.scale*(ev.deltaY>0?0.9:1.1));_cropDraw();}
 function closeCrop(){S.cropOpen=false;_crop.img=null;_crop.sid=null;render();}
+// The subject a photo upload is for, exactly as uploadCroppedPhoto picks it:
+// self → the caller's staff row, else their students row, else the login itself;
+// otherwise the student whose profile it is.
+function _photoSubject(sid){
+  if(sid==='self'){
+    if(!S.profile||!S.profile.id)return null;
+    const linkedStaff=STAFF.find(x=>x._userId===S.profile.id);
+    const linkedStudent=linkedStaff?null:STUDENTS.find(x=>x._userId===S.profile.id);
+    return {staff:linkedStaff?linkedStaff._dbId:null,student:linkedStudent?linkedStudent._dbId:null,user:S.profile.id};
+  }
+  const s=STUDENTS.find(x=>x.id===sid);
+  return (s&&s._dbId)?{staff:null,student:s._dbId,user:null}:null;
+}
+// 170 — one pending photo per subject: a new upload supersedes the one already
+// waiting (the database does it on insert). The crop sheet says so. Starts from
+// what the app holds (my latest approval row / the photo queue), then asks for a
+// pending row of this exact subject. RLS shows a viewer their own submissions
+// (owners see all), the same rows those states come from. The answer only
+// toggles #crop-pending: a render() here would blank the crop canvas.
+function _cropPendingCheck(sid){
+  const subj=_photoSubject(sid);
+  S.cropPendingPrev=!subj?false:sid==='self'?myPhotoPending()
+    :(S.photoQueue||[]).some(r=>r&&r.status!=='superseded'&&r.student_id===subj.student&&!r.staff_id);
+  const cli=initSupabase();if(!cli||!subj)return;
+  let q=cli.from('photo_approvals').select('id').eq('status','pending').limit(1);
+  if(subj.staff)q=q.eq('staff_id',subj.staff);
+  else if(subj.student)q=q.eq('student_id',subj.student).is('staff_id',null);
+  else q=q.eq('user_id',subj.user).is('staff_id',null).is('student_id',null);
+  Promise.resolve(q).then(r=>{
+    if(!r||r.error||!S.cropOpen||_crop.sid!==sid)return;
+    S.cropPendingPrev=!!(r.data&&r.data.length);
+    const el=document.getElementById('crop-pending');if(el)el.style.display=S.cropPendingPrev?'':'none';
+  }).catch(()=>{});
+}
 function rCropModal(){
   if(!S.cropOpen)return '';
   // Slider bounds mirror _cropApplyZoom's clamp exactly, from the SAME _crop.fit
@@ -19273,6 +19310,7 @@ function rCropModal(){
 <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/></svg>
 </div>
 <div style="font-size:12px;color:var(--text3);line-height:1.45;text-align:center;margin-bottom:12px">Can people at the gym recognise you from this? It gets checked before it goes live.</div>
+<div id="crop-pending" style="font-size:12px;color:var(--text3);line-height:1.45;text-align:center;margin-bottom:12px${S.cropPendingPrev?'':';display:none'}">You already sent a photo that's waiting for approval. This one will replace it.</div>
 <div style="display:flex;gap:10px">
 <button class="bout" style="flex:1;min-height:44px" onclick="closeCrop()">Cancel</button>
 <button class="bmain" style="flex:1;min-height:44px" onclick="uploadCroppedPhoto()">Upload</button>
