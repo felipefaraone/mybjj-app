@@ -9985,13 +9985,13 @@ function _rLbBoard(shareInHead){
     +'<div class="lbt"><div class="card" style="padding:0;overflow:hidden">'+_lbHeadHtml(cols)+shown.map((r,i)=>_lbRowHtml(r,bc.comp,r.student_id===myId,i===0,cols,i===0)).join('')+more+'</div></div>'
     +_rLbBattle(bc,scope);
 }
-// ── share image (staff, adults board) ──────────────────────────────────────
+// ── share image (adults board, anyone signed in) ───────────────────────────
 // A 1080x1350 PNG of the board list as it stands (same unit, Adults, period and
-// order), for staff to post. The Share pill opens a sheet that draws it once;
+// order), for anyone to post (owner's call: members too, not only staff). The Share pill opens a sheet that draws it once;
 // "Share image" hands that ready File to navigator.share inside its own tap.
 function _lbShareBtn(){
-  if(!isStaffOrOwner())return '';
-  const sc=_lbBoardScope();if(!sc.unit||sc.aud!=='adult')return '';
+  if(!S.loggedIn)return '';
+  const sc=_lbBoardScope();if(!sc.unit||sc.aud!=='adult')return '';   // never on the kids board
   return '<button type="button" class="lb-share" data-lbshare="1" onclick="openLbShare()" aria-label="Share the board as an image">'
     +'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>Share</button>';
 }
@@ -10165,8 +10165,8 @@ async function _lbShareRender(d){
   return await new Promise((res,rej)=>cv.toBlob(b=>b?res(b):rej(new Error('toBlob failed')),'image/png'));
 }
 async function openLbShare(){
-  if(!isStaffOrOwner())return;
-  const d=_lbShareData();
+  if(!S.loggedIn)return;
+  const d=_lbShareData();   // null off the adults board
   if(!d){showSaveToast2('The board is still loading. Try again in a moment.','error');return;}
   const tok={};
   S.lbShare={tok,name:d.file,file:null,url:null,err:''};render();
@@ -10197,7 +10197,7 @@ function lbShareDownload(){
   document.body.appendChild(a);a.click();a.remove();
 }
 function rLbShareSheet(){
-  const m=S.lbShare;if(!m||!isStaffOrOwner())return '';
+  const m=S.lbShare;if(!m||!S.loggedIn)return '';
   const ready=!!(m.file&&m.url);
   const btn='flex:1;width:auto;min-width:0;height:var(--ctrl-h);padding:0 12px;border-radius:10px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;cursor:pointer';
   return '<div class="cov" onclick="closeLbShare()" style="align-items:flex-end">'
@@ -10760,8 +10760,8 @@ function _lbVisible(){
 }
 // ── the tab ───────────────────────────────────────────────────────────────
 function rLeaderboard(){
-  // Share sits on the card's title row; staff with no student row get no card,
-  // so the board's own head row carries it instead (never both)
+  // Share sits on the card's title row; a viewer with no card (e.g. staff with no
+  // student row) gets it on the board's own head row instead (never both)
   const card=_rLbMemberCard();
   return _rLbOwner()+_rLbClosingCard()+card+_rLbBoard(card.indexOf('data-lbshare')<0);
 }
