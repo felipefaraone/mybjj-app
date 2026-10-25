@@ -10039,36 +10039,43 @@ function _lbShareData(){
   const bc=_lbBoardComp(scope,today);if(!bc||!bc.comp)return null;
   const rows=_lbStandings(bc.comp.id,bc.from,bc.to);const rules=_lbRules(bc.comp.id);
   if(!rows||!rules)return null;
-  const comp=bc.comp;
+  const comp=bc.comp,ev=comp.kind==='event';
   const list=_lbBoardList(rows,scope);
   const cols=_lbColumns(rules);
-  const title=comp.kind==='event'?comp.name:(bc.label||MFULL[_parseISODate(today).getMonth()]);
+  const month=bc.label||MFULL[_parseISODate(today).getMonth()];
+  // an event by its name; a monthly board is "<Month> race" (the last word is drawn blue)
+  const title=ev?comp.name:month+' race';
   // the board's date: today while it runs (with the days left, as the card's
   // eyebrow counts them), else its last day
-  const start=comp.kind==='event'?comp.starts_on:bc.from,end=comp.kind==='event'?comp.ends_on:bc.to;
+  const start=ev?comp.starts_on:bc.from,end=ev?comp.ends_on:bc.to;
   const live=!!(start&&end&&start<=today&&today<=end);
   const left=live?_lbDays(today,end):null;
   const anonOf=r=>r.is_anonymous===true||(!r.student_id&&r.display_name==='Anonymous');
-  const first=(r,cap)=>anonOf(r)?(cap?'A hidden member':'a hidden member'):_lbFirst(r.display_name);
+  const top=list.slice(0,10);
+  const names=_lbShortNames(top.map(r=>anonOf(r)?'Anonymous':String(r.display_name||'')));
+  const who=(i,cap)=>anonOf(top[i])?(cap?'A hidden member':'a hidden member'):names[i];
   let chase='';
-  if(list.length>=2){
-    const a=list[0],b=list[1];
-    const gap=Math.round((Number(a.points||0)-Number(b.points||0))*100)/100;
-    chase=gap<=0?first(a,true)+' and '+first(b,false)+' are tied at the top'
-      :first(b,true)+' is '+_compPts(gap)+' point'+(gap===1?'':'s')+' off the top';
+  if(top.length>=2){
+    const gap=Math.round((Number(top[0].points||0)-Number(top[1].points||0))*100)/100;
+    chase=gap<=0?who(0,true)+' and '+who(1,false)+' are tied at the top'
+      :who(1,true)+' is '+_compPts(gap)+' point'+(gap===1?'':'s')+' off the top';
   }
+  // the member card's meta line; a past month says which month
+  const meta=(ev?(_lbDM(comp.starts_on)+' to '+_lbDM(comp.ends_on)):(live?'Points this month':'Points in '+month))
+    +' · '+_lbDivName(scope.unit,scope.aud);
   return {
     unit:_lbUnitName(scope.unit).toUpperCase(),
     title:String(title||'').toUpperCase(),
-    date:_lbDowDM(live?today:end).toUpperCase(),
-    days:left==null?'':(left<=0?'Last day':left+' day'+(left===1?'':'s')+' to go'),
+    date:(_lbDowDM(live?today:end)+(left==null?'':' · '+(left<=0?'Last day':left+' day'+(left===1?'':'s')+' left'))).toUpperCase(),
+    meta,
     chase,
     cols:cols.map(c=>c.label.toUpperCase()),
-    rows:list.slice(0,10).map(r=>{
+    rows:top.map((r,i)=>{
       const anon=anonOf(r),pv=_lbPartValues(r);
       const prog=_lbRowMinor(r,null)?'kids':'adult';
-      return {rank:String(r.rank),name:anon?'Anonymous':String(r.display_name||''),anon,
-        belt:(!anon&&r.belt)?beltDef(r.belt,prog).bg:null,blackBelt:r.belt==='black',
+      return {rank:String(r.rank),name:names[i],anon,
+        // the app's own belt drawing (stripes, degrees, kids tips), as SVG text
+        belt:(!anon&&r.belt)?beltSVG(r.belt,Number(r.degree)||0,prog,104):null,
         cells:cols.map(c=>{
           if(c.key==='total')return {t:_compPts(r.points),zero:false};
           const v=pv[c.key];
@@ -10076,22 +10083,43 @@ function _lbShareData(){
         })};
     }),
     qr:(rules||[]).some(r=>r&&r.rule_key==='self_checkin'&&r.enabled===true),
-    file:'myBJJ-'+(String(title||'board').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'board')+'-'+today+'.png'
+    file:'myBJJ-'+(String((ev?comp.name:month)||'board').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'board')+'-'+today+'.png'
   };
 }
-// The image's colours. A canvas cannot read the CSS tokens, so this object is the
-// only place these values live (the belt colours come from beltDef).
+// Short names for the image: "Riley Gonzalez" -> "Riley G." (the last word is the
+// surname); one word stays as it is. Names that would read the same take more
+// letters of the surname, only those, until they differ (all of it: no period).
+function _lbShortNames(full){
+  const parts=full.map(n=>String(n||'').trim().split(/\s+/).filter(Boolean));
+  const k=parts.map(()=>1);
+  const label=i=>{
+    const p=parts[i];if(p.length<2)return p.join(' ');
+    const last=p[p.length-1];
+    return p[0]+' '+(k[i]>=last.length?last:last.slice(0,k[i])+'.');
+  };
+  for(;;){
+    const out=parts.map((_,i)=>label(i));
+    let grew=false;
+    out.forEach((t,i)=>{
+      const p=parts[i];
+      if(p.length<2||k[i]>=p[p.length-1].length)return;
+      if(out.some((u,j)=>j!==i&&u===t)){k[i]++;grew=true;}
+    });
+    if(!grew)return out;
+  }
+}
+// The image's colours: the app's light tokens (--bg, --blue, --text, --text2,
+// --text3, --border, --amber, --amber-bg, --card). A canvas cannot read the CSS
+// tokens, so this object is the only place these values live (the belts are
+// beltSVG's own drawing).
 const _LB_SHARE_PAL={
-  bgTop:'#0C1C3A',bgBottom:'#050B18',glow:'rgba(58,130,236,0.40)',glowEnd:'rgba(58,130,236,0)',stripe:'rgba(255,255,255,0.022)',
-  logoBg:'#FFFFFF',text:'#FFFFFF',muted:'rgba(255,255,255,0.66)',soft:'rgba(255,255,255,0.86)',dim:'rgba(255,255,255,0.32)',
-  head:'rgba(255,255,255,0.50)',line:'rgba(255,255,255,0.08)',card:'rgba(255,255,255,0.055)',cardEdge:'rgba(255,255,255,0.10)',
-  accent:'#7FB0EC',gold:'#F2C14E',goldTint:'rgba(242,193,78,0.13)',goldPill:'rgba(242,193,78,0.14)',goldEdge:'rgba(242,193,78,0.40)',
-  silver:'#C9D2DE',bronze:'#D5915F',rank:'rgba(255,255,255,0.55)',beltTip:'#111111',beltTipBlack:'#B91C1C'};
-// Letter-spaced text (canvas letterSpacing is not everywhere yet). align 'left'|'right'.
+  bg:'#f5f6f8',blue:'#1A5DAD',text:'#111827',text2:'#6b7280',text3:'#9ca3af',border:'#e5e7eb',
+  amber:'#d97706',amberBg:'#fffbeb',card:'#FFFFFF',shadow:'rgba(17,24,39,0.10)'};
+// Letter-spaced text (canvas letterSpacing is not everywhere yet). align 'left'|'right'|'center'.
 function _lbShareSpaced(ctx,txt,x,y,sp,align){
   const chars=[...String(txt)];
   const w=chars.reduce((s,ch)=>s+ctx.measureText(ch).width,0)+sp*Math.max(0,chars.length-1);
-  let cx=align==='right'?x-w:x;
+  let cx=align==='right'?x-w:align==='center'?x-w/2:x;
   ctx.textAlign='left';
   for(const ch of chars){ctx.fillText(ch,cx,y);cx+=ctx.measureText(ch).width+sp;}
   return w;
@@ -10107,97 +10135,119 @@ function _lbShareFit(ctx,txt,weight,px,minPx,family,maxW){
   let t=txt;while(t.length>1&&ctx.measureText(t+'…').width>maxW)t=t.slice(0,-1);
   return t.trimEnd()+'…';
 }
-function _lbDrawShare(ctx,d,logo){
+// belts: one loaded Image (or null) per row, from _lbShareRender.
+function _lbDrawShare(ctx,d,logo,belts){
   const P=_LB_SHARE_PAL,W=1080,H=1350,X=80,R=W-80,CW=R-X;
-  const BC='"Barlow Condensed",sans-serif',BR='Barlow,sans-serif';
+  const BC='"Barlow Condensed",sans-serif',BR='Barlow,sans-serif',BN='"Bebas Neue",sans-serif';
   ctx.textBaseline='alphabetic';
-  // background: navy gradient, a blue glow at the top, a faint diagonal stripe
-  let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,P.bgTop);g.addColorStop(1,P.bgBottom);
-  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  g=ctx.createRadialGradient(W/2,-120,40,W/2,-120,920);g.addColorStop(0,P.glow);g.addColorStop(1,P.glowEnd);
-  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  ctx.save();ctx.strokeStyle=P.stripe;ctx.lineWidth=14;
-  for(let i=-H;i<W;i+=44){ctx.beginPath();ctx.moveTo(i,H);ctx.lineTo(i+H,0);ctx.stroke();}
+  // background: the app's page grey under a blue band
+  ctx.fillStyle=P.bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=P.blue;ctx.fillRect(0,0,W,12);
+  // top row: round white logo + MYBJJ · UNIT; the date and the days left on the right
+  const LG=78,ly=62;
+  ctx.save();ctx.shadowColor=P.shadow;ctx.shadowBlur=18;ctx.shadowOffsetY=4;
+  ctx.beginPath();ctx.arc(X+LG/2,ly+LG/2,LG/2,0,Math.PI*2);ctx.fillStyle=P.card;ctx.fill();ctx.restore();
+  ctx.save();ctx.beginPath();ctx.arc(X+LG/2,ly+LG/2,LG/2,0,Math.PI*2);ctx.clip();
+  if(logo)ctx.drawImage(logo,X,ly,LG,LG);
   ctx.restore();
-  // top row: round white logo + MYBJJ · UNIT; the date and the days on the right
-  ctx.save();ctx.beginPath();ctx.arc(X+38,118,38,0,Math.PI*2);ctx.fillStyle=P.logoBg;ctx.fill();ctx.clip();
-  if(logo)ctx.drawImage(logo,X,80,76,76);
-  ctx.restore();
-  ctx.font='700 26px '+BC;ctx.fillStyle=P.muted;
-  _lbShareSpaced(ctx,'MYBJJ'+(d.unit?' · '+d.unit:''),X+76+22,127,5,'left');
-  ctx.font='700 26px '+BC;ctx.fillStyle=P.text;
-  _lbShareSpaced(ctx,d.date,R,d.days?110:127,2,'right');
-  if(d.days){ctx.font='600 22px '+BR;ctx.fillStyle=P.accent;ctx.textAlign='right';ctx.fillText(d.days,R,144);}
-  // title: one line, the last word in light blue, shrunk to fit the width
+  const hy=ly+LG/2+9;
+  ctx.font='700 24px '+BC;ctx.fillStyle=P.blue;
+  const dw=_lbShareSpaced(ctx,d.date,R,hy,3,'right');
+  // the unit name shrinks (24 down to 16px) rather than run into the date
+  const brand='MYBJJ'+(d.unit?' · '+d.unit:'');
+  let us=24;ctx.font='700 '+us+'px '+BC;
+  while(us>16&&[...brand].reduce((a,ch)=>a+ctx.measureText(ch).width+4,0)>CW-LG-22-dw-24){us-=1;ctx.font='700 '+us+'px '+BC;}
+  ctx.fillStyle=P.text3;
+  _lbShareSpaced(ctx,brand,X+LG+22,hy,4,'left');
+  // title: one line, the last word in blue, shrunk to fit the width
   const words=d.title.split(/\s+/).filter(Boolean);
-  let ts=124;ctx.font='800 '+ts+'px '+BC;
-  while(ctx.measureText(d.title).width>CW&&ts>40){ts-=2;ctx.font='800 '+ts+'px '+BC;}
+  let ts=120;ctx.font=ts+'px '+BN;
+  while(ctx.measureText(d.title).width>CW&&ts>48){ts-=2;ctx.font=ts+'px '+BN;}
   const head=words.slice(0,-1).join(' '),last=words[words.length-1]||'';
   ctx.textAlign='left';ctx.fillStyle=P.text;
-  const ty=290;
+  const ty=262;
   if(head)ctx.fillText(head+' ',X,ty);
-  ctx.fillStyle=P.accent;ctx.fillText(last,X+(head?ctx.measureText(head+' ').width:0),ty);
+  ctx.fillStyle=P.blue;ctx.fillText(last,X+(head?ctx.measureText(head+' ').width:0),ty);
+  // meta line
+  ctx.fillStyle=P.text2;ctx.textAlign='left';
+  ctx.fillText(_lbShareFit(ctx,d.meta,'400',28,20,BR,CW),X,312);
   // the chase pill (2+ rows)
-  let top=340;
+  let top=356;
   if(d.chase){
-    ctx.font='600 26px '+BR;
-    const tw=Math.min(ctx.measureText(d.chase).width,CW-76),ph=56,pw=tw+76,py=326;
-    _lbShareRR(ctx,X,py,pw,ph,ph/2);ctx.fillStyle=P.goldPill;ctx.fill();ctx.strokeStyle=P.goldEdge;ctx.lineWidth=2;ctx.stroke();
-    ctx.beginPath();ctx.arc(X+30,py+ph/2,7,0,Math.PI*2);ctx.fillStyle=P.gold;ctx.fill();
-    ctx.fillStyle=P.gold;ctx.textAlign='left';ctx.fillText(_lbShareFit(ctx,d.chase,'600',26,20,BR,CW-76),X+50,py+37);
-    top=420;
+    const ph=62,py=340,txt=_lbShareFit(ctx,d.chase,'600',30,22,BR,CW-80);
+    const pw=ctx.measureText(txt).width+80;
+    ctx.save();ctx.shadowColor=P.shadow;ctx.shadowBlur=10;ctx.shadowOffsetY=2;
+    _lbShareRR(ctx,X,py,pw,ph,ph/2);ctx.fillStyle=P.card;ctx.fill();ctx.restore();
+    _lbShareRR(ctx,X+1,py+1,pw-2,ph-2,ph/2-1);ctx.strokeStyle=P.border;ctx.lineWidth=2;ctx.stroke();
+    ctx.beginPath();ctx.arc(X+32,py+ph/2,8,0,Math.PI*2);ctx.fillStyle=P.amber;ctx.fill();
+    ctx.fillStyle=P.text;ctx.textAlign='left';ctx.fillText(txt,X+54,py+ph/2+11);
+    top=432;
   }
-  // the table card
-  const n=d.cols.length,totW=124,partW=n>1?Math.min(108,Math.floor((CW-56-totW-360)/(n-1))):0;
-  const ROW=74,HEAD=54,PADY=8;
-  const ch=PADY+HEAD+d.rows.length*ROW+PADY;
-  ctx.save();_lbShareRR(ctx,X,top,CW,ch,28);ctx.fillStyle=P.card;ctx.fill();ctx.strokeStyle=P.cardEdge;ctx.lineWidth=2;ctx.stroke();ctx.clip();
-  const IX=X+28,IR=R-28;
+  // the table card: rank | name (fixed width) | belt | parts | total
+  const n=d.cols.length,ROW=76,HEAD=56;
+  const ch=HEAD+d.rows.length*ROW;
+  ctx.save();ctx.shadowColor=P.shadow;ctx.shadowBlur=24;ctx.shadowOffsetY=6;
+  _lbShareRR(ctx,X,top,CW,ch,26);ctx.fillStyle=P.card;ctx.fill();ctx.restore();
+  ctx.save();_lbShareRR(ctx,X,top,CW,ch,26);ctx.clip();
+  const IX=X+24,IR=R-24;
+  const rkC=IX+24,NX=IX+60,NW=168,BX=NX+NW+14,BW=104;
+  const totW=120,numL=BX+BW+20;
+  const partW=n>1?Math.min(130,Math.floor((IR-totW-numL)/(n-1))):0;
   // column centres, right to left: Total, then the parts
-  const cx=[];for(let i=0;i<n;i++){cx.push(i===n-1?IR-totW/2:IR-totW-(n-2-i)*partW-partW/2);}
-  ctx.font='700 18px '+BC;ctx.fillStyle=P.head;
-  d.cols.forEach((lbl,i)=>{const w=[...lbl].reduce((s,c2)=>s+ctx.measureText(c2).width,0)+2*([...lbl].length-1);_lbShareSpaced(ctx,lbl,cx[i]-w/2,top+PADY+34,2,'left');});
-  const numL=n>1?cx[0]-partW/2:IR-totW;
+  const cx=[];for(let i=0;i<n;i++)cx.push(i===n-1?IR-totW/2:IR-totW-(n-1-i)*partW+partW/2);
+  ctx.fillStyle=P.text3;
+  d.cols.forEach((lbl,i)=>{
+    const max=(i===n-1?totW:partW)-8;let s=19,sp=2;ctx.font='700 '+s+'px '+BC;
+    const wOf=()=>[...lbl].reduce((a,c2)=>a+ctx.measureText(c2).width,0)+sp*([...lbl].length-1);
+    while(wOf()>max&&(sp>0||s>13)){if(sp>0)sp-=1;else{s-=1;ctx.font='700 '+s+'px '+BC;}}
+    _lbShareSpaced(ctx,lbl,cx[i],top+36,sp,'center');
+  });
   d.rows.forEach((r,i)=>{
-    const y=top+PADY+HEAD+i*ROW,mid=y+ROW/2;
-    if(i===0){ctx.fillStyle=P.goldTint;ctx.fillRect(X,y,CW,ROW);ctx.fillStyle=P.gold;ctx.fillRect(X,y,4,ROW);}
-    ctx.fillStyle=P.line;ctx.fillRect(IX,y,IR-IX,1);
-    const rk=Number(r.rank);
-    ctx.font='800 34px '+BC;ctx.textAlign='center';
-    ctx.fillStyle=rk===1?P.gold:rk===2?P.silver:rk===3?P.bronze:P.rank;
-    ctx.fillText(r.rank,IX+20,mid+12);
-    let nx=IX+56;
-    if(r.belt){
-      _lbShareRR(ctx,nx,mid-6,58,12,3);ctx.fillStyle=r.belt;ctx.fill();
-      ctx.save();_lbShareRR(ctx,nx,mid-6,58,12,3);ctx.clip();ctx.fillStyle=r.blackBelt?P.beltTipBlack:P.beltTip;ctx.fillRect(nx+40,mid-6,18,12);ctx.restore();
+    const y=top+HEAD+i*ROW,mid=y+ROW/2;
+    if(i===0){ctx.fillStyle=P.amberBg;ctx.fillRect(X,y,CW,ROW);ctx.fillStyle=P.amber;ctx.fillRect(X,y,6,ROW);}
+    else{ctx.fillStyle=P.border;ctx.fillRect(X,y,CW,2);}
+    ctx.font='700 30px '+BC;ctx.textAlign='center';ctx.fillStyle=P.text2;
+    ctx.fillText(r.rank,rkC,mid+11);
+    ctx.textAlign='left';ctx.fillStyle=r.anon?P.text2:P.text;
+    ctx.fillText(_lbShareFit(ctx,r.name,'700',32,22,BC,NW),NX,mid+11);
+    const img=belts&&belts[i];
+    if(img){
+      const bh=img.height*BW/img.width||28;
+      ctx.save();_lbShareRR(ctx,BX,mid-bh/2,BW,bh,4);ctx.clip();ctx.drawImage(img,BX,mid-bh/2,BW,bh);ctx.restore();
     }
-    nx+=58+16;
-    ctx.textAlign='left';ctx.fillStyle=r.anon?P.muted:P.text;
-    ctx.fillText(_lbShareFit(ctx,r.name,'600',30,30,BR,numL-16-nx),nx,mid+11);   // 30px; an ellipsis only when it still does not fit
     r.cells.forEach((c,j)=>{
       ctx.textAlign='center';
-      if(j===n-1){ctx.font='800 42px '+BC;ctx.fillStyle=i===0?P.gold:P.text;ctx.fillText(c.t,cx[j],mid+15);}
-      else{ctx.font='600 31px '+BC;ctx.fillStyle=c.zero?P.dim:P.soft;ctx.fillText(c.t,cx[j],mid+11);}
+      if(j===n-1){ctx.font='800 40px '+BC;ctx.fillStyle=P.text;ctx.fillText(c.t,cx[j],mid+14);}
+      else{ctx.font='600 30px '+BC;ctx.fillStyle=c.zero?P.text3:P.text2;ctx.fillText(c.t,cx[j],mid+11);}
     });
   });
   ctx.restore();
+  _lbShareRR(ctx,X+1,top+1,CW-2,ch-2,25);ctx.strokeStyle=P.border;ctx.lineWidth=2;ctx.stroke();
   // footer
-  const fy=H-62;
-  ctx.font='700 22px '+BC;ctx.fillStyle=P.accent;
+  const fy=H-46;
+  ctx.font='700 24px '+BC;ctx.fillStyle=P.blue;
   const rw=_lbShareSpaced(ctx,'MYBJJ-APP.COM',R,fy,4,'right');
   const lead='Every class counts.',more=d.qr?' Check in on the app or scan the QR at the door.':'';
-  let fs=24;ctx.font='600 '+fs+'px '+BR;
-  while(ctx.measureText(lead+more).width>CW-rw-28&&fs>16){fs-=1;ctx.font='600 '+fs+'px '+BR;}
-  ctx.textAlign='left';ctx.fillStyle=P.text;ctx.fillText(lead,X,fy);
-  if(more){ctx.fillStyle=P.muted;ctx.fillText(more,X+ctx.measureText(lead).width,fy);}
+  let fs=24;ctx.font='500 '+fs+'px '+BR;
+  while(ctx.measureText(lead+more).width>CW-rw-28&&fs>16){fs-=1;ctx.font='500 '+fs+'px '+BR;}
+  ctx.textAlign='left';ctx.fillStyle=P.text2;ctx.fillText(lead+more,X,fy);
+}
+// An SVG string as a loaded Image (null if it does not load).
+function _lbShareSvgImg(svg){
+  return new Promise(res=>{
+    const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);
+    i.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.indexOf('xmlns=')<0?svg.replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" '):svg);
+  });
 }
 async function _lbShareRender(d){
   // the faces the drawing uses must be loaded, or the canvas falls back silently
-  await Promise.all(['600 30px Barlow','600 31px "Barlow Condensed"','700 26px "Barlow Condensed"','800 124px "Barlow Condensed"']
+  await Promise.all(['400 28px Barlow','500 24px Barlow','600 30px Barlow','600 30px "Barlow Condensed"','700 32px "Barlow Condensed"','800 40px "Barlow Condensed"','120px "Bebas Neue"']
     .map(f=>document.fonts.load(f).catch(()=>null)));
-  const logo=await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);i.src='/logo.png';});
+  const [logo,belts]=await Promise.all([
+    new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);i.src='/logo.png';}),
+    Promise.all(d.rows.map(r=>r.belt?_lbShareSvgImg(r.belt):null))]);
   const cv=document.createElement('canvas');cv.width=1080;cv.height=1350;
-  _lbDrawShare(cv.getContext('2d'),d,logo);
+  _lbDrawShare(cv.getContext('2d'),d,logo,belts);
   return await new Promise((res,rej)=>cv.toBlob(b=>b?res(b):rej(new Error('toBlob failed')),'image/png'));
 }
 async function openLbShare(){
