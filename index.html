@@ -3050,18 +3050,32 @@ function fd(d){return `${DS[d.getDay()]}, ${d.getDate()} ${MS[d.getMonth()]}`;}
 // (a.unitId === unitDbId). If such a row has no unit, or we weren't handed the
 // class's unit, it is dropped — a cross-class/cross-unit leak is worse than a
 // missing legacy row.
-function _attMatchesClass(a,classId,date,time,unitDbId){
+//
+// One-offs (class_exceptions kind 'oneoff') have no class_id either; their row's
+// class_legacy_id is '<date>_<time>_oneoff_<exception uuid>'. When the caller
+// passes the occurrence's legacy id (occLegacyId = t.id / the card's c.id), such a
+// row matches by the exception identity — the '_oneoff_<uuid>' tail — not by
+// (date,time,unit), whose unit guard drops it whenever the caller has no class
+// row to take a unit from. Callers that pass no occLegacyId, and old rows with no
+// legacy id, keep the (date,time,unit) fallback below.
+function _oneoffKey(legacyId){
+  const s=legacyId==null?'':String(legacyId);const k=s.indexOf('_oneoff_');
+  return k>=0?s.slice(k):'';
+}
+function _attMatchesClass(a,classId,date,time,unitDbId,occLegacyId){
   if(!a||a.classDate!==date)return false;
   if(a.classId!=null)return a.classId===classId;        // primary: by class identity
+  const rowKey=_oneoffKey(a.classLegacyId);
+  if(rowKey&&occLegacyId!=null)return rowKey===_oneoffKey(occLegacyId);   // one-off: by exception identity
   if(!time||a.classTime!==time)return false;            // legacy: (date,time) …
   if(a.unitId==null||unitDbId==null)return false;       // … unit-guarded, else drop
   return a.unitId===unitDbId;
 }
 // Every attendance row for one class occurrence — the roster, the "N going" count,
 // confirm/undo and the mark-present sheet all read this.
-function attendanceFor(classId,date,time,unitDbId){
+function attendanceFor(classId,date,time,unitDbId,occLegacyId){
   if(!date)return [];
-  return ATTENDANCE.filter(a=>_attMatchesClass(a,classId,date,time,unitDbId));
+  return ATTENDANCE.filter(a=>_attMatchesClass(a,classId,date,time,unitDbId,occLegacyId));
 }
 function myStudentRow(){
   if(!S.profile||!S.profile.id)return null;
@@ -8244,7 +8258,7 @@ function rClass(){
     // "date_time_legacy" composite (getDC overrides it), so it must NOT be used to
     // match a.classId. _clsUnit backs the legacy (date,time) fallback's unit guard.
     const _clsUnit=(CLASSES.find(cl=>cl.id===c.classId)||{}).unit_id||null;
-    const rows=attendanceFor(c.classId,c.date,c.time,_clsUnit);
+    const rows=attendanceFor(c.classId,c.date,c.time,_clsUnit,c.id);
     const myStu=myStudentRow();
     const myRow=myStu?rows.find(r=>r.studentDbId===myStu._dbId):null;
     const isIn=!!myRow&&(myRow.status==='going'||myRow.status==='present');
@@ -19247,10 +19261,19 @@ function rPhotoQueue(){
 // classTime / unitId / status / _dbId / classValue / classType / studentDbId).
 function _mapAttRow(r){
   return {_dbId:r.id,unitId:r.unit_id||null,studentDbId:r.student_id,classId:r.class_id||null,
+    classLegacyId:r.class_legacy_id||null,   // one-offs: '<date>_<time>_oneoff_<exception uuid>' (see _attMatchesClass)
     classDate:r.class_date,classTime:r.class_time,classType:r.class_type,status:r.status||'going',
     confirmedBy:r.confirmed_by||null,confirmedAt:r.confirmed_at||null,
     classValue:r.class_value!=null?Number(r.class_value):1,
     arrivedAt:r.arrived_at||null};   // 164: arrival from the door QR (server time; staff see it)
+}
+// The ONE builder for every optimistic/local ATTENDANCE row. Takes the DB-shaped
+// row — normally the write payload itself — and maps it through _mapAttRow, so a
+// local row carries exactly the fields a fetched one does (unitId = the payload's
+// unit_id, classLegacyId = its class_legacy_id). _dbId is a 'local-' id until the
+// write round-trips; pass `id` to use a real one (a server-returned row).
+function _localAttRow(dbRow){
+  return _mapAttRow(Object.assign({id:'local-'+Date.now()},dbRow));
 }
 function _mapExcRow(r){
   return {id:r.id,unitId:r.unit_id||null,classId:r.class_id||null,exceptionDate:r.exception_date,kind:r.kind,
@@ -19365,7 +19388,7 @@ async function ensureDayLoaded(dateKey){
 }
 async function _fetchAllAttendance(c, fromDate, toDate){
   const PAGE = 1000;
-  const COLS = 'id,unit_id,student_id,class_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value,arrived_at';
+  const COLS = 'id,unit_id,student_id,class_id,class_legacy_id,class_date,class_time,class_type,status,confirmed_by,confirmed_at,class_value,arrived_at';
   let all = [], from = 0;
   for (let page = 0; page < 10; page++) {          // safety cap: 10 pages / 10k rows
     const r = await c.from('attendance').select(COLS)
@@ -21169,9 +21192,9 @@ function _chkMergeAtt(r,unitDbId){
   if(!r||!r.attendance_id)return;
   const a=ATTENDANCE.find(x=>x&&x._dbId===r.attendance_id);
   if(a){a.arrivedAt=r.arrived_at||a.arrivedAt||null;if(r.status)a.status=r.status;return;}
-  ATTENDANCE.push({_dbId:r.attendance_id,unitId:unitDbId||null,studentDbId:r.student_id,classId:r.class_id||null,
-    classDate:r.class_date,classTime:r.class_time,classType:null,status:r.status||'going',
-    confirmedBy:null,confirmedAt:null,classValue:1,arrivedAt:r.arrived_at||null});
+  ATTENDANCE.push(_localAttRow({id:r.attendance_id,unit_id:unitDbId||null,student_id:r.student_id,class_id:r.class_id||null,
+    class_legacy_id:r.class_legacy_id||null,class_date:r.class_date,class_time:r.class_time,class_type:null,status:r.status||'going',
+    arrived_at:r.arrived_at||null}));
 }
 // The coach of a window class, from the timetable the app already holds (an
 // instructor override or a one-off's substitute wins). '' when unknown.
@@ -21325,6 +21348,34 @@ function rCheckinSheet(){
       +close+'<div style="padding-right:40px"></div>'+body+err
     +'</div></div>';
 }
+// 169 — attendance_virtual_occurrence_uq is UNIQUE (student_id, class_legacy_id,
+// class_date) WHERE class_id IS NULL AND class_legacy_id IS NOT NULL. The
+// upserts' onConflict target (student_id,class_id,class_date) never fires for a
+// NULL class_id, so a second write for the same one-off occurrence fails with
+// 23505 instead. That means "this student is already in", not a failed save.
+// With class_id NULL no other unique key can raise 23505, so the payload shape
+// is accepted as proof when the message does not name the index.
+function _isVirtualOccDup(err,payload){
+  if(!err||err.code!=='23505')return false;
+  const txt=String(err.message||'')+' '+String(err.details||'');
+  if(txt.indexOf('attendance_virtual_occurrence_uq')>=0)return true;
+  return !!(payload&&payload.class_id==null&&payload.class_legacy_id!=null);
+}
+// Staff writes (add student / mark) that hit _isVirtualOccDup: reconcile like
+// doCI's ignored-conflict path — fetch this student's existing row for the
+// occurrence by class_legacy_id and adopt its id — then apply `fields` to it,
+// which is what the upsert's DO UPDATE would have done had the conflict target
+// matched. Returns the adopted id, or null when it can't be reconciled.
+async function _adoptVirtualOccRow(cli,payload,fields){
+  try{
+    const f=await cli.from('attendance').select('id').eq('student_id',payload.student_id).eq('class_date',payload.class_date).is('class_id',null).eq('class_legacy_id',payload.class_legacy_id).maybeSingle();
+    const id=f&&!f.error&&f.data&&f.data.id;
+    if(!id)return null;
+    const u=await cli.from('attendance').update(fields).eq('id',id).select('id');
+    if(!u||u.error||!u.data||!u.data.length)return null;
+    return id;
+  }catch(_){return null;}
+}
 async function doCI(id){
   // G1-B + G16-new — defence in depth. Self check-in window is
   // today OR tomorrow. Day+2+ must still be refused even if a stale
@@ -21364,10 +21415,10 @@ async function doCI(id){
   // be found (or the slot has no classId).
   const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
   const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
-  const local={_dbId:'local-'+Date.now(),studentDbId:stu._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:'going'};
-  ATTENDANCE.push(local);
-  render();
-  const cli=initSupabase();if(!cli||!stu._dbId)return;
+  // Double-tap guard: already going/present for THIS occurrence (one-offs by
+  // their legacy id) → nothing to write. An 'absent' row keeps the old path.
+  const _mine=ATTENDANCE.find(a=>a.studentDbId===stu._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId,t.id));
+  if(_mine&&(_mine.status==='going'||_mine.status==='present'))return;
   // Batch A — upsert with ignoreDuplicates:true so a double-tap or
   // race CANNOT downgrade an existing 'present' row back to 'going'.
   // Conflict-ignored returns an empty data array; in that case fetch
@@ -21375,6 +21426,10 @@ async function doCI(id){
   // lands and we don't leak an orphan local row.
   const _mod=(t.uniform?_modalityFromUniform(t.uniform):_modalityFromType(t.type));
   const _payload={student_id:stu._dbId,unit_id:_unitId,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:'going'};
+  const local=_localAttRow(_payload);
+  ATTENDANCE.push(local);
+  render();
+  const cli=initSupabase();if(!cli||!stu._dbId)return;
   let r=null,_caught=null;
   try{
     r=await cli.from('attendance').upsert(_payload,{onConflict:'student_id,class_id,class_date',ignoreDuplicates:true}).select('id');
@@ -21392,14 +21447,17 @@ async function doCI(id){
     try{render();}catch(_){}
     return;
   }
-  if(r&&r.error){
+  // A 23505 from attendance_virtual_occurrence_uq (169) is the one-off twin of
+  // the ignored conflict below: the row already exists (stale tab / another
+  // device). Not an error — it falls through to the same reconcile.
+  if(r&&r.error&&!_isVirtualOccDup(r.error,_payload)){
     // Roll back local
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
     console.warn('[mybjj] check-in failed:',r.error);
     showSaveToast2(friendlyMutationError(r.error),'error');
     render();return;
   }
-  let _realId=r&&r.data&&r.data[0]&&r.data[0].id;
+  let _realId=r&&!r.error&&r.data&&r.data[0]&&r.data[0].id;
   if(!_realId){
     // ignoreDuplicates:true returns an empty data array when the upsert
     // hit the (student_id,class_id,class_date) conflict and was ignored.
@@ -21470,7 +21528,7 @@ async function undoCI(id){
   // not any same-time sibling. _unitId only backs the legacy null-classId guard.
   const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const _unitId=(t.classId?(CLASSES.find(cl=>cl.id===t.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
-  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===stu._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
+  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===stu._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId,t.id));
   if(ix<0)return;
   const removed=ATTENDANCE.splice(ix,1)[0];
   render();
@@ -21726,7 +21784,7 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
   // Resolve the student's row for THIS class by identity (t.classId — the DB
   // class_id from _projClsRow), never by (date,time): a student in two same-time
   // classes (CD 06:15 alev + mma) must not have the wrong row upgraded.
-  let row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
+  let row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId,t.id));
   const confirmed=newStatus==='going'?null:(S.profile&&S.profile.id);
   const confirmedAt=newStatus==='going'?null:new Date().toISOString();
   // For status==='present' we always write a numeric class_value.
@@ -21737,14 +21795,14 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
   const cv=isPresent?(Number.isFinite(cvNum)?cvNum:1):null;
   const cli=initSupabase();
   if(!row){
-    const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:t.classId||null,classDate:c.date,classTime:c.time,classType:t.type||null,status:newStatus,confirmedBy:confirmed,confirmedAt,classValue:isPresent?cv:1};
-    ATTENDANCE.push(local);
-    render();
-    if(!cli)return;
     // Batch A — keep gi consistent with modality on every new write.
     const _mod=(t.uniform?_modalityFromUniform(t.uniform):_modalityFromType(t.type));
     const payload={student_id:s._dbId,unit_id:_unitId,class_id:t.classId||null,class_legacy_id:t.id||null,class_date:c.date,class_time:c.time,class_type:t.type||null,modality:_mod,gi:_mod==='gi',status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
     if(isPresent)payload.class_value=cv;
+    const local=_localAttRow(payload);
+    ATTENDANCE.push(local);
+    render();
+    if(!cli)return;
     // Upsert with ignoreDuplicates:false so the instructor's mark
     // upgrades any pre-existing 'going' row in place (intended).
     let r=null,_caught=null;
@@ -21761,6 +21819,14 @@ async function _setAttStatus(cid,sid,newStatus,classValue,opts){
       if(!silent)showSaveToast2(s.name.split(' ')[0]+' marked '+newStatus[0].toUpperCase()+newStatus.slice(1));
       try{render();}catch(_){}
       return;
+    }
+    // One-off already has a row for this student (169 index) → adopt it and
+    // apply this mark onto it, as the upsert would for a normal class.
+    if(r&&r.error&&_isVirtualOccDup(r.error,payload)){
+      const fields={status:newStatus,confirmed_by:confirmed,confirmed_at:confirmedAt};
+      if(isPresent)fields.class_value=cv;
+      const adopted=await _adoptVirtualOccRow(cli,payload,fields);
+      if(adopted)r={data:{id:adopted},error:null};
     }
     if(r&&r.error){
       const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
@@ -21856,7 +21922,7 @@ function _attClsCtx(cid){
 // tick is exactly what they were looking at.
 function _attMoveRows(cid){
   const x=_attClsCtx(cid);if(!x)return [];
-  return attendanceFor(x.t.classId||null,x.c.date,x.c.time,x.unitId)
+  return attendanceFor(x.t.classId||null,x.c.date,x.c.time,x.unitId,x.t.id)
     .filter(r=>r.status==='going'||r.status==='present'||r.status==='absent');
 }
 // Destinations: other occurrences on the SAME DATE, from getDC — which is
@@ -22047,9 +22113,10 @@ function confirmAttMove(){
 // Follows _setAttStatus's update path: optimistic mutate, local- rows merge
 // into their pending queue item, offline enqueues, RLS-zero-rowcount rolls back.
 async function _moveAttRow(row,dst,cli){
-  const prev={classId:row.classId,classTime:row.classTime,classType:row.classType};
+  const prev={classId:row.classId,classLegacyId:row.classLegacyId,classTime:row.classTime,classType:row.classType};
   const _mod=(dst.t.uniform?_modalityFromUniform(dst.t.uniform):_modalityFromType(dst.t.type));
   row.classId=dst.t.classId||null;
+  row.classLegacyId=dst.t.id||null;   // mirrors the payload's class_legacy_id (one-offs match on it)
   row.classTime=dst.c.time;
   row.classType=dst.t.type||null;
   const payload={class_id:dst.t.classId||null,class_legacy_id:dst.t.id||null,class_time:dst.c.time,class_type:dst.t.type||null,modality:_mod,gi:_mod==='gi'};
@@ -22099,7 +22166,7 @@ async function _doAttMove(){
     // this date. Skip rather than create a second one; the DB's
     // (student_id, class_id, class_date) uniqueness would reject it anyway, and
     // reporting the skip is more useful than an error.
-    const dup=ATTENDANCE.find(a=>a!==row&&a.studentDbId===row.studentDbId&&_attMatchesClass(a,dst.t.classId||null,dst.c.date,dst.c.time,dst.unitId));
+    const dup=ATTENDANCE.find(a=>a!==row&&a.studentDbId===row.studentDbId&&_attMatchesClass(a,dst.t.classId||null,dst.c.date,dst.c.time,dst.unitId,dst.t.id));
     if(dup){skipped++;continue;}
     const res=await _moveAttRow(row,dst,cli);
     if(res==='ok')moved++;else failed++;
@@ -22140,7 +22207,7 @@ async function markAllPresent(cid){
   const _cls=t.classId?CLASSES.find(cl=>cl.id===t.classId):null;
   const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   // Snapshot BEFORE mutating — only status==='going' (absent/present excluded).
-  const targets=ATTENDANCE.filter(a=>a.status==='going'&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
+  const targets=ATTENDANCE.filter(a=>a.status==='going'&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId,t.id));
   const sids=targets.map(a=>{const s=STUDENTS.find(x=>x._dbId===a.studentDbId)||VISITORS[a.studentDbId];return s?s.id:null;}).filter(Boolean);
   if(!sids.length)return;
   await Promise.all(sids.map(sid=>_setAttStatus(cid,sid,'present',1,{silentToast:true})));
@@ -22158,18 +22225,18 @@ function removeAtt(cid,sid){
   // at the same time; _unitId backs the legacy null-classId fallback only.
   const t=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const _unitId=(t.classId?(CLASSES.find(cl=>cl.id===t.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
-  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId));
+  const row=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,t.classId||null,c.date,c.time,_unitId,t.id));
   if(!row){showSaveToast2('No attendance record to remove.','error');return;}
   const first=(s.name||'').split(' ')[0]||'this student';
   openConfirm({
     title:'Remove from class',
     message:'Remove '+first+' from this class? This deletes the attendance record.',
     dangerLabel:'Remove',
-    onConfirm:()=>_doRemoveAtt(s._dbId,t.classId||null,c.date,c.time,_unitId,first)
+    onConfirm:()=>_doRemoveAtt(s._dbId,t.classId||null,c.date,c.time,_unitId,first,t.id)
   });
 }
-async function _doRemoveAtt(studentDbId,classId,date,time,unitDbId,first){
-  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===studentDbId&&_attMatchesClass(a,classId,date,time,unitDbId));
+async function _doRemoveAtt(studentDbId,classId,date,time,unitDbId,first,occLegacyId){
+  const ix=ATTENDANCE.findIndex(a=>a.studentDbId===studentDbId&&_attMatchesClass(a,classId,date,time,unitDbId,occLegacyId));
   if(ix<0)return;
   const removed=ATTENDANCE.splice(ix,1)[0];
   render();
@@ -22408,7 +22475,7 @@ function _classAddListHTML(){
   // another unit's roster, would be wrongly treated as already-added. curU._dbId
   // is the class's unit (the picker is scoped to the current side-panel unit).
   const _clsUnitDbId=(tt.classId?(CLASSES.find(cl=>cl.id===tt.classId)||{}).unit_id:null)||(curU&&curU._dbId)||null;
-  const attDbIds=new Set(ATTENDANCE.filter(a=>_attMatchesClass(a,tt.classId||null,c.date,c.time,_clsUnitDbId)).map(a=>a.studentDbId));
+  const attDbIds=new Set(ATTENDANCE.filter(a=>_attMatchesClass(a,tt.classId||null,c.date,c.time,_clsUnitDbId,tt.id)).map(a=>a.studentDbId));
   const needle=String(q||'').trim().toLowerCase();
   let list=STUDENTS.filter(s=>s._active!==false&&s.unit===unitLegacy);
   if(classAud==='Kids'&&!allProgs)list=list.filter(s=>s.prog==='kids');
@@ -22491,7 +22558,7 @@ async function addStudentToClass(cid,legacyId){
   // "Already on this class" by class identity (tt.classId), not (date,time).
   const tt=_occFor(c.date+'_'+c.time+'_'+c.legacy);   // Phase B1 — resolves exceptions (cancelled/override/oneoff); {} when unresolved
   const _unitId=(tt.classId?(CLASSES.find(cl=>cl.id===tt.classId)||{}).unit_id:null)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
-  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,tt.classId||null,c.date,c.time,_unitId));
+  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,tt.classId||null,c.date,c.time,_unitId,tt.id));
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
   openMarkPSheet(cid,legacyId,true);
 }
@@ -22509,16 +22576,11 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
   const _cls=tt.classId?CLASSES.find(cl=>cl.id===tt.classId):null;
   const _unitId=(_cls&&_cls.unit_id)||(UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   // "Already on this class" by class identity (tt.classId), not (date,time).
-  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,tt.classId||null,c.date,c.time,_unitId));
+  const exists=ATTENDANCE.find(a=>a.studentDbId===s._dbId&&_attMatchesClass(a,tt.classId||null,c.date,c.time,_unitId,tt.id));
   if(exists){showSaveToast2(s.name.split(' ')[0]+' is already on this class.','error');return;}
   S.classAdd.saving=true;
   const nowISO=new Date().toISOString();
   const cv=typeof classValue==='number'?classValue:1;
-  const local={_dbId:'local-'+Date.now(),studentDbId:s._dbId,classId:tt.classId||null,classDate:c.date,classTime:c.time,classType:tt.type||null,status:'present',confirmedBy:S.profile&&S.profile.id,confirmedAt:nowISO,classValue:cv};
-  ATTENDANCE.push(local);
-  _renderClassAddList();
-  const cli=initSupabase();
-  if(!cli){S.classAdd.saving=false;showSaveToast2('Connection issue','error');return;}
   // Batch A — upsert so an admin-add upgrades any existing 'going'
   // row to 'present' in place, and never duplicates. gi mirrors
   // modality on every write so the canonical/derived pair never drifts.
@@ -22538,6 +22600,11 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
     confirmed_at:nowISO,
     class_value:cv,
   };
+  const local=_localAttRow(_payload);
+  ATTENDANCE.push(local);
+  _renderClassAddList();
+  const cli=initSupabase();
+  if(!cli){S.classAdd.saving=false;showSaveToast2('Connection issue','error');return;}
   let r=null,_caught=null;
   try{
     r=await cli.from('attendance').upsert(_payload,{onConflict:'student_id,class_id,class_date',ignoreDuplicates:false}).select('id').single();
@@ -22554,6 +22621,12 @@ async function _doAddStudentToClass(cid,legacyId,classValue){
     S.classAdd.saving=false;
     _renderClassAddList();
     return;
+  }
+  // One-off where the student already has a row (169 index, e.g. they tapped
+  // I'm going): adopt it and upgrade it to this add's present/tier in place.
+  if(r&&r.error&&_isVirtualOccDup(r.error,_payload)){
+    const adopted=await _adoptVirtualOccRow(cli,_payload,{status:'present',confirmed_by:_payload.confirmed_by,confirmed_at:nowISO,class_value:cv});
+    if(adopted)r={data:{id:adopted},error:null};
   }
   if(r&&r.error){
     const ix=ATTENDANCE.indexOf(local);if(ix>=0)ATTENDANCE.splice(ix,1);
@@ -22964,13 +23037,13 @@ async function _writePrivate(o){
   // unit_id = the student's home unit (fallback: active unit).
   const unitDbId=(UNITS.find(u=>u.id===stu.unit)||UNITS.find(u=>u.name===S.unit)||{})._dbId||null;
   const nowISO=new Date().toISOString();
-  // Optimistic local row (camelCase, matching the ATTENDANCE hydrate shape) so
-  // the profile summary + "last 21 days" reflect it immediately, no reload.
-  const local={_dbId:'local-'+Date.now(),unitId:unitDbId,studentDbId:stu._dbId,classId:null,classDate:date,classTime:null,classType:'private',status:'present',confirmedBy:confirmedBy,confirmedAt:nowISO,classValue:value};
-  ATTENDANCE.push(local); render();
   // Same columns as the check-in payload (_setAttStatus), but a NEW insert (not
   // upsert): a private has no conflict target, and each is its own row.
   const payload={student_id:stu._dbId,unit_id:unitDbId,class_id:null,class_legacy_id:null,class_date:date,class_time:null,class_type:'private',modality:null,gi:false,status:'present',confirmed_by:confirmedBy,confirmed_at:nowISO,class_value:value};
+  // Optimistic local row (the ATTENDANCE hydrate shape, via _localAttRow) so
+  // the profile summary + "last 21 days" reflect it immediately, no reload.
+  const local=_localAttRow(payload);
+  ATTENDANCE.push(local); render();
   let r=null,caught=null;
   try{ r=await cli.from('attendance').insert(payload).select('id').single(); }catch(e){caught=e;}
   if(caught||(r&&r.error)){

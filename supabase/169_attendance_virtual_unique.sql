@@ -1,0 +1,27 @@
+-- 169_attendance_virtual_unique.sql
+--
+-- ALREADY APPLIED BY HAND in production (SQL Editor) on 25 Oct 2026, after the
+-- duplicate cleanup below. This file versions exactly what was run; IF NOT EXISTS
+-- makes re-running it a no-op.
+--
+-- WHY: one-off classes (class_exceptions kind 'oneoff') have no class_id. Their
+-- attendance rows carry class_id NULL and class_legacy_id
+-- '<date>_<time>_oneoff_<exception uuid>'. The app's upserts use
+-- onConflict (student_id, class_id, class_date), which never conflicts when
+-- class_id is NULL, so every "I'm going" tap on a one-off inserted another row
+-- (8 identical 'going' rows for one member on the 25 Oct 14:00 open mat, 3 for
+-- another). This index makes a second row for the same student + occurrence +
+-- date fail with unique_violation (23505); the app treats that as "already in".
+--
+-- CLEANUP BEFORE THE INDEX (also by hand, same day): the 9 duplicate 'going' rows
+-- were deleted after being copied to public._bak_attendance_virtual_dupes_20261025.
+-- That backup table is not created or touched by this file.
+--
+-- Scope: only rows with class_id NULL and a class_legacy_id. Normal classes
+-- (class_id set) keep attendance_student_class_date_uniq; privates
+-- (class_legacy_id NULL) stay unconstrained, one row each.
+--
+-- Rollback: 169_attendance_virtual_unique_rollback.sql
+-- Verify:   169_attendance_virtual_unique_verify.sql
+
+create unique index if not exists attendance_virtual_occurrence_uq on public.attendance (student_id, class_legacy_id, class_date) where class_id is null and class_legacy_id is not null;
