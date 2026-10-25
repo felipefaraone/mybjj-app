@@ -329,10 +329,11 @@ begin
   end if;
   raise notice 'PASS 9: _attendance_is_self, the trigger function and _competition_scores are internal';
 
-  -- 10. the catalog row, between class_attended and social_post
+  -- 10. the catalog row, between class_attended and social_post (description as
+  -- changed in production on 21 Oct: the QR at the door as well)
   select format('%s|%s|%s|%s|%s|%s', k.label, k.description, k.how_to_score, k.source, k.default_points, k.default_params) into v
     from public.competition_rule_catalog k where k.key = 'self_checkin';
-  if v is distinct from 'Check in on the app|Tap I''m going before class. The bonus counts once your coach marks you present.|Check in on the app: {points} bonus per class|attendance|1|{}'
+  if v is distinct from 'Check in on the app|Tap I''m going in the app or scan the QR at the door. The bonus counts once your coach marks you present.|Check in on the app: {points} bonus per class|attendance|1|{}'
      or (select sort from public.competition_rule_catalog where key = 'self_checkin')
           not between (select sort + 1 from public.competition_rule_catalog where key = 'class_attended')
                   and (select sort - 1 from public.competition_rule_catalog where key = 'social_post') then

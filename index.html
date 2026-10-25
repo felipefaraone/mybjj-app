@@ -4548,7 +4548,7 @@ function _validateTrainingDates(bjjIso,joinIso){
     return /^\d{4}-\d{2}-\d{2}$/.test(t)?t:null;
   };
   const b=norm(bjjIso),j=norm(joinIso);
-  const today=new Date().toISOString().slice(0,10);
+  const today=dk(new Date());
   if((b&&b>today)||(j&&j>today))return {ok:false,msg:'That date is in the future.'};
   if(b&&j&&b>j)return {ok:false,msg:"Started BJJ can't be after you joined myBJJ."};
   return {ok:true};
@@ -4891,7 +4891,7 @@ function _jnyDeclError(st,stu){
   if(st.d&&!st.m)return 'Pick a month too, or clear the day.';
   const dt=_jnyDeclDate(st);
   if(!dt)return 'Pick at least the year.';
-  const today=new Date().toISOString().slice(0,10);
+  const today=dk(new Date());
   if(dt.iso>today)return 'That date is in the future.';
   const joined=stu._createdAt?String(stu._createdAt).slice(0,10):null;
   if(!joined)return 'We could not read your join date — ask your academy to check your profile.';
@@ -5978,12 +5978,14 @@ function revertPromo(id){
 
 // Whole-years age from a 'YYYY-MM-DD' dob, or null when absent/unparseable.
 // onDate (optional, a local Date such as TODAY or S.selDay): the age on that
-// calendar day instead of now. Omitted: exactly as before.
+// calendar day instead of today. Omitted: today's LOCAL calendar day (a bare
+// new Date() read the UTC day, a day behind before 10/11 am in Sydney).
 function _ageFromDob(dob,onDate){
   if(!dob)return null;
   const d=new Date(String(dob).slice(0,10)+'T00:00:00Z');
   if(isNaN(d.getTime()))return null;
-  const now=(onDate instanceof Date&&!isNaN(onDate.getTime()))?new Date(Date.UTC(onDate.getFullYear(),onDate.getMonth(),onDate.getDate())):new Date();
+  const on=(onDate instanceof Date&&!isNaN(onDate.getTime()))?onDate:new Date();
+  const now=new Date(Date.UTC(on.getFullYear(),on.getMonth(),on.getDate()));
   let age=now.getUTCFullYear()-d.getUTCFullYear();
   const mo=now.getUTCMonth()-d.getUTCMonth();
   if(mo<0||(mo===0&&now.getUTCDate()<d.getUTCDate()))age--;
@@ -6506,10 +6508,13 @@ function _rClassHistorySection(s){
     const label=beltLbl(r.belt)+stripeTxt;
     const dateTxt=r.from_date?_fmtJnyDate(r.from_date):null;
     const swatch='<div style="width:26px;height:26px;border-radius:6px;flex-shrink:0;background:'+col+';border:1px solid var(--border)"></div>';
-    const countHtml='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;color:'+(isCur?'var(--blue)':'var(--text3)')+';flex-shrink:0">'+formatStat(Number(r.classes||0))+'</div>';
+    // The count keeps its own width (never shrinks, never wraps, a little room on
+    // the right so the .chist-scroll clip edge can't cut its last digit); the text
+    // column takes the rest and wraps instead of pushing into it.
+    const countHtml='<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:18px;line-height:1.2;color:'+(isCur?'var(--blue)':'var(--text3)')+';flex:0 0 auto;white-space:nowrap;text-align:right;padding-right:2px">'+formatStat(Number(r.classes||0))+'</div>';
     const topRow='<div style="display:flex;align-items:center;gap:10px">'
       +swatch
-      +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+label+'</div>'+(dateTxt?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+dateTxt+'</div>':'')+'</div>'
+      +'<div style="flex:1 1 0;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;line-height:1.2;color:var(--text);overflow-wrap:break-word">'+label+'</div>'+(dateTxt?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+dateTxt+'</div>':'')+'</div>'
       +countHtml
     +'</div>';
     // Gi/No-Gi 100% COMPOSITION bar — only when every class in the period is split.
@@ -7374,7 +7379,7 @@ async function saveFbModal(sid){
   S.fbModalFor=null;
   render();
   if(s._dbId){
-    withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');
+    withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:dk(new Date())}),'insert feedback');
     withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');
   }
   // G1 follow-up — explicit recipient + longer dwell so the instructor
@@ -7452,7 +7457,7 @@ function setPromoteCurrent(v){if(S.promoteForm)S.promoteForm.setCurrent=!!v;rend
 function rPromoteModal(){
   if(!S.promoteFor)return '';
   const s=STUDENTS.find(x=>x.id===S.promoteFor);if(!s)return '';
-  const F=S.promoteForm||{belt:s.belt,deg:s.deg,date:new Date().toISOString().slice(0,10),setCurrent:true};
+  const F=S.promoteForm||{belt:s.belt,deg:s.deg,date:dk(new Date()),setCurrent:true};
   const ORDER=_promoteBeltOrder(s);
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
   const targetBelt=F.belt||s.belt;
@@ -7540,7 +7545,7 @@ async function savePromote(skipDuplicateBeltConfirm){
   const targetBelt=String(F.belt||_domBelt||s.belt).toLowerCase();
   const maxDeg=targetBelt==='black'?6:4;
   const targetDeg=Math.max(0,Math.min(maxDeg,parseInt(F.deg!=null?F.deg:_domDeg,10)||0));
-  const date=String(F.date||_domDate||'').trim()||new Date().toISOString().slice(0,10);
+  const date=String(F.date||_domDate||'').trim()||dk(new Date());
   const setCurrent=(F.setCurrent!=null)?!!F.setCurrent:!!_domCurrent;
 
   if(ORDER.indexOf(targetBelt)<0){alert('Invalid belt for this program.');return;}
@@ -7780,7 +7785,7 @@ async function savePromote(skipDuplicateBeltConfirm){
   const _corrTarget=(typeof _revertTarget==='function')?_revertTarget(s.id):null;
   const correctionDate=(_corrTarget&&_corrTarget.date)
     ? String(_corrTarget.date).slice(0,10)
-    : (s._lastMarkerDate?String(s._lastMarkerDate).slice(0,10):new Date().toISOString().slice(0,10));
+    : (s._lastMarkerDate?String(s._lastMarkerDate).slice(0,10):dk(new Date()));
   // Mirror recompute_student_stats' last_marker_date into memory so the
   // eligibility hint shows the months clock immediately instead of "date not
   // recorded" (it reads s._lastMarkerDate, and a full rehydrate is the only
@@ -7836,7 +7841,7 @@ function rJnyEditor(){
   // For new entries, default Date to today and Belt to the target's
   // current belt — admins usually log "what just happened" so the
   // defaults match that bias.
-  const todayISO=new Date().toISOString().slice(0,10);
+  const todayISO=dk(new Date());
   // Normalize stored date for the date input: only feeds it valid
   // YYYY-MM-DD; legacy "Mon YYYY" strings stay empty so the user
   // re-picks (rare; only happens when editing a pre-ISO entry).
@@ -9694,7 +9699,7 @@ function _lbChaseLine(me,above,rules){
   return _compPts(gap)+' point'+(gap===1?'':'s')+' to pass '+name+(parts.length?': '+parts.join(', or '):'')+'.';
 }
 // ── member / kid card ───────────────────────────────────────────────────────
-// The member's points by source ("Classes 6 · Bonus 2 · Friends 3 · Check ins 2"),
+// The member's points by source ("Class points 6 · Bonus 2 · Friends 3 · Check ins 2"),
 // each part only when > 0. One source for the member card and the closing card.
 // checkin_points (163) is in points; a server row without it reads the remainder,
 // so the parts always add up to the total shown.
@@ -9714,14 +9719,15 @@ function _lbParts(me){
   if(!me)return [];
   const n=v=>Number(v)||0;
   const v=_lbPartValues(me);
-  return [['Classes',v.classes],['Bonus',v.bonus],['Friends',v.friends],['Check ins',v.checkins]]
-    .filter(x=>n(x[1])>0);
+  return _LB_COLS.map(c=>[c.label,v[c.key]]).filter(x=>n(x[1])>0);   // labels from _LB_COLS
 }
 // The parts an event has switched on (its enabled rules, keys as in the catalog
 // and _LB_RULE_IC), in board order, then Total. The board's columns and the
-// share image's columns.
+// share image's columns. The one source of the part labels (the board header, the
+// Your spot pills, the share image): "Class points", not a count of classes (open
+// mats count 0.25).
 const _LB_COLS=[
-  {key:'classes',label:'Classes',rules:['class_attended']},
+  {key:'classes',label:'Class points',rules:['class_attended']},
   {key:'bonus',label:'Bonus',rules:['class_challenge','best_attitude','social_post']},
   {key:'friends',label:'Friends',rules:['referral_trial','referral_conversion']},
   {key:'checkins',label:'Check ins',rules:['self_checkin']}];
@@ -11358,12 +11364,13 @@ function rCommunityWall(){
   welcomes.forEach(w=>{ if(w.s&&w.s.id)_welcomeJoinById[w.s.id]=w.s._createdAt; });
   // 161: one champions card per published event and ADULT division of this unit
   // (competition_champions never returns kids); same unit rule and 12-month
-  // window as the promotions.
+  // window as the promotions. Names tap through to the profile (tap), as on the
+  // monthly card below.
   // Nothing competition-related is fetched before the Leaderboard is visible.
   const _champE=_lbVisible()?_lbGet(LB_CHAMPS,'all',()=>_lbRpc('competition_champions',{})):null;
   const _champBy={};
   ((_champE&&_champE.data)||[]).filter(r=>r&&(!curUnitDb||r.unit_id===curUnitDb)&&r.published_at&&new Date(r.published_at)>=_wallCutoff)
-    .forEach(r=>{(_champBy[r.division_id]=_champBy[r.division_id]||{kind:'champions',key:r.division_id,name:r.competition_name,label:r.division_label,date:r.published_at,rows:[]}).rows.push(r);});
+    .forEach(r=>{(_champBy[r.division_id]=_champBy[r.division_id]||{kind:'champions',key:r.division_id,name:r.competition_name,label:r.division_label,date:r.published_at,tap:true,rows:[]}).rows.push(r);});
   // 172: the Monthly race's latest published month, the same card: one per adult
   // division of this unit, its title from the data ("October champions"), Oss
   // on the month's own target (target_id), names tap through to the profile.
@@ -11445,7 +11452,8 @@ function rCommunityWall(){
         const st=!r.anonymous&&r.student_id?STUDENTS.find(x=>x&&x._dbId===r.student_id):null;
         const ini=String(r.display_name||'').split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase()||'?';
         const avh=r.anonymous?av('?','',34):avStu(st&&!r.minor?st:{name:r.display_name,initials:ini,belt:r.belt||'',prog:r.minor?'kids':'adult',photoUrl:null},34);
-        // 172: a month's card opens the member's profile (never a hidden one or a kid)
+        // 172: a champion's name opens their profile, on the Cup's card and a
+        // month's alike (never a hidden one: no st; never a kid)
         const tap=item.tap&&st&&!r.minor?' onclick="viewStu(\''+st.id+'\',\'community\')"':'';
         return '<div'+tap+' style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)'+(tap?';cursor:pointer':'')+'">'
           +'<div style="width:30px;flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2)">'+escHtml(_lbOrd(r.place))+'</div>'
@@ -12488,6 +12496,14 @@ function _progYearOf(d){const m=String(d==null?'':d).match(/(\d{4})/);return m?m
 // render in every state; only column 3 depends on the fetch, and with rows=null
 // it shows the em dash. A zero is only ever printed when a loaded, complete
 // month genuinely contains zero classes.
+// The CLASSES strip's middle cell counts days since the LAST promotion marker
+// (stu.grade), a stripe or degree as much as the belt itself. Its label says
+// which: the belt only when there is no stripe/degree on it yet. The rank
+// strip's "This belt" (_rStatRow col3) is time since the belt and stays.
+function _sinceMarkerLabel(stu){
+  if(!stu||!(Number(stu.deg)>0))return 'This belt';
+  return stu.belt==='black'?'Since last degree':'Since last stripe';
+}
 function _rClassesCard(stu,rows){
   const EMDASH='—';
   const tsFmt=_fmtJnyDate(stu.trainingStartedAt||null);
@@ -12531,7 +12547,7 @@ function _rClassesCard(stu,rows){
       // stu.grade counts training DAYS since the last promotion (two classes on
       // one day count once), unlike At myBJJ's classes: the sub says so. The
       // Gi/No-Gi split, when it reconciles, sits on a second line in the same style.
-      {label:'This belt',value:formatStat(stu.grade||0),unit:'',
+      {label:_sinceMarkerLabel(stu),value:formatStat(stu.grade||0),unit:'',
        sub:'days attended'+(_showSplit?('<br>Gi '+formatStat(_bGi)+' · No-Gi '+formatStat(_bNogi)):''),isCount:true,muted:false},
       col3
     ])+'</div>';
@@ -15619,7 +15635,7 @@ async function sendInvite(dispatch,chain){
   if(_bjjMonthRaw){
     if(!/^\d{4}-\d{2}$/.test(_bjjMonthRaw))return showSaveToast2('Started BJJ format looks off.','error');
     const _bjj=_bjjMonthRaw+'-01';
-    if(_bjj>new Date().toISOString().slice(0,10))return showSaveToast2('Started BJJ can\'t be in the future.','error');
+    if(_bjj>dk(new Date()))return showSaveToast2('Started BJJ can\'t be in the future.','error');
     formBjjStartDate=_bjj;
   }
   // Batch — the 3 fields John asked for at signup, all NULLABLE (empty → null,
@@ -15645,16 +15661,16 @@ async function sendInvite(dispatch,chain){
   const initialJourney=[];
   const _originBeltLabel=((isKids?BK:BA)[formBelt]||{label:formBelt}).label;
   const _isStartingBelt=(formBelt===((isKids?BELT_ORDER_K:BELT_ORDER_A)[0]))&&(Number(formDegree||0)===0);
-  initialJourney.push({belt:formBelt,label:_originBeltLabel+' belt',date:_isStartingBelt?new Date().toISOString().slice(0,10):null,done:true,auto:true,origin:true});
+  initialJourney.push({belt:formBelt,label:_originBeltLabel+' belt',date:_isStartingBelt?dk(new Date()):null,done:true,auto:true,origin:true});
   if(status==='transfer'){
     const fromAcad=String(F.xferFrom||'').trim();
     const sinceVal=String(F.xferSince||'').trim()||null;
-    initialJourney.push({label:'Transferred to MyBJJ',date:sinceVal||new Date().toISOString().slice(0,10),done:true,xfer:true,prev:fromAcad||null,classes:null,belt:null});
+    initialJourney.push({label:'Transferred to MyBJJ',date:sinceVal||dk(new Date()),done:true,xfer:true,prev:fromAcad||null,classes:null,belt:null});
   } else if(status==='returning'){
     const leftVal=String(F.retLeft||'').trim()||null;
     const reason=F.retReason||null;
     if(leftVal)initialJourney.push({label:'Left academy'+(reason?(' · '+reason):''),date:leftVal,done:true,classes:null,belt:null});
-    initialJourney.push({label:'Returned to MyBJJ',date:new Date().toISOString().slice(0,10),done:true,classes:null,belt:null});
+    initialJourney.push({label:'Returned to MyBJJ',date:dk(new Date()),done:true,classes:null,belt:null});
   }
   const inviteEmail=isKids?parentEmail:email;
   let saved=false;
@@ -21305,12 +21321,12 @@ function openSub(s){
   }
   // Payroll Hours — re-init the range + refetch on every open so switching
   // unit (or reopening) always reflects the current unit. Default window is
-  // the last 14 days (to=today, from=today-13). Uses the codebase's
-  // toISOString().slice(0,10) date idiom (UTC-based, as elsewhere).
+  // the last 14 days (to=today, from=today-13), local calendar days (dk): UTC
+  // dated them a day early before 10/11 am in Sydney.
   if(s==='hours'){
     const _t=new Date();
-    const _toISO=_t.toISOString().slice(0,10);
-    const _fromISO=new Date(_t.getTime()-13*86400000).toISOString().slice(0,10);
+    const _toISO=dk(_t);
+    const _fromISO=dk(new Date(_t.getFullYear(),_t.getMonth(),_t.getDate()-13));
     S.hours={from:_fromISO,to:_toISO,rows:null,loading:false,err:null};
     loadHours();
   }
@@ -23391,7 +23407,7 @@ function profileBack(){
 }
 function openFb(sid){S.addFb=sid;render();}
 function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
-function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:new Date().toISOString().slice(0,10)}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
+function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:dk(new Date())}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
 // G17.2d — feedback delete now flows through the generic confirm modal
 // + delete_feedback RPC (migration 51). The RPC cascades a dismiss to
 // any notification(s) keyed to the feedback row so the recipient's
@@ -24531,7 +24547,7 @@ async function saveEditStu(){
     }else{
       if(!/^\d{4}-\d{2}$/.test(_bRaw))return showErr('Started BJJ format looks off.');
       const _bDate=_bRaw+'-01';
-      const _today=new Date().toISOString().slice(0,10);
+      const _today=dk(new Date());
       if(_bDate>_today)return showErr("Started BJJ can't be in the future.");
       if(s._createdAt){
         const _joined=String(s._createdAt).slice(0,10);
