@@ -9617,7 +9617,8 @@ function _lbCatalog(){
 function _lbDays(fromIso,toIso){const a=_parseISODate(fromIso),b=_parseISODate(toIso);if(!a||!b)return 0;return Math.round((Date.UTC(b.getFullYear(),b.getMonth(),b.getDate())-Date.UTC(a.getFullYear(),a.getMonth(),a.getDate()))/86400000);}
 function _lbDM(iso){const d=_parseISODate(iso);return d?(d.getDate()+' '+MS[d.getMonth()]):'';}
 function _lbDowDM(iso){const d=_parseISODate(iso);return d?(DS[d.getDay()]+' '+d.getDate()+' '+MS[d.getMonth()]):'';}
-function _lbPrizeDay(comp){return comp&&(comp.finale_on||comp.ends_on)||null;}
+// The prize day is finale_on; not set = to be announced (never ends_on).
+function _lbPrizeDay(comp){return comp&&comp.finale_on||null;}
 function _lbFirst(name){return String(name||'').trim().split(/\s+/)[0]||'';}
 function _lbUnitName(unitDbId){return (UNITS.find(u=>u&&u._dbId===unitDbId)||{}).name||'';}
 function _lbDivName(unitDbId,aud){const n=_lbUnitName(unitDbId);return (n?n+' ':'')+(aud==='kids'?'kids':'adults');}
@@ -9669,7 +9670,8 @@ function _lbEyebrow(comp,today){
   }
   if(today<comp.starts_on){const n=_lbDays(today,comp.starts_on);return 'STARTS IN '+n+' DAY'+(n===1?'':'S');}
   if(today<=comp.ends_on){const n=_lbDays(today,comp.ends_on);return n<=0?'LAST DAY':(n+' DAY'+(n===1?'':'S')+' LEFT');}
-  return 'FINISHED · PRIZES '+_lbDowDM(_lbPrizeDay(comp)).toUpperCase();
+  const pd=_lbPrizeDay(comp);
+  return 'FINISHED · '+(pd?'PRIZES '+_lbDowDM(pd).toUpperCase():'PRIZE DAY TO BE ANNOUNCED');
 }
 // One sentence: how to catch the person above, from the ENABLED rules.
 // me / above are standings rows (above = the row directly above among the rows
@@ -9757,7 +9759,7 @@ function _lbHowToScore(comp,rules,divName){
   // there first) and applies to every board; the prize line is events only
   const places=comp.kind==='event'?_lbPlaces(comp):0;
   const foot='<div style="font-size:12px;color:var(--text3);margin-top:8px">'
-    +(places?escHtml('Top '+places+' of '+divName+' win. Prizes on '+_lbDowDM(_lbPrizeDay(comp))+'.')+'<br>':'')
+    +(places?escHtml('Top '+places+' of '+divName+' win. '+(_lbPrizeDay(comp)?'Prizes on '+_lbDowDM(_lbPrizeDay(comp))+'.':'Prize day to be announced.'))+'<br>':'')
     +'Tied on points? More classes wins. Still tied, whoever got there first.</div>';
   return '<div class="lbs-hts"><div class="ev-stat-k">How to score</div>'+rows+foot+'</div>';
 }
@@ -10472,7 +10474,7 @@ function rLbActivateSheet(){
     +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:86vh;overflow-y:auto">'
       +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text)">'+escHtml('Activate '+c.name+'?')+'</div>'
       +p+escHtml('From '+_lbDowDM(c.starts_on)+', members in '+groups+' see it in Leaderboard and the gym TVs switch to it.')+'</div>'
-      +p+escHtml('The monthly board keeps counting in the background and comes back after the prizes on '+_lbDowDM(_lbPrizeDay(c))+'.')+'</div>'
+      +p+escHtml('The monthly board keeps counting in the background and comes back after '+(_lbPrizeDay(c)?'the prizes on '+_lbDowDM(_lbPrizeDay(c)):'prize day (to be announced)')+'.')+'</div>'
       +p+'You can still change points while it runs. The board recalculates.</div>'
       +(m.err?'<div style="font-size:12.5px;color:var(--red-text);margin-top:12px">'+escHtml(m.err)+'</div>':'')
       // Cancel left, Activate right: equal width, house control height.
@@ -10779,7 +10781,7 @@ function _rEvChallengeCard(){
       +'<div class="ev-date"><b>'+d.getDate()+'</b><span>'+MFULL[d.getMonth()].slice(0,3)+'</span></div>'
       +'<div style="flex:1;min-width:0">'
         +'<div class="ev-head"><div class="ev-t ev-t-card">'+escHtml(c.name)+'</div>'+_lbKindBadge(c)+'</div>'
-        +'<div style="font-size:13px;color:var(--text2);margin-top:4px">'+escHtml(_lbDM(c.starts_on)+' to '+_lbDM(c.ends_on)+' · prizes '+_lbDowDM(_lbPrizeDay(c)))+'</div>'
+        +'<div style="font-size:13px;color:var(--text2);margin-top:4px">'+escHtml(_lbDM(c.starts_on)+' to '+_lbDM(c.ends_on)+' · '+(_lbPrizeDay(c)?'prizes '+_lbDowDM(_lbPrizeDay(c)):'prize day to be announced'))+'</div>'
       +'</div>'
     +'</div>'
     +'<div class="ev-desc">'+escHtml('Earn points for training, class challenges, posts and bringing friends.'+(places?' Top '+places+' of each group win.':''))+'</div>'
@@ -11362,6 +11364,14 @@ function rCommunityWall(){
   const _champBy={};
   ((_champE&&_champE.data)||[]).filter(r=>r&&(!curUnitDb||r.unit_id===curUnitDb)&&r.published_at&&new Date(r.published_at)>=_wallCutoff)
     .forEach(r=>{(_champBy[r.division_id]=_champBy[r.division_id]||{kind:'champions',key:r.division_id,name:r.competition_name,label:r.division_label,date:r.published_at,rows:[]}).rows.push(r);});
+  // 172: the Monthly race's latest published month, the same card: one per adult
+  // division of this unit, its title from the data ("October champions"), Oss
+  // on the month's own target (target_id), names tap through to the profile.
+  // Before 172 is applied the RPC does not exist: no card, no retry loop.
+  const _mchampE=_lbVisible()?_lbGet(LB_CHAMPS,'month',()=>_lbRpc('competition_month_champions',{})
+    .catch(e=>{if(e&&(e.code==='PGRST202'||e.code==='42883'))return [];throw e;})):null;
+  ((_mchampE&&_mchampE.data)||[]).filter(r=>r&&r.target_id&&(!curUnitDb||r.unit_id===curUnitDb)&&r.published_at&&new Date(r.published_at)>=_wallCutoff)
+    .forEach(r=>{(_champBy[r.target_id]=_champBy[r.target_id]||{kind:'champions',ossType:'month_champions',key:r.target_id,title:r.title,label:r.division_label,date:r.published_at,tap:true,rows:[]}).rows.push(r);});
   const _champRows=Object.keys(_champBy).map(k=>_champBy[k]);
   // Interleave promotions + welcomes into one feed, newest first.
   const feed=eligible
@@ -11435,7 +11445,9 @@ function rCommunityWall(){
         const st=!r.anonymous&&r.student_id?STUDENTS.find(x=>x&&x._dbId===r.student_id):null;
         const ini=String(r.display_name||'').split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase()||'?';
         const avh=r.anonymous?av('?','',34):avStu(st&&!r.minor?st:{name:r.display_name,initials:ini,belt:r.belt||'',prog:r.minor?'kids':'adult',photoUrl:null},34);
-        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">'
+        // 172: a month's card opens the member's profile (never a hidden one or a kid)
+        const tap=item.tap&&st&&!r.minor?' onclick="viewStu(\''+st.id+'\',\'community\')"':'';
+        return '<div'+tap+' style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)'+(tap?';cursor:pointer':'')+'">'
           +'<div style="width:30px;flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2)">'+escHtml(_lbOrd(r.place))+'</div>'
           +avh
           +'<div style="flex:1;min-width:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.anonymous?'Anonymous':r.display_name)+'</div>'
@@ -11446,13 +11458,13 @@ function rCommunityWall(){
       const pubDay=pub?new Date(pub).toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'}):'';
       return '<div class="card" style="margin-bottom:8px;padding:0;border:1.5px solid var(--amber)">'
         +'<div style="padding:14px 14px 6px">'
-          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1">'+escHtml(item.name+' · Champions')+'</div>'
+          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1">'+escHtml(item.title||(item.name+' · Champions'))+'</div>'
           +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-top:4px">'+escHtml(item.label||'')+'</div>'
           +(pubDay?'<div style="font-size:11px;color:var(--text3);margin-top:4px">'+escHtml(_lbDowDM(pubDay))+'</div>':'')
         +'</div>'
         +'<div style="padding:0 14px 6px">'+item.rows.slice().sort((a,b)=>(a.place-b.place)||String(a.display_name).localeCompare(String(b.display_name))).map(row).join('')+'</div>'
         +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'+_ossControlHtml(item.key,'champions')+'</div>'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'+_ossControlHtml(item.key,item.ossType||'champions')+'</div>'
       +'</div>';
     }
     if(item.kind==='post'&&item.po&&item.po.kind==='milestone'){
@@ -11951,8 +11963,9 @@ async function _ensureWallReactions(ids){
   // 'member' was the missing one: welcome-card ids are already in `ids` (:8776),
   // but this filter dropped their rows, so a welcome card's count came back as
   // zero after every reload even once the tap itself worked.
-  // 161: 'champions' (a Cup champions card, target = the adult division) too
-  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post','member','champions']).in('target_id',ids);
+  // 161: 'champions' (a Cup champions card, target = the adult division) too;
+  // 172: 'month_champions' (a month's card, target = the division and the month)
+  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post','member','champions','month_champions']).in('target_id',ids);
   S.wallReactionsLoading=false;
   if(r&&r.error){
     console.warn('[mybjj] wall_reactions:',r.error);
