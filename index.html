@@ -5975,13 +5975,25 @@ function rAddStaff(){
 //                        it would set the student's belt to null, and the label
 //                        crashed outright on fromBelt.charAt(0). The Wall drops
 //                        these rows for exactly the same reason (:6412).
+//   at the CURRENT rank  only a row whose to_belt/to_deg IS the member's rank put
+//                        them there. A history-only row (Promote with Set as
+//                        current off) records a PAST rank: reverting it would
+//                        set a purple belt to white. Not `hidden`: hidePromo
+//                        hides real promotions from the Wall too. Rank as the
+//                        students hydrate maps it (belt, deg from degree); `at`
+//                        overrides it for a caller that has already moved the
+//                        in-memory rank (savePromote Mode 2).
 // PROMOTION_LOG arrives date DESC, so the first match is the LATEST revertable
 // academy promotion — the row both the label and the revert now act on.
-function _revertIdx(sid){
-  return (PROMOTION_LOG||[]).findIndex(p=>p&&p.studentId===sid&&p.type!=='correction'&&p.source!=='declared'&&p.fromBelt);
+// No match (-1): no Revert control, nothing to revert.
+function _revertIdx(sid,at){
+  const s=at||(STUDENTS||[]).find(x=>x&&x.id===sid);
+  if(!s)return -1;
+  return (PROMOTION_LOG||[]).findIndex(p=>p&&p.studentId===sid&&p.type!=='correction'&&p.source!=='declared'&&p.fromBelt
+    &&p.toBelt===s.belt&&Number(p.toDeg)===Number(s.deg));
 }
-function _revertTarget(sid){
-  const i=_revertIdx(sid);
+function _revertTarget(sid,at){
+  const i=_revertIdx(sid,at);
   return i<0?null:PROMOTION_LOG[i];
 }
 function revertPromo(id){
@@ -7896,7 +7908,8 @@ async function savePromote(skipDuplicateBeltConfirm,opts){
   //     imported initial-white row carrying from_belt NULL.
   //   today — no prior academy grading exists at all, so there is no date to
   //     inherit and nothing for a marker to regress.
-  const _corrTarget=(typeof _revertTarget==='function')?_revertTarget(s.id):null;
+  // matched at the rank being corrected: s.belt/s.deg already hold the target here
+  const _corrTarget=(typeof _revertTarget==='function')?_revertTarget(s.id,{belt:fromBelt,deg:fromDeg}):null;
   const correctionDate=(_corrTarget&&_corrTarget.date)
     ? String(_corrTarget.date).slice(0,10)
     : (s._lastMarkerDate?String(s._lastMarkerDate).slice(0,10):dk(new Date()));
