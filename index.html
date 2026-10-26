@@ -7500,7 +7500,13 @@ function _pmDateWords(v){
   const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v||''));
   return m&&MFULL[Number(m[2])-1]?(Number(m[3])+' '+MFULL[Number(m[2])-1]+' '+m[1]):'';
 }
-// Backfill mode's date rule: '' when the date can be saved, 'empty' when none is
+// History-only = the save records a past grading (savePromote Mode 3): opened via
+// SET DATE (backfill) OR Set as current belt unticked. THE predicate for the date
+// rules (empty start, "Pick a date", Save disabled, future refused, the
+// savePromote early return). F.backfill alone still means "opened via SET DATE"
+// (title, locked belt, live copy, no Revert).
+function _pmHistoryOnly(F){return !!F&&(!!F.backfill||!F.setCurrent);}
+// The history-only date rule: '' when the date can be saved, 'empty' when none is
 // picked yet, else the message shown under the row. Future = after today's LOCAL
 // calendar day (dk).
 function _pmBackfillDateErr(v){
@@ -7515,7 +7521,7 @@ function setPromoteDate(v){
   S.promoteForm.date=String(v||'');
   const w=document.getElementById('pm-date-words');
   if(w){w.textContent=_pmDateWords(v);w.style.display=w.textContent?'':'none';}
-  if(S.promoteForm.backfill){
+  if(_pmHistoryOnly(S.promoteForm)){
     const err=_pmBackfillDateErr(v);
     const m=document.getElementById('pm-date-msg');
     if(m){m.textContent=err==='empty'?'':err;m.style.display=(err&&err!=='empty')?'':'none';}
@@ -7526,7 +7532,19 @@ function setPromoteDate(v){
 function setPromoteClasses(v){if(S.promoteForm)S.promoteForm.classes=String(v||'');}
 // render() so the backfill-only "Classes" row appears/disappears live when this
 // toggles (the row is conditional on !F.setCurrent, evaluated at render time).
-function setPromoteCurrent(v){if(S.promoteForm)S.promoteForm.setCurrent=!!v;render();}
+// Unticking makes the form history-only: an untouched default date (today) is
+// cleared so it starts empty; a date staff already picked is kept. Re-ticking an
+// empty date restores today, the normal promotion default.
+function setPromoteCurrent(v){
+  const F=S.promoteForm;
+  if(F){
+    F.setCurrent=!!v;
+    const today=dk(new Date());
+    if(!F.setCurrent&&F.date===today)F.date='';
+    else if(F.setCurrent&&!F.date)F.date=today;
+  }
+  render();
+}
 
 function rPromoteModal(){
   if(!S.promoteFor)return '';
@@ -7554,7 +7572,8 @@ function rPromoteModal(){
   // cannot exist on this belt).
   const _bfMaxDeg=Math.max(0,Math.min(maxDeg,Number(s.degree!=null?s.degree:(s.deg!=null?s.deg:0))||0));
   const _bfDegOpts=Array.from({length:_bfMaxDeg+1},(_,i)=>'<option value="'+i+'" '+(i===targetDeg?'selected':'')+'>'+(i===0?(targetBelt==='black'?'No degrees':'No stripes'):i)+'</option>').join('');
-  const _bfErr=_backfill?_pmBackfillDateErr(F.date):'';
+  const _histOnly=_pmHistoryOnly(F);
+  const _bfErr=_histOnly?_pmBackfillDateErr(F.date):'';
   const egd=_egDisplay(s);
   // Same predicate as the Promote panel and revertPromo. This button carries no
   // belt text so it never crashed, but without the shared rule it would keep
@@ -7585,9 +7604,9 @@ ${_backfill?'':eligLine}
 <div class="ef" style="margin-bottom:12px">
 <div class="erow"><div class="elbl">Belt</div>${_backfill?`<div style="flex:1;text-align:right;font-size:14px;color:var(--text)">${targetBelt?escHtml(beltLabel(targetBelt)):'No belt set'}</div>`:`<select class="esel" id="pm-belt" onchange="setPromoteBelt(this.value)">${beltOpts}</select>`}</div>
 <div class="erow"><div class="elbl">${targetBelt==='black'?'Degree':'Stripes'}</div>${_backfill?`<select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${_bfDegOpts}</select>`:`<select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${degOpts}</select>`}</div>
-<div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date"${_backfill?' data-emptylabel="Pick a date" max="'+dk(new Date())+'"':''} value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" onchange="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+<div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date"${_histOnly?' data-emptylabel="Pick a date" max="'+dk(new Date())+'"':''} value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" onchange="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
 ${!F.setCurrent?`<div id="pm-date-words" aria-live="polite" style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text);text-align:right;${_pmDateWords(F.date)?'':'display:none'}">${escHtml(_pmDateWords(F.date))}</div>`:''}
-${_backfill?`<div id="pm-date-msg" role="alert" style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--red-text);text-align:right;${(_bfErr&&_bfErr!=='empty')?'':'display:none'}">${escHtml(_bfErr==='empty'?'':_bfErr)}</div>`:''}
+${_histOnly?`<div id="pm-date-msg" role="alert" style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--red-text);text-align:right;${(_bfErr&&_bfErr!=='empty')?'':'display:none'}">${escHtml(_bfErr==='empty'?'':_bfErr)}</div>`:''}
 ${!F.setCurrent?`<div class="erow"><div class="elbl">Classes (optional)</div><input class="einput" id="pm-classes" type="number" min="0" step="0.25" value="${escAttr(F.classes||'')}" oninput="setPromoteClasses(this.value)" placeholder="" style="width:100%;box-sizing:border-box;min-width:0"/></div>`:''}
 </div>
 ${!F.setCurrent?`<div style="font-size:11px;color:var(--text3);margin:-6px 2px 10px;line-height:1.4">Classes done before this promotion, if you have the record.</div>`:''}
@@ -7635,9 +7654,9 @@ async function savePromote(skipDuplicateBeltConfirm,opts){
   const targetBelt=String(F.belt||_domBelt||s.belt).toLowerCase();
   const maxDeg=targetBelt==='black'?6:4;
   const targetDeg=Math.max(0,Math.min(maxDeg,parseInt(F.deg!=null?F.deg:_domDeg,10)||0));
-  // Backfill (Record grading date): no date, or a future one, saves nothing;
-  // today's fallback below is for the normal Promote modal only.
-  if(F.backfill&&_pmBackfillDateErr(F.date||_domDate))return;
+  // History-only (SET DATE, or Set as current unticked): no date, or a future
+  // one, saves nothing; today's fallback below is for a current-belt promotion.
+  if(_pmHistoryOnly(F)&&_pmBackfillDateErr(F.date||_domDate))return;
   const date=String(F.date||_domDate||'').trim()||dk(new Date());
   const setCurrent=(F.setCurrent!=null)?!!F.setCurrent:!!_domCurrent;
 
