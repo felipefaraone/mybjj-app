@@ -7471,7 +7471,9 @@ function openPromoteModal(sid, opts){
   S.promoteForm={
     belt:belt,
     deg:deg,
-    date:dk(new Date()),
+    // backfill records a PAST grading: no default date. Today would be a real
+    // grading dated today (baseline reset, months clock moved) on a mistaken tap.
+    date:(opts&&opts.backfill)?'':dk(new Date()),
     setCurrent:!(opts&&opts.backfill),
     backfill:!!(opts&&opts.backfill)
   };
@@ -7491,16 +7493,36 @@ function setPromoteBelt(v){
   if(Number(S.promoteForm.deg)>maxDeg)S.promoteForm.deg=maxDeg;
   render();
 }
-function setPromoteDeg(v){if(S.promoteForm)S.promoteForm.deg=parseInt(v,10)||0;}
+function setPromoteDeg(v){if(S.promoteForm){S.promoteForm.deg=parseInt(v,10)||0;if(S.promoteForm.backfill)render();}}
 // History mode: the chosen date in words under the native picker, so the year
 // is visible before saving ("15 July 2025"); '' for no / a partial date.
 function _pmDateWords(v){
   const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v||''));
   return m&&MFULL[Number(m[2])-1]?(Number(m[3])+' '+MFULL[Number(m[2])-1]+' '+m[1]):'';
 }
-// No render() here (it would take the focus off the picker): the words line is
-// updated in place.
-function setPromoteDate(v){if(S.promoteForm)S.promoteForm.date=String(v||'');const w=document.getElementById('pm-date-words');if(w)w.textContent=_pmDateWords(v);}
+// Backfill mode's date rule: '' when the date can be saved, 'empty' when none is
+// picked yet, else the message shown under the row. Future = after today's LOCAL
+// calendar day (dk).
+function _pmBackfillDateErr(v){
+  const d=String(v||'').trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return 'empty';
+  return d>dk(new Date())?'That date is in the future.':'';
+}
+// No render() here (it would take the focus off the picker): the words line,
+// and in backfill mode the message and the Save button, are updated in place.
+function setPromoteDate(v){
+  if(!S.promoteForm)return;
+  S.promoteForm.date=String(v||'');
+  const w=document.getElementById('pm-date-words');
+  if(w){w.textContent=_pmDateWords(v);w.style.display=w.textContent?'':'none';}
+  if(S.promoteForm.backfill){
+    const err=_pmBackfillDateErr(v);
+    const m=document.getElementById('pm-date-msg');
+    if(m){m.textContent=err==='empty'?'':err;m.style.display=(err&&err!=='empty')?'':'none';}
+    const b=document.getElementById('pm-save');
+    if(b){b.disabled=!!err;b.style.opacity=err?'.5':'1';}
+  }
+}
 function setPromoteClasses(v){if(S.promoteForm)S.promoteForm.classes=String(v||'');}
 // render() so the backfill-only "Classes" row appears/disappears live when this
 // toggles (the row is conditional on !F.setCurrent, evaluated at render time).
@@ -7522,9 +7544,17 @@ function rPromoteModal(){
   // from the DOM cannot change what is saved.
   const _backfill=!!F.backfill;
   const _bfFirst=escHtml(s.name.split(' ')[0]);
-  const _bfSubtitle=s.belt
-    ?'Recording when '+_bfFirst+' was awarded '+escHtml(beltLabel(s.belt))+' belt'+(s.deg?', '+s.deg+' stripe'+(s.deg>1?'s':''):'')
+  // Subtitle and footer follow the Stripes field: degree 0 dates the belt, above
+  // 0 that stripe (degree on black).
+  const _bfUnit=targetBelt==='black'?'degree':'stripe';
+  const _bfSubtitle=targetBelt
+    ?'Recording when '+_bfFirst+' was awarded '+(targetDeg>0?('the '+targetDeg+_ordSuffix(targetDeg)+' '+_bfUnit+' on '):'')+escHtml(beltLabel(targetBelt))+' belt'
     :'Recording the date of '+_bfFirst+'\u2019s current grading';
+  // Backfill degrees: 0 up to the one they hold now (a past stripe above it
+  // cannot exist on this belt).
+  const _bfMaxDeg=Math.max(0,Math.min(maxDeg,Number(s.degree!=null?s.degree:(s.deg!=null?s.deg:0))||0));
+  const _bfDegOpts=Array.from({length:_bfMaxDeg+1},(_,i)=>'<option value="'+i+'" '+(i===targetDeg?'selected':'')+'>'+(i===0?(targetBelt==='black'?'No degrees':'No stripes'):i)+'</option>').join('');
+  const _bfErr=_backfill?_pmBackfillDateErr(F.date):'';
   const egd=_egDisplay(s);
   // Same predicate as the Promote panel and revertPromo. This button carries no
   // belt text so it never crashed, but without the shared rule it would keep
@@ -7554,20 +7584,21 @@ function rPromoteModal(){
 ${_backfill?'':eligLine}
 <div class="ef" style="margin-bottom:12px">
 <div class="erow"><div class="elbl">Belt</div>${_backfill?`<div style="flex:1;text-align:right;font-size:14px;color:var(--text)">${targetBelt?escHtml(beltLabel(targetBelt)):'No belt set'}</div>`:`<select class="esel" id="pm-belt" onchange="setPromoteBelt(this.value)">${beltOpts}</select>`}</div>
-<div class="erow"><div class="elbl">${targetBelt==='black'?'Degree':'Stripes'}</div>${_backfill?`<div style="flex:1;text-align:right;font-size:14px;color:var(--text)">${targetDeg}</div>`:`<select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${degOpts}</select>`}</div>
-<div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date" value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" onchange="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
-${!F.setCurrent?`<div id="pm-date-words" aria-live="polite" style="font-size:13px;font-weight:600;color:var(--text);text-align:right;margin:-6px 2px 10px;min-height:16px">${escHtml(_pmDateWords(F.date))}</div>`:''}
+<div class="erow"><div class="elbl">${targetBelt==='black'?'Degree':'Stripes'}</div>${_backfill?`<select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${_bfDegOpts}</select>`:`<select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${degOpts}</select>`}</div>
+<div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date"${_backfill?' data-emptylabel="Pick a date" max="'+dk(new Date())+'"':''} value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" onchange="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+${!F.setCurrent?`<div id="pm-date-words" aria-live="polite" style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--text);text-align:right;${_pmDateWords(F.date)?'':'display:none'}">${escHtml(_pmDateWords(F.date))}</div>`:''}
+${_backfill?`<div id="pm-date-msg" role="alert" style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--red-text);text-align:right;${(_bfErr&&_bfErr!=='empty')?'':'display:none'}">${escHtml(_bfErr==='empty'?'':_bfErr)}</div>`:''}
 ${!F.setCurrent?`<div class="erow"><div class="elbl">Classes (optional)</div><input class="einput" id="pm-classes" type="number" min="0" step="0.25" value="${escAttr(F.classes||'')}" oninput="setPromoteClasses(this.value)" placeholder="" style="width:100%;box-sizing:border-box;min-width:0"/></div>`:''}
 </div>
 ${!F.setCurrent?`<div style="font-size:11px;color:var(--text3);margin:-6px 2px 10px;line-height:1.4">Classes done before this promotion, if you have the record.</div>`:''}
-${_backfill?`<div style="font-size:11px;color:var(--text3);margin:0 2px 6px;line-height:1.4">Records the date this belt was awarded. It does not change their current belt.</div>`:`<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:6px">
+${_backfill?`<div style="font-size:11px;color:var(--text3);margin:0 2px 6px;line-height:1.4">Records the date this ${targetDeg>0?_bfUnit:'belt'} was awarded. It does not change their current belt.</div>`:`<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:6px">
   <input type="checkbox" id="pm-current" ${F.setCurrent?'checked':''} onchange="setPromoteCurrent(this.checked)" style="margin-top:2px;flex-shrink:0"/>
   <div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600">Set as current belt</div><div style="font-size:11px;color:var(--text3);margin-top:2px;line-height:1.4">On = this becomes their current belt. Off = just log a past belt on the timeline (history only).</div></div>
 </label>`}
 ${revertRow}
 <div style="display:flex;gap:10px;margin-top:14px">
 <button class="bsm" style="flex:1;padding:11px;border-radius:10px;font-size:14px" onclick="closePromoteModal()">Cancel</button>
-<button class="bblue" style="flex:1;padding:11px;border-radius:10px;font-size:14px" onclick="savePromote()">Save</button>
+<button id="pm-save" class="bblue" style="flex:1;padding:11px;border-radius:10px;font-size:14px;opacity:${_bfErr?'.5':'1'}" onclick="savePromote()"${_bfErr?' disabled':''}>Save</button>
 </div>
 </div></div>`;
 }
@@ -7604,6 +7635,9 @@ async function savePromote(skipDuplicateBeltConfirm,opts){
   const targetBelt=String(F.belt||_domBelt||s.belt).toLowerCase();
   const maxDeg=targetBelt==='black'?6:4;
   const targetDeg=Math.max(0,Math.min(maxDeg,parseInt(F.deg!=null?F.deg:_domDeg,10)||0));
+  // Backfill (Record grading date): no date, or a future one, saves nothing;
+  // today's fallback below is for the normal Promote modal only.
+  if(F.backfill&&_pmBackfillDateErr(F.date||_domDate))return;
   const date=String(F.date||_domDate||'').trim()||dk(new Date());
   const setCurrent=(F.setCurrent!=null)?!!F.setCurrent:!!_domCurrent;
 
@@ -16125,7 +16159,9 @@ function _applyDateLabel(row,el){
   }else{
     row.setAttribute('data-emptydate','');
     // "Add month" reads clearer on a month picker; keep "Add date" for date rows.
-    row.setAttribute('data-datelabel',isTime?'Add time':isMonth?'Add month':'Add date');
+    // data-emptylabel on the input overrides the empty text for that one field
+    // (the backfill Promote date reads "Pick a date").
+    row.setAttribute('data-datelabel',(el.dataset&&el.dataset.emptylabel)||(isTime?'Add time':isMonth?'Add month':'Add date'));
   }
 }
 let _dateAffordanceBound=false;
