@@ -3343,22 +3343,26 @@ function _rStrip3(cells){
     // Cells with no cellAction take the untouched branch below and render exactly
     // as they did in v502.
     if(c.cellAction&&c.sub){
-      // cellAction is {sid, kind}. 'join' is the staff-only Training-tab route;
-      // everything else is the everyone-can-do-it Basic-tab route. Same markup,
-      // same a11y — only the handler differs.
-      const _act=((c.cellAction.kind==='join')?'_openJoinDate':'_openBjjStart')+'(\''+c.cellAction.sid+'\')';
-      // A filled cell's sub reads "since Oct 2025" — true, but useless as a button
-      // name. Screen readers get the intent instead; the empty cell's sub already
-      // IS the intent ("Add in your profile").
-      const _lbl=c.muted?c.sub:('Edit '+c.label);
-      _cells.push('<div class="strip-act" role="button" tabindex="0" aria-label="'+_lbl+'"'
-        +' onclick="'+_act+'"'
-        +' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+_act+'}"'
-        +' style="grid-column:'+gc+';grid-row:2/4;min-width:0">'
-        +'<div class="'+(c.valueClass||'')+'" style="min-width:0;margin-top:4px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:clamp(18px,6.2vw,26px);line-height:1.1;color:'+valColor+';overflow-wrap:anywhere">'+c.value+unit+'</div>'
-        +'<div style="min-width:0;font-size:11px;color:var(--text3);white-space:nowrap"><div class="strip-sub" style="margin-top:3px">'+c.sub+'</div></div>'
-      +'</div>');
-      return;
+      // cellAction is {sid, kind}: 'join' the Training-tab route, 'bjj' the
+      // Basic-tab route, 'beltdate' the declare sheet preset to the current belt.
+      // Same markup, same a11y — only the handler differs. An unknown kind gets
+      // no action (the plain cell below).
+      const _fn={join:'_openJoinDate',bjj:'_openBjjStart',beltdate:'_openBeltDate'}[c.cellAction.kind];
+      if(_fn){
+        const _act=_fn+'(\''+c.cellAction.sid+'\')';
+        // A filled cell's sub reads "since Oct 2025" — true, but useless as a button
+        // name. Screen readers get the intent instead; the empty cell's sub already
+        // IS the intent ("Add in your profile").
+        const _lbl=c.muted?c.sub:('Edit '+c.label);
+        _cells.push('<div class="strip-act" role="button" tabindex="0" aria-label="'+_lbl+'"'
+          +' onclick="'+_act+'"'
+          +' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+_act+'}"'
+          +' style="grid-column:'+gc+';grid-row:2/4;min-width:0">'
+          +'<div class="'+(c.valueClass||'')+'" style="min-width:0;margin-top:4px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:clamp(18px,6.2vw,26px);line-height:1.1;color:'+valColor+';overflow-wrap:anywhere">'+c.value+unit+'</div>'
+          +'<div style="min-width:0;font-size:11px;color:var(--text3);white-space:nowrap"><div class="strip-sub" style="margin-top:3px">'+c.sub+'</div></div>'
+        +'</div>');
+        return;
+      }
     }
     _cells.push('<div class="'+(c.valueClass||'')+'" style="grid-column:'+gc+';grid-row:2;min-width:0;margin-top:4px;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:clamp(18px,6.2vw,26px);line-height:1.1;color:'+valColor+';overflow-wrap:anywhere">'+c.value+unit+'</div>');
     _cells.push('<div style="grid-column:'+gc+';grid-row:3;min-width:0;font-size:11px;color:var(--text3);white-space:nowrap">'+(c.sub?'<div style="margin-top:3px">'+c.sub+'</div>':'')+'</div>');
@@ -3397,9 +3401,10 @@ function _renderRankBox(s,opts){
     // label claiming membership over an import timestamp is a lie about the data,
     // so it is gone. What replaces it is journey-sourced and says exactly what it
     // is: when the CURRENT belt was awarded — the same fact, from the same
-    // _progAwardDate, that the student hero prints under its belt line. No dated
-    // grading on file → no pill, never a placeholder.
-    const _awPill=_fmtJnyDate(_progAwardDate(s));
+    // _beltSince, that the student hero prints under its belt line. No award
+    // date on file → no pill, never a placeholder.
+    const _bsPill=_beltSince(s);
+    const _awPill=_bsPill?_fmtJnyDate(_bsPill.display):null;
     if(_awPill)stats.push({value:_awPill,label:'since',prefix:true});
   }
   const _metaCols=Array.isArray(opts.metaCols)?opts.metaCols.filter(function(c){return c&&c.value;}):[];
@@ -3437,12 +3442,11 @@ function _renderRankBox(s,opts){
     // reads as part of the rank itself ("Blue belt / since Jul 2026") rather than
     // as a fourth loose stat. Omitted entirely when there is no dated grading —
     // never a blank line, never a placeholder.
-    // Gated on _progHasPriorGrading — the SAME signal COL 3 ("This belt") uses.
-    // Without it a never-promoted white belt read "White belt / since Sep 2024"
-    // (_progAwardDate falls back to the origin marker) while COL 3 showed an em
-    // dash: one card making two claims about one belt. The two now agree by
-    // construction — belt name alone when there is no grading to date from.
-    const _aw=_progHasPriorGrading(s)?_fmtJnyDate(_progAwardDate(s)):null;
+    // _beltSince — the SAME source COL 3 ("This belt") uses, so the card never
+    // makes two claims about one belt: null (a white belt, or no real award date
+    // on file) leaves the belt name alone here and an em dash in COL 3.
+    const _bsHero=_beltSince(s);
+    const _aw=_bsHero?_fmtJnyDate(_bsHero.display):null;
     const _awLine=_aw?'<div style="font-size:12px;color:var(--text3);margin-top:3px">since '+_aw+'</div>':'';
     const strip='<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">'+_rStrip3(opts.statStrip)+'</div>';
     // Belt tint via the shared helper — kids included now that the compound belts
@@ -4626,7 +4630,7 @@ function _supersededPromoIds(log,isSubject){
 // The subject's promotion rows, exactly the set the Journey shows: subject match
 // (incl. the staff/student link), corrections dropped, superseded dropped,
 // deduped; hidden rows kept (history, only off the Wall). PROMOTION_LOG order
-// (date DESC). _jnyFromPromotions maps these; _progAwardDate reads them raw.
+// (date DESC). _jnyFromPromotions maps these; _beltSince reads them raw.
 function _promoRowsOf(subject){
   const s=subject;if(!s)return [];
   const isStaffRow=!!(s._dbId&&Array.isArray(STAFF)&&STAFF.some(x=>x&&x._dbId===s._dbId));
@@ -4681,6 +4685,10 @@ function _promoRowsOf(subject){
   });
   return rows;
 }
+// A promotion row's date as the Journey shows it: a year-precision row is the
+// bare 4-digit year, day/month pass through (see the precision note below).
+// One rule for the Journey and _beltSince.
+function _promoDisplayDate(p){return (p.datePrecision==='year'&&p.date)?String(p.date).slice(0,4):p.date;}
 function _jnyFromPromotions(subject){
   const s=subject;if(!s)return [];
   const rows=_promoRowsOf(s);
@@ -4723,7 +4731,7 @@ function _jnyFromPromotions(subject){
     // that as free text, and rTL's jnyTime parses it back through
     // new Date('2005') -> 2005-01-01T00:00:00Z, the same UTC clock its ISO and
     // "Mon YYYY" branches use. A year is never widened into a fake January date.
-    const date=(p.datePrecision==='year'&&p.date)?String(p.date).slice(0,4):p.date;
+    const date=_promoDisplayDate(p);
     // done:true always — promotions.date is NOT NULL, so nothing here is undated
     // or pending. No `classes`: a promotion row carries no class count, and rTL
     // already renders that meta line only when the number is present.
@@ -4753,9 +4761,18 @@ function _jnyDeclSubject(sid){
   if(!(s._userId&&S.profile&&s._userId===S.profile.id))return null;
   return s;
 }
-function openJnyDeclare(sid){
-  if(!_jnyDeclSubject(sid))return;
-  S.jnyDeclare={sid,belt:'',deg:0,d:'',m:'',y:'',busy:false,err:''};
+// preset (optional) {belt, deg}: open with that belt and degree already picked
+// (the rank strip's "Add the date"). Applied only when the sheet itself would
+// offer it (_jnyDeclBelts / _jnyDeclDegs); otherwise it opens blank as before.
+function openJnyDeclare(sid,preset){
+  const stu=_jnyDeclSubject(sid);
+  if(!stu)return;
+  let belt='',deg=0;
+  if(preset&&preset.belt&&_jnyDeclBelts(stu).indexOf(preset.belt)>=0
+     &&_jnyDeclDegs(stu,preset.belt).indexOf(Number(preset.deg)||0)>=0){
+    belt=preset.belt;deg=Number(preset.deg)||0;
+  }
+  S.jnyDeclare={sid,belt,deg,d:'',m:'',y:'',busy:false,err:''};
   render();
 }
 function closeJnyDeclare(){S.jnyDeclare=null;render();}
@@ -7545,7 +7562,11 @@ ${revertRow}
 // recompute_student_stats; mode 3 does not (no Wall, no stat shift).
 // Mode 2 inserts type='correction' so the Community Wall filter at
 // rCommunityWall (index.html:4212) drops it from the feed.
-async function savePromote(skipDuplicateBeltConfirm){
+// opts (optional): {skipDemote} past the "Move them down?" confirm, {replaceOk}
+// past Mode 3's "Already recorded" confirm. Same re-run pattern as
+// skipDuplicateBeltConfirm.
+async function savePromote(skipDuplicateBeltConfirm,opts){
+  opts=opts||{};
   if(!S.promoteFor||!S.promoteForm)return;
   const sid=S.promoteFor;
   const s=STUDENTS.find(x=>x.id===sid);if(!s){closePromoteModal();return;}
@@ -7598,6 +7619,21 @@ async function savePromote(skipDuplicateBeltConfirm){
     return;
   }
 
+  // Demote trap: Set as current belt is ON by default, so staff logging a PAST
+  // lower belt this way would move the member down (Mode 2). Ask first, before
+  // anything is written. Forward promotions, back-dated or not, get no new step.
+  if(!opts.skipDemote && setCurrent && direction<0){
+    const _lvl=(b,d)=>(b?((BA[b]||BK[b]||{label:b}).label):'No belt')
+      +(d>0?' · '+d+' '+(b==='black'?(d===1?'degree':'degrees'):(d===1?'stripe':'stripes')):'');
+    openConfirm({
+      title:'Move them down?',
+      message:'This changes '+(s.name||'this member')+'\u2019s current belt from '+_lvl(s.belt,Number(s.deg)||0)+' to '+_lvl(targetBelt,targetDeg)+'. To only record a past belt, turn off Set as current belt.',
+      dangerLabel:'Move down',
+      onConfirm:()=>savePromote(skipDuplicateBeltConfirm,Object.assign({},opts,{skipDemote:true}))
+    });
+    return;
+  }
+
   const cli=initSupabase();
   const unit=UNITS.find(u=>u.id===(s.unit||'nb'));
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
@@ -7610,6 +7646,26 @@ async function savePromote(skipDuplicateBeltConfirm){
   // off the Community Wall (the Wall filter already drops !p.hidden). Does NOT
   // touch belt/grade/baseline — a backfill records history, it doesn't re-rank.
   if(!setCurrent){
+    // Same belt and degree already recorded by the academy? Then this dates THAT
+    // row instead of adding a second milestone. Degree 0 is the award row, as in
+    // _beltSince (to_deg 0 or type 'belt'); a stripe is its own to_deg. A
+    // placeholder date (_BELT_DATE_PLACEHOLDER) is simply filled in; a real one
+    // is replaced only after a confirm.
+    const _bfIsBelt=!(Number(targetDeg)>0);
+    const _bfSame=_promoRowsOf(s).filter(p=>p&&p._dbId&&(p.source==='academy'||p.source==null)&&p.toBelt===targetBelt
+      &&(_bfIsBelt?(!(Number(p.toDeg)>0)||p.type==='belt'):(Number(p.toDeg)===targetDeg&&p.type!=='belt')));
+    const _bfPh=p=>String(p.date||'').slice(0,10)===_BELT_DATE_PLACEHOLDER;
+    const _bfRow=_bfSame.find(_bfPh)
+      ||_bfSame.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')))[0]||null;
+    if(_bfRow&&!_bfPh(_bfRow)&&!opts.replaceOk){
+      openConfirm({
+        title:'Already recorded',
+        message:'This is on their journey as '+_fmtJnyDate(_promoDisplayDate(_bfRow))+'. Replace it with '+_fmtJnyDate(date)+'?',
+        dangerLabel:'Replace',
+        onConfirm:()=>savePromote(skipDuplicateBeltConfirm,Object.assign({},opts,{replaceOk:true}))
+      });
+      return;
+    }
     if(!s.journey)s.journey=[];
     s.journey.push({belt:targetBelt,label:beltLabel(targetBelt)+' belt',date,classes:null,done:true,current:false,auto:true});
     // Mirror recompute_student_stats' last_marker_date into memory so the
@@ -7631,29 +7687,65 @@ async function savePromote(skipDuplicateBeltConfirm){
     // one stripe lower, or the preceding belt when this registers a belt change.
     const _bfFromDeg=targetDeg>0?targetDeg-1:0;
     const _bfFromBelt=targetDeg>0?targetBelt:(newIdx>0?ORDER[newIdx-1]:targetBelt);
-    const _bfIsBelt=!(Number(targetDeg)>0);
     const legacyId='pl'+Date.now();
     closePromoteModal();
     if(s._dbId&&cli){
       try{await cli.from('students').update({journey:s.journey||[]}).eq('id',s._dbId);}
       catch(e){console.warn('[mybjj] promote backfill update:',e);}
-      // Mirror the Mode 1 insert shape, but hidden:true (never on the Wall) + the
-      // optional classes. NOT pushed to PROMOTION_LOG (would surface it in-session).
-      try{await cli.from('promotions').insert({
-        legacy_id:legacyId, student_id:s._dbId,
-        from_belt:_bfFromBelt, to_belt:targetBelt,
-        from_deg:_bfFromDeg, to_deg:targetDeg,
-        // the recorded grading's own kind, never the CURRENT belt's: degree 0 is a
-        // belt being recorded (isBeltChange compares against today's belt, so a
-        // past white->blue on a blue belt read as a stripe)
-        type:_bfIsBelt?'belt':'stripe', is_new_belt:_bfIsBelt,
-        date, student_name:s.name,
-        promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
-        unit_id:unit&&unit._dbId,
-        hidden:true, classes:classesVal
-      });}catch(e){console.warn('[mybjj] promote backfill insert:',e);}
+      const _bfFail=e=>{console.warn('[mybjj] promote backfill '+(_bfRow?'update':'insert')+':',e);showSaveToast2(friendlyMutationError(e)||'Could not save','error');};
+      if(_bfRow){
+        // Date the existing row (and its classes when given). .select so a row
+        // RLS silently skipped reads as a failure, not a save.
+        try{
+          const upd={date};if(classesVal!=null)upd.classes=classesVal;
+          const r=await cli.from('promotions').update(upd).eq('id',_bfRow._dbId).select('id');
+          if(r&&r.error)_bfFail(r.error);
+          else if(!(r&&r.data&&r.data.length))_bfFail(null);
+          else{
+            // re-placed at its sorted position (date DESC, id DESC), never unshifted
+            const i=PROMOTION_LOG.indexOf(_bfRow);if(i>=0)PROMOTION_LOG.splice(i,1);
+            _bfRow.date=date;
+            _promoLogInsertSorted(_bfRow);
+          }
+        }catch(e){_bfFail(e);}
+      }else{
+        // Mirror the Mode 1 insert shape, but hidden:true (never on the Wall) + the
+        // optional classes. Added to PROMOTION_LOG (hidden, so never on the Wall)
+        // at its sorted position, so the date shows without a reload.
+        try{const r=await cli.from('promotions').insert({
+          legacy_id:legacyId, student_id:s._dbId,
+          from_belt:_bfFromBelt, to_belt:targetBelt,
+          from_deg:_bfFromDeg, to_deg:targetDeg,
+          // the recorded grading's own kind, never the CURRENT belt's: degree 0 is a
+          // belt being recorded (isBeltChange compares against today's belt, so a
+          // past white->blue on a blue belt read as a stripe)
+          type:_bfIsBelt?'belt':'stripe', is_new_belt:_bfIsBelt,
+          date, student_name:s.name,
+          promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
+          unit_id:unit&&unit._dbId,
+          hidden:true, classes:classesVal
+        }).select('id').single();
+        if(r&&r.error)_bfFail(r.error);
+        else if(r&&r.data&&r.data.id){
+          // mapped as the promotions hydrate mapper maps a row (source and
+          // date_precision are the column defaults this insert leaves them at)
+          const _pbId=meStaffDbId()||null;
+          const pb=_pbId?(STAFF||[]).find(x=>x&&x._dbId===_pbId):null;
+          _promoLogInsertSorted({
+            id:legacyId, _dbId:r.data.id, studentId:s.id, studentName:s.name,
+            fromBelt:_bfFromBelt, fromDeg:_bfFromDeg, toBelt:targetBelt, toDeg:targetDeg,
+            isNewBelt:_bfIsBelt, type:_bfIsBelt?'belt':'stripe', date,
+            promotedBy:me.name, promotedById:_pbId,
+            source:'academy', datePrecision:'day', staffId:null,
+            promotedByStaff:pb?{name:pb.name,belt:pb.belt,deg:pb.deg,role:'instructor',roleTitle:pb.roleTitle||'Professor'}:null,
+            unit:(unit&&unit.id)||null, hidden:true,
+          });
+        }
+        }catch(e){_bfFail(e);}
+      }
       // Anchor last_marker_date from public.promotions (the reason for this fix).
       try{await cli.rpc('recompute_student_stats',{p_student_id:s._dbId});}catch(_){}
+      render();
     }
     return;
   }
@@ -12489,38 +12581,40 @@ function _rTrainingChart(stu){
   return LABEL+'<div class="card" style="padding:14px 12px"><div style="position:relative;display:flex;align-items:flex-end;gap:3px">'+bars+_avgLine+'</div>'+footer+'</div>';
 }
 // ── Belt-box meta + two-stat helpers (student Progress only) ─────────────────
-// Award date of the CURRENT belt. Source: the promotions history, the same rows
-// the Journey shows (_promoRowsOf, hidden ones included): the EARLIEST row that
-// awards this belt (to_belt = the belt, to_deg 0 or type 'belt'), else the
-// earliest row at this belt; null when no row is at this belt (the caller omits
-// the date; a date of another belt would be wrong). The legacy students.journey
-// JSON is read only when the subject has no promotions rows at all: it can
-// mislabel a stripe as the belt (a "Blue belt" entry on a later stripe date).
-function _progAwardDate(stu){
-  const pr=_promoRowsOf(stu);
-  if(pr.length){
-    const at=pr.filter(function(p){return p&&p.date&&p.toBelt===stu.belt;});
-    const asc=function(rows){return rows.map(function(p){return String(p.date);}).sort();};
-    const awarded=asc(at.filter(function(p){return !(Number(p.toDeg)>0)||p.type==='belt';}));
-    if(awarded.length)return awarded[0];
-    const any=asc(at);
-    return any.length?any[0]:null;
-  }
-  const j=Array.isArray(stu&&stu.journey)?stu.journey:[];
-  const atBelt=j.filter(function(e){return e&&e.belt===stu.belt&&e.date;}).map(function(e){return String(e.date);}).sort();
-  if(atBelt.length)return atBelt[0];
-  const dated=j.filter(function(e){return e&&e.date;}).map(function(e){return String(e.date);}).sort();
-  return dated.length?dated[dated.length-1]:null;
+// The head instructor's convention for "date unknown" on imported records:
+// 2025-12-31, on belt rows and on stripe rows alike. Never a real award date.
+const _BELT_DATE_PLACEHOLDER='2025-12-31';
+// The date of the CURRENT belt, only when we actually have it; else null (the
+// member can add it, staff fill in the rest). From the promotions rows the
+// Journey shows (_promoRowsOf) and nothing else: no stripe rows, no legacy
+// students.journey, no join or start dates. A first belt (white) has no award
+// date. Rows that award the belt (to_deg 0 or type 'belt'), placeholder dates
+// dropped; academy rows win over declared ones; the earliest date of the winning
+// group. Returns {iso, display, precision, source}; display follows the Journey
+// (_promoDisplayDate: a year-precision row is the bare year).
+function _beltSince(stu){
+  if(!stu||!stu.belt||_isFirstBelt(stu))return null;
+  const award=_promoRowsOf(stu).filter(function(p){
+    return p&&p.toBelt===stu.belt&&p.date&&(!(Number(p.toDeg)>0)||p.type==='belt')
+      &&String(p.date).slice(0,10)!==_BELT_DATE_PLACEHOLDER;
+  });
+  const isAcademy=function(p){return p.source==='academy'||p.source==null;};
+  const academy=award.filter(isAcademy);
+  const group=academy.length?academy:award.filter(function(p){return p.source==='declared';});
+  if(!group.length)return null;
+  const p=group.slice().sort(function(a,b){return String(a.date).localeCompare(String(b.date));})[0];
+  return {iso:String(p.date),display:_promoDisplayDate(p),precision:p.datePrecision||'day',source:isAcademy(p)?'academy':'declared'};
 }
-// True when the student has any real prior grading. From the promotions rows
-// (as _progAwardDate): any row beyond a plain white belt (an imported origin row
-// is white, degree 0). Legacy journey only without promotions rows: a done
-// entry that isn't the origin marker. A brand-new, never-promoted white → false.
-function _progHasPriorGrading(stu){
-  const pr=_promoRowsOf(stu);
-  if(pr.length)return pr.some(function(p){return p&&!(p.toBelt==='white'&&!(Number(p.toDeg)>0));});
-  const j=Array.isArray(stu&&stu.journey)?stu.journey:[];
-  return j.some(function(e){return e&&e.done&&!e.origin;});
+// The first belt of the person's programme order (white, adults and kids alike).
+function _isFirstBelt(stu){
+  const ORDER=(stu&&stu.prog==='kids')?BELT_ORDER_K:BELT_ORDER_A;
+  return !!stu&&stu.belt===ORDER[0];
+}
+// Time at the belt, via _sinceLabel. A year-precision date counts from December
+// of that year so the duration never overstates; month/day pass through.
+function _beltSinceDuration(bs){
+  if(!bs)return null;
+  return _sinceLabel(bs.precision==='year'?(String(bs.iso).slice(0,4)+'-12'):bs.iso);
 }
 // 4-digit year from an ISO date or a 'Mon YYYY' free-text label; '' if none.
 function _progYearOf(d){const m=String(d==null?'':d).match(/(\d{4})/);return m?m[1]:'';}
@@ -12976,16 +13070,23 @@ function _rStatRow(stu){
     ?{label:'At myBJJ',value:tsDur.value,unit:tsDur.unit,sub:tsFmt?('since '+tsFmt):'',isCount:false,muted:false,cellAction:{sid:stu.id,kind:'join'}}
     :{label:'At myBJJ',value:EMDASH,unit:'',sub:_joinSub,isCount:false,muted:true,cellAction:{sid:stu.id,kind:'join'}};
 
-  // COL 3 — time at the CURRENT belt. Needs both a real prior grading (a
-  // never-promoted white belt has no belt anniversary to report) and a dated
-  // award; either one missing falls back to the em dash rather than quietly
-  // reusing the join date.
-  var awIso=_progHasPriorGrading(stu)?_progAwardDate(stu):null;
-  var awDur=awIso?_sinceLabel(awIso):null;
-  var awFmt=awIso?_fmtJnyDate(awIso):null;
-  var col3=awDur
-    ?{label:'This belt',value:awDur.value,unit:awDur.unit,sub:awFmt?('since '+awFmt):'',isCount:false,muted:false}
-    :Object.assign({label:'This belt'},ABSENT);
+  // COL 3 — time at the CURRENT belt, only from a real award date (_beltSince):
+  // never a stripe date, the legacy journey or the join date. A white belt has
+  // no belt anniversary: em dash, nothing else. Without a date, the same empty
+  // pattern as COL 1/2: the member's own row can add it through the declare
+  // sheet preset to this belt (same gate as the Journey's declare button); when
+  // that belt is already on the timeline (a placeholder-dated row) or a parent
+  // is looking at a kid, it says so and offers nothing: staff fill it in.
+  var bs=_beltSince(stu);
+  var awDur=_beltSinceDuration(bs);
+  var awFmt=bs?_fmtJnyDate(bs.display):null;
+  var col3;
+  if(awDur)col3={label:'This belt',value:awDur.value,unit:awDur.unit,sub:awFmt?('since '+awFmt):'',isCount:false,muted:false};
+  else if(_isFirstBelt(stu))col3=Object.assign({label:'This belt'},ABSENT);
+  else if(bs)col3={label:'This belt',value:EMDASH,unit:'',sub:awFmt?('since '+awFmt):'',isCount:false,muted:true};   // a future date: bad data, no duration
+  else if(_canDeclareFor(stu)&&!_jnyDeclTaken(stu)[stu.belt+'#0'])
+    col3={label:'This belt',value:EMDASH,unit:'',sub:'Add the date',isCount:false,muted:true,cellAction:{sid:stu.id,kind:'beltdate'}};
+  else col3={label:'This belt',value:EMDASH,unit:'',sub:'Not recorded yet',isCount:false,muted:true};
 
   return [col1,col2,col3];
 }
@@ -13014,9 +13115,14 @@ function _rStatRow(stu){
 //
 // A null `stu` (staff member with no students row) falls out at the first test
 // and returns '' — never an error.
-function _rDeclareBtn(stu){
+// The gate above, on its own: the Journey button and the rank strip's "Add the
+// date" ask the same question.
+function _canDeclareFor(stu){
   const _kidActive=!activeProfileIsSelf()?parentSelectedChild():null;
-  const _canDeclare=!_kidActive&&!!(stu&&stu._dbId&&stu._userId&&S.profile&&stu._userId===S.profile.id);
+  return !_kidActive&&!!(stu&&stu._dbId&&stu._userId&&S.profile&&stu._userId===S.profile.id);
+}
+function _rDeclareBtn(stu){
+  const _canDeclare=_canDeclareFor(stu);
   const _declAddable=_canDeclare?_jnyDeclBelts(stu).length:0;
   const _declMine=_canDeclare?_jnyDeclMine(stu).length:0;
   const _declLbl=_declAddable?'Trained before joining? Add your history':'Manage the history you added';
@@ -19956,6 +20062,19 @@ async function _fetchAllPosts(c){
 // current state, but a 2005 black belt exists nowhere else. id is the tiebreak
 // so paging stays deterministic when several promotions share a date - which is
 // common here, since a whole grading is recorded on one day.
+// Puts one row into PROMOTION_LOG where _fetchAllPromotions' sort would have it
+// (date DESC, then promotions id DESC). Never unshift a dated row: the first
+// .find() match is read as "the last promotion" (rPromote, revertPromo,
+// rEditStuGrading), and revertPromo deletes what it finds.
+function _promoLogInsertSorted(row){
+  const d=String(row.date||''),k=String(row._dbId||'');
+  const i=PROMOTION_LOG.findIndex(p=>{
+    if(!p)return false;
+    const pd=String(p.date||'');
+    return d>pd||(d===pd&&k>String(p._dbId||''));
+  });
+  PROMOTION_LOG.splice(i<0?PROMOTION_LOG.length:i,0,row);
+}
 async function _fetchAllPromotions(c){
   const PAGE=1000;
   const COLS='id,legacy_id,student_name,from_belt,to_belt,from_deg,to_deg,is_new_belt,type,date,promoted_by_name,promoted_by_id,unit_id,hidden,source,date_precision,staff_id,student:students(legacy_id),promoted_by:staff!promoted_by_id(id,full_name,initials,belt,degree,role_title)';
@@ -23915,6 +24034,11 @@ function closeEditStu(){
 // covers the refused case and any future re-layout of the Basic tab alike.
 // requestAnimationFrame, not setTimeout: openEditStu renders synchronously, so
 // the input exists after the next frame with no arbitrary delay to tune.
+// COL 3's "Add the date": the declare sheet, preset to the current belt.
+function _openBeltDate(sid){
+  const stu=(STUDENTS||[]).find(x=>x&&x.id===sid);
+  if(stu)openJnyDeclare(sid,{belt:stu.belt,deg:0});
+}
 function _openBjjStart(sid){
   // Where to come back to. Captured BEFORE openEditStu, which overwrites S.sub
   // (and may open the panel). closeEditStu consumes it on Cancel and on Save.
