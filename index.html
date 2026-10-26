@@ -4623,7 +4623,11 @@ function _supersededPromoIds(log,isSubject){
   });
   return out;
 }
-function _jnyFromPromotions(subject){
+// The subject's promotion rows, exactly the set the Journey shows: subject match
+// (incl. the staff/student link), corrections dropped, superseded dropped,
+// deduped; hidden rows kept (history, only off the Wall). PROMOTION_LOG order
+// (date DESC). _jnyFromPromotions maps these; _progAwardDate reads them raw.
+function _promoRowsOf(subject){
   const s=subject;if(!s)return [];
   const isStaffRow=!!(s._dbId&&Array.isArray(STAFF)&&STAFF.some(x=>x&&x._dbId===s._dbId));
   // A person who is BOTH staff and student has one row in each table, and their
@@ -4675,6 +4679,11 @@ function _jnyFromPromotions(subject){
     seen[key]=true;
     return true;
   });
+  return rows;
+}
+function _jnyFromPromotions(subject){
+  const s=subject;if(!s)return [];
+  const rows=_promoRowsOf(s);
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
   return rows.map(p=>{
     // Same two label shapes savePromote writes (:6680), built from the file's
@@ -7448,7 +7457,15 @@ function setPromoteBelt(v){
   render();
 }
 function setPromoteDeg(v){if(S.promoteForm)S.promoteForm.deg=parseInt(v,10)||0;}
-function setPromoteDate(v){if(S.promoteForm)S.promoteForm.date=String(v||'');}
+// History mode: the chosen date in words under the native picker, so the year
+// is visible before saving ("15 July 2025"); '' for no / a partial date.
+function _pmDateWords(v){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v||''));
+  return m&&MFULL[Number(m[2])-1]?(Number(m[3])+' '+MFULL[Number(m[2])-1]+' '+m[1]):'';
+}
+// No render() here (it would take the focus off the picker): the words line is
+// updated in place.
+function setPromoteDate(v){if(S.promoteForm)S.promoteForm.date=String(v||'');const w=document.getElementById('pm-date-words');if(w)w.textContent=_pmDateWords(v);}
 function setPromoteClasses(v){if(S.promoteForm)S.promoteForm.classes=String(v||'');}
 // render() so the backfill-only "Classes" row appears/disappears live when this
 // toggles (the row is conditional on !F.setCurrent, evaluated at render time).
@@ -7501,7 +7518,8 @@ ${_backfill?'':eligLine}
 <div class="ef" style="margin-bottom:12px">
 <div class="erow"><div class="elbl">Belt</div>${_backfill?`<div style="flex:1;text-align:right;font-size:14px;color:var(--text)">${targetBelt?escHtml(beltLabel(targetBelt)):'No belt set'}</div>`:`<select class="esel" id="pm-belt" onchange="setPromoteBelt(this.value)">${beltOpts}</select>`}</div>
 <div class="erow"><div class="elbl">${targetBelt==='black'?'Degree':'Stripes'}</div>${_backfill?`<div style="flex:1;text-align:right;font-size:14px;color:var(--text)">${targetDeg}</div>`:`<select class="esel" id="pm-deg" onchange="setPromoteDeg(this.value)">${degOpts}</select>`}</div>
-<div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date" value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+<div class="erow"><div class="elbl">Date</div><input class="einput" id="pm-date" type="date" value="${escAttr(F.date||'')}" oninput="setPromoteDate(this.value)" onchange="setPromoteDate(this.value)" style="width:100%;box-sizing:border-box;min-width:0"/></div>
+${!F.setCurrent?`<div id="pm-date-words" aria-live="polite" style="font-size:13px;font-weight:600;color:var(--text);text-align:right;margin:-6px 2px 10px;min-height:16px">${escHtml(_pmDateWords(F.date))}</div>`:''}
 ${!F.setCurrent?`<div class="erow"><div class="elbl">Classes (optional)</div><input class="einput" id="pm-classes" type="number" min="0" step="0.25" value="${escAttr(F.classes||'')}" oninput="setPromoteClasses(this.value)" placeholder="" style="width:100%;box-sizing:border-box;min-width:0"/></div>`:''}
 </div>
 ${!F.setCurrent?`<div style="font-size:11px;color:var(--text3);margin:-6px 2px 10px;line-height:1.4">Classes done before this promotion, if you have the record.</div>`:''}
@@ -7613,6 +7631,7 @@ async function savePromote(skipDuplicateBeltConfirm){
     // one stripe lower, or the preceding belt when this registers a belt change.
     const _bfFromDeg=targetDeg>0?targetDeg-1:0;
     const _bfFromBelt=targetDeg>0?targetBelt:(newIdx>0?ORDER[newIdx-1]:targetBelt);
+    const _bfIsBelt=!(Number(targetDeg)>0);
     const legacyId='pl'+Date.now();
     closePromoteModal();
     if(s._dbId&&cli){
@@ -7624,7 +7643,10 @@ async function savePromote(skipDuplicateBeltConfirm){
         legacy_id:legacyId, student_id:s._dbId,
         from_belt:_bfFromBelt, to_belt:targetBelt,
         from_deg:_bfFromDeg, to_deg:targetDeg,
-        type:isBeltChange?'belt':'stripe', is_new_belt:isBeltChange,
+        // the recorded grading's own kind, never the CURRENT belt's: degree 0 is a
+        // belt being recorded (isBeltChange compares against today's belt, so a
+        // past white->blue on a blue belt read as a stripe)
+        type:_bfIsBelt?'belt':'stripe', is_new_belt:_bfIsBelt,
         date, student_name:s.name,
         promoted_by_name:me.name, promoted_by_id:meStaffDbId()||null,
         unit_id:unit&&unit._dbId,
@@ -12467,19 +12489,36 @@ function _rTrainingChart(stu){
   return LABEL+'<div class="card" style="padding:14px 12px"><div style="position:relative;display:flex;align-items:flex-end;gap:3px">'+bars+_avgLine+'</div>'+footer+'</div>';
 }
 // ── Belt-box meta + two-stat helpers (student Progress only) ─────────────────
-// Award date of the CURRENT belt: the earliest dated journey entry AT this belt
-// (i.e. when the belt itself was awarded); falls back to the latest dated entry
-// (most recent grading). null when nothing usable — caller omits AWARDED then.
+// Award date of the CURRENT belt. Source: the promotions history, the same rows
+// the Journey shows (_promoRowsOf, hidden ones included): the EARLIEST row that
+// awards this belt (to_belt = the belt, to_deg 0 or type 'belt'), else the
+// earliest row at this belt; null when no row is at this belt (the caller omits
+// the date; a date of another belt would be wrong). The legacy students.journey
+// JSON is read only when the subject has no promotions rows at all: it can
+// mislabel a stripe as the belt (a "Blue belt" entry on a later stripe date).
 function _progAwardDate(stu){
+  const pr=_promoRowsOf(stu);
+  if(pr.length){
+    const at=pr.filter(function(p){return p&&p.date&&p.toBelt===stu.belt;});
+    const asc=function(rows){return rows.map(function(p){return String(p.date);}).sort();};
+    const awarded=asc(at.filter(function(p){return !(Number(p.toDeg)>0)||p.type==='belt';}));
+    if(awarded.length)return awarded[0];
+    const any=asc(at);
+    return any.length?any[0]:null;
+  }
   const j=Array.isArray(stu&&stu.journey)?stu.journey:[];
   const atBelt=j.filter(function(e){return e&&e.belt===stu.belt&&e.date;}).map(function(e){return String(e.date);}).sort();
   if(atBelt.length)return atBelt[0];
   const dated=j.filter(function(e){return e&&e.date;}).map(function(e){return String(e.date);}).sort();
   return dated.length?dated[dated.length-1]:null;
 }
-// True when the student has any real prior grading (a done journey entry that
-// isn't the origin marker). A brand-new, never-promoted white belt → false.
+// True when the student has any real prior grading. From the promotions rows
+// (as _progAwardDate): any row beyond a plain white belt (an imported origin row
+// is white, degree 0). Legacy journey only without promotions rows: a done
+// entry that isn't the origin marker. A brand-new, never-promoted white → false.
 function _progHasPriorGrading(stu){
+  const pr=_promoRowsOf(stu);
+  if(pr.length)return pr.some(function(p){return p&&!(p.toBelt==='white'&&!(Number(p.toDeg)>0));});
   const j=Array.isArray(stu&&stu.journey)?stu.journey:[];
   return j.some(function(e){return e&&e.done&&!e.origin;});
 }
