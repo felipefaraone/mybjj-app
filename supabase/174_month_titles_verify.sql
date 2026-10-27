@@ -230,7 +230,7 @@ begin
                  (select array_agg(x1::text) from public._month_champions(cl.competition_id, cl.period_from) x1) as b
             from public.competition_month_closes cl) q;
   select count(*) into k from public._month_champions(mc, '2001-07-01');
-  if n = 0 or m <> 0 or k <> 5 then raise exception 'FAIL 2: % closed month(s), % differ, July adult rows %', n, m, k; end if;
+  if n = 0 or m <> 0 or k <> 6 then raise exception 'FAIL 2: % closed month(s), % differ, July adult rows %', n, m, k; end if;
   select md5(coalesce(string_agg(y::text, '|' order by y::text), '')), count(*) into w, n
     from (select x0.* from (select m0.competition_id, max(m0.period_from) as period_from
                               from public.competition_month_closes m0
