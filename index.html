@@ -7428,7 +7428,6 @@ async function saveFbModal(sid){
   render();
   if(s._dbId){
     withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:dk(new Date())}),'insert feedback');
-    withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');
   }
   // G1 follow-up — explicit recipient + longer dwell so the instructor
   // sees confirmation that the feedback actually reached its target.
@@ -15246,7 +15245,7 @@ async function convertTrialToMemberAction(trialDbId){
   const ins=await cli.from('students').insert(Object.assign(
     {legacy_id:legacy},
     editable,
-    {prog:'adult',total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:[],feedback:[],unit_id:t._unitId,converted_at:nowIso,standing:'ok'}
+    {prog:'adult',total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:[],unit_id:t._unitId,converted_at:nowIso,standing:'ok'}
   )).select('id,legacy_id').single();
   if(ins&&ins.error){showSaveToast2(friendlyMutationError(ins.error),'error');throw ins.error;}
   if(!ins||!ins.data){showSaveToast2('Could not create member','error');throw new Error('no student row');}
@@ -15442,7 +15441,7 @@ async function convertKidAction(){
     const ins=await cli.from('students').insert({
       legacy_id:legacy,full_name:fullName,first_name:firstName,last_name:lastName||null,
       prog:'kids',belt,degree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,
-      initials,journey:[],feedback:[],unit_id:t._unitId,date_of_birth:dob||null,gender:gender||null,
+      initials,journey:[],unit_id:t._unitId,date_of_birth:dob||null,gender:gender||null,
       parent_name:parentName||null,parent_email:parentEmail||null,parent_phone:parentPhone||null,
       parent_user_id:parentUserId,converted_at:nowIso,standing:'ok'
     }).select('id,legacy_id').single();
@@ -15911,7 +15910,7 @@ async function sendInvite(dispatch,chain){
     const slug=fullName.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'kid';
     const legacy=slug+'_k_'+Date.now().toString(36).slice(-4);
     const initials=fullName.split(/\s+/).filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase()||'KI';
-    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob,bjj_start_date:formBjjStartDate,gender:formGender,training_started_at:formTrainingStartedAt,emergency_contact_name:formEcName,emergency_contact_phone:formEcPhone,membership_level:formMembership}).select('id,legacy_id').single();
+    const ins=await cli.from('students').insert({legacy_id:legacy,full_name:fullName,first_name:fname,last_name:lname,prog:'kids',belt:formBelt,degree:formDegree,total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,unit_id:unitDbId,parent_name:parentName||null,parent_phone:parentPhone,parent_email:parentEmail,date_of_birth:formDob,bjj_start_date:formBjjStartDate,gender:formGender,training_started_at:formTrainingStartedAt,emergency_contact_name:formEcName,emergency_contact_phone:formEcPhone,membership_level:formMembership}).select('id,legacy_id').single();
     if(ins&&ins.error){console.warn('[mybjj] add kids student:',ins.error);return showSaveToast2(friendlyMutationError(ins.error),'error');}
     console.log('[mybjj] add kids student OK');
     // Immediate parent link: if the parent_email already matches a
@@ -16016,7 +16015,7 @@ async function sendInvite(dispatch,chain){
       const ins=await cli.from('students').insert(Object.assign(
         {legacy_id:legacy},
         editable,
-        {prog:'adult',total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,feedback:[],unit_id:unitDbId,membership_level:formMembership}
+        {prog:'adult',total:0,gi_classes:0,nogi_classes:0,grade:0,gi_grade:0,initials,journey:initialJourney,unit_id:unitDbId,membership_level:formMembership}
       )).select('id,legacy_id').single();
       if(ins&&ins.error){console.warn('[mybjj] add adult invite:',ins.error);showSaveToast2(friendlyMutationError(ins.error),'error');return;}
       console.log('[mybjj] add adult invite OK');
@@ -23649,7 +23648,7 @@ function profileBack(){
 }
 function openFb(sid){S.addFb=sid;render();}
 function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
-function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:dk(new Date())}),'insert feedback');withSb(c=>c.from('students').update({feedback:s.feedback}).eq('id',s._dbId),'update student feedback');}}
+function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:dk(new Date())}),'insert feedback');}}
 // G17.2d — feedback delete now flows through the generic confirm modal
 // + delete_feedback RPC (migration 51). The RPC cascades a dismiss to
 // any notification(s) keyed to the feedback row so the recipient's
