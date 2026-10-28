@@ -10222,9 +10222,13 @@ function _rLbMemberCard(){
     }else{
       const div=rows.filter(r=>r.division_id===me.division_id).slice().sort((x,y)=>(x.rank-y.rank)||String(x.display_name||'').localeCompare(String(y.display_name||'')));
       const i=div.indexOf(me);
-      const prevRow=i>0?div[i-1]:null;                                    // directly above among visible rows
-      const aboveMore=div.slice(0,i).reverse().find(r=>Number(r.points)>Number(me.points))||null;
-      const below=div.slice(i+1).find(r=>Number(r.points)<Number(me.points))||null;
+      // 175: a placed viewer chases and leads only rows with a place (staff skipped; a
+      // hidden member keeps theirs). A staff viewer keeps the whole division, as before.
+      const rivals=_lbPlace(me)!=null?div.filter(r=>r===me||_lbPlace(r)!=null):div;
+      const j=rivals.indexOf(me);
+      const prevRow=j>0?rivals[j-1]:null;                                 // directly above among the rivals
+      const aboveMore=rivals.slice(0,j).reverse().find(r=>Number(r.points)>Number(me.points))||null;
+      const below=rivals.slice(j+1).find(r=>Number(r.points)<Number(me.points))||null;
       // 174: "to #N" names a place, so its target is the first row above with a place
       const aboveSpot=div.slice(0,i).reverse().find(r=>Number(r.points)>Number(me.points)&&_lbPlace(r)!=null)||null;
       const spotK=p.self?'Your spot':(_lbFirst(p.s.firstName||p.s.name).toUpperCase()+'\'S SPOT');
