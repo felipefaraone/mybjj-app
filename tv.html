@@ -418,6 +418,14 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .rgrid.lg{gap:1.2cqw}
 .rgrid.lg .rp{padding:1cqw 1.3cqw;gap:1.3cqw;border-radius:1.1cqw}
 .rgrid.lg .rp b{font-size:1.95cqw}
+/* 177: the class's challenge, a line under the class (mock screen 4) */
+.roster.ch{grid-template-rows:auto auto 1fr}
+.tvch{border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);border-radius:1.1cqw;padding:1.25cqw 1.6cqw;display:flex;gap:1.25cqw;align-items:center;min-width:0}
+.tvch svg{width:2.7cqw;height:2.7cqw;flex-shrink:0;fill:none;stroke:#9cc3ff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tvch .tx{min-width:0;flex:1}
+.tvch .k{font:700 1cqw var(--display);letter-spacing:.16cqw;color:#9cc3ff}
+.tvch .t{font:700 2.35cqw/1.1 var(--display);margin-top:.3cqw;overflow-wrap:anywhere}
+.tvch .pts{margin-left:auto;font:700 2.8cqw/1 var(--display);color:#9cc3ff;flex-shrink:0}
 .rgrid.lg .rp .bm{width:7.2cqw;height:1.25cqw;margin-top:.5cqw}
 .rgrid.lg .ck{width:1.9cqw;height:1.9cqw}
 .rgrid.lg .ck::after{left:.66cqw;top:.36cqw;width:.5cqw;height:.95cqw}
@@ -757,10 +765,14 @@ function sUpNext(k){
     +(here>0&&way>0?'<div class="rsep"></div>':'')
     +(way>0?`<div class="rh in" style="--i:1"><b class="dim">${way}</b><span>ON THE WAY</span></div>`:'');
   const cls=`<div class="rcls in" style="--i:2"><span>Tap I'm going in the app to be on the list</span></div>`;
+  // 177: the class's challenge ({text, points} or null); "tonight" from 17:00
+  const c=b.challenge&&b.challenge.text?b.challenge:null;
+  const eve=(Number(String(b.starts_at||b.time||'').slice(0,2))||0)>=17;
+  const chal=c?`<div class="tvch in" style="--i:2"><svg viewBox="0 0 24 24"><polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/></svg><div class="tx"><div class="k">${eve?'TONIGHT\'S CHALLENGE':'TODAY\'S CHALLENGE'}</div><div class="t">${esc(c.text)}</div></div><div class="pts">+${esc(fmt(c.points))}</div></div>`:'';
   const cards=shown.map((p,i)=>{const h=p.status==='here';
     return `<div class="rp${h?'':' exp'} in" style="--i:${Math.min(i+3,14)}"><div class="rav">${avat(p,big?4.8:3.6,false,k==='kids')}${h?'<i class="ck"></i>':''}</div><div class="tx"><b>${esc(tvName(p))}</b>${beltOf(p,160,'bm')}</div></div>`;}).join('')
     +(total>shown.length?`<div class="rp more in" style="--i:14">+${total-shown.length} more</div>`:'');
-  return `<div class="roster"><div class="rhead">${head}${cls}</div><div class="rgrid${big?' lg':''}" style="--cols:${cols}">${cards||'<span class="empty">Nobody on the list yet</span>'}</div></div>`;
+  return `<div class="roster${chal?' ch':''}"><div class="rhead">${head}${cls}</div>${chal}<div class="rgrid${big?' lg':''}" style="--cols:${cols}">${cards||'<span class="empty">Nobody on the list yet</span>'}</div></div>`;
 }
 function sLast(){
   const L=P.last_results;if(!L)return '';
