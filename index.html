@@ -10078,6 +10078,9 @@ function _lbCatalog(){
 function _lbDays(fromIso,toIso){const a=_parseISODate(fromIso),b=_parseISODate(toIso);if(!a||!b)return 0;return Math.round((Date.UTC(b.getFullYear(),b.getMonth(),b.getDate())-Date.UTC(a.getFullYear(),a.getMonth(),a.getDate()))/86400000);}
 function _lbDM(iso){const d=_parseISODate(iso);return d?(d.getDate()+' '+MS[d.getMonth()]):'';}
 function _lbDowDM(iso){const d=_parseISODate(iso);return d?(DS[d.getDay()]+' '+d.getDate()+' '+MS[d.getMonth()]):'';}
+// A board's title: an event by its name, a monthly board "<Month> race" (the
+// share image and the Wall's race start card)
+function _lbRaceTitle(kind,name,month){return kind==='event'?name:month+' race';}
 // The prize day is finale_on; not set = to be announced (never ends_on).
 function _lbPrizeDay(comp){return comp&&comp.finale_on||null;}
 function _lbFirst(name){return String(name||'').trim().split(/\s+/)[0]||'';}
@@ -10294,7 +10297,7 @@ function _rLbMemberCard(){
       // the parts as pills (_lbPartsLine's list): they add up to the points
       const parts=_lbParts(me);
       const pills=parts.length?'<div class="lbs-parts">'+parts.map(x=>'<span class="lbs-part">'+escHtml(x[0])+' <b>'+escHtml(_compPts(x[1]))+'</b></span>').join('')+'</div>':'';
-      const staffLine=me.prize_eligible===false?'<div style="font-size:13px;color:var(--text2);margin-top:10px">Staff don\'t win prizes. You\'re on the board so everyone can chase you.</div>':'';
+      const staffLine=me.prize_eligible===false?'<div style="font-size:13px;color:var(--text2);margin-top:10px">Staff don\'t win prizes. Your spot on the board doesn\'t take anyone\'s place.</div>':'';
       // 168: members no longer hide themselves (staff do, on request); a member
       // hidden by staff sees nothing about it here
       body=hero+meter
@@ -10520,7 +10523,7 @@ function _lbShareData(){
   const cols=_lbColumns(rules);
   const month=bc.label||MFULL[_parseISODate(today).getMonth()];
   // an event by its name; a monthly board is "<Month> race" (the last word is drawn blue)
-  const title=ev?comp.name:month+' race';
+  const title=_lbRaceTitle(comp.kind,comp.name,month);
   // the board's date: today while it runs (with the days left, as the card's
   // eyebrow counts them), else its last day
   const start=ev?comp.starts_on:bc.from,end=ev?comp.ends_on:bc.to;
@@ -10819,7 +10822,8 @@ function _rLbOwner(){
     const isDraft=c.status==='draft';
     const divs=_lbDivs(c.id)||[];
     const rules=_lbRules(c.id)||[];
-    const canPosts=rules.some(r=>r.rule_key==='social_post'&&r.enabled===true);
+    // the sheet cannot save before the start (its date range is empty)
+    const canPosts=rules.some(r=>r.rule_key==='social_post'&&r.enabled===true)&&!(c.starts_on&&today<c.starts_on);
     const edit='<button data-id="'+escAttr(c.id)+'" onclick="openLbEdit(this.dataset.id)" style="background:none;border:none;color:var(--text3);font-size:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;cursor:pointer;letter-spacing:.5px;padding:0;margin-left:auto;flex-shrink:0">EDIT</button>';
     const acts=(canPosts?'<button class="ev-btn" data-id="'+escAttr(c.id)+'" onclick="openLbPosts(this.dataset.id)">Log posts</button>':'')
       +(isDraft?'<button class="ev-btn is-comp" data-id="'+escAttr(c.id)+'" onclick="openLbActivate(this.dataset.id)">Activate</button>':'');
@@ -11902,6 +11906,13 @@ function rCommunityWall(){
   ((_mchampE&&_mchampE.data)||[]).filter(r=>r&&r.target_id&&(!curUnitDb||r.unit_id===curUnitDb)&&r.published_at&&new Date(r.published_at)>=_wallCutoff)
     .forEach(r=>{(_champBy[r.target_id]=_champBy[r.target_id]||{kind:'champions',ossType:'month_champions',key:r.target_id,title:r.title,label:r.division_label,date:r.published_at,tap:true,rows:[]}).rows.push(r);});
   const _champRows=Object.keys(_champBy).map(k=>_champBy[k]);
+  // 176: a race start card per adult division of this unit, posted the day its
+  // race starts (competition_start_posts_feed); same unit rule and 12-month
+  // window. Before 176 is applied the RPC does not exist: no card, no retry loop.
+  const _startE=_lbVisible()?_lbGet(LB_CHAMPS,'start',()=>_lbRpc('competition_start_posts_feed',{})
+    .catch(e=>{if(e&&(e.code==='PGRST202'||e.code==='42883'))return [];throw e;})):null;
+  const _startRows=((_startE&&_startE.data)||[]).filter(r=>r&&r.id&&(!curUnitDb||r.unit_id===curUnitDb)&&r.published_at&&new Date(r.published_at)>=_wallCutoff)
+    .map(r=>({kind:'race_start',key:r.id,r,date:r.published_at}));
   // Interleave promotions + welcomes into one feed, newest first.
   const feed=eligible
     .filter(e=>{
@@ -11920,6 +11931,7 @@ function rCommunityWall(){
     .concat(welcomes)
     .concat(_wallPostRows)
     .concat(_champRows)
+    .concat(_startRows)
     .sort((a,b)=>new Date(b.date)-new Date(a.date));
   const _wallShown=S.wallShown||5;
   const rows=feed.slice(0,_wallShown);
@@ -11953,6 +11965,7 @@ function rCommunityWall(){
     .concat(rows.filter(r=>r.kind==='welcome'&&r.s).map(r=>r.s._dbId))
     .concat(rows.filter(r=>r.kind==='post'&&r.po).map(r=>r.po.id))
     .concat(rows.filter(r=>r.kind==='champions').map(r=>r.key))
+    .concat(rows.filter(r=>r.kind==='race_start').map(r=>r.key))
     .filter(Boolean);
   _ensureWallReactions(promoIds);
   const beltLabel=k=>(BA[k]||BK[k]||{label:k}).label;
@@ -11967,6 +11980,38 @@ function rCommunityWall(){
     ?'<button onclick="event.stopPropagation();'+call+'" title="Hide from Wall" aria-label="Hide from Wall" style="position:absolute;top:6px;right:6px;z-index:2;width:28px;height:28px;border:none;background:none;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>'
     :'');
   const cards=rows.map(item=>{
+    if(item.kind==='race_start'){
+      // 176: a short system post (docs/mocks/race-start-wall.html, option C): an
+      // icon, the eyebrow, the line, one fact line; Oss on the post's id and the
+      // way to the board. The scoring rules live in the Leaderboard.
+      const r=item.r,ev=r.kind==='event';
+      const pf=_parseISODate(r.period_from),pt=_parseISODate(r.period_to);
+      const ey=_lbRaceTitle(r.kind,r.competition_name,pf?MFULL[pf.getMonth()]:'')
+        +' · '+(r.start_on===dk(TODAY)?'Starts today':'Started '+_lbDowDM(r.start_on));
+      // "2 Nov to 18 Dec"; inside one month "20 to 31 Dec"
+      const per=(pf&&pt&&pf.getFullYear()===pt.getFullYear()&&pf.getMonth()===pt.getMonth())
+        ?pf.getDate()+' to '+_lbDM(r.period_to):_lbDM(r.period_from)+' to '+_lbDM(r.period_to);
+      const tail=ev?((Number(r.prize_places)>0&&r.finale_on)?'prizes '+_lbDowDM(r.finale_on):'')
+        :(pf?'top 3 wear the crown in '+MFULL[(pf.getMonth()+1)%12]:'');
+      const fact=[r.division_label,per,tail].filter(Boolean).join(' · ');
+      return '<div class="card" style="margin-bottom:8px;padding:0">'
+        +'<div style="display:flex;gap:12px;padding:14px;align-items:flex-start">'
+          +'<div style="width:38px;height:38px;border-radius:50%;background:var(--blue-tint);display:grid;place-items:center;flex-shrink:0">'
+            +'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>'
+          +'</div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);line-height:1">'+escHtml(ey)+'</div>'
+            +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:19px;line-height:1.12;letter-spacing:.2px;color:var(--text);margin-top:6px">'+escHtml(r.line||'')+'</div>'
+            +'<div style="font-size:13px;color:var(--text2);line-height:1.4;margin-top:6px">'+escHtml(fact)+'</div>'
+          +'</div>'
+        +'</div>'
+        +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:8px"></div>'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 0">'
+          +_ossControlHtml(item.key,'race_start')
+          +'<button onclick="openLeaderboard()" style="'+_LB_TXT_BTN+';color:var(--blue);letter-spacing:.6px;margin-bottom:10px">See leaderboard</button>'
+        +'</div>'
+      +'</div>';
+    }
     if(item.kind==='champions'){
       // 161: the frame of a belt promotion card (border), Oss like a promotion.
       // A hidden winner is Anonymous with no photo and no belt.
@@ -12496,8 +12541,9 @@ async function _ensureWallReactions(ids){
   // but this filter dropped their rows, so a welcome card's count came back as
   // zero after every reload even once the tap itself worked.
   // 161: 'champions' (a Cup champions card, target = the adult division) too;
-  // 172: 'month_champions' (a month's card, target = the division and the month)
-  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post','member','champions','month_champions']).in('target_id',ids);
+  // 172: 'month_champions' (a month's card, target = the division and the month);
+  // 176: 'race_start' (a race start card, target = competition_start_posts.id)
+  const r=await cli.from('wall_reactions').select('target_id,reactor_user_id').in('target_type',['promotion','post','member','champions','month_champions','race_start']).in('target_id',ids);
   S.wallReactionsLoading=false;
   if(r&&r.error){
     console.warn('[mybjj] wall_reactions:',r.error);
