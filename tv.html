@@ -23,7 +23,9 @@
 <style>
 :root{--display:'Barlow Condensed','Arial Narrow',sans-serif;--body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;color-scheme:dark;
   /* each gym keeps its own colour on every TV (158) */
-  --u-nb:#2b6cff;--u-cd:#d62839;--u-other:#6b7a90}
+  --u-nb:#2b6cff;--u-cd:#d62839;--u-other:#6b7a90;
+  /* 174: the app's metal tokens (index.html :root), with its dark-mode edges: the TV is always dark */
+  --gold-hi:#FFF8D6;--gold:#FFC928;--gold-mid:#F0A800;--gold-shine:#FFEA8A;--gold-lo:#C68A0A;--silver-hi:#FFFFFF;--silver:#E3E8EE;--silver-mid:#A7B1BD;--silver-shine:#F7F9FB;--silver-lo:#8C96A2;--bronze-hi:#FFE7CC;--bronze:#F2A35A;--bronze-mid:#D9782E;--bronze-shine:#FFC995;--bronze-lo:#B4652A}
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-family:var(--body)}
 /* ================= TV (single dark broadcast look, colors set explicitly) ================= */
@@ -111,7 +113,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .gapline em{display:block;font:600 1.4cqw var(--body);font-style:normal;color:rgba(255,255,255,.82);margin-top:.6cqw}
 /* champion */
 .lm .champ{background:radial-gradient(circle at 50% 36%,rgba(246,196,83,.42),transparent 58%),repeating-conic-gradient(from 0deg at 50% 36%,rgba(246,196,83,.09) 0 6deg,transparent 6deg 12deg),linear-gradient(170deg,#1d1606,#0b0a07);color:#fff;border:.22cqw solid #d4a537;gap:.45cqw;padding:1.2cqw}
-.lm .champ .crown{width:4.4cqw;height:2.8cqw;margin-bottom:-.6cqw;filter:drop-shadow(0 0 .8cqw rgba(246,196,83,.8))}
+.lm .champ .crown{width:4.4cqw;height:2.93cqw;margin-bottom:-.6cqw;overflow:visible;filter:drop-shadow(0 0 .8cqw rgba(246,196,83,.8))}
 .lm .champ .av.ring{box-shadow:0 0 0 .3cqw var(--ring),0 0 0 .62cqw #f6c453,0 0 4cqw rgba(246,196,83,.65)}
 .lm .champ .tag2{font:900 2.8cqw/1 var(--display);letter-spacing:.55cqw;background:linear-gradient(180deg,#fff6d2,#f6c453 55%,#b8862b);-webkit-background-clip:text;background-clip:text;color:transparent}
 .lm .champ .mon{font:700 1.15cqw var(--display);letter-spacing:.35cqw;color:#f6c453}
@@ -209,6 +211,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .row .n{font:900 2.2cqw var(--display);text-align:right;font-variant-numeric:tabular-nums}
 .row.hot{background:#fff;color:#0a1f45;border-color:#fff;box-shadow:0 .5cqw 1.6cqw rgba(0,0,0,.25)}
 .row .mv{font:800 1.15cqw var(--display);color:#46e08a;flex-shrink:0}
+/* 174: staff are on the board without a place */
+.row.staff>*,.pd.staff .who>*{opacity:.5}
 .row.hot .mv{color:#0e8f47}
 .gap{display:flex;align-items:center;gap:1cqw;padding:0 1.1cqw;font-size:1.1cqw;color:rgba(255,255,255,.45);height:1.4cqw}
 .gap::before,.gap::after{content:"";flex:1;border-top:1px dashed rgba(255,255,255,.2)}
@@ -277,8 +281,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .champ .nm{font:900 3.6cqw/1 var(--display)}
 .champ .n{font-size:1.6cqw;font-weight:600;opacity:.85}
 .champ .rn{display:flex;gap:2.4cqw;margin-top:.8cqw;font-size:1.35cqw;font-weight:600;opacity:.85}
-.champ .shine{position:absolute;inset:-50%;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.45) 50%,transparent 60%);transform:translateX(-60%)}
-.scr.on .champ .shine{animation:shine 3.2s 1s ease-in-out}
+.champ>.shine{position:absolute;inset:-50%;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.45) 50%,transparent 60%);transform:translateX(-60%)}
+.scr.on .champ>.shine{animation:shine 3.2s 1s ease-in-out}
 @keyframes shine{to{transform:translateX(60%)}}
 .hl{display:flex;flex-direction:column;gap:1.1cqw;justify-content:center;min-width:0}
 .hl .it{display:flex;align-items:center;gap:1.4cqw;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:1.2cqw;padding:1.2cqw 1.6cqw}
@@ -489,7 +493,43 @@ const ini=n=>String(n||'').replace(/\./g,'').split(' ').filter(Boolean).map(w=>w
 const BONBON=(c1,c2)=>`<svg class="bonbon" viewBox="0 0 52 22" aria-hidden="true"><path fill="${c1}" d="M15 7L9 2 4.5 3.5 7 7 3 11l4 4-2.5 3.5L9 20l6-5z"/><path fill="${c1}" d="M37 7l6-5 4.5 1.5L45 7l4 4-4 4 2.5 3.5L43 20l-6-5z"/><path fill="#000" opacity=".18" d="M15 7L9 2 4.5 3.5 7 7 3 11h12zM37 7l6-5 4.5 1.5L45 7l4 4H37z"/><rect x="14" y="4.5" width="24" height="13" rx="3" fill="${c1}"/><rect x="18" y="4.5" width="3" height="13" fill="${c2}"/><rect x="31" y="4.5" width="3" height="13" fill="${c2}"/><circle cx="26" cy="11" r="2.6" fill="${c2}"/><rect x="12.8" y="6" width="2.6" height="10" rx="1" fill="${c2}"/><rect x="36.6" y="6" width="2.6" height="10" rx="1" fill="${c2}"/><rect x="14" y="4.5" width="24" height="4" rx="2" fill="#fff" opacity=".22"/></svg>`;
 const STAR='<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path fill="#f6c453" d="M12 1.5l3.1 6.6 7.2.9-5.3 5 1.4 7.2L12 17.6l-6.4 3.6L7 14l-5.3-5 7.2-.9z"/></svg>';
 const GIFT='<svg class="gift" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M2 9h20M12 9v12M12 9c-1.5-4-6-5-6-2s4 2 6 2zM12 9c1.5-4 6-5 6-2s-4 2-6 2z"/></svg>';
-const CROWN='<svg class="crown" viewBox="0 0 48 30" aria-hidden="true"><path d="M3 25L6 5l10 10 8-13 8 13L42 5l3 20z" fill="#f6c453" stroke="#a8761f" stroke-width="1.2"/><rect x="3" y="24" width="42" height="5" rx="1.2" fill="#d9a63a"/><circle cx="24" cy="15" r="2.2" fill="#d62839"/><circle cx="12" cy="18" r="1.6" fill="#2b6cff"/><circle cx="36" cy="18" r="1.6" fill="#2b6cff"/></svg>';
+// 174: the app's crown (docs/mocks/champion-avatar-art.html crownSVG), gold,
+// its gem in the belt colour of the person it crowns (avPair = the app's _avBeltPair)
+let UID=0;
+function gemColors(belt,prog){
+  const p=avPair(belt);const base=p[0];
+  let tip=null;const t=String(belt||'').split('/')[1];
+  if(prog==='kids'&&t)tip=t==='white'?'#FFFFFF':'#1F2937';
+  return {base,tip,stroke:(belt==='white'||t==='white')?'#9CA3AF':null,dark:(belt==='black'||t==='black')};
+}
+function metalDefs(id,m){
+  return `<linearGradient id="m${id}" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" style="stop-color:var(--${m}-hi)"/><stop offset=".28" style="stop-color:var(--${m})"/><stop offset=".55" style="stop-color:var(--${m}-mid)"/><stop offset=".72" style="stop-color:var(--${m}-shine)"/><stop offset="1" style="stop-color:var(--${m}-lo)"/></linearGradient>`;
+}
+function crownSVG(w,metal,belt,prog,anim){
+  const id=++UID,g=gemColors(belt,prog),h=w*40/60;
+  const body='M6 33 L3 10 L17 21 L30 4 L43 21 L57 10 L54 33 Z';
+  const gem='30,10.5 37.8,17.6 35.6,28.2 24.4,28.2 22.2,17.6';
+  const gemR='30,10.5 37.8,17.6 35.6,28.2 30,28.2';
+  const facet='30,10.5 37.8,17.6 30,19.8 22.2,17.6';
+  const stroke=g.stroke||`var(--${metal}-lo)`;
+  return `<svg class="crown${anim?' anim':''}" width="${w}" height="${h}" viewBox="0 0 60 40" aria-hidden="true"><defs>${metalDefs(id,metal)}
+    <clipPath id="cp${id}"><path d="${body}"/><rect x="4" y="30" width="52" height="8" rx="2.5"/></clipPath>
+    <linearGradient id="sh${id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".85"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+    <path d="${body}" fill="url(#m${id})" style="stroke:var(--${metal}-lo)" stroke-width="1.1" stroke-linejoin="round"/>
+    <rect x="4" y="30" width="52" height="8" rx="2.5" fill="url(#m${id})" style="stroke:var(--${metal}-lo)" stroke-width="1.1"/>
+    <circle cx="3" cy="9.5" r="3" style="fill:var(--${metal}-hi);stroke:var(--${metal}-lo)" stroke-width=".9"/>
+    <circle cx="30" cy="3.6" r="3.4" style="fill:var(--${metal}-hi);stroke:var(--${metal}-lo)" stroke-width=".9"/>
+    <circle cx="57" cy="9.5" r="3" style="fill:var(--${metal}-hi);stroke:var(--${metal}-lo)" stroke-width=".9"/>
+    <circle cx="15" cy="34" r="1.9" style="fill:var(--${metal}-hi)"/><circle cx="45" cy="34" r="1.9" style="fill:var(--${metal}-hi)"/>
+    <polygon points="${gem}" fill="${g.base}" style="stroke:${stroke}" stroke-width="1.1" stroke-linejoin="round"/>
+    ${g.tip?`<polygon points="${gemR}" fill="${g.tip}"/><polygon points="${gem}" fill="none" style="stroke:${stroke}" stroke-width="1.1" stroke-linejoin="round"/>`:''}
+    <polygon points="${facet}" fill="#fff" opacity="${g.dark?.42:.32}"/>
+    <circle cx="26.4" cy="15.6" r="1.3" fill="#fff" opacity=".9"/>
+    <g clip-path="url(#cp${id})"><rect class="shine" x="-34" y="-4" width="16" height="48" fill="url(#sh${id})" transform="skewX(-18)"/></g>
+  </svg>`;
+}
+// the champion's crown: gold, gem in their belt (none for an Anonymous winner)
+const CROWN=(p,kid)=>crownSVG(60,'gold',(p&&!p.anonymous)?p.belt:'',isMinor(p,kid)?'kids':'adult',false);
 const IC={
  cal:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
  star:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
@@ -573,7 +613,7 @@ function prizeLabel(n){
 function tags(p,aud,lead){
   let h='';
   if(p.staff)h+='<span class="tag staff">STAFF</span>';
-  else if(lead&&p.rank===1){const c=P.chase&&P.chase[aud];h+=`<span class="tag lead">${c&&c.kind==='place'&&c.lead_gap>0?esc(fmt(c.lead_gap))+' CLEAR':'LEADER'}</span>`;}
+  else if(lead&&p.prize_rank===1){const c=P.chase&&P.chase[aud];h+=`<span class="tag lead">${c&&c.kind==='place'&&c.lead_gap>0?esc(fmt(c.lead_gap))+' CLEAR':'LEADER'}</span>`;}
   if(isEvent()&&!p.staff&&p.prize_rank&&p.prize_rank<=places()&&p.prize_rank!==p.rank)h+=`<span class="tag prize">${esc(prizeLabel(p.prize_rank))}</span>`;
   return h;
 }
@@ -585,8 +625,9 @@ function sRace(aud){
   const v=board(aud),kid=aud==='kids';
   if(!v.length)return `<div class="race"><div class="emptyboard in"><b>No points yet</b><span>${isEvent()?'Every class counts from the first day':'Every class this month counts'}</span></div></div>`;
   const t=v.slice(0,3),rest=v.slice(3,10);
-  const pd=(p,cls,h,i)=>p?`<div class="pd ${cls}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}${avat(p,cls==='p1'?6.6:5.4,true,kid)}<div class="nm">${esc(p.name)}</div>${beltOf(p,240,'bmini')}</div><div class="blk" style="height:${h}%;animation-delay:${i*90}ms"><div class="n">${count(p.points)}</div><div class="u">POINTS</div><div class="pl">${esc(ord(p.rank).toUpperCase())}</div></div></div>`:'<div class="pd"></div>';
-  const rows=rest.map((p,i)=>`<div class="row wb in" style="--i:${i+3}"><span class="pos">${esc(p.rank)}</span>${avat(p,2.8,false,kid)}<span class="nm"><span class="tx">${esc(p.name)}</span>${tags(p,aud,false)}</span>${beltOf(p,200,'belt')||'<span></span>'}<span class="n">${count(p.points)}</span></div>`).join('');
+  const pos=p=>p.staff||p.prize_rank==null?'':p.prize_rank;   // 174: the prize place; staff have none
+  const pd=(p,cls,h,i)=>p?`<div class="pd ${cls}${p.staff?' staff':''}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}${avat(p,cls==='p1'?6.6:5.4,true,kid)}<div class="nm">${esc(p.name)}</div>${beltOf(p,240,'bmini')}</div><div class="blk" style="height:${h}%;animation-delay:${i*90}ms"><div class="n">${count(p.points)}</div><div class="u">POINTS</div><div class="pl">${pos(p)===''?'':esc(ord(pos(p)).toUpperCase())}</div></div></div>`:'<div class="pd"></div>';
+  const rows=rest.map((p,i)=>`<div class="row wb in${p.staff?' staff':''}" style="--i:${i+3}"><span class="pos">${esc(pos(p))}</span>${avat(p,2.8,false,kid)}<span class="nm"><span class="tx">${esc(p.name)}</span>${tags(p,aud,false)}</span>${beltOf(p,200,'belt')||'<span></span>'}<span class="n">${count(p.points)}</span></div>`).join('');
   return `<div class="race"><div class="podium">${pd(t[1],'p2',40,1)}${pd(t[0],'p1',52,0)}${pd(t[2],'p3',30,2)}</div><div class="list">${rows}</div></div>`;
 }
 function chaseTitle(c){
@@ -678,7 +719,7 @@ function sLast(){
   const ch=main[0],d=pd(L.month_start),mon=MFULL[d.getMonth()].toUpperCase()+' '+d.getFullYear();
   const rn=main.slice(1,3).map((p,i)=>`<span><i style="background:${i===0?'#c9ced6':'#c27a3a'}"></i>${esc(ord(p.rank))} ${esc(p.name)} · ${esc(fmt(p.points))}${beltOf(p,140,'mbelt')}</span>`).join('');
   const hl=(other.length?other:[]).slice(0,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,true)}<div><div class="k">${esc('KIDS '+(p.rank===1?'CHAMPION':ord(p.rank).toUpperCase()))}</div><div class="nm">${esc(p.name)}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,mainKid)}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
   <div class="hl">${hl}</div></div>`;
 }
 // 160: last month's results for one audience: its champion, then 2nd and 3rd
@@ -687,7 +728,7 @@ function sLastAud(aud){
   const rows=(aud==='kids'?L.kids:L.adult)||[];if(!rows.length)return '';
   const kid=aud==='kids',ch=rows[0],d=pd(L.month_start),mon=MFULL[d.getMonth()].toUpperCase()+' '+d.getFullYear();
   const hl=rows.slice(1,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,kid)}<div><div class="k">${esc(ord(p.rank).toUpperCase())}</div><div class="nm">${esc(p.name)}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN}${avat(ch,7.4,true,kid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div></div>
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,kid)}${avat(ch,7.4,true,kid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div></div>
   <div class="hl">${hl}</div></div>`;
 }
 // 161: the event that just ended, one audience per screen. A hidden winner is
@@ -699,7 +740,7 @@ function sCupChamps(aud){
   const avp=(p,cq,ring)=>p.anonymous?avat({name:'?',anonymous:true},cq,ring,false):avat(p,cq,ring,kid);
   const nm=p=>p.anonymous?'Anonymous':p.name;
   const items=L.slice(1,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avp(p,4.6,false)}<div><div class="k">${esc(ord(p.place).toUpperCase()+' PRIZE')}</div><div class="nm">${esc(nm(p))}</div>${p.anonymous?'':beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN}${avp(a,7.4,true)}<div class="tag2">${a.place===1?'CHAMPION':esc(ord(a.place).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+String(P.cup.name||'').toUpperCase())}</div><div class="nm${a.anonymous?' anon':''}">${esc(nm(a))}</div>${a.anonymous?'':beltOf(a,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(a.points))} POINTS</div></div>
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(a,kid)}${avp(a,7.4,true)}<div class="tag2">${a.place===1?'CHAMPION':esc(ord(a.place).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+String(P.cup.name||'').toUpperCase())}</div><div class="nm${a.anonymous?' anon':''}">${esc(nm(a))}</div>${a.anonymous?'':beltOf(a,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(a.points))} POINTS</div></div>
   <div class="hl">${items}</div></div>`;
 }
 function sCupOver(aud){
