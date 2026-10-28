@@ -191,7 +191,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 
 /* race */
 .race{display:grid;grid-template-columns:47% 1fr;gap:2.6cqw;height:100%}
-.podium{display:grid;grid-template-columns:1fr 1.18fr 1fr;align-items:end;gap:1cqw;height:100%}
+.podium{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.18fr) minmax(0,1fr);align-items:end;gap:1cqw;height:100%}
 .pd{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
 .pd .who{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.4cqw;margin-bottom:.9cqw}
 .pd .nm{font-weight:600;font-size:1.45cqw;line-height:1.1;max-width:100%}
@@ -212,7 +212,16 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .row.hot{background:#fff;color:#0a1f45;border-color:#fff;box-shadow:0 .5cqw 1.6cqw rgba(0,0,0,.25)}
 .row .mv{font:800 1.15cqw var(--display);color:#46e08a;flex-shrink:0}
 /* 174: staff are on the board without a place */
-.row.staff>*,.pd.staff .who>*{opacity:.5}
+.row.staff>*{opacity:.5}
+/* a staff member ranked inside the podium shares the pedestal of the prize place below them */
+.pd .who .tag{margin-bottom:.7cqw}
+.duo{display:flex;align-items:flex-end;justify-content:center;gap:1.4cqw}
+.duo .col{display:flex;flex-direction:column;align-items:center;gap:.35cqw}
+.duo .col.st{opacity:.5}.duo .col.st .av{filter:grayscale(1)}
+.duo .nm2{font-size:1.15cqw;font-weight:600;line-height:1.1;white-space:nowrap}.duo .nm2.main{font-size:1.35cqw}
+.duo .bm2{width:5cqw;height:.7cqw}.duo .col.st .bm2{width:3.6cqw}
+.duo .sub{font:700 .9cqw var(--display);letter-spacing:.1cqw;white-space:nowrap}
+.duo.tight{gap:.7cqw}.duo.tight .nm2{font-size:1cqw}.duo.tight .nm2.main{font-size:1.15cqw}.duo.tight .sub{font-size:.8cqw}
 .row.hot .mv{color:#0e8f47}
 .gap{display:flex;align-items:center;gap:1cqw;padding:0 1.1cqw;font-size:1.1cqw;color:rgba(255,255,255,.45);height:1.4cqw}
 .gap::before,.gap::after{content:"";flex:1;border-top:1px dashed rgba(255,255,255,.2)}
@@ -595,6 +604,8 @@ const avRing=pr=>pr[2]||pr[0];
 const NEUTRAL_RING='#6B7280';                                          // anonymous / hidden: no belt colour
 const beltKey=b=>String(b||'').toLowerCase().split(/[\/\-\s]/)[0];
 const isMinor=(p,kidFallback)=>(p&&typeof p.minor==='boolean')?p.minor:!!kidFallback;
+// every name the TV prints: first and last name only; a minor keeps the payload's "First L."; Anonymous stays
+function tvName(p){if(isMinor(p,false))return String(p.name||'');const w=String(p.name||'').trim().split(/\s+/);return w.length>2?w[0]+' '+w[w.length-1]:w.join(' ');}
 function avat(p,cqw,ring,kidFallback){
   const anon=!!(p&&(p.anonymous||p.hidden));
   const pr=anon?[NEUTRAL_RING,'#FFFFFF']:avPair(p&&p.belt);
@@ -603,7 +614,7 @@ function avat(p,cqw,ring,kidFallback){
   const minor=isMinor(p,kidFallback);
   const u=!anon&&!minor&&p&&typeof p.photo_url==='string'&&/^https:\/\//.test(p.photo_url)?p.photo_url:'';
   const bk=!anon&&beltKey(p&&p.belt)==='black'?' bblack':'';
-  return `<div class="av ini${ring?' ring':''}${bk}" style="${st}" aria-hidden="true">${esc(ini(p&&p.name))}${u?`<img src="${esc(u)}" alt="" onerror="this.remove()">`:''}</div>`;
+  return `<div class="av ini${ring?' ring':''}${bk}" style="${st}" aria-hidden="true">${esc(ini(p?tvName(p):''))}${u?`<img src="${esc(u)}" alt="" onerror="this.remove()">`:''}</div>`;
 }
 const count=v=>`<span class="cnt" data-to="${r2(v)}">${esc(fmt(v))}</span>`;
 function prizeLabel(n){
@@ -624,11 +635,21 @@ function ruleOf(key){return (P.rules||[]).find(r=>r.key===key)||null;}
 function sRace(aud){
   const v=board(aud),kid=aud==='kids';
   if(!v.length)return `<div class="race"><div class="emptyboard in"><b>No points yet</b><span>${isEvent()?'Every class counts from the first day':'Every class this month counts'}</span></div></div>`;
-  const t=v.slice(0,3),rest=v.slice(3,10);
+  const t=v.filter(p=>!p.staff).slice(0,3),onPod=new Set(t);
+  const lastPod=t.length?t[t.length-1].rank:0;
+  const share=new Map();   // staff ranked within the podium share the pedestal of the prize place just below them
+  v.filter(p=>p.staff&&p.rank<lastPod).forEach(st=>{const host=t.find(p=>p.rank>st.rank);if(host&&!share.has(host)){share.set(host,st);onPod.add(st);}});
   const pos=p=>p.staff||p.prize_rank==null?'':p.prize_rank;   // 174: the prize place; staff have none
-  const pd=(p,cls,h,i)=>p?`<div class="pd ${cls}${p.staff?' staff':''}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}${avat(p,cls==='p1'?6.6:5.4,true,kid)}<div class="nm">${esc(p.name)}</div>${beltOf(p,240,'bmini')}</div><div class="blk" style="height:${h}%;animation-delay:${i*90}ms"><div class="n">${count(p.points)}</div><div class="u">POINTS</div><div class="pl">${pos(p)===''?'':esc(ord(pos(p)).toUpperCase())}</div></div></div>`:'<div class="pd"></div>';
-  const rows=rest.map((p,i)=>`<div class="row wb in${p.staff?' staff':''}" style="--i:${i+3}"><span class="pos">${esc(pos(p))}</span>${avat(p,2.8,false,kid)}<span class="nm"><span class="tx">${esc(p.name)}</span>${tags(p,aud,false)}</span>${beltOf(p,200,'belt')||'<span></span>'}<span class="n">${count(p.points)}</span></div>`).join('');
-  return `<div class="race"><div class="podium">${pd(t[1],'p2',40,1)}${pd(t[0],'p1',52,0)}${pd(t[2],'p3',30,2)}</div><div class="list">${rows}</div></div>`;
+  const row=(p,i)=>`<div class="row wb in${p.staff?' staff':''}" style="--i:${i+3}"><span class="pos">${esc(pos(p))}</span>${avat(p,2.8,false,kid)}<span class="nm"><span class="tx">${esc(tvName(p))}</span>${tags(p,aud,false)}</span>${beltOf(p,200,'belt')||'<span></span>'}<span class="n">${count(p.points)}</span></div>`;
+  const blk=(p,h,i,cls)=>`<div class="blk${cls||''}" style="height:${h}%;animation-delay:${i*90}ms"><div class="n">${count(p.points)}</div><div class="u">POINTS</div><div class="pl">${p.staff?'':esc(ord(pos(p)).toUpperCase())}</div></div>`;
+  const solo=(p,cls,h,i)=>`<div class="pd ${cls}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}${avat(p,cls==='p1'?6.6:5.4,true,kid)}<div class="nm">${esc(tvName(p))}</div>${beltOf(p,240,'bmini')}</div>${blk(p,h,i)}</div>`;
+  const pd=(p,cls,h,i)=>{if(!p)return '<div class="pd"></div>';const st=share.get(p);if(!st)return solo(p,cls,h,i);
+    const big=cls==='p1'?5.2:4.2,sm=big*0.7;
+    return `<div class="pd ${cls}"><div class="who in" style="--i:${i}">${isEvent()&&cls==='p1'?STAR:''}${tags(p,aud,true)}<div class="duo${cls==='p1'?'':' tight'}">
+      <div class="col st">${avat(st,sm,true,kid)}<div class="nm2">${esc(tvName(st))}</div>${beltOf(st,120,'bm2')}<div class="sub">STAFF · ${esc(fmt(st.points))}</div></div>
+      <div class="col">${avat(p,big,true,kid)}<div class="nm2 main">${esc(tvName(p))}</div>${beltOf(p,160,'bm2')}</div></div></div>${blk(p,h,i)}</div>`;};
+  const rest=v.filter(p=>!onPod.has(p)).slice(0,7);
+  return `<div class="race"><div class="podium">${pd(t[1],'p2',40,1)}${pd(t[0],'p1',52,0)}${pd(t[2],'p3',30,2)}</div><div class="list">${rest.map(row).join('')}</div></div>`;
 }
 function chaseTitle(c){
   if(!c)return 'Fight for first';
@@ -637,10 +658,11 @@ function chaseTitle(c){
 }
 function sChase(aud){
   const c=P.chase&&P.chase[aud];if(!c||!c.a||!c.b)return '';
+  if(c.a.staff||c.b.staff)return '';   // staff hold no place: no fight with them (an empty screen is skipped)
   const kid=aud==='kids',a=c.a,b=c.b,gap=r2(c.gap);
   const la=c.kind==='first'?(c.place>1?ord(c.place).toUpperCase():'LEADER'):(ord(c.place).toUpperCase()+(c.prize?' PRIZE':''));
   const lb=c.kind==='first'&&c.place===1?'CHALLENGER':'CHASING';
-  const nameBlock=p=>{if(isMinor(p,kid))return esc(p.name);const w=String(p.name||'').split(' ');return `<span>${esc(w[0])}</span>${esc(w.slice(1).join(' '))}`;};
+  const nameBlock=p=>{if(isMinor(p,kid))return esc(tvName(p));const w=tvName(p).split(' ');return `<span>${esc(w[0])}</span>${esc(w.slice(1).join(' '))}`;};
   // each fighter in their belt's ring colour (.red / .blue only pick the slide-in side)
   const fc=p=>avRing(avPair(p&&p.belt)),ft=p=>avPair(p&&p.belt)[1];
   const ftr=(p,side,lab,i)=>`<div class="ftr ${side} in" style="--i:${i};--fc:${fc(p)};--fct:${ft(p)}"><div class="corner">${esc(lab)}</div>${avat(p,11,false,kid)}<div class="fn">${nameBlock(p)}</div>${beltOf(p,240,'bfo')}${p.staff?'<span class="tag staff">STAFF</span>':''}</div>`;
@@ -655,12 +677,12 @@ function sChase(aud){
 }
 function sGi(){
   const g=P.gi_nogi;if(!g)return '';
-  const col=(k,l,rows)=>`<div class="col"><h3 class="in" style="--i:0">${l}</h3>${(rows||[]).map((p,i)=>`<div class="row in${i===0?' first':''}" style="--i:${i+1}"><span class="pos">${i+1}</span>${avat(p,2.8,false,false)}<span class="nm"><span class="tx">${esc(p.name)}</span>${beltOf(p,140,'rbelt')}${p.staff?'<span class="tag staff">STAFF</span>':''}</span><span class="n">${count(p[k])}</span></div>`).join('')}</div>`;
+  const col=(k,l,rows)=>`<div class="col"><h3 class="in" style="--i:0">${l}</h3>${(rows||[]).map((p,i)=>`<div class="row in${i===0?' first':''}" style="--i:${i+1}"><span class="pos">${i+1}</span>${avat(p,2.8,false,false)}<span class="nm"><span class="tx">${esc(tvName(p))}</span>${beltOf(p,140,'rbelt')}${p.staff?'<span class="tag staff">STAFF</span>':''}</span><span class="n">${count(p[k])}</span></div>`).join('')}</div>`;
   return `<div class="two">${col('gi','GI',g.gi)}${col('nogi','NO-GI',g.nogi)}</div>`;
 }
 function sFeed(only){
   const f=(P.feed||[]).filter(x=>!only||x.audience===only).slice(0,5);if(!f.length)return '';
-  return `<div class="feed">${f.map((x,i)=>`<div class="fi in" style="--i:${i}">${avat(x,4.2,false,x.audience==='kids')}<div class="w"><b>${esc(x.name)}</b>${beltOf(x,160,'fbelt')}<span>${esc((FEED_W[x.key]||x.label||'')+' · '+dowDM(x.date))}</span></div><div class="p">+${esc(fmt(x.points))}</div></div>`).join('')}</div>`;
+  return `<div class="feed">${f.map((x,i)=>`<div class="fi in" style="--i:${i}">${avat(x,4.2,false,x.audience==='kids')}<div class="w"><b>${esc(tvName(x))}</b>${beltOf(x,160,'fbelt')}<span>${esc((FEED_W[x.key]||x.label||'')+' · '+dowDM(x.date))}</span></div><div class="p">+${esc(fmt(x.points))}</div></div>`).join('')}</div>`;
 }
 // 158: each gym's badge and colour, the same on every TV (by unit name)
 function unitTag(name){
@@ -708,7 +730,7 @@ function sUpNext(k){
     +(way>0?`<div class="rh in" style="--i:1"><b class="dim">${way}</b><span>ON THE WAY</span></div>`:'');
   const cls=`<div class="rcls in" style="--i:2"><span>Tap I'm going in the app to be on the list</span></div>`;
   const cards=shown.map((p,i)=>{const h=p.status==='here';
-    return `<div class="rp${h?'':' exp'} in" style="--i:${Math.min(i+3,14)}"><div class="rav">${avat(p,big?4.8:3.6,false,k==='kids')}${h?'<i class="ck"></i>':''}</div><div class="tx"><b>${esc(p.name)}</b>${beltOf(p,160,'bm')}</div></div>`;}).join('')
+    return `<div class="rp${h?'':' exp'} in" style="--i:${Math.min(i+3,14)}"><div class="rav">${avat(p,big?4.8:3.6,false,k==='kids')}${h?'<i class="ck"></i>':''}</div><div class="tx"><b>${esc(tvName(p))}</b>${beltOf(p,160,'bm')}</div></div>`;}).join('')
     +(total>shown.length?`<div class="rp more in" style="--i:14">+${total-shown.length} more</div>`:'');
   return `<div class="roster"><div class="rhead">${head}${cls}</div><div class="rgrid${big?' lg':''}" style="--cols:${cols}">${cards||'<span class="empty">Nobody on the list yet</span>'}</div></div>`;
 }
@@ -717,9 +739,9 @@ function sLast(){
   const ad=L.adult||[],kd=L.kids||[];
   const mainKid=!ad.length,main=mainKid?kd:ad,other=mainKid?[]:kd;if(!main.length)return '';
   const ch=main[0],d=pd(L.month_start),mon=MFULL[d.getMonth()].toUpperCase()+' '+d.getFullYear();
-  const rn=main.slice(1,3).map((p,i)=>`<span><i style="background:${i===0?'#c9ced6':'#c27a3a'}"></i>${esc(ord(p.rank))} ${esc(p.name)} · ${esc(fmt(p.points))}${beltOf(p,140,'mbelt')}</span>`).join('');
-  const hl=(other.length?other:[]).slice(0,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,true)}<div><div class="k">${esc('KIDS '+(p.rank===1?'CHAMPION':ord(p.rank).toUpperCase()))}</div><div class="nm">${esc(p.name)}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,mainKid)}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
+  const rn=main.slice(1,3).map((p,i)=>`<span><i style="background:${i===0?'#c9ced6':'#c27a3a'}"></i>${esc(ord(p.rank))} ${esc(tvName(p))} · ${esc(fmt(p.points))}${beltOf(p,140,'mbelt')}</span>`).join('');
+  const hl=(other.length?other:[]).slice(0,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,true)}<div><div class="k">${esc('KIDS '+(p.rank===1?'CHAMPION':ord(p.rank).toUpperCase()))}</div><div class="nm">${esc(tvName(p))}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,mainKid)}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(tvName(ch))}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
   <div class="hl">${hl}</div></div>`;
 }
 // 160: last month's results for one audience: its champion, then 2nd and 3rd
@@ -727,8 +749,8 @@ function sLastAud(aud){
   const L=P.last_results;if(!L)return '';
   const rows=(aud==='kids'?L.kids:L.adult)||[];if(!rows.length)return '';
   const kid=aud==='kids',ch=rows[0],d=pd(L.month_start),mon=MFULL[d.getMonth()].toUpperCase()+' '+d.getFullYear();
-  const hl=rows.slice(1,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,kid)}<div><div class="k">${esc(ord(p.rank).toUpperCase())}</div><div class="nm">${esc(p.name)}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,kid)}${avat(ch,7.4,true,kid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+mon)}</div><div class="nm">${esc(ch.name)}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div></div>
+  const hl=rows.slice(1,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,kid)}<div><div class="k">${esc(ord(p.rank).toUpperCase())}</div><div class="nm">${esc(tvName(p))}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,kid)}${avat(ch,7.4,true,kid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+mon)}</div><div class="nm">${esc(tvName(ch))}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div></div>
   <div class="hl">${hl}</div></div>`;
 }
 // 161: the event that just ended, one audience per screen. A hidden winner is
@@ -738,7 +760,7 @@ function sCupChamps(aud){
   const b=cupBlock(aud),L=(b&&Array.isArray(b.champions))?b.champions:[];if(!L.length)return '';
   const kid=aud==='kids',a=L[0];
   const avp=(p,cq,ring)=>p.anonymous?avat({name:'?',anonymous:true},cq,ring,false):avat(p,cq,ring,kid);
-  const nm=p=>p.anonymous?'Anonymous':p.name;
+  const nm=p=>p.anonymous?'Anonymous':tvName(p);
   const items=L.slice(1,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avp(p,4.6,false)}<div><div class="k">${esc(ord(p.place).toUpperCase()+' PRIZE')}</div><div class="nm">${esc(nm(p))}</div>${p.anonymous?'':beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
   return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(a,kid)}${avp(a,7.4,true)}<div class="tag2">${a.place===1?'CHAMPION':esc(ord(a.place).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+String(P.cup.name||'').toUpperCase())}</div><div class="nm${a.anonymous?' anon':''}">${esc(nm(a))}</div>${a.anonymous?'':beltOf(a,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(a.points))} POINTS</div></div>
   <div class="hl">${items}</div></div>`;
