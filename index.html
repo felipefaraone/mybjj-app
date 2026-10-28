@@ -9970,7 +9970,7 @@ ${rows}${empty}
 // "Challenge" (an event, e.g. the Christmas Cup), "Monthly" (the always-on board).
 // Boards follow the unit picked at the top of the app (S.unit); the member's own
 // card always shows their HOME division; kids stay on their home unit.
-const LB_BOARD={},LB_STAND={},LB_BATTLE={},LB_RULES={},LB_DIVS={},LB_COMPS={},LB_CATALOG={},LB_CHAMPS={},LB_TITLES={};
+const LB_BOARD={},LB_STAND={},LB_BATTLE={},LB_RULES={},LB_DIVS={},LB_COMPS={},LB_CATALOG={},LB_CHAMPS={},LB_TITLES={},LB_STAND_ALL={};
 // One cache rule for every leaderboard source, the same as the Phase B caches:
 // fresh for a minute, a failed load retried after 10 s, and while a refresh runs
 // the last good entry (prev) keeps answering. Returns {data} or null (first load).
@@ -9987,7 +9987,7 @@ function _lbGet(map,key,load){
   return prev;
 }
 // Drop cached entries so the next render reloads them (after an owner write).
-function _lbInvalidate(){[LB_BOARD,LB_STAND,LB_BATTLE,LB_RULES,LB_DIVS,LB_COMPS,LB_TITLES].forEach(m=>{Object.keys(m).forEach(k=>{delete m[k];});});}
+function _lbInvalidate(){[LB_BOARD,LB_STAND,LB_BATTLE,LB_RULES,LB_DIVS,LB_COMPS,LB_TITLES,LB_STAND_ALL].forEach(m=>{Object.keys(m).forEach(k=>{delete m[k];});});}
 async function _lbRpc(name,args){
   const cli=initSupabase();if(!cli)throw new Error('offline');
   const r=await cli.rpc(name,args);if(r.error)throw r.error;return r.data;
@@ -10047,6 +10047,17 @@ function _lbPeriodOf(comp,date){
 function _lbStandings(compId,from,to){
   if(!compId)return null;
   const e=_lbGet(LB_STAND,compId+'|'+(from||'')+'|'+(to||''),()=>_lbRpc('competition_standings',{p_competition:compId,p_from:from||null,p_to:to||null}));
+  return e?(e.data||[]):null;
+}
+// 180: competition_standings_all_units (the adults of every gym, with a combined
+// rank and place), cached like the per-unit board and asked only while "All gyms"
+// is picked. Before 180 is applied the function is missing: the switch hides
+// (_lbAllMissing), no retry loop.
+let _lbAllMissing=false;
+function _lbStandingsAll(compId,from,to){
+  if(!compId||_lbAllMissing)return null;
+  const e=_lbGet(LB_STAND_ALL,compId+'|'+(from||'')+'|'+(to||''),()=>_lbRpc('competition_standings_all_units',{p_comp:compId,p_from:from||null,p_to:to||null})
+    .catch(e=>{if(e&&(e.code==='PGRST202'||e.code==='42883')){_lbAllMissing=true;S.lbAll=false;return [];}throw e;}));
   return e?(e.data||[]):null;
 }
 function _lbBattle(compId,from,to){
@@ -10142,7 +10153,9 @@ function _lbEyebrow(comp,today){
 // the viewer can see; tied = same points).
 // 174: the place a row prints: its prize place (ties share it, staff skipped),
 // never for staff (prize_eligible false), who are on the board without a number.
-function _lbPlace(r){return (r&&r.prize_eligible!==false&&r.prize_rank!=null)?Number(r.prize_rank):null;}
+// 180: f names the place field: 'prize_rank' (default, the gym's own board) or
+// 'combined_place' (All gyms, computed by the server; never recomputed here).
+function _lbPlace(r,f){const v=r&&r[f||'prize_rank'];return (r&&r.prize_eligible!==false&&v!=null)?Number(v):null;}
 function _lbChaseLine(me,above,rules){
   if(!me)return '';
   const pts=Number(me.points||0);
@@ -10416,7 +10429,7 @@ function _lbHeadHtml(cols){
   return '<div class="lbt-hd" style="'+_lbGridCols(cols)+'"><span></span><span></span><span></span>'
     +cols.map(c=>'<span>'+escHtml(c.label)+'</span>').join('')+'</div>';
 }
-function _lbRowHtml(r,comp,mine,first,cols,lead){
+function _lbRowHtml(r,comp,mine,first,cols,lead,all){
   // 166: a hidden member (is_anonymous; 161's published rows too): "Anonymous" in
   // their spot with a neutral avatar, no belt, no badges, no tap; rank and points
   // as on any row (the server sends their parts as null: empty cells). Prize
@@ -10430,10 +10443,14 @@ function _lbRowHtml(r,comp,mine,first,cols,lead){
   // drawn at the web size (42); the phone layout zooms .lbt-av down to 30
   // 174: no title art on the board's own rows (plain)
   const avh=anon?_lbAnonAv(42):(id.st?avStaff(id.st,42,true):avStu(id.s?(minor?Object.assign({},id.s,{prog:'kids',photoUrl:null}):id.s):fallback,42,true));
-  const staff=r.prize_eligible===false,place=_lbPlace(r);
-  const places=_lbProvisional(comp)?0:_lbPlaces(comp);
-  const badges=anon?'':((r.prize_rank&&places&&r.prize_rank<=places?_lbBadge(_lbPlaceLabel(comp,r.prize_rank),'blue'):'')
-    +(r.prize_eligible===false?_lbBadge('STAFF'):''));
+  // 180: all = the All gyms view: the combined place, no prize tags, the gym tag
+  // (unit_short: the gym's code, NB / CD; the viewer's own gym in blue) on every
+  // row, Anonymous ones included
+  const staff=r.prize_eligible===false,place=_lbPlace(r,all?'combined_place':'prize_rank');
+  const places=(all||_lbProvisional(comp))?0:_lbPlaces(comp);
+  const gym=all?_lbBadge(String(r.unit_short||r.unit_name||_lbUnitName(r.unit_id)||'').toUpperCase(),r.unit_id===all.home?'blue':''):'';
+  const badges=(anon?'':((r.prize_rank&&places&&r.prize_rank<=places?_lbBadge(_lbPlaceLabel(comp,r.prize_rank),'blue'):'')
+    +(r.prize_eligible===false?_lbBadge('STAFF'):'')))+gym;
   // the belt is the app's own belt drawing, stretched to the bar CSS sizes
   const belt=(!anon&&r.belt)?'<div class="lbt-belt">'+beltSVG(r.belt,Number(r.degree)||0,prog,110).replace('<svg ','<svg preserveAspectRatio="none" ')+'</div>':'';
   const pv=_lbPartValues(r);
@@ -10456,6 +10473,35 @@ function _lbRowHtml(r,comp,mine,first,cols,lead){
   +'</div>';
 }
 function lbShowAll(){S.lbShowAll=true;render();}
+// 180: the All gyms switch. Adults board only, never a kid's own board (kids
+// never combine), only with more than one active gym and once 180 is there.
+// Default (every time the Leaderboard opens): the viewer's own gym; not persisted.
+function _lbAllEligible(scope){
+  return !!(scope&&scope.unit&&scope.aud==='adult'&&!scope.person&&!_lbAllMissing&&UNITS.filter(u=>u&&u.active&&u._dbId).length>1);
+}
+function setLbAll(on){S.lbAll=!!on;S.lbShowAll=false;render();}
+// The All gyms table: one list across gyms in the server's combined order, raw
+// points, the gym tag, staff greyed with no number, Anonymous as on the gym's
+// board. No prize tags and no lead row (prizes and crowns are per gym).
+function _rLbBoardAll(bc,scope,sub){
+  const rows=_lbStandingsAll(bc.comp.id,bc.from,bc.to);
+  const n=UNITS.filter(u=>u&&u.active&&u._dbId).length;
+  const lbl=(n===2?'Both gyms':'All gyms')+', adults';
+  if(!rows)return sub(lbl)+'<div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
+  const list=rows.filter(r=>r&&r.audience==='adult'&&Number(r.points)>0)
+    .slice().sort((x,y)=>(x.combined_rank-y.combined_rank)||String(x.display_name||'').localeCompare(String(y.display_name||'')));
+  const foot='<div style="font-size:12px;color:var(--text3);padding:10px 14px;line-height:1.45;border-top:1px solid var(--border)">Prizes and crowns are per gym. This view is just for fun.</div>';
+  if(!list.length)return sub(lbl+' · 0 on the board')+'<div class="card" style="text-align:center;padding:24px 16px;font-size:13px;color:var(--text3)">No one on the board yet. The first class puts you on it.</div>';
+  const cols=_lbColumns(_lbRules(bc.comp.id)||[]);
+  const p=_lbPerson();const myId=p&&p.s&&p.s._dbId;
+  let shown=S.lbShowAll?list:list.slice(0,10);
+  const mineRow=myId?list.find(r=>r.student_id===myId):null;
+  if(!S.lbShowAll&&mineRow&&shown.indexOf(mineRow)<0)shown=shown.concat([mineRow]);
+  const more=(!S.lbShowAll&&list.length>10)?'<div style="border-top:1px solid var(--border);padding:8px 12px;text-align:center"><button onclick="lbShowAll()" style="color:var(--blue);'+_LB_TXT_BTN+'">Show all '+list.length+'</button></div>':'';
+  const all={home:scope.unit};
+  return sub(lbl+' · '+list.length+' on the board')
+    +'<div class="lbt"><div class="card" style="padding:0;overflow:hidden">'+_lbHeadHtml(cols)+shown.map((r,i)=>_lbRowHtml(r,bc.comp,r.student_id===myId,i===0,cols,false,all)).join('')+more+foot+'</div></div>';
+}
 // The board's rows in board order (rank, then name): the list and the share image.
 function _lbBoardList(rows,scope){
   return _lbOnBoard(rows,scope.unit,scope.aud)
@@ -10474,7 +10520,11 @@ function _rLbBoard(shareInHead){
       +groups.map(g=>'<optgroup label="'+escAttr(g.label)+'">'+g.opts.map(o=>'<option value="'+escAttr(o.key)+'"'+(selKey===o.key?' selected':'')+'>'+escHtml(o.label)+'</option>').join('')+'</optgroup>').join('')
     +'</select>','mfilt-wrap')
     :'';
-  const head='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px">'+sel+(bc&&bc.comp?_lbKindBadge(bc.comp):'')+(shareInHead?_lbShareBtn():'')+'</div>';
+  // 180: "<gym> · All gyms" next to the period, on the Adults board only
+  const canAll=_lbAllEligible(scope);
+  const allOn=canAll&&S.lbAll===true;
+  const gymSw=canAll?'<div class="miniseg" role="group" aria-label="Gyms"><button type="button" class="'+(allOn?'':'active')+'" onclick="setLbAll(false)">'+escHtml(_lbUnitName(scope.unit))+'</button><button type="button" class="'+(allOn?'active':'')+'" onclick="setLbAll(true)">All gyms</button></div>':'';
+  const head='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px">'+sel+gymSw+(bc&&bc.comp?_lbKindBadge(bc.comp):'')+(shareInHead?_lbShareBtn():'')+'</div>';
   const sub=txt=>'<div style="font-size:13px;color:var(--text2);margin:6px 0 12px">'+escHtml(txt)+'</div>';
   const toggle=scope.toggle
     ?'<div class="rsw" style="margin-top:16px;margin-bottom:0"><div class="rseg '+(scope.aud==='adult'?'active':'')+'" onclick="setLbAud(\'adult\')">Adults</div><div class="rseg '+(scope.aud==='kids'?'active':'')+'" onclick="setLbAud(\'kids\')">Kids</div></div>'
@@ -10482,6 +10532,7 @@ function _rLbBoard(shareInHead){
   let divName=_lbDivName(scope.unit,scope.aud);
   if(!bc)return toggle+head+sub(divName)+'<div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
   if(!bc.comp)return toggle+head+sub(divName)+'<div class="card" style="text-align:center;padding:24px 16px;font-size:13px;color:var(--text3)">No one on the board yet. The first class puts you on it.</div>';
+  if(allOn)return toggle+head+_rLbBoardAll(bc,scope,sub);
   const rows=_lbStandings(bc.comp.id,bc.from,bc.to);
   if(!rows)return toggle+head+sub(divName)+'<div class="card" style="padding:14px 16px;font-size:13px;color:var(--text3)">Loading…</div>';
   // a kid's own board comes from their row (156: a kid on an adult belt is on adults)
@@ -11241,7 +11292,7 @@ async function submitLbPosts(){
 // Before it starts, while members cannot open the Leaderboard yet, the action
 // reads "Starts <day>" instead of the button. Drafts never show (RLS hides them
 // from members; filtered here for owners too).
-function openLeaderboard(){S.commTab='leaderboard';S.lbPeriod='cur';S.lbShowAll=false;setTab('community');}
+function openLeaderboard(){S.commTab='leaderboard';S.lbPeriod='cur';S.lbShowAll=false;S.lbAll=false;setTab('community');}
 function _rEvChallengeCard(){
   const today=dk(TODAY);
   const comps=_lbComps();if(!comps)return '';
@@ -11463,6 +11514,7 @@ function setCommTab(t){
   const tab=t==='wall'?'wall':((t==='leaderboard'&&_lbVisible())?'leaderboard':'people');
   const was=S.commTab;
   S.commTab=tab;
+  if(tab==='leaderboard'&&was!=='leaderboard')S.lbAll=false;   // 180: opens on the viewer's own gym
   // Leaderboard is mounted only while active: a full render on the way in or out.
   if(tab==='leaderboard'||was==='leaderboard'){render();return;}
   // This path swaps display:none directly and skips render() (flicker fix
