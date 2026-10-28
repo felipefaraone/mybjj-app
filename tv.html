@@ -537,8 +537,36 @@ function crownSVG(w,metal,belt,prog,anim){
     <g clip-path="url(#cp${id})"><rect class="shine" x="-34" y="-4" width="16" height="48" fill="url(#sh${id})" transform="skewX(-18)"/></g>
   </svg>`;
 }
-// the champion's crown: gold, gem in their belt (none for an Anonymous winner)
-const CROWN=(p,kid)=>crownSVG(60,'gold',(p&&!p.anonymous)?p.belt:'',isMinor(p,kid)?'kids':'adult',false);
+// laurel crown for 2nd and 3rd: the app's wreathHeadSVG (docs/mocks/champion-head-2nd-3rd.html), unchanged
+function wreathHeadSVG(w,metal){
+  // a laurel crown worn on the head: two branches along a shallow arch, leaves pointing up and inward,
+  // meeting at the top with a small gap (the classic victor's wreath), no band, no gem
+  const id=++UID,h=w*40/60;let s='';
+  const L=12,W=4.6;
+  const leaf=(x,y,rot)=>`<path d="M0 0 Q${L/2} ${-W} ${L} 0 Q${L/2} ${W} 0 0Z" transform="translate(${x} ${y}) rotate(${rot})" fill="url(#m${id})" style="stroke:var(--${metal}-lo)" stroke-width=".8" stroke-linejoin="round"/>`;
+  const pt=t=>{const x=4+t*23,y=34-Math.sin(t*Math.PI/2)*16;return [x,y];};   // left half of the arch, t 0..1
+  // stems
+  let d='M'+pt(0).join(' ');for(let i=1;i<=10;i++)d+=' L'+pt(i/10).join(' ');
+  s+=`<path d="${d}" fill="none" style="stroke:var(--${metal}-lo)" stroke-width="1.5" stroke-linecap="round"/>`;
+  s+=`<path d="${d}" transform="translate(60 0) scale(-1 1)" fill="none" style="stroke:var(--${metal}-lo)" stroke-width="1.5" stroke-linecap="round"/>`;
+  let half='';
+  for(let i=0;i<5;i++){
+    const t=(i+.4)/5,[x,y]=pt(t),[x2,y2]=pt(Math.min(1,t+.02));
+    const ang=Math.atan2(y2-y,x2-x)*180/Math.PI;
+    half+=leaf(x,y,ang-38)+leaf(x,y,ang+38);
+  }
+  const [xe,ye]=pt(1);half+=leaf(xe-1,ye+.5,-8);
+  s+=half+`<g transform="translate(60 0) scale(-1 1)">${half}</g>`;
+  return `<svg class="crown" width="${w}" height="${h}" viewBox="0 0 60 40" aria-hidden="true"><defs>${metalDefs(id,metal)}</defs>${s}</svg>`;
+}
+// the lead person's head piece by their place: 1st the gold crown, gem in their
+// belt (none for an Anonymous winner); 2nd / 3rd the laurel crown in silver /
+// bronze; any other place nothing
+const CROWN=(p,kid,place)=>{
+  const n=Number(place);
+  if(n===1)return crownSVG(60,'gold',(p&&!p.anonymous)?p.belt:'',isMinor(p,kid)?'kids':'adult',false);
+  return n===2?wreathHeadSVG(60,'silver'):n===3?wreathHeadSVG(60,'bronze'):'';
+};
 const IC={
  cal:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
  star:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
@@ -741,7 +769,7 @@ function sLast(){
   const ch=main[0],d=pd(L.month_start),mon=MFULL[d.getMonth()].toUpperCase()+' '+d.getFullYear();
   const rn=main.slice(1,3).map((p,i)=>`<span><i style="background:${i===0?'#c9ced6':'#c27a3a'}"></i>${esc(ord(p.rank))} ${esc(tvName(p))} · ${esc(fmt(p.points))}${beltOf(p,140,'mbelt')}</span>`).join('');
   const hl=(other.length?other:[]).slice(0,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,true)}<div><div class="k">${esc('KIDS '+(p.rank===1?'CHAMPION':ord(p.rank).toUpperCase()))}</div><div class="nm">${esc(tvName(p))}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,mainKid)}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(tvName(ch))}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,mainKid,ch.rank)}${avat(ch,7.4,true,mainKid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((mainKid?'KIDS · ':'')+mon)}</div><div class="nm">${esc(tvName(ch))}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div>${rn?`<div class="rn">${rn}</div>`:''}</div>
   <div class="hl">${hl}</div></div>`;
 }
 // 160: last month's results for one audience: its champion, then 2nd and 3rd
@@ -750,7 +778,7 @@ function sLastAud(aud){
   const rows=(aud==='kids'?L.kids:L.adult)||[];if(!rows.length)return '';
   const kid=aud==='kids',ch=rows[0],d=pd(L.month_start),mon=MFULL[d.getMonth()].toUpperCase()+' '+d.getFullYear();
   const hl=rows.slice(1,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avat(p,4.6,false,kid)}<div><div class="k">${esc(ord(p.rank).toUpperCase())}</div><div class="nm">${esc(tvName(p))}</div>${beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,kid)}${avat(ch,7.4,true,kid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+mon)}</div><div class="nm">${esc(tvName(ch))}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div></div>
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(ch,kid,ch.rank)}${avat(ch,7.4,true,kid)}<div class="tag2">${ch.rank===1?'CHAMPION':esc(ord(ch.rank).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+mon)}</div><div class="nm">${esc(tvName(ch))}</div>${beltOf(ch,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(ch.points))} POINTS</div></div>
   <div class="hl">${hl}</div></div>`;
 }
 // 161: the event that just ended, one audience per screen. A hidden winner is
@@ -762,7 +790,7 @@ function sCupChamps(aud){
   const avp=(p,cq,ring)=>p.anonymous?avat({name:'?',anonymous:true},cq,ring,false):avat(p,cq,ring,kid);
   const nm=p=>p.anonymous?'Anonymous':tvName(p);
   const items=L.slice(1,3).map((p,i)=>`<div class="it in" style="--i:${i+1}">${avp(p,4.6,false)}<div><div class="k">${esc(ord(p.place).toUpperCase()+' PRIZE')}</div><div class="nm">${esc(nm(p))}</div>${p.anonymous?'':beltOf(p,160,'ibelt')}</div><div class="v">${esc(fmt(p.points))} pts</div></div>`).join('');
-  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(a,kid)}${avp(a,7.4,true)}<div class="tag2">${a.place===1?'CHAMPION':esc(ord(a.place).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+String(P.cup.name||'').toUpperCase())}</div><div class="nm${a.anonymous?' anon':''}">${esc(nm(a))}</div>${a.anonymous?'':beltOf(a,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(a.points))} POINTS</div></div>
+  return `<div class="lm"><div class="champ in" style="--i:0"><div class="shine"></div>${CROWN(a,kid,a.place)}${avp(a,7.4,true)}<div class="tag2">${a.place===1?'CHAMPION':esc(ord(a.place).toUpperCase())}</div><div class="mon">${esc((kid?'KIDS':'ADULTS')+' · '+String(P.cup.name||'').toUpperCase())}</div><div class="nm${a.anonymous?' anon':''}">${esc(nm(a))}</div>${a.anonymous?'':beltOf(a,260,'cbelt')}${titleBelt()}<div class="n">${esc(fmt(a.points))} POINTS</div></div>
   <div class="hl">${items}</div></div>`;
 }
 function sCupOver(aud){

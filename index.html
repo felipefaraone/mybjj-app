@@ -3343,6 +3343,35 @@ function crownSVG(w,metal,belt,prog,anim){
     <g clip-path="url(#cp${id})"><rect class="shine" x="-34" y="-4" width="16" height="48" fill="url(#sh${id})" transform="skewX(-18)"/></g>
   </svg>`;
 }
+// laurel crown for 2nd and 3rd: 60 x 40 units, the crown's box (the mock's, unchanged)
+function wreathHeadSVG(w,metal){
+  // a laurel crown worn on the head: two branches along a shallow arch, leaves pointing up and inward,
+  // meeting at the top with a small gap (the classic victor's wreath), no band, no gem
+  const id=++UID,h=w*40/60;let s='';
+  const L=12,W=4.6;
+  const leaf=(x,y,rot)=>`<path d="M0 0 Q${L/2} ${-W} ${L} 0 Q${L/2} ${W} 0 0Z" transform="translate(${x} ${y}) rotate(${rot})" fill="url(#m${id})" style="stroke:var(--${metal}-lo)" stroke-width=".8" stroke-linejoin="round"/>`;
+  const pt=t=>{const x=4+t*23,y=34-Math.sin(t*Math.PI/2)*16;return [x,y];};   // left half of the arch, t 0..1
+  // stems
+  let d='M'+pt(0).join(' ');for(let i=1;i<=10;i++)d+=' L'+pt(i/10).join(' ');
+  s+=`<path d="${d}" fill="none" style="stroke:var(--${metal}-lo)" stroke-width="1.5" stroke-linecap="round"/>`;
+  s+=`<path d="${d}" transform="translate(60 0) scale(-1 1)" fill="none" style="stroke:var(--${metal}-lo)" stroke-width="1.5" stroke-linecap="round"/>`;
+  let half='';
+  for(let i=0;i<5;i++){
+    const t=(i+.4)/5,[x,y]=pt(t),[x2,y2]=pt(Math.min(1,t+.02));
+    const ang=Math.atan2(y2-y,x2-x)*180/Math.PI;
+    half+=leaf(x,y,ang-38)+leaf(x,y,ang+38);
+  }
+  const [xe,ye]=pt(1);half+=leaf(xe-1,ye+.5,-8);
+  s+=half+`<g transform="translate(60 0) scale(-1 1)">${half}</g>`;
+  return `<svg class="crown" width="${w}" height="${h}" viewBox="0 0 60 40" aria-hidden="true"><defs>${metalDefs(id,metal)}</defs>${s}</svg>`;
+}
+// The head piece of a month title, one source (_champArt, the Journey title
+// dot): 1st wears the crown (gem in the belt colour); 2nd and 3rd a laurel
+// crown in silver / bronze (docs/mocks/champion-head-2nd-3rd.html, no gem).
+function _champHeadSVG(place,w,metal,belt,prog,anim){
+  const p=Number(place);
+  return (p===2||p===3)?wreathHeadSVG(w,metal):crownSVG(w,metal,belt,prog,anim);
+}
 // ornaments: 160 x 160 units, avatar r=50 at (80,80)
 const P=(r,a)=>[80+r*Math.cos(a*Math.PI/180),80+r*Math.sin(a*Math.PI/180)];
 function ornA(id,m,tier,g){        // laurel wreath: pointed leaves on a visible stem, tied with a metal knot
@@ -3404,7 +3433,7 @@ function _champShine(studentDbId){
   return el<1850?((350-el)/1000).toFixed(3)+'s':null;
 }
 // Wrap an avatar (av() or a photo disc, exactly `size` wide) in its month
-// title's art: the laurels behind it and the crown on top, positioned as the
+// title's art: the laurels behind it and the head piece on top (_champHeadSVG), positioned as the
 // mock's cav(). No title: the avatar unchanged. Tiers: <=28 mini, 29-48
 // compact, >=49 full (crown, full wreath, knot, and the one-time shine).
 function _champArt(avatarHtml,studentDbId,size){
@@ -3418,7 +3447,7 @@ function _champArt(avatarHtml,studentDbId,size){
   const orn=`<svg class="orn" width="${W}" height="${W}" viewBox="0 0 160 160" style="left:${-sz*.3}px;top:${-sz*.3}px" aria-hidden="true"><defs>${metalDefs(id,m)}</defs>${ornA(id,m,tier,g)}</svg>`;
   const w=Math.round(sz*(tier==='full'?.62:tier==='compact'?.74:.82)),h=w*40/60;
   const sh=tier==='full'?_champShine(studentDbId):null;
-  let cr=crownSVG(w,m,belt,prog,sh!=null);
+  let cr=_champHeadSVG(mk.place,w,m,belt,prog,sh!=null);
   if(sh)cr=cr.replace('class="shine"','class="shine" style="animation-delay:'+sh+'"');
   return `<span class="chav" style="width:${sz}px;height:${sz}px">${orn}${avatarHtml}<span class="chav-cr" style="position:absolute;z-index:2;left:${(sz-w)/2}px;top:${-h*.62}px;display:flex">${cr}</span></span>`;
 }
@@ -5552,12 +5581,13 @@ function rTL(journey,subject,opt){
   const _tlRow=(m,i,opt)=>{
     opt=opt||{};
     if(m._synthetic==='title'){
-      // 174: a month title: metal dot with the crown (gem in that month's belt),
+      // 174: a month title: metal dot with the head piece (1st: the crown, gem in
+      // that month's belt; 2nd / 3rd: the laurel crown),
       // "October champion" over "October 2026 · Neutral Bay adults · 41 points"
       const r=m.title,mt=METAL[Number(r.place)]||'gold',ym=String(r.period_from).split('-').map(Number),pts=Number(r.points)||0;
       const meta=[MFULL[ym[1]-1]+' '+ym[0],r.division_label,_compPts(pts)+' point'+(pts===1?'':'s')].filter(Boolean).map(escHtml).join(' · ');
       return '<div class="tli"><div class="tldot" style="background:linear-gradient(180deg,var(--'+mt+'-hi),var(--'+mt+'));border:2px solid var(--'+mt+'-lo)">'
-        +crownSVG(24,mt,r.belt,r.minor?'kids':'adult',false).replace('class="crown"','class="crown" style="filter:none;margin-top:1px"')+'</div>'
+        +_champHeadSVG(r.place,24,mt,r.belt,r.minor?'kids':'adult',false).replace('class="crown"','class="crown" style="filter:none;margin-top:1px"')+'</div>'
         +'<div class="tlb"'+((i===arr.length-1&&!nextNode)?' style="padding-bottom:4px"':'')+'>'
           +'<div class="tlt" style="color:var(--text)">'+escHtml(m.label)+'</div>'
           +'<div class="tld">'+meta+'</div>'
