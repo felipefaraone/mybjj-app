@@ -242,7 +242,7 @@ html,body{overscroll-behavior-y:none}
 /* Content-area subs (rCEdit/rEEdit) are fixed to the viewport (no transformed ancestor). Constrain to the app column width + center on desktop, sit above the app .header, and clear the notch. Scoped to .content .sub so drawer subs (.panel .sub) and the inbox .shdr stay untouched. */
 .content .sub{max-width:430px;margin-left:auto;margin-right:auto;z-index:250}
 .content .sub .shdr{padding-top:calc(14px + env(safe-area-inset-top))}
-/* ── Owner-only signed-waiver document view ──────────────────────────────────
+/* ── Signed-waiver document view (full-waiver readers only) ────────────────────
    A read-only full-screen .sub (mounted at #app level, sibling of .header/
    .content/.bnav). It carries its OWN always-light "paper" palette (--wp-*) so a
    signed legal document renders identically on screen in EITHER theme and on
@@ -6381,7 +6381,8 @@ function canShareBirthdayCard(s){
 // keyed by _dbId, using the standard {loaded,loading,data} render-and-refetch
 // idiom (same as _fetchKidsSummary). Only the MOST RECENT waiver is read. This
 // surface is flags + notes ONLY — never the signature, questionnaire, names or
-// legal version (those are owner-only, elsewhere).
+// legal version (those are for the full-waiver readers only, elsewhere). 178: read
+// through waiver_alerts (hw_select's row rule, the alert columns only).
 const SAFETY_FLAGS=[
   ['has_asthma','Asthma'],['has_heart_condition','Heart condition'],['has_diabetes','Diabetes'],
   ['has_epilepsy','Epilepsy'],['is_pregnant','Pregnant'],['takes_medication','Takes medication'],
@@ -6396,11 +6397,7 @@ function _fetchSafetyDetail(dbId){
   slot.loading=true;
   const cli=initSupabase();
   if(!cli){slot.loading=false;slot.loaded=true;slot.data=null;render();return;}
-  cli.from('health_waivers')
-    .select('has_asthma,has_heart_condition,has_diabetes,has_epilepsy,is_pregnant,takes_medication,has_allergies,has_recent_injury,safety_notes,signed_at')
-    .eq('student_id',dbId)
-    .order('signed_at',{ascending:false})
-    .limit(1)
+  cli.rpc('waiver_alerts',{p_student:dbId})
     .then(r=>{
       slot.loading=false;slot.loaded=true;
       if(r&&r.error){console.warn('[mybjj] safety detail:',r.error);slot.data=null;}
@@ -14867,11 +14864,12 @@ function rTrialsBlock(){
     const emailWaiverBtn=canCopyWaiver
       ?'<button onclick="emailTrialWaiver(\''+t._dbId+'\')" style="background:none;border:none;padding:6px 0 0 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></svg>Email waiver</button>'
       :'';
-    // #1 — View the full signed waiver document for a TRIAL, the same owner-only
+    // #1 — View the full signed waiver document for a TRIAL, the same reader-only
     // view members get. Shows ONLY when signed (mutually exclusive with the copy/QR
-    // buttons, which show only when UNSIGNED) and ONLY to an owner (isOwner) — a
-    // minor's document must never reach a non-owner. Opens by trial_booking_id.
-    const viewWaiverBtn=(t.waiverSignedAt&&isOwner())
+    // buttons, which show only when UNSIGNED) and ONLY to a full-waiver reader
+    // (canReadFullWaiver) — a minor's document must never reach anyone else.
+    // Opens by trial_booking_id.
+    const viewWaiverBtn=(t.waiverSignedAt&&canReadFullWaiver())
       ?'<button onclick="openWaiverDoc(\''+t._dbId+'\',\'trial\')" style="background:none;border:none;padding:6px 0 0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;letter-spacing:.5px;color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View waiver</button>'
       :'';
     // Adult <-> kid. A child booked through "bring a friend" on an older trial.html
@@ -15646,7 +15644,7 @@ async function convertTrialToMemberAction(trialDbId){
   if(t.waiverSignedAt){
     await cli.from('students').update({waiver_signed_at:t.waiverSignedAt}).eq('id',ins.data.id);
     await cli.from('health_waivers').update({student_id:ins.data.id}).eq('trial_booking_id',trialDbId).is('student_id',null);
-    const wchk=await cli.from('health_waivers').select('id,student_id').eq('trial_booking_id',trialDbId);
+    const wchk=await cli.rpc('waiver_trial_link_check',{p_trial:trialDbId});
     const _linked=!!(wchk&&wchk.data&&wchk.data.some(w=>w.student_id===ins.data.id));
     const schk=await cli.from('students').select('waiver_signed_at').eq('id',ins.data.id).single();
     const _stamped=!!(schk&&schk.data&&schk.data.waiver_signed_at);
@@ -15686,7 +15684,7 @@ async function linkTrialToMemberAction(trialDbId,studentDbId){
   if(t.waiverSignedAt){
     const wu=await cli.from('health_waivers').update({student_id:studentDbId}).eq('trial_booking_id',trialDbId).is('student_id',null);
     if(wu&&wu.error)console.warn('[mybjj] link waiver:',friendlyMutationError(wu.error));
-    const wchk=await cli.from('health_waivers').select('id,student_id').eq('trial_booking_id',trialDbId);
+    const wchk=await cli.rpc('waiver_trial_link_check',{p_trial:trialDbId});
     linked=!!(wchk&&wchk.data&&wchk.data.some(w=>w.student_id===studentDbId));
     if(!linked){
       showSaveToast2('Only an owner can link a waiver. The trial stays here so an owner can link it.','error');
@@ -15723,7 +15721,8 @@ async function openConvertKidModal(trialDbId){
   const parts=raw.split(/\s+/).filter(Boolean);
   let firstName=parts[0]||'',lastName='';
   if(parts.length>1){lastName=parts[parts.length-1];firstName=parts.slice(0,-1).join(' ');}
-  // DOB + gender come from the signed waiver (answers) when one exists
+  // DOB + gender come from the signed waiver (answers, via waiver_trial_prefill —
+  // 178: staff no longer read the questionnaire itself) when one exists
   // (waiver_signed_at ⟺ a health_waivers row). The DOB falls back to the one the
   // parent gave at booking (trial_bookings.kid_dob, migration 136). Staff can
   // still edit it in the modal before converting.
@@ -15732,10 +15731,10 @@ async function openConvertKidModal(trialDbId){
     const cli=initSupabase();
     if(cli){
       try{
-        const wq=await cli.from('health_waivers').select('answers').eq('trial_booking_id',trialDbId).limit(1);
-        const a=wq&&wq.data&&wq.data[0]&&wq.data[0].answers;
-        if(a&&typeof a==='object'){dob=a.dob?String(a.dob):'';gender=a.gender?String(a.gender):'';}
-      }catch(_){/* RLS may hide the waiver for a non-owner — degrade to empty */}
+        const wq=await cli.rpc('waiver_trial_prefill',{p_trial:trialDbId});
+        const a=wq&&!wq.error&&wq.data&&wq.data[0];
+        if(a){dob=a.dob?String(a.dob):'';gender=a.gender?String(a.gender):'';}
+      }catch(_){/* not staff of the unit, or the RPC failed — degrade to empty */}
     }
   }
   if(!dob&&t.kidDob)dob=String(t.kidDob);
@@ -15841,7 +15840,7 @@ async function convertKidAction(){
     let linked=false;
     if(t.waiverSignedAt){
       await cli.from('health_waivers').update({student_id:ins.data.id}).eq('trial_booking_id',t._dbId).is('student_id',null);
-      const wchk=await cli.from('health_waivers').select('id,student_id').eq('trial_booking_id',t._dbId);
+      const wchk=await cli.rpc('waiver_trial_link_check',{p_trial:t._dbId});
       linked=!!(wchk&&wchk.data&&wchk.data.some(w=>w.student_id===ins.data.id));
       if(!linked)waiverWarn=true;
     }
@@ -18515,10 +18514,30 @@ async function resolveSignedUrls(paths){
   }catch(e){ console.warn('[mybjj] signed urls:', e); }
 }
 
-// ── Owner-only signed-waiver document (read-only full-screen .sub + print) ────
-// Patricia (owner) needs to read the FULL signed waiver on screen and Save-as-PDF
-// via the browser's own print. Instructors (isStaffOrOwner true, isOwner false)
-// keep the Health summary only — every entry point below is isOwner()-gated.
+// ── Signed-waiver document (read-only full-screen .sub + print) ───────────────
+// Only the full-waiver readers (178: waiver_full_readers — Patricia, Mario and the
+// admin account) read the FULL signed waiver on screen and Save-as-PDF via the
+// browser's own print. Everyone else on staff (instructors, and owners who are not
+// readers) keeps the Health alerts only — every entry point below is
+// canReadFullWaiver()-gated, and the server (waiver_document) enforces it too.
+// can_read_full_waiver() is asked once per signed-in user per session; false until
+// it answers, and false when it fails (no retry loop).
+let _fullWaiver={uid:null,state:'idle',val:false};
+function canReadFullWaiver(){
+  const uid=(S.profile&&S.profile.id)||null;if(!uid)return false;
+  if(_fullWaiver.uid!==uid)_fullWaiver={uid,state:'idle',val:false};
+  if(_fullWaiver.state==='idle'){
+    const cli=initSupabase();if(!cli)return false;
+    const slot=_fullWaiver;slot.state='loading';
+    cli.rpc('can_read_full_waiver').then(r=>{
+      slot.state='done';
+      if(r&&r.error){console.warn('[mybjj] can_read_full_waiver:',r.error);slot.val=false;return;}
+      slot.val=(r&&r.data)===true;
+      if(slot.val)render();
+    },e=>{slot.state='done';slot.val=false;console.warn('[mybjj] can_read_full_waiver:',e);});
+  }
+  return _fullWaiver.val;
+}
 const SIGNED_W = {};              // waivers bucket: path -> {url,exp}  (separate cache from avatars' SIGNED)
 async function _signWaiverSig(path){
   // Single signed-URL exchange against the PRIVATE `waivers` bucket, mirroring
@@ -18540,13 +18559,12 @@ async function _signWaiverSig(path){
 // detail (the 8 boolean columns carry no detail text) — render from it here.
 const WAIVER_MED_LABELS={has_asthma:'Asthma',has_heart_condition:'Heart condition',has_diabetes:'Diabetes',has_epilepsy:'Epilepsy',is_pregnant:'Pregnant',takes_medication:'Takes medication',has_allergies:'Allergies',has_recent_injury:'Recent injury',has_bp:'Blood pressure',has_dizzy:'Dizziness or fainting',has_concussion:'Concussion history',has_other:'Other'};
 function _fetchWaiverDoc(dbId,by){
-  if(!isOwner())return;
+  if(!canReadFullWaiver())return;
   if(!dbId)return;
   // `by` picks the lookup column: a trial's waiver is linked by trial_booking_id
   // (no student_id until conversion), a member's by student_id. Both uuids are
   // distinct, so the dbId cache key can't collide; store `by` on the slot anyway.
   by=(by==='trial')?'trial':'student';
-  const lookupCol=(by==='trial')?'trial_booking_id':'student_id';
   if(!S._waiverDoc)S._waiverDoc={};
   let slot=S._waiverDoc[dbId];
   if(!slot)slot=S._waiverDoc[dbId]={loaded:false,loading:false,data:null,sigUrl:null,by:by};
@@ -18554,11 +18572,8 @@ function _fetchWaiverDoc(dbId,by){
   slot.loading=true;
   const cli=initSupabase();
   if(!cli){slot.loading=false;slot.loaded=true;render();return;}
-  cli.from('health_waivers')
-    .select('id,participant_name,is_minor,signed_by_name,signed_by_relationship,signed_at,waiver_text_version,signature_path,emergency_name,emergency_phone,emergency_relationship,safety_notes,answers')
-    .eq(lookupCol,dbId)
-    .order('signed_at',{ascending:false})
-    .limit(1)
+  // 178: waiver_document returns the latest row, the same columns as before
+  cli.rpc('waiver_document',by==='trial'?{p_trial:dbId}:{p_student:dbId})
     .then(async r=>{
       slot.loading=false;slot.loaded=true;
       if(r&&r.error){console.warn('[mybjj] waiver doc:',r.error);slot.data=null;render();return;}
@@ -18569,7 +18584,7 @@ function _fetchWaiverDoc(dbId,by){
     });
 }
 function openWaiverDoc(dbId,by){
-  if(!isOwner())return;                 // owner-only — instructors never reach the document
+  if(!canReadFullWaiver())return;       // full-waiver readers only — everyone else never reaches the document
   if(!dbId)return;
   by=(by==='trial')?'trial':'student';
   S._waiverDocPrevSub=S.sub;S.sub=null;
@@ -18636,7 +18651,7 @@ function _rWaiverDocBody(slot){
 }
 function rWaiverDocView(){
   if(!S.waiverDoc)return '';
-  if(!isOwner()){S.waiverDoc=null;return '';}    // defensive — never render for non-owners
+  if(!canReadFullWaiver()){S.waiverDoc=null;return '';}    // defensive — never render for non-readers
   const dbId=S.waiverDoc.studentId;
   const slot=(S._waiverDoc&&S._waiverDoc[dbId])||null;
   const topbar=`<div class="wdoc-topbar"><button class="wdoc-print" style="margin-left:auto" onclick="window.print()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Save as PDF</button><button class="cpg-x" onclick="closeWaiverDoc()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
@@ -25070,9 +25085,10 @@ ${_staff?`<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="
         healthTab='<div style="margin-top:8px"><div style="font-size:13px;color:var(--text2)">No health check on file yet.</div>'+_sent+'<button onclick="openWaiverSheet(\''+s.id+'\')" style="width:100%;margin-top:12px;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Send health check</button></div>';
       }
     }
-    // OWNER-ONLY: view the full signed waiver document. Instructors keep the
-    // summary only (isOwner() false for them). The doc view fetches its own row.
-    if(s.waiverSignedAt&&isOwner()){
+    // READERS ONLY: view the full signed waiver document. Instructors and owners
+    // who are not readers keep the alerts above (canReadFullWaiver() false for
+    // them). The doc view fetches its own row.
+    if(s.waiverSignedAt&&canReadFullWaiver()){
       healthTab+='<button onclick="openWaiverDoc(\''+escAttr(s._dbId)+'\')" style="width:100%;margin-top:14px;background:none;border:1px solid var(--border);border-radius:10px;padding:11px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.4px;color:var(--blue);cursor:pointer">View signed waiver</button>';
     }
   }
