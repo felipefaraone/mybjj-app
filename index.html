@@ -565,6 +565,8 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .lb-share svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .lbsh-prev{display:block;width:100%;aspect-ratio:1080/1350;border-radius:12px;background:var(--input-bg);border:1px solid var(--border);object-fit:contain}
 .lbsh-wait{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1080/1350;border-radius:12px;background:var(--input-bg);border:1px solid var(--border);font-size:13px;color:var(--text3)}
+.chsh-prev{display:block;height:min(56vh,520px);max-width:100%;margin:0 auto;border-radius:12px;background:var(--input-bg);border:1px solid var(--border);object-fit:contain}
+.chsh-wait{display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text3)}
 .ev-acts{display:flex;gap:8px;margin-top:12px}
 .ev-btn{flex:1;height:var(--ctrl-h);border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .ev-btn.is-comp{color:var(--blue);border-color:var(--blue)}
@@ -10826,6 +10828,213 @@ function rLbShareSheet(){
       +'</div>'
     +'</div></div>';
 }
+// ── 182: champion share card ───────────────────────────────────────────────
+// An adult podium winner of a closed month shares a card of their title (the
+// approved mock, docs/mocks/champion-share-card.html): Story 1080x1920 or Post
+// 1080x1350, one renderer. Its data is the caller's own row from
+// my_month_title_share (never a kid's, never someone else's). Colours are the
+// app's tokens read at draw time (gold / silver / bronze); the card's blue
+// ground and white ink have no token, so this object is their only home.
+const _CHAMP_CARD_PAL={bg0:'#2a6fc4',bg1:'#123a7a',bg2:'#0a2150',ink:'#FFFFFF',shadow:'rgba(0,0,0,.25)'};
+// The Share pill: the viewer's own row only, an adult signed in as themselves
+// (never a parent on a kid's profile), not staff, a month with a published close.
+function _champShareOk(r){
+  if(!r||!S.loggedIn||isStaffOrOwner()||!activeProfileIsSelf())return false;
+  if(typeof MY_STUDENT==='undefined'||!MY_STUDENT||!MY_STUDENT._dbId||r.student_id!==MY_STUDENT._dbId)return false;
+  if(r.minor===true||r.anonymous||(r.audience&&r.audience!=='adult'))return false;
+  const p=Number(r.place);
+  return !!(r.competition_id&&r.period_from&&p>=1&&p<=3);
+}
+function _champShareBtn(r,indent){
+  if(!_champShareOk(r))return '';
+  return '<div style="padding:0 0 10px '+indent+'px"><button type="button" class="lb-share" style="margin-left:0" data-champshare="1" onclick="event.stopPropagation();openChampShare(\''+escAttr(r.competition_id)+'\',\''+escAttr(String(r.period_from).slice(0,10))+'\')" aria-label="Share your champion card">'
+    +'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>Share my card</button></div>';
+}
+// The card's text, place and month from one title row (my_month_title_share).
+// The month is period_from's; the drawing reads nothing else.
+function _shareCardData(t){
+  if(!t)return null;
+  const place=Number(t.place);if(!(place>=1&&place<=3)||!t.period_from)return null;
+  const mon=MFULL[_parseISODate(String(t.period_from).slice(0,10)).getMonth()],MON=mon.toUpperCase();
+  const ord=_lbOrd(place),name=String(t.display_name||'').trim();
+  return {place,metal:METAL[place],name,
+    initials:(name.split(/\s+/).map(w=>w[0]||'').slice(0,2).join('')||'?').toUpperCase(),
+    tag:place===1?MON+' CHAMPION':MON+' · '+ord.toUpperCase()+' PLACE',
+    belt:t.belt||'',degree:Number(t.degree)||0,
+    line:(place===1?'Most':ord+' most')+' dedicated on the mats at myBJJ',
+    classes:String(Number(t.classes)||0),label:'CLASSES IN '+MON,
+    foot:'BRAZILIAN JIU-JITSU · '+(t.unit_name?String(t.unit_name).toUpperCase()+', ':'')+'SYDNEY',
+    photo:t.photo_url||null,
+    file:'mybjj-'+mon.toLowerCase()+'-'+(place===1?'champion':ord+'-place')+'.png'};
+}
+// The photo as a same-origin object URL (fetched as a blob, so the canvas is
+// never tainted), once per card data; null when there is none or it fails
+// (the drawing then uses the initials).
+const _champCardPhotos=new WeakMap();
+function _champCardPhoto(d){
+  if(!d.photo)return Promise.resolve(null);
+  if(!_champCardPhotos.has(d))_champCardPhotos.set(d,(async()=>{
+    try{
+      await resolveSignedUrls([d.photo]);
+      const hit=SIGNED[d.photo];if(!hit||!hit.url)return null;
+      const res=await fetch(hit.url);if(!res.ok)return null;
+      const url=URL.createObjectURL(await res.blob());
+      const img=await new Promise(ok=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>ok(null);i.src=url;});
+      URL.revokeObjectURL(url);   // a loaded image stays drawable
+      return img;
+    }catch(e){console.warn('[mybjj] champion card photo:',e);return null;}
+  })());
+  return _champCardPhotos.get(d);
+}
+// The mock's geometry at 1080 wide: [centre y, font px] for text, [top, size]
+// for the logo, photo disc, head piece, wreath and belt (the mock's px x 10/3).
+const _CHAMP_CARD_G={
+  story:{H:1920,logo:[60,160],disc:[406.7,433.3],head:[295.1,270],orn:[276.7,693.3],belt:[1233.3,466.7,93.3],
+         tag:[1023.3,50],name:[1140,133.3],line:[1406.9,58.3],num:[1570.5,153.3],label:[1675.5,36.7],foot:[1848.7,36.7]},
+  post:{H:1350,logo:[53.3,120],disc:[273.3,266.7],head:[204.5,166.7],orn:[193.3,426.7],belt:[806.7,333.3,93.3],
+        tag:[656.7,40],name:[740,93.3],line:[952.6,56.7],num:[1061.8,113.3],label:[1146.9,36.7],foot:[1278.6,36.7]}};
+async function _drawChampShareCard(d,fmt){
+  const G=_CHAMP_CARD_G[fmt==='post'?'post':'story'],W=1080,H=G.H,PAD=66.7,MAXW=W-2*PAD;
+  const P=_CHAMP_CARD_PAL,BC='"Barlow Condensed",sans-serif';
+  await document.fonts.load('700 100px "Barlow Condensed"').catch(()=>null);
+  // tokens: an SVG drawn as an image cannot see the page's CSS variables
+  const cs=getComputedStyle(document.documentElement),tok=k=>cs.getPropertyValue('--'+k).trim();
+  const svgImg=(svg,w,h)=>_lbShareSvgImg(svg.replace(/var\(--([\w-]+)\)/g,(s,k)=>tok(k)||s)
+    .replace(/^<svg([^>]*?) width="[^"]*" height="[^"]*"/,'<svg$1 width="'+w+'" height="'+h+'"'));
+  const m=d.metal,metal=tok(m),id=++UID;
+  const os=G.orn[1],hw=G.head[1],hh=hw*40/60,[bt,bw,bh]=G.belt;
+  const [logo,orn,head,belt,photo]=await Promise.all([
+    new Promise(ok=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>ok(null);i.src='/logo.png';}),
+    svgImg('<svg width="'+os+'" height="'+os+'" viewBox="0 0 160 160"><defs>'+metalDefs(id,m)+'</defs>'+ornA(id,m,'full',gemColors(d.belt,'adult'))+'</svg>',os,os),
+    svgImg(_champHeadSVG(d.place,hw,m,d.belt,'adult',false),hw,hh),
+    d.belt?svgImg(beltSVG(d.belt,d.degree,'adult',Math.round(bw*.3)),bw,bh):null,
+    _champCardPhoto(d)]);
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');
+  // ground: the radial blue (an ellipse 120% x 80% at 50% 28%) and the rays
+  ctx.save();ctx.translate(W/2,H*.28);ctx.scale(1,(H*.8)/(W*1.2));
+  const bg=ctx.createRadialGradient(0,0,0,0,0,W*1.2);
+  bg.addColorStop(0,P.bg0);bg.addColorStop(.48,P.bg1);bg.addColorStop(1,P.bg2);
+  ctx.fillStyle=bg;ctx.fillRect(-W*2,-H*4,W*4,H*8);ctx.restore();
+  const hex=(c,a)=>{const v=String(c).replace('#','');const n=v.length===3?v.split('').map(x=>x+x).join(''):v;
+    return 'rgba('+parseInt(n.slice(0,2),16)+','+parseInt(n.slice(2,4),16)+','+parseInt(n.slice(4,6),16)+','+a+')';};
+  ctx.fillStyle=d.place===1?hex(tok('gold'),.13):hex(P.ink,.07);
+  const rx=W/2,ry=H*.308,RR=Math.hypot(W,H)*1.5;
+  for(let a=0;a<360;a+=18){
+    const a0=(a-90)*Math.PI/180,a1=(a+6-90)*Math.PI/180;
+    ctx.beginPath();ctx.moveTo(rx,ry);ctx.lineTo(rx+RR*Math.cos(a0),ry+RR*Math.sin(a0));ctx.lineTo(rx+RR*Math.cos(a1),ry+RR*Math.sin(a1));ctx.closePath();ctx.fill();
+  }
+  // the round logo on a white disc
+  const [lt,ls]=G.logo;
+  ctx.save();ctx.shadowColor=P.shadow;ctx.shadowBlur=24;ctx.shadowOffsetY=6;
+  ctx.beginPath();ctx.arc(W/2,lt+ls/2,ls/2,0,Math.PI*2);ctx.fillStyle=P.ink;ctx.fill();ctx.restore();
+  if(logo){ctx.save();ctx.beginPath();ctx.arc(W/2,lt+ls/2,ls/2,0,Math.PI*2);ctx.clip();ctx.drawImage(logo,W/2-ls/2,lt,ls,ls);ctx.restore();}
+  // the wreath behind, the photo (or initials) in the belt ring, the head piece on top
+  if(orn)ctx.drawImage(orn,(W-os)/2,G.orn[0],os,os);
+  const [dt,ds]=G.disc,cx=W/2,cy=dt+ds/2,pair=_avBeltPair(d.belt);
+  ctx.beginPath();ctx.arc(cx,cy,ds/2+6.7,0,Math.PI*2);ctx.fillStyle=pair[2]||pair[0];ctx.fill();
+  ctx.save();ctx.beginPath();ctx.arc(cx,cy,ds/2,0,Math.PI*2);ctx.clip();
+  if(photo){
+    const k=Math.max(ds/photo.width,ds/photo.height),iw=photo.width*k,ih=photo.height*k;
+    ctx.drawImage(photo,cx-iw/2,cy-ih/2,iw,ih);
+  }else{
+    ctx.fillStyle=pair[0];ctx.fillRect(cx-ds/2,cy-ds/2,ds,ds);
+    ctx.fillStyle=pair[1];ctx.font='700 '+Math.round(ds*.36)+'px '+BC;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(d.initials,cx,cy+ds*.02);
+  }
+  ctx.restore();
+  if(head)ctx.drawImage(head,(W-hw)/2,G.head[0],hw,hh);
+  // text: centred on the mock's line boxes (baseline = centre + 0.4 em)
+  ctx.textBaseline='alphabetic';ctx.textAlign='center';
+  const text=(t,c,px,y,sp,alpha)=>{
+    ctx.save();ctx.globalAlpha=alpha==null?1:alpha;ctx.fillStyle=c;ctx.font='700 '+px+'px '+BC;
+    if(sp)_lbShareSpaced(ctx,t,W/2,y+px*.4,sp,'center');else{ctx.textAlign='center';ctx.fillText(t,W/2,y+px*.4);}
+    ctx.restore();
+  };
+  const fitPx=(t,px,min,sp)=>{let s=px;const w=()=>{ctx.font='700 '+s+'px '+BC;return ctx.measureText(t).width+(sp||0)*Math.max(0,[...t].length-1);};
+    while(w()>MAXW&&s>min)s-=1;return s;};
+  text(d.tag,metal,fitPx(d.tag,G.tag[1],G.tag[1]*.7,10),G.tag[0],10);
+  // the name: shrink to 60%, then two lines (split at the most even word break),
+  // then an ellipsis; a second line moves everything under it down
+  const NF=G.name[1];let ns=fitPx(d.name,NF,Math.round(NF*.6)),lines=[d.name],dy=0;
+  ctx.font='700 '+ns+'px '+BC;
+  if(ctx.measureText(d.name).width>MAXW){
+    const w=d.name.split(/\s+/).filter(Boolean);
+    if(w.length>1){
+      let best=null;
+      for(let i=1;i<w.length;i++){const a=w.slice(0,i).join(' '),b=w.slice(i).join(' ');
+        const mx=Math.max(ctx.measureText(a).width,ctx.measureText(b).width);if(!best||mx<best.mx)best={a,b,mx};}
+      lines=[best.a,best.b];
+      ns=Math.min(...lines.map(l=>fitPx(l,Math.round(NF*.6),Math.round(NF*.45))));
+    }
+    ctx.font='700 '+ns+'px '+BC;
+    lines=lines.map(l=>_lbShareFit(ctx,l,'700',ns,ns,BC,MAXW));
+  }
+  if(lines.length===2){
+    dy=Math.max(0,2*ns-NF);
+    const top=G.name[0]-NF/2;
+    text(lines[0],P.ink,ns,top+ns/2,0);text(lines[1],P.ink,ns,top+ns*1.5,0);
+  }else text(lines[0],P.ink,ns,G.name[0],0);
+  if(belt)ctx.drawImage(belt,(W-bw)/2,bt+dy,bw,bh);
+  text(d.line,P.ink,fitPx(d.line,G.line[1],G.line[1]*.6),G.line[0]+dy,0);
+  text(d.classes,metal,G.num[1],G.num[0]+dy,0);
+  text(d.label,P.ink,G.label[1],G.label[0]+dy,6.7,.8);
+  text(d.foot,P.ink,fitPx(d.foot,G.foot[1],G.foot[1]*.6,5.3),G.foot[0],5.3,.7);
+  return await new Promise((ok,no)=>cv.toBlob(b=>b?ok(b):no(new Error('toBlob failed')),'image/png'));
+}
+// Share my card: the caller's own title row, both formats drawn up front so the
+// toggle is instant and Share can hand a ready File to navigator.share in its tap.
+async function openChampShare(compId,month){
+  if(!S.loggedIn)return;
+  const tok={};
+  S.champShare={tok,fmt:'story',name:'',files:{},urls:{},err:''};render();
+  try{
+    const rows=await _lbRpc('my_month_title_share',{p_competition:compId,p_month:month});
+    if(!S.champShare||S.champShare.tok!==tok)return;
+    const d=_shareCardData(Array.isArray(rows)?rows[0]:rows);
+    if(!d){S.champShare.err='Your champion card isn\'t available.';render();return;}
+    S.champShare.name=d.file;
+    await Promise.all(['story','post'].map(async f=>{
+      const blob=await _drawChampShareCard(d,f);
+      if(!S.champShare||S.champShare.tok!==tok)return;   // closed (or reopened) meanwhile
+      S.champShare.files[f]=new File([blob],d.file,{type:'image/png'});
+      S.champShare.urls[f]=URL.createObjectURL(blob);
+      render();
+    }));
+  }catch(e){
+    console.warn('[mybjj] champion card:',e);
+    if(S.champShare&&S.champShare.tok===tok)S.champShare.err='Couldn\'t make the image.';
+  }
+  render();
+}
+function closeChampShare(){
+  const m=S.champShare;if(m)Object.keys(m.urls).forEach(k=>URL.revokeObjectURL(m.urls[k]));
+  S.champShare=null;render();
+}
+function champShareFmt(f){if(S.champShare){S.champShare.fmt=f==='post'?'post':'story';render();}}
+// Synchronous, as lbShareImage: iOS only shares from inside the tap.
+function champShareImage(){
+  const m=S.champShare;if(!m)return;
+  const file=m.files[m.fmt],url=m.urls[m.fmt];if(!file||!url)return;
+  const data={files:[file]};
+  let can=false;try{can=!!(navigator.share&&navigator.canShare&&navigator.canShare(data));}catch(_){can=false;}
+  if(can){navigator.share(data).catch(e=>{if(!e||e.name!=='AbortError')console.warn('[mybjj] share:',e);});return;}
+  const a=document.createElement('a');a.href=url;a.download=m.name;
+  document.body.appendChild(a);a.click();a.remove();
+}
+function rChampShareSheet(){
+  const m=S.champShare;if(!m||!S.loggedIn)return '';
+  const f=m.fmt,url=m.urls[f],ready=!!(m.files[f]&&url);
+  const ar=f==='post'?'1080/1350':'1080/1920';
+  return '<div class="cov" onclick="closeChampShare()" style="align-items:flex-end">'
+    +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:92vh;overflow-y:auto">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text);margin-bottom:12px">Share your card</div>'
+      +'<div class="seg" style="margin-bottom:12px">'+[['story','Story'],['post','Post']].map(o=>'<button type="button" class="segb'+(o[0]===f?' on':'')+'" onclick="champShareFmt(\''+o[0]+'\')">'+o[1]+'</button>').join('')+'</div>'
+      +(ready?'<img class="chsh-prev" style="aspect-ratio:'+ar+'" src="'+escAttr(url)+'" alt="Champion card">'
+        :'<div class="chsh-prev chsh-wait" style="aspect-ratio:'+ar+'">'+escHtml(m.err||'Making your card…')+'</div>')
+      +'<button class="bblue" onclick="champShareImage()"'+(ready?'':' disabled')+' style="width:100%;margin-top:14px;height:var(--ctrl-h);border-radius:10px;border:1px solid var(--blue);font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:15px;cursor:pointer">Share</button>'
+    +'</div></div>';
+}
 function _rLbBattle(bc,scope){
   const rows=_lbBattle(bc.comp.id,bc.from,bc.to);if(!rows)return '';
   const list=rows.filter(r=>r.audience===scope.aud&&r.unit_id);
@@ -11426,7 +11635,7 @@ function _rLbMonthChampsCard(){
       +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.display_name||'')+'</div>'
         +(r.belt?'<div style="margin-top:4px">'+beltSVG(r.belt,Number(r.degree)||0,minor?'kids':'adult',56)+'</div>':'')+'</div>'
       +'<div style="flex-shrink:0;text-align:right">'+right+'</div>'
-    +'</div>';
+    +'</div>'+_champShareBtn(r,42);   // 182: the viewer's own row
   };
   return '<div class="card" style="padding:14px 16px 6px">'
     +'<div style="'+_CHAMP_EYEBROW+';color:var(--blue)">'+escHtml(mon+' champions')+'</div>'
@@ -12079,7 +12288,8 @@ function rCommunityWall(){
           +avh
           +'<div style="flex:1;min-width:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.anonymous?'Anonymous':r.display_name)+'</div>'
           +(!r.anonymous&&r.belt?'<div style="flex-shrink:0">'+beltSVG(r.belt,r.degree||0,r.minor?'kids':'adult',56)+'</div>':'')
-          +'<div style="flex-shrink:0;min-width:26px;text-align:right;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+escHtml(_compPts(r.points))+'</div></div>';
+          +'<div style="flex-shrink:0;min-width:26px;text-align:right;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+escHtml(_compPts(r.points))+'</div></div>'
+          +(item.ossType==='month_champions'?_champShareBtn(r,44):'');   // 182: a month's card, the viewer's own row
       };
       const pub=String(item.date||'');
       const pubDay=pub?new Date(pub).toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'}):'';
@@ -16195,7 +16405,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.lbEdit?rLbEditPage():''}${S.lbActivate?rLbActivateSheet():''}${S.lbReview?rLbReviewPage():''}${S.lbPublish?rLbPublishSheet():''}${S.lbShare?rLbShareSheet():''}${_checkinMaybeOpen()}${S.checkin?rCheckinSheet():''}${S.lbPosts?rLbPostsModal():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.clsChal?rClassChallengeSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;display:flex">${avMe(36,'hdr')}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;display:flex">${avMe(36,'hdr')}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.lbEdit?rLbEditPage():''}${S.lbActivate?rLbActivateSheet():''}${S.lbReview?rLbReviewPage():''}${S.lbPublish?rLbPublishSheet():''}${S.lbShare?rLbShareSheet():''}${S.champShare?rChampShareSheet():''}${_checkinMaybeOpen()}${S.checkin?rCheckinSheet():''}${S.lbPosts?rLbPostsModal():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.clsChal?rClassChallengeSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;display:flex">${avMe(36,'hdr')}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;display:flex">${avMe(36,'hdr')}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
