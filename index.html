@@ -569,6 +569,7 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .chsh-wait{display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text3)}
 .ch-shb{width:32px;height:32px;flex-shrink:0;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--blue);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .ch-shb:hover,.ch-shb:active{background:var(--blue-tint)}
+.ch-rows{container-type:inline-size}   /* the champions rows size their belt as the ranking's .lbt does */
 .ch-shb svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .ev-acts{display:flex;gap:8px;margin-top:12px}
 .ev-btn{flex:1;height:var(--ctrl-h);border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
@@ -10870,6 +10871,12 @@ function _champShareCan(r){
 // (docs: mock-champions-card-share, A). `pad`: another row of the same card has
 // one, so a row without it keeps an invisible 32px spacer and the right column
 // lines up.
+// A champions row's belt: the Leaderboard ranking row's own markup and CSS
+// (.lbt-sub > .lbt-belt, the 110 drawing stretched to the bar), so it is the
+// ranking's size at every width (.ch-rows is the same kind of container as .lbt).
+function _champBelt(belt,deg,prog){
+  return '<div class="lbt-sub"><div class="lbt-belt">'+beltSVG(belt,Number(deg)||0,prog,110).replace('<svg ','<svg preserveAspectRatio="none" ')+'</div></div>';
+}
 function _champShareIcon(r,pad){
   const who=_champShareCan(r);
   if(!who)return pad?'<span class="ch-shb" style="visibility:hidden" aria-hidden="true"></span>':'';
@@ -11680,7 +11687,7 @@ function _rLbMonthChampsCard(){
       +'<div style="width:28px;flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2)">'+escHtml(_lbOrd(r.place))+'</div>'
       +avStu(who,40)
       +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.display_name||'')+'</div>'
-        +(r.belt?'<div style="margin-top:4px;line-height:0">'+bb(r.belt,Number(r.degree)||0,minor?'kids':'adult','left',true)+'</div>':'')+'</div>'   // the People list's belt
+        +(r.belt?_champBelt(r.belt,r.degree,minor?'kids':'adult'):'')+'</div>'   // the ranking rows' belt
       +'<div style="flex-shrink:0;text-align:right">'+right+'</div>'
       +_champShareIcon(r,shPad)
     +'</div>';
@@ -11688,7 +11695,7 @@ function _rLbMonthChampsCard(){
   return '<div class="card" style="padding:14px 16px 6px">'
     +'<div style="'+_CHAMP_EYEBROW+';color:var(--blue)">'+escHtml(mon+' champions')+'</div>'
     +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-top:4px">'+escHtml(r0.division_label||_lbDivName(scope.unit,aud))+'</div>'
-    +'<div style="margin-top:8px">'+rows.map((r,i)=>row(r,i===0)).join('')+'</div>'
+    +'<div class="ch-rows" style="margin-top:8px">'+rows.map((r,i)=>row(r,i===0)).join('')+'</div>'
     +(event?'':'<div style="border-top:1px solid var(--border);padding:10px 0 8px;font-size:13px;color:var(--text2)">'+escHtml('Beat them in '+MFULL[_parseISODate(today).getMonth()]+'.')+'</div>')
   +'</div>';
 }
@@ -12335,9 +12342,9 @@ function rCommunityWall(){
         return '<div'+tap+' style="display:flex;align-items:center;gap:14px;padding:12px 0 8px;border-top:1px solid var(--border)'+(tap?';cursor:pointer':'')+'">'
           +'<div style="width:30px;flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2)">'+escHtml(_lbOrd(r.place))+'</div>'
           +avh
-          // the name on one line, the People list's belt under it, the points, the share icon
+          // the name on one line, the ranking rows' belt under it, the points, the share icon
           +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.anonymous?'Anonymous':r.display_name)+'</div>'
-            +(!r.anonymous&&r.belt?'<div style="margin-top:4px;line-height:0">'+bb(r.belt,r.degree||0,r.minor?'kids':'adult','left',true)+'</div>':'')+'</div>'
+            +(!r.anonymous&&r.belt?_champBelt(r.belt,r.degree,r.minor?'kids':'adult'):'')+'</div>'
           +'<div style="flex-shrink:0;min-width:42px;text-align:right"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+escHtml(_compPts(r.points))+'</div>'
             +'<div style="font-size:11px;color:var(--text3)">pts</div></div>'
           +(item.ossType==='month_champions'?_champShareIcon(r,shPad):'')+'</div>';
@@ -12350,7 +12357,7 @@ function rCommunityWall(){
           +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-top:4px">'+escHtml(item.label||'')+'</div>'
           +(pubDay?'<div style="font-size:11px;color:var(--text3);margin-top:4px">'+escHtml(_lbDowDM(pubDay))+'</div>':'')
         +'</div>'
-        +'<div style="padding:0 14px 6px">'+item.rows.slice().sort((a,b)=>(a.place-b.place)||String(a.display_name).localeCompare(String(b.display_name))).map(row).join('')+'</div>'
+        +'<div class="ch-rows" style="padding:0 14px 6px">'+item.rows.slice().sort((a,b)=>(a.place-b.place)||String(a.display_name).localeCompare(String(b.display_name))).map(row).join('')+'</div>'
         +'<div style="border-top:0.5px solid var(--border);margin:0 14px;padding-bottom:12px"></div>'
         +'<div style="display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px 0">'+_ossControlHtml(item.key,item.ossType||'champions')+'</div>'
       +'</div>';
