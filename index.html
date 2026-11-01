@@ -567,6 +567,9 @@ input[type="search"]::-webkit-search-results-decoration{-webkit-appearance:none;
 .lbsh-wait{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1080/1350;border-radius:12px;background:var(--input-bg);border:1px solid var(--border);font-size:13px;color:var(--text3)}
 .chsh-prev{display:block;height:min(56vh,520px);max-width:100%;margin:0 auto;border-radius:12px;background:var(--input-bg);border:1px solid var(--border);object-fit:contain}
 .chsh-wait{display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text3)}
+.ch-shb{width:32px;height:32px;flex-shrink:0;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--blue);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.ch-shb:hover,.ch-shb:active{background:var(--blue-tint)}
+.ch-shb svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .ev-acts{display:flex;gap:8px;margin-top:12px}
 .ev-btn{flex:1;height:var(--ctrl-h);border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .ev-btn.is-comp{color:var(--blue);border-color:var(--blue)}
@@ -10863,11 +10866,16 @@ function _champShareCan(r){
   }
   return null;
 }
-function _champShareBtn(r,indent){
-  const who=_champShareCan(r);if(!who)return '';
-  const own=who==='own';
-  return '<div style="padding:0 0 10px '+indent+'px"><button type="button" class="lb-share" style="margin-left:0" data-champshare="'+who+'" onclick="event.stopPropagation();openChampShare(\''+escAttr(r.competition_id)+'\',\''+escAttr(String(r.period_from).slice(0,10))+'\''+(own?'':',\''+escAttr(r.student_id)+'\'')+')" aria-label="'+(own?'Share your champion card':'Share this champion card')+'">'
-    +'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>'+(own?'Share my card':'Share card')+'</button></div>';
+// The row's share button: a 32px round icon at the end of the champions row
+// (docs: mock-champions-card-share, A). `pad`: another row of the same card has
+// one, so a row without it keeps an invisible 32px spacer and the right column
+// lines up.
+function _champShareIcon(r,pad){
+  const who=_champShareCan(r);
+  if(!who)return pad?'<span class="ch-shb" style="visibility:hidden" aria-hidden="true"></span>':'';
+  const lbl=who==='own'?'Share my card':'Share card';
+  return '<button type="button" class="ch-shb" data-champshare="'+who+'" onclick="event.stopPropagation();openChampShare(\''+escAttr(r.competition_id)+'\',\''+escAttr(String(r.period_from).slice(0,10))+'\''+(who==='own'?'':',\''+escAttr(r.student_id)+'\'')+')" aria-label="'+lbl+'" title="'+lbl+'">'
+    +'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></button>';
 }
 // The card's text, place and month from one title row (my_month_title_share,
 // or an owner's competition_standings row mapped by openChampShare). The month
@@ -11649,6 +11657,7 @@ function _rLbMonthChampsCard(){
     .sort((x,y)=>(Number(x.place)-Number(y.place))||String(x.display_name||'').localeCompare(String(y.display_name||'')));
   const r0=rows[0],mon=String(r0.title_month||''),mon3=mon.slice(0,3);
   const event=!!(comp&&comp.kind==='event');
+  const shPad=rows.some(r=>!!_champShareCan(r));
   const row=(r,first)=>{
     const minor=r.minor===true;
     const st=STUDENTS.find(x=>x&&x._dbId===r.student_id)||null;
@@ -11671,9 +11680,10 @@ function _rLbMonthChampsCard(){
       +'<div style="width:28px;flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2)">'+escHtml(_lbOrd(r.place))+'</div>'
       +avStu(who,40)
       +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.display_name||'')+'</div>'
-        +(r.belt?'<div style="margin-top:4px">'+beltSVG(r.belt,Number(r.degree)||0,minor?'kids':'adult',56)+'</div>':'')+'</div>'
+        +(r.belt?'<div style="margin-top:4px;line-height:0">'+bb(r.belt,Number(r.degree)||0,minor?'kids':'adult','left',true)+'</div>':'')+'</div>'   // the People list's belt
       +'<div style="flex-shrink:0;text-align:right">'+right+'</div>'
-    +'</div>'+_champShareBtn(r,42);   // 182: the viewer's own row
+      +_champShareIcon(r,shPad)
+    +'</div>';
   };
   return '<div class="card" style="padding:14px 16px 6px">'
     +'<div style="'+_CHAMP_EYEBROW+';color:var(--blue)">'+escHtml(mon+' champions')+'</div>'
@@ -12313,6 +12323,7 @@ function rCommunityWall(){
     if(item.kind==='champions'){
       // 161: the frame of a belt promotion card (border), Oss like a promotion.
       // A hidden winner is Anonymous with no photo and no belt.
+      const shPad=item.ossType==='month_champions'&&item.rows.some(r=>!!_champShareCan(r));   // 182: the share icon's column
       const row=r=>{
         const st=!r.anonymous&&r.student_id?STUDENTS.find(x=>x&&x._dbId===r.student_id):null;
         const ini=String(r.display_name||'').split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase()||'?';
@@ -12324,10 +12335,12 @@ function rCommunityWall(){
         return '<div'+tap+' style="display:flex;align-items:center;gap:14px;padding:12px 0 8px;border-top:1px solid var(--border)'+(tap?';cursor:pointer':'')+'">'
           +'<div style="width:30px;flex-shrink:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text2)">'+escHtml(_lbOrd(r.place))+'</div>'
           +avh
-          +'<div style="flex:1;min-width:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.anonymous?'Anonymous':r.display_name)+'</div>'
-          +(!r.anonymous&&r.belt?'<div style="flex-shrink:0">'+beltSVG(r.belt,r.degree||0,r.minor?'kids':'adult',56)+'</div>':'')
-          +'<div style="flex-shrink:0;min-width:26px;text-align:right;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+escHtml(_compPts(r.points))+'</div></div>'
-          +(item.ossType==='month_champions'?_champShareBtn(r,44):'');   // 182: a month's card, the viewer's own row
+          // the name on one line, the People list's belt under it, the points, the share icon
+          +'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(r.anonymous?'Anonymous':r.display_name)+'</div>'
+            +(!r.anonymous&&r.belt?'<div style="margin-top:4px;line-height:0">'+bb(r.belt,r.degree||0,r.minor?'kids':'adult','left',true)+'</div>':'')+'</div>'
+          +'<div style="flex-shrink:0;min-width:42px;text-align:right"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+escHtml(_compPts(r.points))+'</div>'
+            +'<div style="font-size:11px;color:var(--text3)">pts</div></div>'
+          +(item.ossType==='month_champions'?_champShareIcon(r,shPad):'')+'</div>';
       };
       const pub=String(item.date||'');
       const pubDay=pub?new Date(pub).toLocaleDateString('en-CA',{timeZone:'Australia/Sydney'}):'';
