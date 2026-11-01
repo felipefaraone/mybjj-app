@@ -92,7 +92,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .scr>.feed .fi .w b{font-size:2.1cqw}
 .scr>.feed .fi .w span{font-size:1.5cqw}
 .scr>.feed .fi .p{font-size:3.6cqw}
-.scr>.feed .fi.cc .w{height:calc(2.1cqw*1.2 + 1.6cqw + 1.5cqw*1.2)}   /* 181 */
+.scr>.feed .fi .w{height:calc(2.1cqw*1.2 + 1.6cqw + 1.5cqw*1.2)}   /* 181 */
 .fo{grid-template-rows:1fr}
 .trw{min-height:4cqw}
 .trw .l,.trw .r{font-size:3cqw}
@@ -261,10 +261,10 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .fi .w b{display:block;font-weight:600;font-size:1.65cqw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fi .w span{display:block;font-size:1.3cqw;color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fi .p{font:900 2.8cqw var(--display);color:var(--acc);font-variant-numeric:tabular-nums;text-align:right}
-.fi.cc .w{height:calc(1.65cqw*1.2 + 1.6cqw + 1.3cqw*1.2)}   /* 181: a plain row's height (name, belt, one line) */
-.fi.cc .nb{display:flex;align-items:center;gap:.8cqw;min-width:0}
-.fi.cc .nb b{min-width:0}
-.fi.cc .nb .fbelt{flex-shrink:0;margin:0}
+.fi .w{height:calc(1.65cqw*1.2 + 1.6cqw + 1.3cqw*1.2)}   /* 181: every row one height (name and belt, then up to two lines) */
+.fi .nb{display:flex;align-items:center;gap:.8cqw;min-width:0}
+.fi .nb b{min-width:0}
+.fi .nb .fbelt{flex-shrink:0;margin:0}
 .fi.cc .w span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.12}
 .fi .p small{display:block;font:600 1.05cqw var(--body);color:rgba(255,255,255,.6);text-align:right}
 .week{display:grid;grid-template-rows:auto repeat(4,1fr);gap:.8cqw}
@@ -733,10 +733,10 @@ function feedWhat(x){
 }
 function sFeed(only){
   const f=(P.feed||[]).filter(x=>!only||x.audience===only).slice(0,5);if(!f.length)return '';
-  // 181: a challenge text may take two lines: that row puts the belt beside the
-  // name and keeps a plain row's height, so no row and no points column moves
+  // 181: every row has the belt beside the name and one fixed height; a
+  // challenge text (cc) may take two lines, so no row and no points column moves
   return `<div class="feed">${f.map((x,i)=>{const cc=x.key==='class_challenge'&&!!x.challenge_text;
-    return `<div class="fi in${cc?' cc':''}" style="--i:${i}">${avat(x,4.2,false,x.audience==='kids')}<div class="w">${cc?'<div class="nb">':''}<b>${esc(tvName(x))}</b>${beltOf(x,160,'fbelt')}${cc?'</div>':''}<span>${esc(feedWhat(x)+' · '+dowDM(x.date))}</span></div><div class="p">+${esc(fmt(x.points))}</div></div>`;}).join('')}</div>`;
+    return `<div class="fi in${cc?' cc':''}" style="--i:${i}">${avat(x,4.2,false,x.audience==='kids')}<div class="w"><div class="nb"><b>${esc(tvName(x))}</b>${beltOf(x,160,'fbelt')}</div><span>${esc(feedWhat(x)+' · '+dowDM(x.date))}</span></div><div class="p">+${esc(fmt(x.points))}</div></div>`;}).join('')}</div>`;
 }
 // 158: each gym's badge and colour, the same on every TV (by unit name)
 function unitTag(name){
