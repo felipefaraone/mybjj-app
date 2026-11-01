@@ -10836,23 +10836,44 @@ function rLbShareSheet(){
 // app's tokens read at draw time (gold / silver / bronze); the card's blue
 // ground and white ink have no token, so this object is their only home.
 const _CHAMP_CARD_PAL={bg0:'#2a6fc4',bg1:'#123a7a',bg2:'#0a2150',ink:'#FFFFFF',shadow:'rgba(0,0,0,.25)'};
-// The Share pill: the viewer's own row only, an adult signed in as themselves
-// (never a parent on a kid's profile), not staff, a month with a published close.
-function _champShareOk(r){
-  if(!r||!S.loggedIn||isStaffOrOwner()||!activeProfileIsSelf())return false;
-  if(typeof MY_STUDENT==='undefined'||!MY_STUDENT||!MY_STUDENT._dbId||r.student_id!==MY_STUDENT._dbId)return false;
-  if(r.minor===true||r.anonymous||(r.audience&&r.audience!=='adult'))return false;
+// The month a champions row belongs to, as competition_standings' period.
+function _champMonthTo(pf){const d=_parseISODate(String(pf).slice(0,10));return dk(new Date(d.getFullYear(),d.getMonth()+1,0));}
+// That month's frozen row of one student, as an owner reads the board
+// (competition_standings: owners see every key, leaderboard_hidden included).
+// null while it loads (_lbGet re-renders when it lands).
+function _champOwnerRow(r){
+  const rows=_lbStandings(r.competition_id,String(r.period_from).slice(0,10),_champMonthTo(r.period_from));
+  return Array.isArray(rows)?(rows.find(x=>x&&x.student_id===r.student_id)||null):null;
+}
+// 183 (app): who may share a champions row's card. 'own': a member's own adult
+// podium row, signed in as themselves (never a parent on a kid's profile), not
+// staff (unchanged from 182). 'owner': a unit owner (isOwner, units' owner set,
+// the server's is_admin) on their own profile, any adult podium row except a
+// member who hides from the board (they can still share their own). Never a
+// kid / minor row, for anyone. null: no button.
+function _champShareCan(r){
+  if(!r||!S.loggedIn||!activeProfileIsSelf())return null;
+  if(r.minor===true||r.anonymous||!r.student_id||(r.audience&&r.audience!=='adult'))return null;
   const p=Number(r.place);
-  return !!(r.competition_id&&r.period_from&&p>=1&&p<=3);
+  if(!(r.competition_id&&r.period_from&&p>=1&&p<=3))return null;
+  if(!isStaffOrOwner()&&typeof MY_STUDENT!=='undefined'&&MY_STUDENT&&MY_STUDENT._dbId&&r.student_id===MY_STUDENT._dbId)return 'own';
+  if(isOwner()){
+    const o=_champOwnerRow(r);
+    if(o&&o.leaderboard_hidden===false&&o.minor!==true&&o.audience==='adult'&&Number(o.prize_rank)===p)return 'owner';
+  }
+  return null;
 }
 function _champShareBtn(r,indent){
-  if(!_champShareOk(r))return '';
-  return '<div style="padding:0 0 10px '+indent+'px"><button type="button" class="lb-share" style="margin-left:0" data-champshare="1" onclick="event.stopPropagation();openChampShare(\''+escAttr(r.competition_id)+'\',\''+escAttr(String(r.period_from).slice(0,10))+'\')" aria-label="Share your champion card">'
-    +'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>Share my card</button></div>';
+  const who=_champShareCan(r);if(!who)return '';
+  const own=who==='own';
+  return '<div style="padding:0 0 10px '+indent+'px"><button type="button" class="lb-share" style="margin-left:0" data-champshare="'+who+'" onclick="event.stopPropagation();openChampShare(\''+escAttr(r.competition_id)+'\',\''+escAttr(String(r.period_from).slice(0,10))+'\''+(own?'':',\''+escAttr(r.student_id)+'\'')+')" aria-label="'+(own?'Share your champion card':'Share this champion card')+'">'
+    +'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>'+(own?'Share my card':'Share card')+'</button></div>';
 }
-// The card's text, place and month from one title row (my_month_title_share).
-// The month is period_from's; the drawing reads nothing else.
-function _shareCardData(t){
+// The card's text, place and month from one title row (my_month_title_share,
+// or an owner's competition_standings row mapped by openChampShare). The month
+// is period_from's; the drawing reads nothing else. `named`: the file name
+// carries the person's name (an owner sharing someone else's card).
+function _shareCardData(t,named){
   if(!t)return null;
   const place=Number(t.place);if(!(place>=1&&place<=3)||!t.period_from)return null;
   const mon=MFULL[_parseISODate(String(t.period_from).slice(0,10)).getMonth()],MON=mon.toUpperCase();
@@ -10865,7 +10886,8 @@ function _shareCardData(t){
     classes:String(Number(t.classes)||0),label:'CLASSES IN '+MON,
     foot:'BRAZILIAN JIU-JITSU · '+(t.unit_name?String(t.unit_name).toUpperCase()+', ':'')+'SYDNEY',
     photo:t.photo_url||null,
-    file:'mybjj-'+mon.toLowerCase()+'-'+(place===1?'champion':ord+'-place')+'.png'};
+    file:'mybjj-'+mon.toLowerCase()+'-'+(place===1?'champion':ord+'-place')
+      +(named?'-'+name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''):'')+'.png'};
 }
 // The photo as a same-origin object URL (fetched as a blob, so the canvas is
 // never tainted), once per card data; null when there is none or it fails
@@ -10982,17 +11004,33 @@ async function _drawChampShareCard(d,fmt){
   text(d.foot,P.ink,fitPx(d.foot,G.foot[1],G.foot[1]*.6,5.3),G.foot[0],5.3,.7);
   return await new Promise((ok,no)=>cv.toBlob(b=>b?ok(b):no(new Error('toBlob failed')),'image/png'));
 }
-// Share my card: the caller's own title row, both formats drawn up front so the
-// toggle is instant and Share can hand a ready File to navigator.share in its tap.
-async function openChampShare(compId,month){
+// Share my card: the caller's own title row (my_month_title_share). An owner's
+// "Share card" (studentId given): that person's row of the month's frozen board
+// (competition_standings, the read the Leaderboard already makes), checked
+// again here. Both formats are drawn up front so the toggle is instant and
+// Share can hand a ready File to navigator.share in its tap.
+async function _champShareRow(compId,month,studentId){
+  if(!studentId){
+    const rows=await _lbRpc('my_month_title_share',{p_competition:compId,p_month:month});
+    return {row:Array.isArray(rows)?rows[0]:rows,named:false};
+  }
+  if(!isOwner())return {row:null};
+  const rows=await _lbRpc('competition_standings',{p_competition:compId,p_from:month,p_to:_champMonthTo(month)});
+  const o=(Array.isArray(rows)?rows:[]).find(x=>x&&x.student_id===studentId);
+  if(!o||o.minor===true||o.leaderboard_hidden!==false||o.audience!=='adult')return {row:null};
+  const u=UNITS.find(x=>x&&x._dbId===o.unit_id);
+  return {named:true,row:{place:o.prize_rank,period_from:month,display_name:o.display_name,belt:o.belt,degree:o.degree,
+    photo_url:o.photo_url,unit_name:u?u.name:null,classes:o.classes_count}};
+}
+async function openChampShare(compId,month,studentId){
   if(!S.loggedIn)return;
   const tok={};
-  S.champShare={tok,fmt:'story',name:'',files:{},urls:{},err:''};render();
+  S.champShare={tok,fmt:'story',name:'',files:{},urls:{},err:'',other:!!studentId};render();
   try{
-    const rows=await _lbRpc('my_month_title_share',{p_competition:compId,p_month:month});
+    const got=await _champShareRow(compId,month,studentId||null);
     if(!S.champShare||S.champShare.tok!==tok)return;
-    const d=_shareCardData(Array.isArray(rows)?rows[0]:rows);
-    if(!d){S.champShare.err='Your champion card isn\'t available.';render();return;}
+    const d=_shareCardData(got.row,got.named);
+    if(!d){S.champShare.err=(studentId?'This champion card isn\'t available.':'Your champion card isn\'t available.');render();return;}
     S.champShare.name=d.file;
     await Promise.all(['story','post'].map(async f=>{
       const blob=await _drawChampShareCard(d,f);
@@ -11028,7 +11066,7 @@ function rChampShareSheet(){
   const ar=f==='post'?'1080/1350':'1080/1920';
   return '<div class="cov" onclick="closeChampShare()" style="align-items:flex-end">'
     +'<div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;padding:18px 16px 22px;max-height:92vh;overflow-y:auto">'
-      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text);margin-bottom:12px">Share your card</div>'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:.5px;color:var(--text);margin-bottom:12px">'+(m.other?'Share card':'Share your card')+'</div>'
       +'<div class="seg" style="margin-bottom:12px">'+[['story','Story'],['post','Post']].map(o=>'<button type="button" class="segb'+(o[0]===f?' on':'')+'" onclick="champShareFmt(\''+o[0]+'\')">'+o[1]+'</button>').join('')+'</div>'
       +(ready?'<img class="chsh-prev" style="aspect-ratio:'+ar+'" src="'+escAttr(url)+'" alt="Champion card">'
         :'<div class="chsh-prev chsh-wait" style="aspect-ratio:'+ar+'">'+escHtml(m.err||'Making your card…')+'</div>')
