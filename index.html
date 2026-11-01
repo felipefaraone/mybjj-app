@@ -8931,7 +8931,7 @@ function rClass(){
     }
     // .crow wraps the card untouched — time column, rail node, then the card
     // exactly as it was. 'past' reuses the existing `ended` signal in cc.
-    return `<div class="crow${cc.indexOf('ended')>=0?' past':''}"><div class="ctime">${_ctHtml}</div><div class="cnode"><i></i></div><div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div class="ctime-inline" style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${cancelPill}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${(staffKebab||btn)?`<div style="flex-shrink:0;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">${staffKebab}${btn?`<div style="width:100%">${btn}</div>`:''}</div>`:''}</div>${_rClsChal(_chal,isStaff&&!!S.expanded[c.id])}${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div></div>`;}).join('')+'</div>':(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
+    return `<div class="crow${cc.indexOf('ended')>=0?' past':''}"><div class="ctime">${_ctHtml}</div><div class="cnode"><i></i></div><div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div class="ctime-inline" style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${cancelPill}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${(staffKebab||btn)?`<div style="flex-shrink:0;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">${staffKebab}${btn?`<div style="width:100%">${btn}</div>`:''}</div>`:''}</div>${_chal?_rClsChal(_chal,isStaff&&!!S.expanded[c.id]):(isStaff&&S.expanded[c.id]?_rClsChalAdd(c,_clsUnit):'')}${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div></div>`;}).join('')+'</div>':(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
   <div style="height:16px"></div>`;}
 
 
@@ -26598,6 +26598,17 @@ function _clsChalFor(classId,dateKey){
   if(!classId||!dateKey)return null;
   return _clsChalRows(meUnitDbId()).find(r=>r&&r.class_id===classId&&r.on_date===dateKey)||null;
 }
+// 181: every range of the window is loaded (so "no challenge" is known, not pending)
+function _clsChalReady(unitDbId){
+  if(!unitDbId)return false;
+  const days=bdays();
+  for(let i=0;i<days.length;i+=14){
+    const e=LB_CHAL[unitDbId+'|'+dk(days[i])+'|'+dk(days[Math.min(i+13,days.length-1)])];
+    const d=e&&(e.loading?(e.prev&&e.prev.data):e.data);   // a refresh keeps the last rows
+    if(!Array.isArray(d))return false;
+  }
+  return true;
+}
 function _clsChalInvalidate(){Object.keys(LB_CHAL).forEach(k=>{delete LB_CHAL[k];});}
 function _clsChalCompName(competitionId){const c=(_lbComps()||[]).find(x=>x&&x.id===competitionId);return c?c.name:'';}
 // "6:30PM" (the class card's own time style)
@@ -26612,6 +26623,14 @@ function _rClsChal(ch,rollCall){
   const s=rollCall?'Tick the winner below':(comp?escHtml(comp)+' · ':'')+'the teacher picks the winner';
   return `<div style="margin-top:12px;border:1px solid var(--blue-mid);background:var(--blue-tint);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start"><div style="width:28px;height:28px;border-radius:50%;background:#fff;display:grid;place-items:center;flex-shrink:0;border:1px solid var(--blue-mid)">${_CLS_CHAL_STAR}</div><div style="min-width:0"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:10.5px;letter-spacing:1.4px;color:var(--blue);text-transform:uppercase">${k}</div><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16.5px;color:var(--text);line-height:1.2;margin-top:3px;overflow-wrap:anywhere">${escHtml(ch.text)}</div><div style="font-size:12px;color:var(--text2);margin-top:3px">${s}</div></div></div>`;
 }
+// 181: the roll call of a class with no challenge, today or earlier in the
+// window, with the class_challenge rule on that date: a quiet line to record the
+// challenge said out loud in class (staff only; the block replaces it once saved)
+function _rClsChalAdd(c,clsUnit){
+  if(!isStaffOrOwner()||!c||!c.classId||c._cancelled||!c.date||c.date>dk(TODAY))return '';
+  if(!_clsChalReady(meUnitDbId())||!_clsChalRule(clsUnit,c.date))return '';
+  return `<button onclick="event.stopPropagation();openClsChalAdd('${escAttr(c.classId)}','${escAttr(c.date)}','${escAttr(c.time)}')" style="display:block;margin-top:10px;background:none;border:none;padding:4px 0;font-family:Barlow,sans-serif;font-size:13px;color:var(--text3);cursor:pointer;text-align:left">Challenge said in class? <span style="color:var(--blue);font-weight:600">Add it</span></button>`;
+}
 // The class_challenge rule for the class's unit on the date (staff), or null
 function _clsChalRule(unitDbId,dateKey){return _compRule(_compRules(unitDbId,dateKey),'class_challenge');}
 // Set / edit sheet, opened from the class card's ⋯ menu
@@ -26620,6 +26639,13 @@ function openClsChal(){
   const ex=_clsChalFor(cx.classId,cx.date);
   S.cardEx=null;
   S.clsChal={classId:cx.classId,date:cx.date,time:cx.time,existing:ex?{id:ex.id,kind:ex.kind}:null,text:ex?ex.text:'',scope:ex?(ex.kind==='date'?'date':'weekly'):'weekly',busy:false,err:''};
+  render();
+}
+// 181: the same sheet from the roll call's "Add it", "Only <date>" preselected
+function openClsChalAdd(classId,date,time){
+  if(!classId||!date||!isStaffOrOwner())return;
+  const ex=_clsChalFor(classId,date);
+  S.clsChal={classId,date,time,existing:ex?{id:ex.id,kind:ex.kind}:null,text:ex?ex.text:'',scope:ex&&ex.kind==='weekly'?'weekly':'date',busy:false,err:''};
   render();
 }
 function closeClsChal(){if(S.clsChal&&S.clsChal.busy)return;S.clsChal=null;render();}
