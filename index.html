@@ -18640,6 +18640,18 @@ function rChangeEmailModal(){
 </div></div>`;
 }
 
+// admin-change-email's { error } in plain English for the Change email sheet.
+// The RPC messages are admin_change_user_email's (29 / 40); others show as is.
+function _changeEmailErrText(m){
+  const s=String(m||'').trim(),l=s.toLowerCase();
+  if(!s)return 'Couldn’t update the email. Try again.';
+  if(l.includes('email already in use'))return 'That email already belongs to another account in the app. Ask an admin to sort out the other account first.';
+  if(l.includes('invalid email format')||l==='invalid email')return 'That doesn’t look like a valid email.';
+  if(l.includes('cross-unit email change not allowed'))return 'You can only change emails for members of your own gym.';
+  if(l.includes('only owner or instructor can change emails')||l==='not authorized')return 'You don’t have permission to change emails.';
+  return s;
+}
+
 async function executeChangeEmail(){
   if(!S.changeEmail)return;
   const{kind,sid,dbId,current,isSelf}=S.changeEmail;
@@ -18708,9 +18720,16 @@ async function executeChangeEmail(){
   const r=await cli.functions.invoke('admin-change-email',{body:{target_kind:kind,target_db_id:dbId,new_email:email}});
   const efErr=(r&&r.error)?r.error:((r&&r.data&&r.data.error)?r.data.error:null);
   if(efErr){
-    console.warn('[mybjj] admin-change-email:',efErr);
-    const em=(typeof efErr==='string')?efErr:(efErr.message||'Could not update email.');
-    return showErr(em);
+    // A non-2xx is a FunctionsHttpError whose message is supabase-js's generic
+    // "Edge Function returned a non-2xx status code"; the function's own
+    // { error } (e.g. the RPC's "email already in use") is in the Response
+    // at efErr.context.
+    let fnMsg=(typeof efErr==='string')?efErr:'';
+    if(!fnMsg&&efErr.context&&typeof efErr.context.json==='function'){
+      try{const b=await efErr.context.json();if(b&&typeof b.error==='string')fnMsg=b.error;}catch(_){}
+    }
+    console.warn('[mybjj] admin-change-email:',fnMsg||efErr);
+    return showErr(_changeEmailErrText(fnMsg));
   }
   // Mirror the change locally so the UI reflects it without a full
   // hydrate. The function already updated users/students/staff/whitelist.
