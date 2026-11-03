@@ -25326,8 +25326,8 @@ ${_staff?`<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="
   // changes it via the openChangeEmail flow.
   // Step 2b — ONE Guardian section, two states, gated by _isLinked. Linked state
   // DISPLAYS the linked adult's details LIVE from their STUDENTS row (.phone /
-  // .email); the kid's parent_* columns are left dormant (Option 1a — linking
-  // never copies or clears them, unlinking restores whatever they still hold).
+  // .email). Linking itself never copies or clears the kid's parent_* columns;
+  // the next Save writes them from the linked member (saveEditStu).
   // Staff-only controls: the "Link an existing member" button + the card's ×.
   const _isLinked=!!s._parentStudentId;
   const _linkedAdult=_isLinked?(STUDENTS.find(x=>x._dbId===s._parentStudentId)||null):null;
@@ -25347,8 +25347,8 @@ ${_staff?`<div class="erow"><div class="elbl">Owns MyBJJ Gi</div><button class="
   let guardianBody;
   if(_isLinked){
     // LINKED — member card + derived read-only Phone/Email; manual inputs are
-    // removed (so _captureEditStuTab reads undefined for es-p* and never wipes
-    // the dormant columns). Unlink × is staff-only; a non-staff parent who lands
+    // removed (so _captureEditStuTab reads undefined for es-p*; saveEditStu takes
+    // parent_* from the linked member instead). Unlink × is staff-only; a non-staff parent who lands
     // here still sees the read-only details, just no control to change them.
     const _laName=_linkedAdult?esc(_linkedAdult.name||'Member'):'Linked member';
     const _laBelt=_linkedAdult?((BA[_linkedAdult.belt]||{}).label||''):'';
@@ -25566,10 +25566,20 @@ async function saveEditStu(){
   const ecPhone=_phoneSanitize(trim(D.ecPhone,s.ecPhone||''))||null;
   if(ecPhone&&!_phoneValid(ecPhone))return showErr('Enter a valid emergency phone number');
   // Parent fields only for kids; for adults preserve existing row values.
-  const parentName=isKids?(trim(D.parentName,s.parentName||'')||null):s.parentName;
-  const parentPhone=isKids?(_phoneSanitize(trim(D.parentPhone,s.parentPhone||''))||null):s.parentPhone;
-  if(isKids&&parentPhone&&!_phoneValid(parentPhone))return showErr('Enter a valid guardian phone number');
-  const parentEmail=isKids?((trim(D.parentEmail,s.parentEmail||'').toLowerCase())||null):s.parentEmail;
+  // A linked primary contact (parent_student_id) hides the manual inputs, so the
+  // values come from the linked member (name, account email, phone), never from
+  // the hidden draft; no email or phone on the member keeps the kid's own.
+  const _laSave=(isKids&&s._parentStudentId)?(STUDENTS.find(x=>x._dbId===s._parentStudentId)||null):null;
+  const parentName=!isKids?s.parentName
+    :_laSave?(String(_laSave.name||'').trim()||s.parentName||null)
+    :(trim(D.parentName,s.parentName||'')||null);
+  const parentPhone=!isKids?s.parentPhone
+    :_laSave?(_phoneSanitize(String(_laSave.phone||'').trim())||s.parentPhone||null)
+    :(_phoneSanitize(trim(D.parentPhone,s.parentPhone||''))||null);
+  if(isKids&&!_laSave&&parentPhone&&!_phoneValid(parentPhone))return showErr('Enter a valid guardian phone number');
+  const parentEmail=!isKids?s.parentEmail
+    :_laSave?(String(_laSave.email||'').trim().toLowerCase()||s.parentEmail||null)
+    :((trim(D.parentEmail,s.parentEmail||'').toLowerCase())||null);
   const parent2Name=isKids?(trim(D.parent2Name,s.parent2Name||'')||null):s.parent2Name;
   const parent2Phone=isKids?(trim(D.parent2Phone,s.parent2Phone||'')||null):s.parent2Phone;
   const parent2Email=isKids?((trim(D.parent2Email,s.parent2Email||'').toLowerCase())||null):s.parent2Email;
@@ -25609,6 +25619,18 @@ async function saveEditStu(){
   // Local first (UI snappy), then DB. Capture the pre-change programme/belt so a
   // rejected write can be rolled back (the sensitive prog change is re-confirmed).
   const _prevProg=s.prog,_prevBelt=s.belt;
+  // parent_* travel only when they differ from the row as last read from the
+  // server (s, re-read after every guardian action by _reloadKidParentRow).
+  // Naming parent_email / parent2_email in an UPDATE fires
+  // trg_guardianship_legacy_sync even when the value is the same, and its add
+  // pass re-invites any email no live guardianship covers.
+  const _pDirty={};
+  if(isKids){
+    const _nt=x=>String(x||'').trim()||null,_ne=x=>String(x||'').trim().toLowerCase()||null,_np=x=>_phoneSanitize(String(x||'').trim())||null;
+    [['parent_name',parentName,_nt(s.parentName)],['parent_phone',parentPhone,_np(s.parentPhone)],['parent_email',parentEmail,_ne(s.parentEmail)],
+     ['parent2_name',parent2Name,_nt(s.parent2Name)],['parent2_phone',parent2Phone,_nt(s.parent2Phone)],['parent2_email',parent2Email,_ne(s.parent2Email)]]
+      .forEach(([k,v,base])=>{if((v||null)!==base)_pDirty[k]=v;});
+  }
   s.name=fullName;s.firstName=first;s.lastName=last;s.initials=initials;
   s.dob=dob;s.phone=phone||null;s.gender=gender;
   s.weightKg=weightKg;s.heightCm=heightCm;
@@ -25670,14 +25692,11 @@ async function saveEditStu(){
     membership_level:membershipOut,
     hold_note:holdNoteOut
   };
-  if(isKids){
-    payload.parent_name=parentName;payload.parent_phone=parentPhone;payload.parent_email=parentEmail;
-    payload.parent2_name=parent2Name;payload.parent2_phone=parent2Phone;payload.parent2_email=parent2Email;
-  }
+  Object.assign(payload,_pDirty);
   const r=await cli.from('students').update(payload).eq('id',s._dbId);
   if(r&&r.error){console.warn('[mybjj] update student:',r.error);s.prog=_prevProg;s.belt=_prevBelt;showSaveToast2(friendlyMutationError(r.error),'error');render();return;}
-  // Phase B1 — a kid save rewrites the legacy parent columns; re-read guardianships.
-  if(isKids)refreshGuardianships();
+  // Phase B1 — a kid save that rewrote legacy parent columns; re-read guardianships.
+  if(Object.keys(_pDirty).length)refreshGuardianships();
   // Confirming re-fetch for the sensitive programme change — an RLS-filtered write
   // returns success-shaped-empty, so verify prog/belt actually landed and roll the
   // optimistic local change back if they didn't (belt system must never lie).
@@ -25799,6 +25818,26 @@ function _rPeopleWithAccess(s,staffView){
     :'<button type="button" onclick="openGuardianSheet(\''+kidSid+'\',\'request\')" style="width:100%;margin-top:8px;background:none;border:1px solid var(--blue);color:var(--blue);border-radius:10px;padding:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;cursor:pointer">Request access for someone</button>';
   return head+body+cta;
 }
+// After a guardian action (Remove, Add person, Link member) the server may have
+// rewritten the kid's legacy parent columns (guardian_revoke clears the routes
+// that resolve to the removed person). Re-read them and drop the parent_* draft
+// so the open form, and its Save, start from the server's values.
+async function _reloadKidParentRow(kid){
+  if(!kid||!kid._dbId)return;
+  const cli=initSupabase();if(!cli)return;
+  const r=await cli.from('students').select('id,parent_user_id,parent_student_id,parent2_student_id,parent_name,parent_phone,parent_email,parent2_name,parent2_phone,parent2_email').eq('id',kid._dbId).single();
+  if(!r||r.error||!r.data){if(r&&r.error)console.warn('[mybjj] reload kid parent row:',r.error);return;}
+  const d=r.data;
+  kid._parentUserId=d.parent_user_id||null;kid._parentStudentId=d.parent_student_id||null;kid._parent2StudentId=d.parent2_student_id||null;
+  kid.parentName=d.parent_name||null;kid.parentPhone=d.parent_phone||null;kid.parentEmail=d.parent_email||null;
+  kid.parent2Name=d.parent2_name||null;kid.parent2Phone=d.parent2_phone||null;kid.parent2Email=d.parent2_email||null;
+  if(S.editStuFor===kid.id&&S.editStuDraft){
+    // The inputs still show the old values; drop them from the DOM so the
+    // render's capture can't put them back into the draft.
+    ['es-pname','es-pphone','es-pemail','es-p2name','es-p2phone','es-p2email'].forEach(id=>{const el=document.getElementById(id);if(el)el.removeAttribute('id');});
+    ['parentName','parentPhone','parentEmail','parent2Name','parent2Phone','parent2Email'].forEach(k=>{delete S.editStuDraft[k];});
+  }
+}
 function _kgRow(kidDbId,gid){
   const slot=(S._kidGuardians||{})[kidDbId];
   return (slot&&slot.rows||[]).find(r=>r.id===gid)||null;
@@ -25832,6 +25871,7 @@ function kgAskRemove(kidSid,gid){
       const r=await cli.rpc('guardian_revoke',{p_id:gid});
       if(r&&r.error){showSaveToast2(_kgErr(r.error),'error');throw r.error;}
       showSaveToast2(name+' no longer has access to '+kidFirst+'.');
+      await _reloadKidParentRow(kid);
       refreshGuardianships();
     }
   });
@@ -25897,6 +25937,7 @@ async function submitGuardianSheet(){
   else msg=row.status==='active'?(who+' now has access.'):row.status==='pending'?(who+'’s invite is pending. Use Send invite to email a sign-in link.'):(who+' is already listed.');
   S.guardianSheet=null;
   showSaveToast2(msg);
+  await _reloadKidParentRow(kid);
   await refreshGuardianships();
 }
 async function kgLinkMember(kidSid,adultDbId){
@@ -25911,6 +25952,7 @@ async function kgLinkMember(kidSid,adultDbId){
   const st=r&&r.data&&r.data.status;
   const who=(adult&&adult.name)||'They';
   showSaveToast2(st==='active'?(who+' now has access.'):st==='pending'?(who+' hasn’t signed in yet. Access starts when they do.'):(who+' is already listed.'));
+  await _reloadKidParentRow(kid);
   await refreshGuardianships();
 }
 function rGuardianSheet(){
@@ -25985,7 +26027,7 @@ async function pickParentStudent(kidSid,adultDbId){
   const cli=initSupabase();if(!cli)return;
   const r=await cli.from('students').update({parent_student_id:adult._dbId}).eq('id',kid._dbId);
   if(r&&r.error){console.warn('[mybjj] link parent:',r.error);kid._parentStudentId=prev;showSaveToast2(friendlyMutationError(r.error),'error');render();}
-  else refreshGuardianships();   // Phase B1 — legacy column written
+  else{await _reloadKidParentRow(kid);refreshGuardianships();}   // Phase B1 — legacy column written
 }
 async function unlinkParentStudent(kidSid){
   if(!isStaffOrOwner())return;
@@ -25999,7 +26041,7 @@ async function unlinkParentStudent(kidSid){
   const cli=initSupabase();if(!cli)return;
   const r=await cli.from('students').update({parent_student_id:null}).eq('id',kid._dbId);
   if(r&&r.error){console.warn('[mybjj] unlink parent:',r.error);kid._parentStudentId=prev;showSaveToast2(friendlyMutationError(r.error),'error');render();}
-  else refreshGuardianships();   // Phase B1 — legacy column written
+  else{await _reloadKidParentRow(kid);refreshGuardianships();}   // Phase B1 — legacy column written
 }
 // Searchable picker of adult members in the kid's unit. Filters in memory (STUDENTS
 // is already loaded); scannable at ~100+ adults via the live name filter above.
