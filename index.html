@@ -20957,9 +20957,14 @@ async function _fetchAllStudents(c){
   }
   return { data: all, error: null };
 }
-async function refetchUnitScopedData(){
-  const c=initSupabase(); if(!c) return false;
-  const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
+// Unit-scoped data loads ALL-OR-NOTHING. Fetch phase: the 14 queries below,
+// unchanged, plus an `ok` flag. A query fails if its promise rejected OR it
+// resolved with `.error`. Every query is REQUIRED except
+// visitor_students_for_unit (index 9): on its failure VISITORS={} as before.
+// ok = every required query succeeded.
+const _UNIT_SCOPED_OPTIONAL=[9];
+const _UNIT_SCOPED_NAMES=['students','staff','classes','promotions','events','programme_weeks','attendance','feedback','trial_bookings','visitor_students_for_unit','class_exceptions','trial_sessions','staff_units','posts'];
+async function _fetchUnitScoped(c){
   const res=await Promise.allSettled([
     _fetchAllStudents(c),
     // RLS-2 — staff.feedback dropped from the select; Head Instructor
@@ -21007,6 +21012,18 @@ async function refetchUnitScopedData(){
     // existing positional index stays untouched.
     _fetchAllPosts(c),
   ]);
+  const failed=[];
+  for(let i=0;i<res.length;i++){
+    if(_UNIT_SCOPED_OPTIONAL.indexOf(i)>=0)continue;
+    const r=res[i];
+    if(r.status!=='fulfilled'||(r.value&&r.value.error))failed.push(_UNIT_SCOPED_NAMES[i]||String(i));
+  }
+  return {res,ok:failed.length===0,failed};
+}
+// Apply phase: the mapping/assignment code, moved verbatim. Runs only when the
+// fetch phase came back ok, so the per-store `else if(x.error)` branches below
+// are now reachable only for the optional visitors query.
+function _applyUnitScoped(res,uMap){
   const get=(i)=>res[i].status==='fulfilled'?res[i].value:{data:null,error:res[i].reason};
   const st=get(0),sf=get(1),cl=get(2),pm=get(3),ev=get(4),pw=get(5),at=get(6),fb=get(7),tr=get(8),vs=get(9),ce=get(10),ts=get(11),su=get(12);
   const po=get(13);
@@ -21032,19 +21049,6 @@ async function refetchUnitScopedData(){
     STUDENTS=st.data.map(r=>({id:r.legacy_id,_dbId:r.id,_userId:r.user_id||null,_parentUserId:r.parent_user_id||null,_parentStudentId:r.parent_student_id||null,_parent2StudentId:r.parent2_student_id||null,_active:r.active!==false,email:r.email||null,name:r.full_name,firstName:r.first_name||null,lastName:r.last_name||null,belt:r.belt,deg:r.degree,total:Number(r.total||0),giTotal:Number(r.gi_classes||0),nogiTotal:Number(r.nogi_classes||0),grade:Number(r.grade||0),giGrade:Number(r.gi_grade||0),nogiGrade:Number(r.nogi_grade||0),initials:r.initials,prog:r.prog,unit:uMap[r.unit_id]||null,gender:r.gender,journey:r.journey||[],feedback:[],photoUrl:r.photo_url||null,parentName:r.parent_name||null,parentPhone:r.parent_phone||null,parentEmail:r.parent_email||null,parent2Name:r.parent2_name||null,parent2Phone:r.parent2_phone||null,parent2Email:r.parent2_email||null,dob:r.date_of_birth||null,phone:r.phone||null,weightKg:r.weight_kg||null,heightCm:r.height_cm||null,ecName:r.emergency_contact_name||null,ecPhone:r.emergency_contact_phone||null,_createdAt:r.created_at||null,_lastMarkerDate:r.last_marker_date||null,hasMybjjGi:!!r.has_mybjj_gi,socialHandles:r.social_handles||{},trainingStartedAt:r.training_started_at||null,bjjStartDate:r.bjj_start_date||null,standing:r.standing||'ok',membershipLevel:r.membership_level||null,holdNote:r.hold_note||null,_welcomeHidden:!!r.welcome_hidden,convertedAt:r.converted_at||null,waiverToken:r.waiver_token||null,waiverSentAt:r.waiver_sent_at||null,waiverSignedAt:r.waiver_signed_at||null,_safety:false,parentUserName:(r.parent_user&&r.parent_user.full_name)||null}));
     got=true;
   }else if(st.error)console.warn('[mybjj] hydrate students:',st.error);
-  // Migration 99 — attach _safety (student has a signed waiver with ≥1 safety
-  // flag; `has_flags` is derived, carries NO detail). Unit-scoped like the rest of
-  // this refetch, so it refreshes on a unit switch too. Every student defaults to
-  // false above; this fills the true ones. RLS gives a non-staff session 0 rows —
-  // that is NOT an error — so an empty set or a caught failure just leaves everyone
-  // false (nada cenográfico). Never blocks hydrate.
-  try{
-    const safeRes=await c.from('student_safety').select('student_id,has_flags');
-    if(safeRes&&!safeRes.error&&Array.isArray(safeRes.data)){
-      const safeSet=new Set(safeRes.data.filter(x=>x&&x.has_flags).map(x=>x.student_id));
-      for(const s of STUDENTS)s._safety=safeSet.has(s._dbId);
-    }else if(safeRes&&safeRes.error){console.warn('[mybjj] student_safety:',safeRes.error);}
-  }catch(e){console.warn('[mybjj] student_safety exception:',e);}
   if(sf.data&&sf.data.length){
     STAFF=sf.data.map(r=>{
       // Strip any legacy "Prof." / "Professor " prefix at hydrate so
@@ -21221,6 +21225,31 @@ async function refetchUnitScopedData(){
     console.warn('[mybjj] hydrate feedback:',fb.error);
     for(const s of STUDENTS)s.feedback=[];
   }
+  return got;
+}
+// Returns false - and changes NO store - when any required query failed, or
+// when canApply() (optional) says this result is stale. Every store then keeps
+// its current contents. canApply runs synchronously right before apply.
+async function refetchUnitScopedData(canApply){
+  const c=initSupabase(); if(!c) return false;
+  const uMap={};UNITS.forEach(x=>{if(x&&x._dbId)uMap[x._dbId]=x.id;});
+  const f=await _fetchUnitScoped(c);
+  if(!f.ok){console.warn('[mybjj] unit-scoped refetch incomplete, keeping current data. Failed:',f.failed.join(', '));return false;}
+  if(typeof canApply==='function'&&!canApply())return false;
+  const got=_applyUnitScoped(f.res,uMap);
+  // Migration 99 — attach _safety (student has a signed waiver with ≥1 safety
+  // flag; `has_flags` is derived, carries NO detail). Unit-scoped like the rest of
+  // this refetch, so it refreshes on a unit switch too. Every student defaults to
+  // false above; this fills the true ones. RLS gives a non-staff session 0 rows —
+  // that is NOT an error — so an empty set or a caught failure just leaves everyone
+  // false (nada cenográfico). Never blocks hydrate.
+  try{
+    const safeRes=await c.from('student_safety').select('student_id,has_flags');
+    if(safeRes&&!safeRes.error&&Array.isArray(safeRes.data)){
+      const safeSet=new Set(safeRes.data.filter(x=>x&&x.has_flags).map(x=>x.student_id));
+      for(const s of STUDENTS)s._safety=safeSet.has(s._dbId);
+    }else if(safeRes&&safeRes.error){console.warn('[mybjj] student_safety:',safeRes.error);}
+  }catch(e){console.warn('[mybjj] student_safety exception:',e);}
   // Bucket is private (migration 84) — batch-resolve signed URLs for the
   // freshly-loaded roster + instructors in ONE request so their avatars
   // render. On a unit switch the new unit's students aren't in the cache;
@@ -21291,9 +21320,13 @@ async function loadBirthdayMessages(){
     BDAY_MESSAGES=Array.isArray(data)?data:[];
   }catch(e){console.warn('[mybjj] birthday_messages ex:',e);}
 }
+// Returns false when the unit-scoped refetch failed (or hydrate threw), so
+// refreshAppState can surface its "Couldn't refresh" toast; true otherwise.
 async function hydrateData(){
   const c=initSupabase(); if(!c) return;
   let touched=false;
+  // Boot = onAuthed set S.hydrating before calling us; nothing is loaded yet.
+  const _boot=!!S.hydrating;
   try{
     // Boot fetches ONLY units here; every unit-scoped array (students,
     // staff, classes, promotions, events, sched, attendance, feedback,
@@ -21348,7 +21381,20 @@ async function hydrateData(){
       const _au=UNITS.find(u=>u._dbId===S.profile.active_unit_id);
       if(_au && _au.active && _au.name) S.unit=_au.name;
     }
-    if(await refetchUnitScopedData())touched=true;
+    const _unitOk=await refetchUnitScopedData();
+    if(_unitOk)touched=true;
+    else if(_boot){
+      // All-or-nothing refetch failed on the FIRST hydrate: there is nothing to
+      // keep, and empty lists must not read as truth. Reuse the reconnecting
+      // card (same as a claim_profile transport failure in onAuthed): its Try
+      // again (retryBootAuth) and the 'online' listener re-run onAuthed, which
+      // re-runs this hydrate. S.loggedIn=false is what lets that retry through
+      // _authSettled(); the session itself is untouched.
+      console.warn('[mybjj] boot hydrate: unit-scoped data incomplete, showing reconnecting card');
+      _authTrailPush('hydrate_unit_scoped_failed');
+      S.loggedIn=false;S.authState='reconnecting';S.hydrating=false;render();
+      return false;
+    }
     // Unit-independent self cache for cross-unit check-in. Runs once per
     // hydrate (auth path only — NOT on unit switch, which calls
     // refetchUnitScopedData directly), AFTER UNITS maps so unit resolves.
@@ -21391,6 +21437,7 @@ async function hydrateData(){
     ]);
     if(touched){enrichMeFromHydrate();console.log('[mybjj] hydrated from Supabase');S.hydrating=false;render();if(canEditClassCounts())loadPhotoQueue();loadMyPhotoApproval();loadNotifications();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
     else{console.warn('[mybjj] hydration returned no rows — keeping local fallback');S.hydrating=false;render();if(!_queueHydrateDrainStarted){_queueHydrateDrainStarted=true;drainAttendanceQueue();}}
+    return _unitOk;
   }catch(e){
     console.warn('[mybjj] hydration failed — keeping local fallback:',e);
     // Even on error, drop the splash so the user isn't stuck staring
@@ -21398,6 +21445,7 @@ async function hydrateData(){
     // gracefully (empty roster, etc.). The 10-second splash fallback
     // would catch this anyway; we just want to hide it sooner.
     S.hydrating=false;render();
+    return false;
   }
 }
 
@@ -21434,7 +21482,8 @@ async function refreshAppState(){
       // render (the count + belt distribution can shift any time the
       // academy adds / removes / re-belts a kid).
       S._kidsSummary=null;
-      await hydrateData();
+      // false = unit-scoped refetch failed; every store kept its contents.
+      if(await hydrateData()===false)ok=false;
     }catch(e){ok=false;console.warn('[mybjj] refresh hydrate',e);}
     if(canEditClassCounts()){
       try{ await loadPhotoQueue(); }catch(e){ok=false;console.warn('[mybjj] refresh photo queue',e);}
@@ -21528,7 +21577,7 @@ async function advanceAuthStep(){
       console.warn('[mybjj] email_signin_state:',error);
       S.authMsg=friendlyAuthError(error);
     } else if(data==='not_authorized'){
-      S.authMsg="We couldn't find an invite for this email. Ask your instructor to add you, then use the link they send.";
+      S.authMsg="We couldn't find an account for this email. Check it's the email you gave the gym, or ask your instructor to add you.";
     } else {
       S.authEmail=email;
       S.authHasPassword=(data==='has_password');
@@ -22334,6 +22383,14 @@ function openSub(s){
 }
 function closeSub(){S.sub=null;S.viewStu=null;S.addFb=null;S.editJny=null;S.jnyEditFor=null;S.jnySnapshot=null;S.emailEdit=null;S.changeEmail=null;S.promoteFor=null;S.fbModalFor=null;S.pwdReauthAttempts=0;S.pwdResetSent=false;S._addPrefillForName=null;S._addStuReturnTo=null;render();}
 function toggleUnit(){S.unitOpen=!S.unitOpen;render();}
+// Unit whose data the stores currently hold (pickUnit only). Captured from
+// S.unit when no switch is in flight; moved to the new unit at the exact moment
+// a switch's apply runs. A second tap mid-switch reverts to THIS, not to the
+// first tap's optimistic header.
+let _unitShown=null;
+// Bumped at the start of every pickUnit; a switch whose generation is no longer
+// current returns without touching S.unit, the stores or the overlay.
+let _unitSwitchGen=0;
 async function pickUnit(u){
   // Multi-unit — the dropdown selection is now persisted server-side
   // (users.active_unit_id via set_active_unit) and drives an RLS-scoped
@@ -22345,30 +22402,55 @@ async function pickUnit(u){
   //   per-student .feedback, TRIALS (+ .sessions from trial_sessions),
   //   VISITORS (visitor_students_for_unit), CEXC (class_exceptions, same
   //   window as attendance) and POSTS, then warms signed photo URLs.
-  // Resets: VISITORS={} and CEXC={} every call. When attendance comes back,
-  // DAYCHUNKS={} and DAYCHUNKS_GEN++, which drops on-demand history so it
-  // is re-fetched for the new unit. On a fetch error most arrays keep their
-  // old contents; CLASSES, PROMOTION_LOG, EVENTS, SCHED, POSTS and .feedback
-  // are cleared instead.
+  // ALL-OR-NOTHING: the refetch applies only when every required query
+  // succeeded (visitor_students_for_unit is the one optional query). If any
+  // failed it changes NO store and returns false. Then, as when set_active_unit
+  // itself fails, the switch is undone: set_active_unit back to the previous
+  // unit (best effort), S.unit restored, overlay cleared, error toast. The
+  // stores were never touched, so the screen is exactly what it was before
+  // the tap. On success VISITORS/CEXC are rebuilt and, as before, DAYCHUNKS={}
+  // and DAYCHUNKS_GEN++ drop on-demand history so it is re-fetched for the
+  // new unit.
+  // Rapid switches: each call takes a generation; only the latest may apply,
+  // revert or clear the overlay.
   const unit=UNITS.find(x=>x.name===u);
   if(!unit||!unit._dbId||unit.active===false){showSaveToast2('Unit unavailable','error');return;}
   if(u===S.unit&&!S._unitSwitching){S.unitOpen=false;render();return;}
-  const prevUnit=S.unit;
+  if(!S._unitSwitching)_unitShown=S.unit;
+  const prevUnit=_unitShown;
+  const gen=++_unitSwitchGen;
+  const failMsg="Couldn't switch to "+u+". Try again";
   // Optimistic UI: header flips immediately; content shows the switching
   // overlay (rApp gates it on S._unitSwitching). Nav + header stay live.
   S.unit=u;S.unitOpen=false;S._unitSwitching=true;render();
   const cli=initSupabase();
-  if(!cli){S.unit=prevUnit;S._unitSwitching=false;showSaveToast2("Couldn't switch unit — try again",'error');render();return;}
+  if(!cli){S.unit=prevUnit;S._unitSwitching=false;showSaveToast2(failMsg,'error');render();return;}
+  let ok=false;
   try{
     const r=await cli.rpc('set_active_unit',{p_unit_id:unit._dbId});
+    if(gen!==_unitSwitchGen)return;
     if(r&&r.error)throw r.error;
-    await refetchUnitScopedData(); // refetch calls rebuildTT() after CLASSES
-    S._unitSwitching=false;render();
+    // canApply runs synchronously right before the apply phase.
+    ok=await refetchUnitScopedData(()=>{if(gen!==_unitSwitchGen)return false;_unitShown=u;return true;}); // refetch calls rebuildTT() after CLASSES
+    if(gen!==_unitSwitchGen)return;
+    if(!ok)console.warn('[mybjj] pickUnit: unit-scoped data incomplete for',u);
   }catch(e){
+    if(gen!==_unitSwitchGen)return;
     console.warn('[mybjj] set_active_unit:',e);
-    S.unit=prevUnit;S._unitSwitching=false;
-    showSaveToast2("Couldn't switch unit — try again",'error');render();
   }
+  if(ok){S._unitSwitching=false;render();return;}
+  // Undo server-side too, so the next refetch (pull-to-refresh) loads the unit
+  // the header shows. Best effort: a failed revert is logged and we carry on.
+  const prev=UNITS.find(x=>x.name===prevUnit);
+  if(prev&&prev._dbId){
+    try{
+      const rv=await cli.rpc('set_active_unit',{p_unit_id:prev._dbId});
+      if(rv&&rv.error)console.warn('[mybjj] set_active_unit revert:',rv.error);
+    }catch(e){console.warn('[mybjj] set_active_unit revert:',e);}
+    if(gen!==_unitSwitchGen)return;
+  }else console.warn('[mybjj] set_active_unit revert: no previous unit id for',prevUnit);
+  S.unit=prevUnit;S._unitSwitching=false;
+  showSaveToast2(failMsg,'error');render();
 }
 function selDay(k){const days=bdays();S.selDay=days.find(d=>dk(d)===k)||TODAY;render();}
 // -- Jump to any past date (Classes screen, staff/owner only) ----------------
