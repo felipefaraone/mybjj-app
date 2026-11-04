@@ -8838,8 +8838,14 @@ function rClass(){
       // days stay static-disabled (no retroactive uncheck).
       const skSd=dk(sd);
       const canUndo=skSd===dk(TODAY)||skSd===dk(TOMORROW);
-      if(canUndo){
+      if(canUndo&&isStaff){
         btn=`<button class="bpend" onclick="undoCI('${c.id}')"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Awaiting confirmation</div></button><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:5px;cursor:pointer" onclick="undoCI('${c.id}')">undo</div>`;
+      } else if(canUndo){
+        // Members (and a parent acting for a kid) can't remove their own
+        // check-in: a no-show is marked Absent by the coach and stays on the
+        // record. Same .bpend element and look, minus the tap target and the
+        // undo link. undoCI refuses non-staff too.
+        btn=`<button class="bpend" type="button" disabled aria-disabled="true" style="cursor:default;opacity:1"><div style="font-size:13px;font-weight:700">Checked in</div><div style="font-size:10px;font-weight:400;opacity:.75;margin-top:2px">Ask a coach to change it</div></button>`;
       } else {
         // Past day — static read-only "Checked in". undoCI is guarded
         // both client-side (window) and server-side; this stops the UI
@@ -23090,6 +23096,10 @@ async function doCI(id){
 
 // Undo — DELETE the attendance row for the signed-in user's student row.
 async function undoCI(id){
+  // Members can't remove their own (or their kid's) check-in; only staff and
+  // owners can. Covers every entry point, including an old cached render.
+  // Runs before anything touches ATTENDANCE, the offline queue or the network.
+  if(!isStaffOrOwner()){showSaveToast2('Ask a coach to change it','error');return;}
   // G1-B + G16-new — mirror the doCI window. Undo is allowed today
   // and tomorrow (the same window where check-in was allowed); day+2+
   // and past are rejected defensively. Render-side, past days expose
