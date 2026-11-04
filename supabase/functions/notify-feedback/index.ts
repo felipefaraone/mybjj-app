@@ -12,12 +12,20 @@
 // Only a report that really exists in bug_reports is sent: this function takes
 // no JWT (the webhook calls it), so a forged body must not reach the inboxes.
 //
+// Ops alerts: a row with role 'ops' and no user_id (the daily pg_cron
+// access-invariant check, migration 185) goes ONLY to OPS_NOTIFY_TO, with a
+// fixed subject and no reply-to. It never reaches info@. Every other row is
+// handled as above.
+//
 // Deployed from the dashboard until v7 (not in the repo); brought into the repo
 // with the recipients / reply-to change. Deploy with --no-verify-jwt (as v7).
 //
 // Env:
 //   RESEND_API_KEY — Resend API key with sending access on mybjj-app.com
 //   FEEDBACK_NOTIFY_TO — optional; default "admin.mybjj@gmail.com,info@mybjj.com.au"
+//   OPS_NOTIFY_TO — optional, ops alerts only (comma-separated, parsed like
+//     FEEDBACK_NOTIFY_TO); default "admin.mybjj@gmail.com". info@mybjj.com.au is
+//     always dropped from it.
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY — auto-provided
 //
 // Request (from Supabase Database Webhook):
@@ -37,15 +45,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const FROM_EMAIL = "noreply@mybjj-app.com";
 const DEFAULT_NOTIFY_TO = "admin.mybjj@gmail.com,info@mybjj.com.au";
+const DEFAULT_OPS_NOTIFY_TO = "admin.mybjj@gmail.com";
+const ACADEMY_EMAIL = "info@mybjj.com.au";
 const SUPABASE_PROJECT = "dcilltzgegqsrgatskhz";
 
 // "a@x.com, b@y.com" -> ["a@x.com", "b@y.com"] (trimmed, lowercased, deduped,
 // obviously-broken entries dropped). An empty or broken env falls back to the default.
+const parseEmails = (v: string) => [...new Set(v.split(",").map((e) => e.trim().toLowerCase())
+  .filter((e) => /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(e)))];
 function notifyList(): string[] {
-  const parse = (v: string) => [...new Set(v.split(",").map((e) => e.trim().toLowerCase())
-    .filter((e) => /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(e)))];
-  const fromEnv = parse(Deno.env.get("FEEDBACK_NOTIFY_TO") ?? "");
-  return fromEnv.length ? fromEnv : parse(DEFAULT_NOTIFY_TO);
+  const fromEnv = parseEmails(Deno.env.get("FEEDBACK_NOTIFY_TO") ?? "");
+  return fromEnv.length ? fromEnv : parseEmails(DEFAULT_NOTIFY_TO);
+}
+// Ops alerts only. Same parsing; the academy inbox is never a recipient.
+function opsNotifyList(): string[] {
+  const fromEnv = parseEmails(Deno.env.get("OPS_NOTIFY_TO") ?? "").filter((e) => e !== ACADEMY_EMAIL);
+  return fromEnv.length ? fromEnv : parseEmails(DEFAULT_OPS_NOTIFY_TO);
 }
 
 const corsHeaders = {
@@ -110,10 +125,15 @@ Deno.serve(async (req) => {
   const createdAt = String(r.created_at ?? "");
   const userId = String(r.user_id ?? "");
   const unitId = String(r.unit_id ?? "");
+  // Ops alert: written by the pg_cron job, never by a person (see header).
+  const isOps = r.role === "ops" && r.user_id == null;
 
   // Plain text header: no HTML escaping applies; line breaks are removed so a
-  // client-supplied type / role can never break the header.
-  const subject = `[myBJJ feedback] ${type} from ${role}`.replace(/[\r\n]+/g, " ");
+  // client-supplied type / role can never break the header. The ops subject is
+  // fixed: no row text goes into it.
+  const subject = isOps
+    ? "[myBJJ ops] access check"
+    : `[myBJJ feedback] ${type} from ${role}`.replace(/[\r\n]+/g, " ");
 
   // Only a real row is sent (see header). The content below still comes from the
   // webhook body, exactly as before.
@@ -130,9 +150,9 @@ Deno.serve(async (req) => {
     return json({ error: "No such report" }, 404);
   }
 
-  // Reply-to: the submitter's account email, when there is one.
+  // Reply-to: the submitter's account email, when there is one. Never for ops.
   let replyTo: string | null = null;
-  if (userId) {
+  if (userId && !isOps) {
     try {
       const { data: u } = await supabase.auth.admin.getUserById(userId);
       const e = String(u?.user?.email ?? "").trim();
@@ -187,7 +207,7 @@ Unit ID: ${unitId}`;
     },
     body: JSON.stringify({
       from: `myBJJ Feedback <${FROM_EMAIL}>`,
-      to: notifyList(),
+      to: isOps ? opsNotifyList() : notifyList(),
       ...(replyTo ? { reply_to: replyTo } : {}),
       subject,
       html,
