@@ -1590,7 +1590,7 @@ function _socialIconsRow(socialHandles,opts){
   const chipStyle='display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);text-decoration:none;font-size:'+fontSize+'px;overflow:hidden';
   const chips=visible.map(o=>{
     const g=SOCIAL_GLYPHS[o.p.key]||'';
-    return '<a '+stop+'href="'+o.url+'" target="_blank" rel="noopener noreferrer" title="'+o.p.label+'" aria-label="'+o.p.label+'" style="'+chipStyle+'">'+g+'</a>';
+    return '<a '+stop+'href="'+escHtml(o.url)+'" target="_blank" rel="noopener noreferrer" title="'+o.p.label+'" aria-label="'+o.p.label+'" style="'+chipStyle+'">'+g+'</a>';
   }).join('');
   if(!hidden.length)return chips;
   // "+K" overflow chip — text not glyph; matches the circle's footprint
@@ -1624,7 +1624,7 @@ function rSocialMoreSheet(){
     const url=_socialUrl(p.key,h[p.key]);
     if(!url)return '';
     const g=SOCIAL_GLYPHS[p.key]||'';
-    return '<a href="'+url+'" target="_blank" rel="noopener noreferrer" onclick="closeSocialMore()" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--input-bg);text-decoration:none;color:var(--text2);margin-bottom:8px"><span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--surface);color:var(--text2);overflow:hidden;flex-shrink:0">'+g+'</span><span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);letter-spacing:.3px">'+p.label+'</span></a>';
+    return '<a href="'+escHtml(url)+'" target="_blank" rel="noopener noreferrer" onclick="closeSocialMore()" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--input-bg);text-decoration:none;color:var(--text2);margin-bottom:8px"><span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--surface);color:var(--text2);overflow:hidden;flex-shrink:0">'+g+'</span><span style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;color:var(--text);letter-spacing:.3px">'+p.label+'</span></a>';
   }).join('');
   return '<div class="cov" onclick="closeSocialMore()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:420px;width:100%;margin:0 auto;padding:22px">'
     +'<button onclick="closeSocialMore()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
@@ -1653,7 +1653,7 @@ function rSocialEditorModal(){
   const se=S.socialEdit;if(!se)return '';
   const row=se.kind==='staff'?STAFF.find(x=>x.id===se.id):STUDENTS.find(x=>x.id===se.id);
   if(!row)return '';
-  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  const esc=escHtml;
   const inputs=SOCIAL_PLATFORMS.map(p=>{
     const cur=se.draft[p.key]!==undefined?se.draft[p.key]:(row.socialHandles&&row.socialHandles[p.key])||'';
     return '<div class="erow"><div class="elbl">'+p.label+'</div><input id="se-'+p.key+'" class="einput" maxlength="300" placeholder="'+p.placeholder+'" value="'+esc(cur)+'" oninput="S.socialEdit.draft[\''+p.key+'\']=this.value" autocomplete="off" autocorrect="off" autocapitalize="none" data-1p-ignore="true" data-lpignore="true"/></div>';
@@ -2278,13 +2278,13 @@ function instructorOptionsHtml(selectedName){
   const opts=list.map(s=>{
     const label=staffDisplayName(s);
     const sel=label===selectedName?' selected':'';
-    return '<option value="'+label.replace(/"/g,'&quot;')+'"'+sel+'>'+label+'</option>';
+    return '<option value="'+escHtml(label)+'"'+sel+'>'+escHtml(label)+'</option>';
   });
   // Always render the currently-stored value as the first option even
   // if it doesn't match any hydrated STAFF row (legacy class entries
   // saved before Etapa 1 may carry a free-text instructor string).
   if(selectedName&&!list.some(s=>staffDisplayName(s)===selectedName)){
-    opts.unshift('<option value="'+selectedName.replace(/"/g,'&quot;')+'" selected>'+selectedName+'</option>');
+    opts.unshift('<option value="'+escHtml(selectedName)+'" selected>'+escHtml(selectedName)+'</option>');
   }
   return opts.join('');
 }
@@ -2915,7 +2915,7 @@ function rEvWhoModal(){
       ?"closeEvWho();viewStu('"+s.id+"','schedule')"
       :"closeEvWho();viewStaff('"+s.id+"','schedule')";
     return '<div onclick="'+h+'" style="display:flex;align-items:center;gap:12px;padding:12px 4px 10px 10px;cursor:pointer;border-bottom:1px solid var(--border)">'+av
-      +'<div style="flex:1;min-width:0;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+name+'</div>'
+      +'<div style="flex:1;min-width:0;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(name)+'</div>'
       +_belt
     +'</div>';
   }).join(''):('<div style="padding:18px 0;text-align:center;font-size:13px;color:var(--text3)">'+(isPast?'No one recorded':'No one yet')+'</div>');
@@ -2935,7 +2935,7 @@ function rEvWhoModal(){
   }
   return '<div class="cov" onclick="closeEvWho()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px 18px;max-height:80vh;overflow-y:auto">'
     +'<button onclick="closeEvWho()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
-    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-bottom:8px;padding-right:36px;letter-spacing:.5px">'+(e.title||'Event')+'</div>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);margin-bottom:8px;padding-right:36px;letter-spacing:.5px">'+escHtml(e.title||'Event')+'</div>'
     +head+rows
   +'</div></div>';
 }
@@ -3233,7 +3233,7 @@ function _avBeltPair(beltKey){
 function av(ini,beltKey,sz){
   sz=sz||32;const fs=Math.round(sz*.36);
   const pair=_avBeltPair(beltKey);
-  return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${pair[0]};color:${pair[1]};display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:${fs}px;flex-shrink:0">${ini}</div>`;
+  return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${pair[0]};color:${pair[1]};display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:${fs}px;flex-shrink:0">${escHtml(ini)}</div>`;
 }
 // Avatar photo error fallback. A transient image load failure (network /
 // cache / Storage hiccup on the public avatars bucket) used to hide the
@@ -3870,9 +3870,9 @@ function _stkAv(s,isMe){
   if(photo){
     // overflow:hidden moved to an inner wrapper (kept flex-centred so a broken-photo
     // _avFallbackTxt still centres the initials) so the corner dot isn't clipped.
-    return `<div class="aav" style="background:${bg};padding:0"><span style="position:absolute;inset:0;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;color:${fg}"><img src="${photoSrc(photo)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallbackTxt(this,'${_avq(s.initials||'?')}','${_avq(fg)}')"/></span>${safetyDot}</div>`;
+    return `<div class="aav" style="background:${bg};padding:0"><span style="position:absolute;inset:0;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;color:${fg}"><img src="${photoSrc(photo)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallbackTxt(this,'${escHtml(_avq(s.initials||'?'))}','${_avq(fg)}')"/></span>${safetyDot}</div>`;
   }
-  return `<div class="aav" style="background:${bg};color:${fg}">${s.initials||'?'}${safetyDot}</div>`;
+  return `<div class="aav" style="background:${bg};color:${fg}">${escHtml(s.initials||'?')}${safetyDot}</div>`;
 }
 // Batch — kids privacy hardening (E1). Public class roster for kids
 // classes collapses to a count-only label — no names, no avatars, no
@@ -3891,7 +3891,7 @@ function rAtts(all,cid){
   const P=6;
   const rest=all.length-P;
   const ms=sid=>{const s=STUDENTS.find(x=>x.id===sid);if(!s)return null;const b=beltDef(s.belt,s.prog);return{s,b,me:sid===S.me.id};};
-  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';const _bg=r.me?'var(--blue)':r.b.bg;const _ph=(r.me&&S.me&&S.me.photoUrl)?S.me.photoUrl:r.s.photoUrl;const _av=_ph?`<div class="acav" style="background:${_bg};overflow:hidden;padding:0"><img src="${photoSrc(_ph)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallbackTxt(this,'${_avq(r.s.initials)}','${_avq(r.me?'#fff':r.b.fg)}')"/></div>`:`<div class="acav" style="background:${_bg};color:${r.me?'#fff':r.b.fg}">${r.s.initials}</div>`;return `<div class="achip" onclick="viewStu('${sid}','class')" style="cursor:pointer;background:${r.me?'var(--blue-tint)':r.b.bg+'20'};border:1px solid ${r.me?'var(--blue-mid)':r.b.bg+'40'}">${_av}<span style="color:${r.me?'var(--blue)':'var(--text)'};font-weight:${r.me?600:400}">${r.s.name.split(' ')[0]}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
+  if(exp)return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:11px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase">${all.length} going</span><span class="aexp" onclick="toggleExp('${cid}')">Show less</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">${all.map(sid=>{const r=ms(sid);if(!r)return '';const _bg=r.me?'var(--blue)':r.b.bg;const _ph=(r.me&&S.me&&S.me.photoUrl)?S.me.photoUrl:r.s.photoUrl;const _av=_ph?`<div class="acav" style="background:${_bg};overflow:hidden;padding:0"><img src="${photoSrc(_ph)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallbackTxt(this,'${escHtml(_avq(r.s.initials))}','${_avq(r.me?'#fff':r.b.fg)}')"/></div>`:`<div class="acav" style="background:${_bg};color:${r.me?'#fff':r.b.fg}">${escHtml(r.s.initials)}</div>`;return `<div class="achip" onclick="viewStu('${sid}','class')" style="cursor:pointer;background:${r.me?'var(--blue-tint)':r.b.bg+'20'};border:1px solid ${r.me?'var(--blue-mid)':r.b.bg+'40'}">${_av}<span style="color:${r.me?'var(--blue)':'var(--text)'};font-weight:${r.me?600:400}">${escHtml(r.s.name.split(' ')[0])}${r.me?' (you)':''}</span></div>`;}).join('')}</div></div>`;
   return `<div class="divider" style="margin-top:12px;padding-top:12px"><div style="display:flex;align-items:center;gap:10px"><div class="ast">${all.slice(0,P).map(sid=>{const r=ms(sid);if(!r)return '';return _stkAv(r.s,r.me);}).join('')}${rest>0?`<div class="amor">+${rest}</div>`:''}</div><span style="font-size:12px;color:var(--text2)">${all.length} going</span><span class="aexp" style="margin-left:auto" onclick="toggleExp('${cid}')">Show all</span></div></div>`;
 }
 
@@ -5606,7 +5606,7 @@ function rTL(journey,subject,opt){
       const _sicon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>';
       return '<div class="tli"><div class="tldot" style="background:var(--bg);color:var(--text3);border:2px solid var(--border2)">'+_sicon+'</div>'
         +'<div class="tlb"'+((i===arr.length-1&&!nextNode)?' style="padding-bottom:4px"':'')+'>'
-          +'<div class="tlt" style="color:var(--text)">'+m.label+'</div>'
+          +'<div class="tlt" style="color:var(--text)">'+escHtml(m.label)+'</div>'
           +(_sd?'<div class="tld">'+_sd+'</div>':'')
         +'</div></div>';
     }
@@ -5642,15 +5642,15 @@ function rTL(journey,subject,opt){
       ?'<span style="display:inline-flex;align-items:center;gap:3px;background:transparent;border:0.5px solid var(--blue);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:6px;line-height:1;flex-shrink:0"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display:block"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>You are here</span>'
       :'';
     const _titleRow=isCur
-      ?'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+';line-height:1.4">'+m.label+'</div>'+_herePill+'</div>'
-      :'<div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+'">'+m.label+'</div>';
+      ?'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+';line-height:1.4">'+escHtml(m.label)+'</div>'+_herePill+'</div>'
+      :'<div class="tlt" style="color:'+(isFut?'var(--text3)':'var(--text)')+'">'+escHtml(m.label)+'</div>';
     return `<div class="tli${opt.rowClass||''}"${opt.rowAttrs||''}><div class="tldot" style="background:${isFut?'var(--bg)':isTr?'var(--amber-bg)':bl.bg};color:${isFut?'var(--text3)':isTr?'var(--amber-text)':bl.fg};border:2px solid ${isFut?'var(--border2)':isTr?'var(--amber-border)':isCur?'var(--blue)':bl.bg}${isCur?';box-shadow:0 0 0 3px var(--blue-tint)':''}">
       ${isTr?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`:isFut?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>`:isCur?`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><circle cx="12" cy="12" r="4" fill="${bl.fg}"/></svg>`:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${bl.fg}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`}
     </div><div class="tlb" ${(i===arr.length-1||opt.lastPad)&&!nextNode?'style="padding-bottom:4px"':''}>
       ${_titleRow}
       ${isCur?_curMetaLine:_metaLine}
       ${isCur?'':(_showClasses?`<div class="tlc">${_classesN} classes</div>`:'')}
-      ${isTr?`<div class="tlxfer">Transferred from ${m.prev||'previous academy'}</div>`:''}${opt.extraBody||''}
+      ${isTr?`<div class="tlxfer">Transferred from ${escHtml(m.prev||'previous academy')}</div>`:''}${opt.extraBody||''}
     </div>${opt.trailing||''}</div>`;
   };
   // Group CONTIGUOUS same-belt entries. Contiguous, not keyed: `arr` is already
@@ -5728,7 +5728,7 @@ function rTL(journey,subject,opt){
     // v550 dropped them silently; they render as ordinary rows after the group.
     const spare=g.items.filter(x=>x!==head&&_degOf(x.m)===null);
     const list='<div id="'+gid+'" class="tlgrp" hidden>'
-      +stripes.map(x=>'<div class="tlgs">'+x.m.label+(_fmtJnyDate(x.m.date)?(' · '+_fmtJnyDate(x.m.date)):'')+'</div>').join('')
+      +stripes.map(x=>'<div class="tlgs">'+escHtml(x.m.label)+(_fmtJnyDate(x.m.date)?(' · '+_fmtJnyDate(x.m.date)):'')+'</div>').join('')
       +'</div>';
     // lastPad: the group owns the tail whenever any of its entries was the last
     // in `arr`, so the closing padding does not vanish with the hidden stripes.
@@ -5765,7 +5765,7 @@ function notifRelTime(ts){
 // Defensive HTML escape — notification title/body originate from RPC
 // payloads (admin free-text via send_admin_message; instructor names
 // flowing into feedback / promotion bodies). We don't trust either.
-function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 // Instructor feedback + Head Instructor Note text is stored raw (only .trim()ed
 // on save), so it can hold newlines and any character. The ONLY two ways it
 // reaches HTML:
@@ -5800,7 +5800,7 @@ function rPanel(){const m=S.me;const isA=isStaffOrOwner();const b=BA[m.belt]||BA
 // G17.2a — title surfaces drop the "Professor"/"Coach" prefix; the
 // role chip below the name carries that information now. parseStaffName
 // strips any legacy prefix that survived the migration cleanup.
-const greetName=parseStaffName(m.name||'');const photoPill=photoStatusPill();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${(S.panelOpen&&S.sub)?rSub():''}<div class="phdr" style="position:relative"><img src="/logo.png" alt="MyBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${greetName}</div><div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${staffTitle(m).toUpperCase()}</span>`:(isNonTrainingParent()?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">PARENT</span>`:bb(m.belt,m.deg||0,m.prog||'adult'))}</div>${photoPill}</div><div style="flex:1;min-height:0;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openMyProfile()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">View my profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div>${_showAddChild?`<div class="pitem" onclick="onAddChild()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">+ Add child</div>${CHV}</div>`:''}<div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${S.unit}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${u.name}')"><span>${u.name}</span><span style="font-size:11px;color:var(--text3)">${u.city}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><div class="psign-foot"><button class="psign" onclick="logout()">Sign out</button></div></div>`;}
+const greetName=parseStaffName(m.name||'');const photoPill=photoStatusPill();return `<div class="ov ${S.panelOpen?'open':''}" onclick="closePanel()"></div><div class="panel ${S.panelOpen?'open':''}">${(S.panelOpen&&S.sub)?rSub():''}<div class="phdr" style="position:relative"><img src="/logo.png" alt="MyBJJ" style="position:absolute;top:10px;right:14px;width:32px;height:32px;object-fit:contain;border-radius:50%;opacity:.6"/>${avMe(48,'opensub')}<div class="pname">${escHtml(greetName)}</div><div style="margin-top:8px">${isA?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">${escHtml(staffTitle(m).toUpperCase())}</span>`:(isNonTrainingParent()?`<span style="background:rgba(255,255,255,.2);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:4px">PARENT</span>`:bb(m.belt,m.deg||0,m.prog||'adult'))}</div>${photoPill}</div><div style="flex:1;min-height:0;overflow-y:auto"><div class="psec">Profile</div><div class="pitem" onclick="openMyProfile()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="pilbl">View my profile</div>${CHV}</div><div class="pitem" onclick="openSub('nprefs')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pilbl">Notification preferences</div>${CHV}</div><div class="pitem" onclick="openSub('setpwd')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div class="pilbl">Set password</div>${CHV}</div>${_showAddChild?`<div class="pitem" onclick="onAddChild()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">+ Add child</div>${CHV}</div>`:''}<div class="psec">Academy</div><div class="pitem" onclick="toggleUnit()"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="pilbl">My unit</div><div style="font-size:13px;color:var(--text3)">${escHtml(S.unit)}</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);margin-left:4px"><polyline points="${S.unitOpen?'18 15 12 9 6 15':'6 9 12 15 18 9'}"/></svg></div><div class="uopts ${S.unitOpen?'open':''}">${UNITS.filter(u=>u.active).map(u=>`<div class="uopt ${u.name===S.unit?'active':''}" onclick="pickUnit('${escHtml(_avq(u.name))}')"><span>${escHtml(u.name)}</span><span style="font-size:11px;color:var(--text3)">${escHtml(u.city)}</span>${u.name===S.unit?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A5DAD" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':''}</div>`).join('')}</div>${isA?`<div class="psec">Admin tools</div><div class="pitem" onclick="openSub('anotify')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div class="pilbl">Send notification</div>${CHV}</div><div class="pitem" onclick="openSub('addstu')"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div><div class="pilbl">Add student</div>${CHV}</div><div class="pitem" onclick="openSub('munits')" style="${!isOwner()?'display:none':''}"><div class="piico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div class="pilbl">Manage units</div>${CHV}</div>`:''}</div><div class="psign-foot"><button class="psign" onclick="logout()">Sign out</button></div></div>`;}
 
 function rSub(){const ss={'nprefs':rNPrefs,'anotify':rANotify,'addstu':rAddStu,'munits':rMUnits,'hours':rHours,'stuprof':rStuProf,'staffprof':rStaffProf,'addstaff':rAddStaff,'setpwd':rSetPwd,'editstu':rEditStu,'editstaff':rEditStaff,'kidpeer':rKidPeer,'stuattlist':rStuAttList,'stufblist':rStuFbList,'staffnoteslist':rStaffNotesList,};return(ss[S.sub]||(() =>''))();}
 
@@ -5870,7 +5870,7 @@ function rAddStu(){
   const parentCC=F.parentCc||'+61';
   const v=(k)=>escAttr(F[k]==null?'':F[k]);
   const ccSelect=(idAttr,handler,selected)=>_selWrap('<select id="'+idAttr+'" onchange="'+handler+'" style="flex:1 1 auto;background:none;border:1px solid var(--border);border-radius:6px;padding:5px 38px 5px 14px;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);outline:none">'+ccOptions.map(o=>'<option value="'+o.c+'" '+(o.c===selected?'selected':'')+'>'+o.l+'</option>').join('')+'</select>','','--selr:6px;min-width:72px');
-  const unitSel=UNITS.filter(u=>u.active).map(u=>'<option value="'+u.name+'" '+(u.name===(F.unit||S.unit)?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
+  const unitSel=UNITS.filter(u=>u.active).map(u=>'<option value="'+escHtml(u.name)+'" '+(u.name===(F.unit||S.unit)?'selected':'')+'>'+escHtml(u.name)+', '+escHtml(u.country)+'</option>').join('');
   // Prefill banner — persistent header when openAddStudentForm passed
   // a parent_name (chained Save-&-add-child OR +Add child from another
   // user's profile). Reads from a dedicated slot S._addPrefillForName
@@ -5979,10 +5979,10 @@ function rMUnits(){
         var ccOpts=["AU","NZ","JP","KR","US"].map(function(c){return '<option value="'+c+'" '+(c===u.country?'selected':'')+'>'+CC[c]+'</option>';}).join("");
         return '<div class="card" style="padding:12px 14px;margin-bottom:6px;border:2px solid var(--blue)">'
           +'<div class="ef" style="margin-bottom:8px">'
-          +'<div class="erow"><div class="elbl">Name</div><input class="einput" id="eu-name" value="'+u.name+'"/></div>'
-          +'<div class="erow"><div class="elbl">City</div><input class="einput" id="eu-city" value="'+u.city+'"/></div>'
+          +'<div class="erow"><div class="elbl">Name</div><input class="einput" id="eu-name" value="'+escHtml(u.name)+'"/></div>'
+          +'<div class="erow"><div class="elbl">City</div><input class="einput" id="eu-city" value="'+escHtml(u.city)+'"/></div>'
           +'<div class="erow"><div class="elbl">Country</div><select class="einput" id="eu-country" style="background:var(--card)">'+ccOpts+'</select></div>'
-          +'<div class="erow"><div class="elbl">Address</div><input class="einput" id="eu-addr" value="'+(u.address||'')+'"/></div>'
+          +'<div class="erow"><div class="elbl">Address</div><input class="einput" id="eu-addr" value="'+escHtml(u.address||'')+'"/></div>'
           +'<div class="erow"><div class="elbl">Status</div><div class="seg"><button class="segb '+(u.active?'on':'')+'" onclick="toggleUnitActive(\''+u.id+'\',true)">Active</button><button class="segb '+(!u.active?'on':'')+'" onclick="toggleUnitActive(\''+u.id+'\',false)">Inactive</button></div></div>'
           +'</div>'
           +'<div style="display:flex;gap:8px">'
@@ -5992,12 +5992,12 @@ function rMUnits(){
       }
       return '<div class="card" style="padding:12px 14px;margin-bottom:6px">'
         +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text)">'+u.name+'</div>'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text)">'+escHtml(u.name)+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px">'+badge
         +'<button onclick="S._editUnit=\''+u.id+'\';render()" style="background:none;border:none;cursor:pointer;padding:2px" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
-        +'<button onclick="confirmDeleteUnit(\''+u.id+'\',\''+u.name.replace(/'/g,"\\'")+'\')" style="background:none;border:none;cursor:pointer;padding:2px" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
+        +'<button onclick="confirmDeleteUnit(\''+u.id+'\',\''+escHtml(_avq(u.name))+'\')" style="background:none;border:none;cursor:pointer;padding:2px" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
         +'</div></div>'
-        +'<div style="font-size:12px;color:var(--text3)">'+u.city+(u.address&&u.address!=="Coming soon"?' \u00B7 '+u.address:'')+'</div>'
+        +'<div style="font-size:12px;color:var(--text3)">'+escHtml(u.city)+(u.address&&u.address!=="Coming soon"?' \u00B7 '+escHtml(u.address):'')+'</div>'
         +(stuCount?'<div style="font-size:11px;color:var(--text2);margin-top:4px">'+stuCount+' students</div>':'')
         +'</div>';
     }).join("");
@@ -6061,7 +6061,7 @@ function rHours(){
       totC+=cls;totMin+=mins;
       const hrs=(mins/60).toFixed(1);
       const name=r.instructor_name||'Unassigned';
-      const ini=escHtml(r.instructor_initials||(r.instructor_name?'':'—'));
+      const ini=r.instructor_initials||(r.instructor_name?'':'—');   // av() escapes it
       return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">'
         +av(ini,'white',34)
         +'<div style="flex:1;min-width:0;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:15px;color:var(--text)">'+escHtml(name)+'</div>'
@@ -6140,12 +6140,12 @@ function rStaffProf(){
   // Section 4 — Details. Same shape as rStuProf so the eye lands in
   // the same spots when switching between profiles.
   const emailVal=s.email
-    ?(s.email+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
+    ?(escHtml(s.email)+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null;
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
-    +rDetailRow('Unit',unitName,'')
-    +rDetailRow('Role',publicStaffTitle(s),'')
+    +rDetailRow('Unit',escHtml(unitName),'')
+    +rDetailRow('Role',escHtml(publicStaffTitle(s)),'')
     +'<div style="display:flex;align-items:center;gap:10px;padding:10px 0"><div style="flex:0 0 84px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-family:Barlow Condensed,sans-serif;font-weight:700">Status</div><div style="flex:1;font-size:13px;color:'+(isActive?'var(--green-text)':'var(--amber-text)')+';font-weight:600">'+(isActive?'Active':'Inactive')+'</div></div>'
     +'</div>';
 
@@ -6189,7 +6189,7 @@ function rStaffProf(){
   // profile behind it must not hide them. Same single renderer, same Edit gate.
   const socialBlock=_socialChipsBlock(s.socialHandles,{subject:{kind:'staff',s}});
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="profileBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+cleanName+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="profileBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> '+backLbl+'</button><div class="stitle">'+escHtml(cleanName)+'</div></div>'
     +'<div class="sbody">'
     // Batch 2 — header routed through _renderProfileHeader. Edit pencil
     // appended inside the card via opts.editPencilHtml.
@@ -6214,7 +6214,7 @@ function rStaffProf(){
 }
 
 function rAddStaff(){
-  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Add Instructor</div><button class="ssave" onclick="closeSub()">Send invite</button></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="instructor@email.com"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)"/></div></div><div class="slbl" style="margin-top:8px">Role & rank</div><div class="ef"><div class="erow"><div class="elbl">Role</div><div class="seg"><button class="segb on">Instructor</button><button class="segb">Head Instructor</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">'+UNITS.filter(u=>u.active).map(u=>'<option>'+u.name+'</option>').join('')+'</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel"><option>Brown</option><option>Black</option></select></div><div class="erow"><div class="elbl">Degree</div><select class="esel">'+[0,1,2,3,4,5,6].map(i=>'<option>'+i+'</option>').join('')+'</select></div></div><div class="gnote" style="margin-top:4px">Instructor will receive an invite email. They get access to the admin panel for their assigned unit. Only the head instructor can promote instructors to higher roles.</div><div style="height:24px"></div></div></div>';
+  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">Add Instructor</div><button class="ssave" onclick="closeSub()">Send invite</button></div><div class="sbody"><div class="slbl">Personal info</div><div class="ef"><div class="erow"><div class="elbl">First name</div><input class="einput" placeholder="First name"/></div><div class="erow"><div class="elbl">Last name</div><input class="einput" placeholder="Last name"/></div><div class="erow"><div class="elbl">Email</div><input class="einput" type="email" placeholder="instructor@email.com"/></div><div class="erow"><div class="elbl">Phone</div><input class="einput" type="tel" inputmode="tel" placeholder="+61 4xx xxx xxx" oninput="this.value=_phoneSanitize(this.value)"/></div></div><div class="slbl" style="margin-top:8px">Role & rank</div><div class="ef"><div class="erow"><div class="elbl">Role</div><div class="seg"><button class="segb on">Instructor</button><button class="segb">Head Instructor</button></div></div><div class="erow"><div class="elbl">Unit</div><select class="esel">'+UNITS.filter(u=>u.active).map(u=>'<option>'+escHtml(u.name)+'</option>').join('')+'</select></div><div class="erow"><div class="elbl">Belt</div><select class="esel"><option>Brown</option><option>Black</option></select></div><div class="erow"><div class="elbl">Degree</div><select class="esel">'+[0,1,2,3,4,5,6].map(i=>'<option>'+i+'</option>').join('')+'</select></div></div><div class="gnote" style="margin-top:4px">Instructor will receive an invite email. They get access to the admin panel for their assigned unit. Only the head instructor can promote instructors to higher roles.</div><div style="height:24px"></div></div></div>';
 }
 // G17.2a.1 — saveStaffFb / openStaffFb removed (zero callers after
 // the staff-note modal pattern landed). Compose flows through
@@ -6482,10 +6482,10 @@ function rStuProf(){
 
   // Section 4 — Details
   const emailVal=s.email
-    ?(s.email+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
+    ?(escHtml(s.email)+(s._userId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null;
   const parentEmailVal=!isKids?'':(s.parentEmail
-    ?(s.parentEmail+(s._parentUserId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
+    ?(escHtml(s.parentEmail)+(s._parentUserId?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null);
   // The academy join date has ONE source: training_started_at — the same column
   // the Progress hero's "At myBJJ" column reads. It used to be derived from the
@@ -6530,10 +6530,10 @@ function rStuProf(){
   const socialBlock=isKids?'':_socialChipsBlock(social,{subject:{kind:'student',s}});
   const details='<div class="slbl" style="margin-top:18px">Details</div><div class="card" style="padding:2px 14px">'
     +rDetailRow('Email',emailVal,'')
-    +(isKids?rDetailRow('Parent',parentDisplayName(s),''):'')
-    +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
+    +(isKids?rDetailRow('Parent',escHtml(parentDisplayName(s)),''):'')
+    +(isKids?rDetailRow('Parent phone',escHtml(s.parentPhone),''):'')
     +(isKids?rDetailRow('Parent email',parentEmailVal,''):'')
-    +rDetailRow('Unit',unitName,'')
+    +rDetailRow('Unit',escHtml(unitName),'')
     +(membershipBadge(s)?rDetailRow('Membership',membershipBadge(s),''):'')
     +(joinedDate?rDetailRow('Joined',joinedDate,''):'')
     +giOwnedRow
@@ -6669,7 +6669,7 @@ function rStuProf(){
   const _amberLine=(txt)=>'<div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:12.5px;color:var(--amber-text);line-height:1.5;display:flex;gap:8px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>'+txt+'</span></div>';
   const _progDobWarnHtml=_ageWarns.map(_amberLine).join('');
   return `<div class="sub open">
-<div class="shdr"><button class="sback" onclick="profileBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> ${backLbl}</button><div class="stitle">${s.name}</div></div>
+<div class="shdr"><button class="sback" onclick="profileBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> ${backLbl}</button><div class="stitle">${escHtml(s.name)}</div></div>
 <div class="sbody">
 
 ${_renderProfileHeader(s,{kind:'student',editHandler:editHandler})}
@@ -6906,9 +6906,9 @@ function rJnySection(s,sidKey){
     const delIcon='<button onclick="delJnyMilestone(\''+sidKey+'\','+i+')" title="Delete" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:30px;height:30px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>';
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);opacity:'+(isFut?'.55':'1')+'">'
       +beltDot
-      +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis">'+(m.label||'—')+'</div>'
-      +(sub?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+sub+'</div>':'')
-      +(m.notes?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px;overflow:hidden;text-overflow:ellipsis">'+m.notes+'</div>':'')
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis">'+escHtml(m.label||'—')+'</div>'
+      +(sub?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+escHtml(sub)+'</div>':'')
+      +(m.notes?'<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px;overflow:hidden;text-overflow:ellipsis">'+escHtml(m.notes)+'</div>':'')
       +'</div>'
       +editIcon+delIcon
     +'</div>';
@@ -7276,7 +7276,7 @@ function rStuAttList(){
           +roleIco
           +'<div style="flex:1;min-width:0">'
             +'<div style="font-size:13px;color:var(--text);font-weight:500">'+_fmtAttWhen(r.class_date,r.class_time)+modBadge(m)+privateChip(r)+valueMark(r)+'</div>'
-            +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+trail+'</div>':'')
+            +(trail?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+escHtml(trail)+'</div>':'')
           +'</div>'
           +roleTag
           +pill(r.status)
@@ -7305,7 +7305,7 @@ function rStuAttList(){
     summary='<div style="font-size:12px;color:var(--text3);margin-bottom:10px">'+formatStat(_tc)+' taught · '+formatStat(_nc)+' trained · '+_rl+'</div>';
   }
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="closeStuAttList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+(stl.withTaught?'All my classes':('Attendance · '+s.name.split(' ')[0]))+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="closeStuAttList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">'+(stl.withTaught?'All my classes':('Attendance · '+escHtml(s.name.split(' ')[0])))+'</div></div>'
     +'<div class="sbody">'
       +'<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">'+modChips+roleChips+rngChips+'</div>'
       +summary
@@ -7371,7 +7371,7 @@ function rStuFbList(){
   const list=fb.map((f,i)=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(f.ins)+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+f.date+'</div>'+(canDeleteFeedback(f)?'<button onclick="deleteFeedback(\''+s.id+'\','+i+')" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>':'')+'</div></div><div class="fbtxt">'+_noteBodyHtml(f.text)+'</div></div>').join('');
   const addBtn=canAdd?'<button onclick="openFbModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add feedback</button>':'';
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="closeStuFbList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Feedback · '+s.name.split(' ')[0]+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="closeStuFbList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Feedback · '+escHtml(s.name.split(' ')[0])+'</div></div>'
     +'<div class="sbody">'
       +(addBtn?'<div style="display:flex;justify-content:flex-end;margin-bottom:12px">'+addBtn+'</div>':'')
       +empty+list
@@ -7491,7 +7491,7 @@ function rStaffNotesList(){
   if(s._notes==null){
     _fetchStaffNotes(s);
     return '<div class="sub open">'
-      +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+parseStaffName(s.name).split(' ')[0]+'</div></div>'
+      +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+escHtml(parseStaffName(s.name).split(' ')[0])+'</div></div>'
       +'<div class="sbody"><div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">Loading…</div></div>'
       +'</div>';
   }
@@ -7507,7 +7507,7 @@ function rStaffNotesList(){
   const list=notes.map(n=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(n.author_name||'Unknown')+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+_fmtNoteDate(n.created_at)+'</div>'+trashBtn(n.id)+'</div></div><div class="fbtxt">'+_noteBodyHtml(n.text)+'</div></div>').join('');
   const addBtn='<button onclick="openStaffNoteModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add note</button>';
   return '<div class="sub open">'
-    +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+parseStaffName(s.name).split(' ')[0]+'</div></div>'
+    +'<div class="shdr"><button class="sback" onclick="closeStaffNotesList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Notes · '+escHtml(parseStaffName(s.name).split(' ')[0])+'</div></div>'
     +'<div class="sbody">'
       +'<div style="display:flex;justify-content:flex-end;margin-bottom:12px">'+addBtn+'</div>'
       +empty+list
@@ -7528,7 +7528,7 @@ function rStaffNoteModal(){
   if(!S.staffNoteModalFor)return '';
   const s=STAFF.find(x=>x.id===S.staffNoteModalFor);if(!s)return '';
   return `<div class="cov" onclick="closeStaffNoteModal()" style="align-items:center;justify-content:center;z-index:280;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px">
-<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">Note on ${parseStaffName(s.name).split(' ')[0]}</div>
+<div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">Note on ${escHtml(parseStaffName(s.name).split(' ')[0])}</div>
 <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.4">Head-instructor note. Internal — only the head instructor sees this.</div>
 <textarea id="sn-modal-input" placeholder="What did they teach? Anything to revisit?" style="width:100%;min-height:120px;padding:12px;border:1px solid var(--border);border-radius:10px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;resize:vertical"></textarea>
 <div style="display:flex;gap:10px;margin-top:14px">
@@ -7960,7 +7960,7 @@ async function savePromote(skipDuplicateBeltConfirm,opts){
       +(d>0?' · '+d+' '+(b==='black'?(d===1?'degree':'degrees'):(d===1?'stripe':'stripes')):'');
     openConfirm({
       title:'Move them down?',
-      message:'This changes '+(s.name||'this member')+'\u2019s current belt from '+_lvl(s.belt,Number(s.deg)||0)+' to '+_lvl(targetBelt,targetDeg)+'. To only record a past belt, turn off Set as current belt.',
+      message:'This changes '+escHtml(s.name||'this member')+'\u2019s current belt from '+_lvl(s.belt,Number(s.deg)||0)+' to '+_lvl(targetBelt,targetDeg)+'. To only record a past belt, turn off Set as current belt.',
       dangerLabel:'Move down',
       onConfirm:()=>savePromote(skipDuplicateBeltConfirm,Object.assign({},opts,{skipDemote:true}))
     });
@@ -8289,7 +8289,7 @@ function rJnyEditor(){
   const beltKeys=Array.from(new Set([...Object.keys(BA),...Object.keys(BK)]));
   const beltLabel=(k)=>(BA[k]||BK[k]||{label:k}).label;
   const inferredType=m.type||(m.xfer?'xfer':'');
-  const esc=(v)=>String(v==null?'':v).replace(/"/g,'&quot;');
+  const esc=escHtml;
   // For new entries, default Date to today and Belt to the target's
   // current belt — admins usually log "what just happened" so the
   // defaults match that bias.
@@ -8427,7 +8427,7 @@ function rMonthPromos(){
     // colors were unreadable on the light end of that gradient.
     const firstName=(s.name||'').split(' ')[0]||'?';
     const toBelt=p.toBelt||'?';
-    return '<span style="background:var(--card);color:var(--text);border:1px solid var(--border);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px">'+firstName+'&nbsp;→&nbsp;'+toBelt+'</span>';
+    return '<span style="background:var(--card);color:var(--text);border:1px solid var(--border);font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px">'+escHtml(firstName)+'&nbsp;→&nbsp;'+escHtml(toBelt)+'</span>';
   }).join('');
   const moreTxt=recent.length>3?'<span style="font-size:11px;color:var(--text3)">+' +(recent.length-3)+'</span>':'';
   const closeBtn='<button onclick="event.stopPropagation();dismissMonthPromos()" aria-label="Dismiss" title="Dismiss" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--blue);padding:2px;display:flex;align-items:center;justify-content:center;border-radius:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
@@ -8495,8 +8495,8 @@ function _otherUnitCheckinsBanner(dayKey){
     const n=counts[uid];if(!n)continue;
     const u=UNITS.find(x=>x._dbId===uid);if(!u)continue;
     const nm=u.name;
-    const nmEsc=String(nm).replace(/'/g,"\\'");
-    const suffix=' check-in'+(n===1?'':'s')+' in '+nm;
+    const nmEsc=escHtml(_avq(nm));
+    const suffix=' check-in'+(n===1?'':'s')+' in '+escHtml(nm);
     html+='<div onclick="pickUnit(\''+nmEsc+'\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer"><div style="font-size:13px;color:var(--text2)"><span style="font-weight:700;color:var(--blue)">'+n+'</span>'+suffix+'</div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></div>';
   }
   return html;
@@ -8937,7 +8937,7 @@ function rClass(){
     }
     // .crow wraps the card untouched — time column, rail node, then the card
     // exactly as it was. 'past' reuses the existing `ended` signal in cc.
-    return `<div class="crow${cc.indexOf('ended')>=0?' past':''}"><div class="ctime">${_ctHtml}</div><div class="cnode"><i></i></div><div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div class="ctime-inline" style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${cancelPill}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${c.ins}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${(staffKebab||btn)?`<div style="flex-shrink:0;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">${staffKebab}${btn?`<div style="width:100%">${btn}</div>`:''}</div>`:''}</div>${_chal?_rClsChal(_chal,isStaff&&!!S.expanded[c.id]):(isStaff&&S.expanded[c.id]?_rClsChalAdd(c,_clsUnit):'')}${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div></div>`;}).join('')+'</div>':(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
+    return `<div class="crow${cc.indexOf('ended')>=0?' past':''}"><div class="ctime">${_ctHtml}</div><div class="cnode"><i></i></div><div class="${cc}"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div class="ctime-inline" style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--text);line-height:1">${fmtT12(c.time)}</div>${cancelPill}</div><div style="font-size:13px;color:var(--text2);margin-bottom:2px">${escHtml(c.ins)}</div><div style="font-size:11px;color:var(--text3)">${c.dur}min · ${c.uniform?_clsLabel(c):ctText(c.type)} · ${c.aud}</div></div>${(staffKebab||btn)?`<div style="flex-shrink:0;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">${staffKebab}${btn?`<div style="width:100%">${btn}</div>`:''}</div>`:''}</div>${_chal?_rClsChal(_chal,isStaff&&!!S.expanded[c.id]):(isStaff&&S.expanded[c.id]?_rClsChalAdd(c,_clsUnit):'')}${attBlock}${isIn&&!isCf&&!!myStu?`<div class="tnote"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;color:var(--text3)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div class="tnote-t">Counts once your instructor confirms.</div></div>`:''}</div></div>`;}).join('')+'</div>':(closed?'':`<div class="card" style="text-align:center;padding:28px 16px"><div style="font-size:14px;color:var(--text2)">No classes scheduled</div></div>`)}
   <div style="height:16px"></div>`;}
 
 
@@ -9003,7 +9003,7 @@ function rParentKidSwitcher(){
   const _meP=(typeof _avBeltPair==='function')?_avBeltPair(me.belt):null;const meRing=_meP?(_meP[2]||_meP[0]):'transparent';
   const _meIni=me.initials||(meFirst[0]||'?').toUpperCase();
   const meAvatar=me.photoUrl
-    ?'<div style="width:24px;height:24px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+meRing+';flex-shrink:0"><img src="'+photoSrc(me.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+_avq(_meIni)+'\',\''+_avq(me.belt)+'\',24)"/></div>'
+    ?'<div style="width:24px;height:24px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+meRing+';flex-shrink:0"><img src="'+photoSrc(me.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+escHtml(_avq(_meIni))+'\',\''+_avq(me.belt)+'\',24)"/></div>'
     :(typeof av==='function'?av(_meIni,me.belt,24):'');
   const selfBg=isSelfActive?'#1A5DAD':'var(--card)';
   const selfFg=isSelfActive?'#fff':'var(--text2)';
@@ -9097,7 +9097,7 @@ function _renderProfileHeader(s,opts){
   // Both render via the same chip vocabulary (blue tint, brand text) so
   // a future OWNER badge can be appended in the same row consistently.
   const defaultBadge=isStaff
-    ?'<span style="background:var(--blue-tint);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px">'+publicStaffTitle(s).toUpperCase()+'</span>'
+    ?'<span style="background:var(--blue-tint);color:var(--blue);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px">'+escHtml(publicStaffTitle(s).toUpperCase())+'</span>'
     :(isKids
       ?'<span style="background:var(--amber-bg);color:var(--amber-text);font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:4px">KIDS</span>'
       :'');
@@ -9152,7 +9152,7 @@ function _renderProfileHeader(s,opts){
       +avatarEl
       +'<div style="flex:1;min-width:0">'
         +_champEyebrow(_stuRow&&_stuRow._dbId)   // a staff header reads the staff member's own students row
-        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.2;color:var(--text);word-break:break-word">'+cleanName+'</div>'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.2;color:var(--text);word-break:break-word">'+escHtml(cleanName)+'</div>'
         +'<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
           +(s.belt?beltSVG(s.belt,s.deg||0,prog,110):'')
           +badges.join('')
@@ -9189,9 +9189,9 @@ function _renderProfileIdentity(s,opts){
   // email otherwise; the green JOINED chip helps admins eyeball who's
   // claimed their account.
   const joinedTag=(s._userId&&!selfView)?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':'';
-  const emailVal=s.email?(s.email+joinedTag):'<span style="color:var(--text3)">—</span>';
+  const emailVal=s.email?(escHtml(s.email)+joinedTag):'<span style="color:var(--text3)">—</span>';
   const parentEmailVal=isKids?(s.parentEmail
-    ?(s.parentEmail+((s._parentUserId&&!selfView)?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
+    ?(escHtml(s.parentEmail)+((s._parentUserId&&!selfView)?' <span style="color:var(--green-text);font-size:10px;margin-left:6px;font-weight:700;letter-spacing:.5px">JOINED</span>':''))
     :null):null;
   // The academy join date has ONE source: training_started_at — the same column
   // the Progress hero's "At myBJJ" column reads. It used to be derived from the
@@ -9208,16 +9208,16 @@ function _renderProfileIdentity(s,opts){
   let detailsBody;
   if(isStaff){
     detailsBody=rDetailRow('Email',emailVal,'')
-      +rDetailRow('Unit',unitName,'')
+      +rDetailRow('Unit',escHtml(unitName),'')
       +statusRow;
   }else{
     const giOwned=s.hasMybjjGi===true;
     const giRow=rDetailRow('MyBJJ Gi',giOwned?'<span style="color:var(--green-text)">✓</span>':'<span style="color:var(--text3)">—</span>','');
     detailsBody=rDetailRow('Email',emailVal,'')
-      +(isKids?rDetailRow('Parent',parentDisplayName(s),''):'')
-      +(isKids?rDetailRow('Parent phone',s.parentPhone,''):'')
+      +(isKids?rDetailRow('Parent',escHtml(parentDisplayName(s)),''):'')
+      +(isKids?rDetailRow('Parent phone',escHtml(s.parentPhone),''):'')
       +(isKids?rDetailRow('Parent email',parentEmailVal,''):'')
-      +rDetailRow('Unit',unitName,'')
+      +rDetailRow('Unit',escHtml(unitName),'')
       +(joinedDate?rDetailRow('Joined',joinedDate,''):'')
       +giRow
       +statusRow;
@@ -9267,11 +9267,11 @@ function rProfileArea(){
   const showSwitcher=kids.length>=1;
   // Switcher chips (parent only).
   const meChipLabel=(parseStaffName(m.name||'').split(' ')[0])||'Me';
-  const meChip=(()=>{const sel=subj==='me';return '<button onclick="setProfileSubject(\'me\')" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:24px;border:1.5px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'#1A5DAD':'var(--card)')+';cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:'+(sel?'#fff':'var(--text2)')+'"><span>'+(isP?'Me':meChipLabel)+'</span></button>';})();
+  const meChip=(()=>{const sel=subj==='me';return '<button onclick="setProfileSubject(\'me\')" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:24px;border:1.5px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'#1A5DAD':'var(--card)')+';cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:'+(sel?'#fff':'var(--text2)')+'"><span>'+(isP?'Me':escHtml(meChipLabel))+'</span></button>';})();
   const kidChips=kids.map(k=>{
     const sel=k.id===subj;
     const first=(k.name||'').split(' ')[0]||k.name||'Kid';
-    return '<button onclick="setProfileSubject(\''+k.id+'\')" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:24px;border:1.5px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'#1A5DAD':'var(--card)')+';cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:'+(sel?'#fff':'var(--text2)')+'">'+avStu(k,24)+'<span style="white-space:nowrap">'+first+'</span></button>';
+    return '<button onclick="setProfileSubject(\''+k.id+'\')" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:24px;border:1.5px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'#1A5DAD':'var(--card)')+';cursor:pointer;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:'+(sel?'#fff':'var(--text2)')+'">'+avStu(k,24)+'<span style="white-space:nowrap">'+escHtml(first)+'</span></button>';
   }).join('');
   const switcher=showSwitcher?('<div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface);scrollbar-width:none">'+meChip+kidChips+'</div>'):'';
   // Settings row helpers (shared by every Me body).
@@ -9292,7 +9292,7 @@ function rProfileArea(){
   const icoClock='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
   const icoShield='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
   const icoChat='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-  const unitTrail='<span style="font-size:13px;color:var(--text3);margin-right:8px">'+S.unit+'</span>';
+  const unitTrail='<span style="font-size:13px;color:var(--text3);margin-right:8px">'+escHtml(S.unit)+'</span>';
   const renderSettings=()=>{
     // Each section = slbl + ONE sectionCard() holding its rows. Same rows,
     // icons, onclicks, labels, and the My-unit trailing as before.
@@ -9332,21 +9332,21 @@ function rProfileArea(){
           +_champRoom(avMe(64,'upload'),_meStu&&_meStu._dbId)
           +'<div style="flex:1;min-width:0">'
             +_champEyebrow(_meStu&&_meStu._dbId)
-            +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+(parseStaffName(m.name||'')||'Parent')+'</div>'
-            +'<div style="margin-top:5px;font-size:12px;color:var(--text3)">'+subtitle+'</div>'
+            +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+escHtml(parseStaffName(m.name||'')||'Parent')+'</div>'
+            +'<div style="margin-top:5px;font-size:12px;color:var(--text3)">'+escHtml(subtitle)+'</div>'
           +'</div>'
         +'</div>'
         +photoStatusNote()
       +'</div>';
       const emailDisplay=(S.profile&&S.profile.email)||m.email||'—';
       const phoneRaw=(S.profile&&S.profile.phone)||m.phone||'';
-      const phoneDisplay=phoneRaw?String(phoneRaw):'<span style="color:var(--text3)">Not set</span>';
+      const phoneDisplay=phoneRaw?escHtml(phoneRaw):'<span style="color:var(--text3)">Not set</span>';
       const accountCard='<div class="slbl" style="margin-top:18px">Account</div>'
         +'<div class="card" style="padding:14px;display:flex;flex-direction:column;gap:12px">'
           // Invite-only model — the admin owns emails (email is the invite
           // key). Self editors show the registered email read-only; no change
           // link. Admin-of-other change stays on the roster (openChangeEmail).
-          +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+emailDisplay+'</div></div>'
+          +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(emailDisplay)+'</div></div>'
           +'<div><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase;margin-bottom:4px">Phone</div><div style="font-size:14px;color:var(--text2)">'+phoneDisplay+'</div></div>'
         +'</div>';
       const editBtn='<div style="margin-top:18px"><button onclick="openEditMe()" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer">Edit Profile</button></div>';
@@ -9364,7 +9364,7 @@ function rProfileArea(){
         +_champRoom(avMe(64,'upload'),_meStu&&_meStu._dbId)
         +'<div style="flex:1;min-width:0">'
           +_champEyebrow(_meStu&&_meStu._dbId)
-          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+(parseStaffName(m.name||'')||'You')+'</div>'
+          +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;line-height:1.1;color:var(--text)">'+escHtml(parseStaffName(m.name||'')||'You')+'</div>'
           +'<div style="margin-top:5px;font-size:12px;color:var(--text3)">'+(isStaffNow?'Academy admin':'Member')+'</div>'
         +'</div>'
         +'</div>'
@@ -9372,7 +9372,7 @@ function rProfileArea(){
         +'</div>';
       const emailDisplay=(S.profile&&S.profile.email)||m.email||'—';
       const emailRow='<div class="slbl" style="margin-top:18px">Account</div>'
-        +'<div class="card" style="padding:14px"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+emailDisplay+'</div></div></div>';
+        +'<div class="card" style="padding:14px"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase">Email</div><div style="font-size:14px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(emailDisplay)+'</div></div></div>';
       identityCard=fallbackHeader+emailRow;
     }
     // Children block (Me view): only when there ARE linked kids — an empty
@@ -9468,7 +9468,7 @@ async function saveEditMe(){
 }
 function rEditMeModal(){
   if(!S.editMe)return '';
-  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  const esc=escHtml;
   return `<div class="cov" onclick="closeEditMe()" style="align-items:center;justify-content:center;z-index:300;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px">
 <button onclick="closeEditMe()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;color:var(--text);margin-bottom:6px;padding-right:40px">Edit profile</div>
@@ -9681,7 +9681,7 @@ ${dangerBlock}
 function rBugReportModal(){
   if(!S.bugReport)return '';
   const st=S.bugReport;
-  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  const esc=escHtml;
   // Textarea is uncontrolled (oninput touches DOM only — no render).
   // st.text is empty at open, and only synced from the DOM at submit
   // time so a failed-insert re-render can restore the typed value.
@@ -9940,13 +9940,13 @@ function rAddKidModal(){
   // protects against quotes in stored fields.
   const row=(icon,label,value,actionLabel,href)=>{
     if(!value)return '';
-    const safeValue=escAttr(value);
+    const safeValue=escHtml(_avq(value));
     return '<div style="display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:10px">'
       +'<div style="flex-shrink:0;color:var(--text2);display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--input-bg)">'+icon+'</div>'
-      +'<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase">'+label+'</div><div style="font-size:14px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+value+'</div></div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text3);font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.7px;text-transform:uppercase">'+label+'</div><div style="font-size:14px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(value)+'</div></div>'
       +'<div style="flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:6px">'
         +'<button onclick="_copyAcademyContact(\''+safeValue+'\')" style="background:none;border:none;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--text3);letter-spacing:.5px;cursor:pointer;padding:0">Copy</button>'
-        +'<a href="'+href+'" style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--blue);letter-spacing:.5px;text-decoration:none">'+actionLabel+'</a>'
+        +'<a href="'+escHtml(href)+'" style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;color:var(--blue);letter-spacing:.5px;text-decoration:none">'+actionLabel+'</a>'
       +'</div>'
       +'</div>';
   };
@@ -11906,7 +11906,7 @@ function rCommunityPeople(){
   // G17.2a.1 — search input below filter chips. oninput fires on every
   // keystroke; setMemberQuery re-renders so the list filters live. The
   // clear (×) affordance appears only when there's text to clear.
-  const qVal=String(S.memberQuery||'').replace(/"/g,'&quot;');
+  const qVal=escHtml(S.memberQuery||'');
   // Clear (×) is ALWAYS in the DOM now (display toggled by filterMembersDom)
   // because keystrokes no longer re-render — a conditionally-rendered × would
   // never appear while typing from empty. clearMemberSearch() also empties the
@@ -11916,7 +11916,7 @@ function rCommunityPeople(){
   // Pointer-events disabled so taps go through to the input.
   const searchIcon='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   const searchHtml='<div style="position:relative;margin-bottom:14px">'+searchIcon+'<input type="search" id="members-search" placeholder="Search members…" value="'+qVal+'" oninput="setMemberQuery(this.value)" style="width:100%;padding:10px 36px 10px 36px;border:1px solid var(--border);border-radius:8px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;box-sizing:border-box"/>'+clearBtn+'</div>';
-  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+S.unit+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · <span id="members-count">'+list.length+'</span></div>';
+  const headline='<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Members of '+escHtml(S.unit)+(canSeeKids?' · '+(segment==='kids'?'Kids':'Adults'):'')+' · <span id="members-count">'+list.length+'</span></div>';
   // Recessed containment block groups the level-2 switch with the
   // level-3 filter chips, subordinating them to the People/Wall pill.
   const filterBlock='<div class="mblock">'+segHtml+typeChips+beltChips+'</div>';
@@ -11985,7 +11985,7 @@ function rCommunityPeople(){
     // data-search — the lowercased clean name filterMembersDom() matches the
     // free-text query against (same string the old q-filter used). Quotes
     // escaped so a name can't break out of the attribute.
-    const searchKey=parseStaffName(m.name||'').toLowerCase().replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    const searchKey=escHtml(parseStaffName(m.name||'').toLowerCase());
     return '<div class="card" data-search="'+searchKey+'" onclick="'+tapHandler+'" style="padding:10px 14px;margin-bottom:8px;overflow:hidden;cursor:pointer">'
       +'<div style="display:flex;align-items:center;gap:14px;min-height:60px">'
         +av
@@ -12390,7 +12390,7 @@ function rCommunityWall(){
         +avStu(ms,40)
         +'<div style="flex:1;min-width:0">'
           +'<div style="'+mEyebrow+'">'+mN+' classes</div>'
-          +'<div style="'+mName+'">'+ms.name+'</div>'
+          +'<div style="'+mName+'">'+escHtml(ms.name)+'</div>'
           +mCongratsHtml
           +'<div style="'+mDate+'">'+_promoWhen(po.created_at)+'</div>'
         +'</div>'
@@ -12559,7 +12559,7 @@ function rCommunityWall(){
       +avStu(s,40)
       +'<div style="flex:1;min-width:0">'
         +'<div style="'+_eyebrowStyle+'">'+_eyebrow+'</div>'
-        +'<div style="'+_nameStyle+'">'+s.name+'</div>'
+        +'<div style="'+_nameStyle+'">'+escHtml(s.name)+'</div>'
         +_congratsHtml
         +'<div style="'+_dateStyle+'">'+when+'</div>'
       +'</div>'
@@ -12938,7 +12938,7 @@ function rOssListModal(){
       ?"closeOssList();viewStu('"+s.id+"','community')"
       :"closeOssList();viewStaff('"+s.id+"','community')";
     return '<div onclick="'+_handler+'" style="display:flex;align-items:center;gap:12px;padding:12px 4px 10px 10px;cursor:pointer;border-bottom:1px solid var(--border)">'+av
-      +'<div style="flex:1;min-width:0;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+name+'</div>'
+      +'<div style="flex:1;min-width:0;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(name)+'</div>'
       +_belt
     +'</div>';
   }).join(''):'<div style="padding:18px 0;text-align:center;font-size:13px;color:var(--text3)">No reactions yet</div>';
@@ -13126,7 +13126,7 @@ function rParentMembers(){
       +'<div style="display:flex;align-items:center;gap:14px;min-height:60px">'
         +avStaff(m,40)
         +'<div style="flex:1;min-width:0">'
-        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+staffDisplayName(m)+'</div>'
+        +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(staffDisplayName(m))+'</div>'
         +'</div>'
         +'<div style="flex-shrink:0">'+bb(m.belt,m.deg||0,'adult','left')+'</div>'
       +'</div>'
@@ -13161,11 +13161,11 @@ function rKidPeer(){
   const bmap=s.prog==='kids'?BK:BA;const b=beltDef(s.belt,s.prog);
   // G11 — peer-kid view (parent tapping another kid). Stats removed
   // per the peer-view privacy matrix; header + belt visual only.
-  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">'+first+'</div></div><div class="sbody">'
+  return '<div class="sub open"><div class="shdr">'+BACK+'<div class="stitle">'+escHtml(first)+'</div></div><div class="sbody">'
     +'<div class="card" style="padding:24px 20px 20px;text-align:center">'
     +'<div style="display:flex;justify-content:center;margin-bottom:12px">'+avStu(s,80)+'</div>'
     +_champEyebrow(s._dbId)
-    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;color:var(--text)">'+first+'</div>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:22px;color:var(--text)">'+escHtml(first)+'</div>'
     +'<div style="margin-top:10px">'+bb(s.belt,s.deg||0,s.prog)+'</div>'
     +'</div>'
     +'<div style="height:24px"></div>'
@@ -14360,13 +14360,13 @@ function rSchedule(){
         +'<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">'
         +'<div style="flex:1;min-width:0">'
           +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:'+_eyeCol+';margin-bottom:2px">'+_eyebrow+'</div>'
-          +'<div style="font-family:Bebas Neue,sans-serif;font-size:25px;color:var(--text);line-height:1.05">'+(w.theme||'').toUpperCase()+'</div>'
+          +'<div style="font-family:Bebas Neue,sans-serif;font-size:25px;color:var(--text);line-height:1.05">'+escHtml((w.theme||'').toUpperCase())+'</div>'
           +(_rng?'<div style="font-size:13px;color:var(--text2);margin-top:2px">'+_fmtRange(_rng.start,_rng.end)+'</div>':'')
           +(badges?'<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">'+badges+'</div>':'')
         +'</div>'
         +'<div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0;align-self:flex-start">'+_heroGear+(editBtn||'')+shareWeekBtn+'</div>'
         +'</div>'
-        +(w.notes?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.5;font-style:italic">'+w.notes+'</div>':'')
+        +(w.notes?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.5;font-style:italic">'+escHtml(w.notes)+'</div>':'')
         +'<div class="cyc-pair">'+_sec('Stand up',suRows)+_sec('Ground',grRows)+'</div>'
       +'</div>'
       +(S.editWeek===w._localId?rWEditor(w):'');
@@ -14375,9 +14375,9 @@ function rSchedule(){
       +'<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">'
       +'<div style="width:4px;min-height:44px;background:#1A5DAD;border-radius:2px;flex-shrink:0;margin-top:2px"></div>'
       +'<div style="flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);margin-bottom:2px">WEEK '+w.week+(monthLbl?' · '+monthLbl.toUpperCase():'')+'</div>'
-      +'<div style="font-family:Bebas Neue,sans-serif;font-size:25px;color:var(--text);line-height:1.05;margin-bottom:'+(badges?'6px':'2px')+'">'+(w.theme||'').toUpperCase()+'</div>'
+      +'<div style="font-family:Bebas Neue,sans-serif;font-size:25px;color:var(--text);line-height:1.05;margin-bottom:'+(badges?'6px':'2px')+'">'+escHtml((w.theme||'').toUpperCase())+'</div>'
       +(badges?'<div style="display:flex;gap:4px;flex-wrap:wrap">'+badges+'</div>':'')+'</div>'+topWeekActions+'</div>'
-      +(w.notes?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.5;font-style:italic">'+w.notes+'</div>':'')
+      +(w.notes?'<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.5;font-style:italic">'+escHtml(w.notes)+'</div>':'')
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0">'
       +'<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Stand Up</div>'+suRows+'</div>'
       +'<div style="min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Ground</div>'+grRows+'</div>'
@@ -14410,7 +14410,7 @@ function rSchedule(){
         nextUpHtml='<div class="slbl">Next up</div>'
           +'<div class="card" style="display:flex;align-items:center;gap:10px;cursor:pointer;min-height:44px" onclick="setSelectedWeek(\''+_nw._localId+'\')">'
             +'<div style="flex:1;min-width:0">'
-              +'<div style="font-weight:600;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Week '+_n+' · '+(_nw.theme||'')+'</div>'
+              +'<div style="font-weight:600;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Week '+_n+' · '+escHtml(_nw.theme||'')+'</div>'
               +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+(_nr?('From '+_fmtDayShort(_nr.start)+' · '):'')+_c+' technique'+(_c===1?'':'s')+'</div>'
             +'</div>'+_chev
           +'</div>';
@@ -14447,7 +14447,7 @@ function rSchedule(){
       else{const _r=cycleWeekRange(_curUnit,n);_right='<span class="cycrow-r">'+(_r?_fmtDayShort(_r.start):'')+'</span>';}
       return '<button class="cycrow '+_st+(_isSel&&!_isNow?' is-sel':'')+'" onclick="setSelectedWeek(\''+x._localId+'\')">'
         +'<span class="cycrow-n">'+n+'</span>'
-        +'<span class="cycrow-t">'+(x.theme||'')+'</span>'
+        +'<span class="cycrow-t">'+escHtml(x.theme||'')+'</span>'
         +_right
       +'</button>';
     };
@@ -14511,7 +14511,7 @@ function _evFaceBubble(s,sz){
   }
   const b=beltDef(s.belt,s.prog);
   if(s.photoUrl){
-    return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+b.bg+';border:2px solid var(--card);box-sizing:border-box;overflow:hidden;display:inline-block"><img src="'+photoSrc(s.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+_avq(s.initials)+'\',\''+_avq(s.belt)+'\','+sz+')"/></div>';
+    return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+b.bg+';border:2px solid var(--card);box-sizing:border-box;overflow:hidden;display:inline-block"><img src="'+photoSrc(s.photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+escHtml(_avq(s.initials))+'\',\''+_avq(s.belt)+'\','+sz+')"/></div>';
   }
   return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+b.bg+';color:'+b.fg+';display:inline-flex;align-items:center;justify-content:center;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:10px;border:2px solid var(--card);box-sizing:border-box">'+(s.initials||'?')+'</div>';
 }
@@ -14613,7 +14613,7 @@ function rEvents(isA){
     // has the block, so its meta only needs the weekday and how far off it is.
     if(opts.hero){_metaBits.push(iso?_evLongDate(iso):(e.date||''));}
     else{_metaBits.push(iso?_EV_DOW[_parseISODate(iso).getDay()]:(e.date||''));if(rel)_metaBits.push(rel);}
-    const meta='<div style="font-size:13px;color:var(--text2);margin-top:4px">'+_metaBits.filter(Boolean).join(' · ')+linkInline+'</div>';
+    const meta='<div style="font-size:13px;color:var(--text2);margin-top:4px">'+escHtml(_metaBits.filter(Boolean).join(' · '))+linkInline+'</div>';
     // Clamp rule: length, not measurement. A post-render scrollHeight check
     // would need a second pass per card and would fight the re-render; 140
     // characters is about two lines at this width and is deterministic.
@@ -14628,8 +14628,8 @@ function rEvents(isA){
       // size and weight, reading as the continuation of the text rather than a
       // separate control.
       descHtml=_open
-        ?('<div class="ev-desc">'+e.desc+' '+_tog+'</div>')
-        :('<div class="ev-desc'+(_long?' is-clamped':'')+'">'+e.desc+'</div>'+(_tog?'<div>'+_tog+'</div>':''));
+        ?('<div class="ev-desc">'+escHtml(e.desc)+' '+_tog+'</div>')
+        :('<div class="ev-desc'+(_long?' is-clamped':'')+'">'+escHtml(e.desc)+'</div>'+(_tog?'<div>'+_tog+'</div>':''));
     }
     const part=_evPartHtml(e,me,{});
     // Head: hero gets the eyebrow, everything else gets the date block.
@@ -14638,7 +14638,7 @@ function rEvents(isA){
       head='<div style="display:flex;align-items:flex-start;gap:10px">'
         +'<div style="flex:1;min-width:0">'
           +'<div style="font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--blue);margin-bottom:6px">'+('NEXT EVENT'+(rel?(' · '+rel.toUpperCase()):''))+'</div>'
-          +'<div class="ev-head"><div class="ev-t ev-t-hero">'+e.title+'</div>'+badge+'</div>'
+          +'<div class="ev-head"><div class="ev-t ev-t-hero">'+escHtml(e.title)+'</div>'+badge+'</div>'
           +meta
         +'</div>'+topActions
       +'</div>';
@@ -14650,7 +14650,7 @@ function rEvents(isA){
       head='<div style="display:flex;align-items:center;gap:12px">'
         +dateBox
         +'<div style="flex:1;min-width:0">'
-          +'<div class="ev-head"><div class="ev-t ev-t-card">'+e.title+'</div>'+badge+'</div>'
+          +'<div class="ev-head"><div class="ev-t ev-t-card">'+escHtml(e.title)+'</div>'+badge+'</div>'
           +meta
         +'</div>'+topActions
       +'</div>';
@@ -14692,7 +14692,7 @@ function rEvents(isA){
         +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+_evBadgeHtml(e)
           +'<span style="font-size:13px;color:var(--text2)">'+(d?_evLongDate(e._dateIso):(e.date||''))+_evLinkHtml(e.link)+'</span>'
         +'</div>'
-        +(e.desc?'<div style="font-size:14px;color:var(--text2);line-height:1.5;margin-top:6px">'+e.desc+'</div>':'')
+        +(e.desc?'<div style="font-size:14px;color:var(--text2);line-height:1.5;margin-top:6px">'+escHtml(e.desc)+'</div>':'')
         +'<div style="display:flex;align-items:center;gap:8px;margin-top:12px">'
           +shareBtnHtml('event.stopPropagation();shareEvent(\''+e.id+'\')')+editBtn
         +'</div>'
@@ -14703,7 +14703,7 @@ function rEvents(isA){
       +' onclick="'+act+'"'
       +' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();'+act+';}">'
       +'<span class="ev-past-1">'
-        +'<span class="ev-t ev-t-row">'+e.title+'</span>'
+        +'<span class="ev-t ev-t-row">'+escHtml(e.title)+'</span>'
         +(when?'<span class="ev-past-d">'+when+'</span>':'')
         +chev
       +'</span>'
@@ -14765,10 +14765,10 @@ function rEEdit(){
   // viewport, as rCEdit's does. No backdrop dismiss: unsaved edits.
   return '<div class="cov cov-page"><div class="csheet"><div class="cpg-head"><div class="cpg-title">'+(isNew?'Add event':'Edit event')+'</div><button class="cpg-x" onclick="closeEEdit()" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>'
     +'<div class="cpg-body"><div class="ef">'
-    +'<div class="erow"><div class="elbl">Title</div><input class="einput" id="ev-title" value="'+e.title+'" placeholder="Event name"/></div>'
+    +'<div class="erow"><div class="elbl">Title</div><input class="einput" id="ev-title" value="'+escHtml(e.title)+'" placeholder="Event name"/></div>'
     +'<div class="erow"><div class="elbl">Date</div><input id="ev-date" type="date" value="'+dateVal+'" aria-label="Event date" style="flex:1;width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);text-align:right;direction:rtl;unicode-bidi:plaintext;min-height:28px;-webkit-appearance:none;appearance:none"/></div>'
     +'<div class="erow"><div class="elbl">Type</div><select class="esel" id="ev-type">'+typeOpts+'</select></div>'
-    +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" dir="ltr" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4;text-align:left;direction:ltr">'+e.desc+'</textarea></div>'
+    +'<div class="erow" style="align-items:flex-start"><div class="elbl" style="padding-top:12px">Description</div><textarea class="einput" id="ev-desc" dir="ltr" style="min-height:72px;resize:vertical;padding-top:10px;line-height:1.4;text-align:left;direction:ltr">'+escHtml(e.desc)+'</textarea></div>'
     +'<div class="erow"><div class="elbl">Link</div><input class="einput" id="ev-link" value="'+(e.link||'')+'" placeholder="https://... (optional)"/></div>'
     +'</div>'
     +'</div><div class="cpg-foot">'
@@ -14797,11 +14797,11 @@ function rWEditor(w){
       return '<div ondragover="_dragTechOver(event,\''+lid+'\',\''+cat+'\')" ondrop="_dragTechDrop(event,\''+lid+'\',\''+cat+'\','+i+')" style="background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid var(--border);max-width:100%;overflow:hidden">'
         +'<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;min-width:0">'
         +handle
-        +'<input value="'+(tv.t||'').replace(/"/g,'&quot;')+'" oninput="updateTech(\''+lid+'\',\''+cat+'\','+i+',\'t\',this.value)" placeholder="Technique name" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:12px;color:var(--text);min-width:0;height:24px"/>'
+        +'<input value="'+escHtml(tv.t||'')+'" oninput="updateTech(\''+lid+'\',\''+cat+'\','+i+',\'t\',this.value)" placeholder="Technique name" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:12px;color:var(--text);min-width:0;height:24px"/>'
         +upBtn+downBtn
         +'<button onclick="removeTech(\''+lid+'\',\''+cat+'\','+i+')" title="Remove" aria-label="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;width:24px;height:24px;padding:0;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center">×</button>'
         +'</div>'
-        +'<input value="'+(tv.video||'').replace(/"/g,'&quot;')+'" oninput="updateTech(\''+lid+'\',\''+cat+'\','+i+',\'video\',this.value)" placeholder="Video URL (YouTube or Instagram)..." style="width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:11px;color:var(--text3);min-width:0"/>'
+        +'<input value="'+escHtml(tv.video||'')+'" oninput="updateTech(\''+lid+'\',\''+cat+'\','+i+',\'video\',this.value)" placeholder="Video URL (YouTube or Instagram)..." style="width:100%;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:11px;color:var(--text3);min-width:0"/>'
         +'</div>';
     }).join('');
   }
@@ -14833,9 +14833,9 @@ function rWEditor(w){
       +'<div class="erow"><div class="elbl">Week #</div><input id="we-week-idx" type="number" min="1" value="'+(w.week||1)+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);text-align:right"/></div>'
     +'</div>'
     +(_noMonth?'':'<div class="slbl">Month</div><div style="margin-bottom:12px">'+monthPicker+'</div>')
-    +'<div class="slbl">Theme</div><div class="ef" style="margin-bottom:12px"><div class="erow"><input id="we-theme" value="'+(w.theme||'').replace(/"/g,'&quot;')+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/></div></div>'
+    +'<div class="slbl">Theme</div><div class="ef" style="margin-bottom:12px"><div class="erow"><input id="we-theme" value="'+escHtml(w.theme||'')+'" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)"/></div></div>'
     +'<div class="slbl">Programmes</div><div style="display:flex;flex-wrap:wrap;margin-bottom:14px">'+progToggles+'</div>'
-    +'<div class="slbl">Notes</div><div class="ef" style="margin-bottom:12px"><textarea id="we-notes" dir="ltr" style="width:100%;min-height:60px;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);padding:12px;resize:none;text-align:left;direction:ltr">'+(w.notes||'')+'</textarea></div>'
+    +'<div class="slbl">Notes</div><div class="ef" style="margin-bottom:12px"><textarea id="we-notes" dir="ltr" style="width:100%;min-height:60px;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text);padding:12px;resize:none;text-align:left;direction:ltr">'+escHtml(w.notes||'')+'</textarea></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;min-width:0">'
     +'<div style="min-width:0"><div class="slbl">Stand Up</div>'+techFields(w.standUp,'standUp')+'<button onclick="addTech(\''+lid+'\',\'standUp\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
     +'<div style="min-width:0"><div class="slbl">Ground</div>'+techFields(w.ground,'ground')+'<button onclick="addTech(\''+lid+'\',\'ground\')" style="width:100%;background:none;border:1.5px dashed var(--border2);border-radius:6px;padding:6px;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;color:var(--text3);cursor:pointer;margin-top:2px">+ Add</button></div>'
@@ -15026,7 +15026,7 @@ function rARosterListInner(){
       +'<div style="min-width:0;flex:1"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);display:flex;align-items:center;flex-wrap:nowrap">'+_nameClipHtml(s.name)
       +'<span style="margin-left:auto;padding-left:8px;flex-shrink:0;display:inline-flex">'+bb(s.belt,s.deg||0,s.prog,'left',true)+'</span></div>'
       +deskFlagLine(s)
-      +(_showCtx?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+unitName+' · '+s.prog+'</div>':'')
+      +(_showCtx?'<div style="font-size:11px;color:var(--text3);margin-top:1px">'+escHtml(unitName)+' · '+s.prog+'</div>':'')
       +statLine
       +(_flagsHtml?'<div class="rc-flags">'+_flagsHtml+'</div>':'')
       +'</div></div>'
@@ -15646,7 +15646,7 @@ function _trialSlotGroups(t){
 function rRescheduleModal(){
   if(!S.rescheduleTrial)return '';
   const t=TRIALS.find(x=>x._dbId===S.rescheduleTrial);if(!t)return '';
-  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  const esc=escHtml;
   const who=_trialParticipantName(t)||'this trial';
   const groups=_trialSlotGroups(t);
   // MOVE is the default action; add is one tap away via the link at the bottom.
@@ -16242,7 +16242,7 @@ function rARoster(){
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
     +'<div style="display:flex;align-items:center;flex:1;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 12px">'
     +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-    +'<input id="rq-input" value="'+(S.rq||'').replace(/"/g,'&quot;')+'" oninput="setRQ(this.value)" placeholder="Search students..." style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text)"/>'
+    +'<input id="rq-input" value="'+escHtml(S.rq||'')+'" oninput="setRQ(this.value)" placeholder="Search students..." style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:13px;color:var(--text)"/>'
     +clearBtn
     +'</div>'
     +'</div>'
@@ -16338,9 +16338,9 @@ function rStaff(){
     const editBtn=showEdit?'<button onclick="event.stopPropagation();openEditStaff(\''+s.id+'\')" title="Edit" style="background:none;border:1px solid var(--border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
     const remBtn=showRemove?'<button onclick="event.stopPropagation();openRemoveStaff(\''+s.id+'\')" title="Remove" style="background:none;border:1px solid var(--red-border);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--red-text);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>':'';
     const actions=(showEdit||showRemove)?'<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">'+editBtn+remBtn+'</div>':'';
-    const emailLine=s.email?'<div style="font-size:11px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.email+'</div>':'';
+    const emailLine=s.email?'<div style="font-size:11px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(s.email)+'</div>':'';
     const inviteRow=inviteStatusRow(s,'staff');
-    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(s.name)+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+roleLbl+beltSeg+unitSeg+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
+    return '<div class="card" style="cursor:pointer;overflow:hidden" onclick="viewStaffMember(this.dataset.sid,\'roster\')" data-sid="'+s.id+'"><div style="display:flex;align-items:center;gap:12px;min-width:0">'+avStaff(s,38)+'<div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:17px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(s.name)+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(roleLbl+beltSeg+unitSeg)+'</div>'+emailLine+'</div>'+actions+'</div>'+inviteRow+'</div>';
   }).join('');
   return header+rows;
 }
@@ -16367,7 +16367,7 @@ function rManage(){
   const header=`<div style="margin-bottom:12px"><div style="font-size:13px;color:var(--text2)">Editing the weekly timetable. Changes apply to all future weeks.</div></div>`;
   const renderCard=(c,dow)=>{
     const t=CT.find(x=>x.id===c.type)||CT[0];
-    return `<div class="citem"><div class="cit">${fmtT12(c.time)}</div><div class="cii"><div class="cin">${t.lbl}</div><div class="cim"><span>${c.ins.replace('Prof. ','')}</span><span>·</span><span>${c.dur}min</span><span>·</span><span class="ctag ${t.tc}" style="font-size:10px;padding:1px 5px">${c.aud}</span></div></div><div style="display:flex;gap:6px"><button class="bedit" onclick="openEditCls('${c.id}',${dow})">Edit</button><button class="bedit" style="color:var(--red-text);border-color:var(--red-border)" onclick="reqDel('${c.id}',${dow})">Delete</button></div></div>`;
+    return `<div class="citem"><div class="cit">${fmtT12(c.time)}</div><div class="cii"><div class="cin">${t.lbl}</div><div class="cim"><span>${escHtml(c.ins.replace('Prof. ',''))}</span><span>·</span><span>${c.dur}min</span><span>·</span><span class="ctag ${t.tc}" style="font-size:10px;padding:1px 5px">${c.aud}</span></div></div><div style="display:flex;gap:6px"><button class="bedit" onclick="openEditCls('${c.id}',${dow})">Edit</button><button class="bedit" style="color:var(--red-text);border-color:var(--red-border)" onclick="reqDel('${c.id}',${dow})">Delete</button></div></div>`;
   };
   const dayBlocks=[1,2,3,4,5,6,0].map(dow=>{
     const cls=(TT[dow]||[]).slice().sort((a,b)=>a.time.localeCompare(b.time));
@@ -16463,7 +16463,7 @@ function rCEdit(){
 const GLASS_NAV=true;
 const TABS=[{id:'class',label:'Classes',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`},{id:'progress',label:'Progress',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`},{id:'community',label:'Community',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`},{id:'schedule',label:'Programme',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`},{id:'admin',label:'Manage',icon:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`}];
 
-function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${u.name}" ${u.name===S.unit?'selected':''}>${u.name}, ${u.country}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.lbEdit?rLbEditPage():''}${S.lbActivate?rLbActivateSheet():''}${S.lbReview?rLbReviewPage():''}${S.lbPublish?rLbPublishSheet():''}${S.lbShare?rLbShareSheet():''}${S.champShare?rChampShareSheet():''}${_checkinMaybeOpen()}${S.checkin?rCheckinSheet():''}${S.lbPosts?rLbPostsModal():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.clsChal?rClassChallengeSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;display:flex">${avMe(36,'hdr')}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;display:flex">${avMe(36,'hdr')}</div><div class="rail-me-txt"><div class="rail-me-nm">${me.name}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
+function rApp(){const views={class:rClass,progress:rProgress,community:rMembers,schedule:rSchedule,admin:rAdmin};const me=S.me;const isA=isStaffOrOwner();const isP=me.role==='parent';const _selfActive=(typeof activeProfileIsSelf==='function')?activeProfileIsSelf():true;const _showAdmin=isA&&_selfActive;const vt=TABS.filter(t=>{if(t.id==='admin')return _showAdmin;return true;});if(!_showAdmin&&S.tab==='admin')S.tab='class';const ur=UNREAD_COUNT|0;const urLbl=ur>99?'99+':String(ur);const au=UNITS.filter(u=>u.active);const unitEl=(au.length>1&&(S.tab==='class'||S.tab==='schedule'||S.tab==='admin'||S.tab==='community'||S.tab==='progress'))?`<span style="display:inline-flex;align-items:center;gap:3px;color:var(--text3)"><select onchange="pickUnit(this.value)" style="appearance:none;-webkit-appearance:none;background:none;border:none;outline:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:0;margin-top:0">${au.map(u=>`<option value="${escHtml(u.name)}" ${u.name===S.unit?'selected':''}>${escHtml(u.name)}, ${escHtml(u.country)}</option>`).join('')}</select><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg></span>`:`<div class="acad">${S.unit}</div>`;const _dtTitle=(TABS.find(t=>t.id===S.tab)||{}).label||'';let _dtSub='';const _hdrDt='<div class="hdr-dt"><div class="hdr-dt-t">'+escHtml(_dtTitle)+'</div>'+(_dtSub?'<div class="hdr-dt-s">'+escHtml(_dtSub)+'</div>':'')+'</div>';return `${_swUpdateBannerShown?`<div class="update-strip">App update available <button class="us-btn" onclick="applySwUpdate()">Refresh</button></div>`:''}${(typeof navigator!=='undefined'&&navigator.onLine===false)?`<div class="offline-strip">Offline — your actions will sync when back online</div>`:''}${rPanel()}${rParentProfileArea()}${rInbox()}${rEditCounts()}${rPrivateSheet()}${S.contactLogFor?rContactLogSheet():''}${S.qrFor?rTrialQRSheet():''}${rCropModal()}${rWebcamSheet()}${rAddStaffModal()}${rRemoveStaffConfirm()}${rShareFallback()}${rEmailEditModal()}${rChangeEmailModal()}${rPromoteModal()}${rFeedbackModal()}${rStaffNoteModal()}${rClassAddStudentModal()}${rMarkPSheet()}${rPCInfoSheet()}${rPostComposer()}${rJnyDeclareSheet()}${S.attMove?rAttMoveSheet():''}${S.socialPost?rSocialPostSheet():''}${S.lbEdit?rLbEditPage():''}${S.lbActivate?rLbActivateSheet():''}${S.lbReview?rLbReviewPage():''}${S.lbPublish?rLbPublishSheet():''}${S.lbShare?rLbShareSheet():''}${S.champShare?rChampShareSheet():''}${_checkinMaybeOpen()}${S.checkin?rCheckinSheet():''}${S.lbPosts?rLbPostsModal():''}${S.refLink?rTrialRefLinkSheet():''}${S.bdayWeekShare?rBdayWeekShareSheet():''}${rConfirmModal()}${S.cdel?rCDel():''}${S.cardEx?rCardExSheet():''}${S.clsChal?rClassChallengeSheet():''}${S.closeDay?rCloseDaySheet():''}${S.oneoff?rOneoffSheet():''}${S.waiverDoc?rWaiverDocView():''}${rParentPicker()}${rGuardianSheet()}${rAddKidModal()}${rConvertKidModal()}${rRescheduleModal()}${rTrialTypeSwitchModal()}${rWaiverSheet()}${rEditMeModal()}${rBugReportModal()}${rCycleSetupModal()}${rSocialEditorModal()}${rSocialMoreSheet()}${rOssListModal()}${rEvWhoModal()}${rPhotoMenu()}${rPhotoLightbox()}${S.editJny?rJnyEditor():''}${(!S.cdel&&((S.editCls!==null&&S.editCls!==undefined)||S.addCls))?rCEdit():''}${(S.editEv||S.addEv)?rEEdit():''}<div class="header">${_hdrDt}<div class="hdr-l"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:38px;height:38px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div><div class="hdr-r">${queueCount()>0?`<button class="qb" onclick="drainAttendanceQueue()" title="Tap to retry sync">Pending sync · ${queueCount()}</button>`:''}<div class="hbell" onclick="openInbox()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${ur>0?`<div class="bell-badge">${urLbl}</div>`:''}</div><div class="hdr-me" onclick="openProfileArea('me')" style="width:36px;height:36px;flex-shrink:0;cursor:pointer;display:flex">${avMe(36,'hdr')}</div></div></div>${rParentKidSwitcher()}<div class="content${GLASS_NAV?' glass-pad':''}">${rPasswordSuggest()}${(views[S.tab]||rClass)()}${S._unitSwitching?`<div class="unit-switch-ov"><svg class="mybjj-ptr-spinner" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="42 16"/></svg><div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.5px;color:var(--text3)">Switching unit…</div></div>`:''}</div><div class="bnav${GLASS_NAV?' glass':''}"><div class="rail-brand"><img src="/logo.png" alt="MyBJJ" onclick="setTab('class')" style="width:32px;height:32px;object-fit:contain;border-radius:50%;cursor:pointer"/>${unitEl}</div>${vt.map(t=>`<button class="nbtn ${S.tab===t.id?'active':''}" onclick="setTab('${t.id}')">${t.icon}<span class="nlbl">${t.label}</span>${(!GLASS_NAV&&S.tab===t.id)?'<div class="ntick"></div>':''}</button>`).join('')}${GLASS_NAV?`<div class="ntick-slide" style="transform:translate(${(typeof window._navPillX==='number'?window._navPillX:0)}px,-50%)"></div>`:''}<div class="rail-foot"><div class="rail-me" onclick="openProfileArea('me')"><div style="width:36px;height:36px;flex-shrink:0;cursor:pointer;display:flex">${avMe(36,'hdr')}</div><div class="rail-me-txt"><div class="rail-me-nm">${escHtml(me.name)}</div><div class="rail-me-rl">${_meRoleLabel()}</div></div><svg class="rail-me-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div></div></div>`;}
 
 
 function showSaveToast(){const t=document.createElement('div');t.textContent='\u2713 Changes saved';t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:10px 24px;border-radius:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:14px;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .4s';document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},1800);}
@@ -18113,7 +18113,7 @@ function avMe(size,mode){
     :'';
   const _ringP=_avBeltPair(m.belt);const _ringBg=_ringP[2]||_ringP[0];
   const inner=photoUrl
-    ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+_ringBg+'"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+_avq(m.initials)+'\',\''+_avq(m.belt)+'\','+size+')"/></div>'
+    ? '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;background:#eee;box-shadow:0 0 0 2px '+_ringBg+'"><img src="'+photoSrc(photoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+escHtml(_avq(m.initials))+'\',\''+_avq(m.belt)+'\','+size+')"/></div>'
     : av(m.initials,m.belt,size);
   // 174: the signed-in user's own students row (by _userId, never the active kid)
   const _own=(S.profile&&S.profile.id)?_champStuOf({_userId:S.profile.id,role:'instructor'}):null;
@@ -18136,8 +18136,8 @@ function avStaff(s,size,plain){
 function _avStaffDisc(s,size){
   if(s&&s.photoUrl){
     const _rp=_avBeltPair(s.belt);const ring=_rp[2]||_rp[0];
-    const iniEsc=_avq(s&&s.initials||'??');const beltEsc=_avq(s&&s.belt||'');
-    return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+iniEsc+'\',\''+beltEsc+'\','+size+')"/></div>';
+    const iniEsc=escHtml(_avq(s&&s.initials||'??'));const beltEsc=_avq(s&&s.belt||'');
+    return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+escHtml(s.name||'')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+iniEsc+'\',\''+beltEsc+'\','+size+')"/></div>';
   }
   return av(s&&s.initials||'??',s&&s.belt||'',size);
 }
@@ -18562,10 +18562,10 @@ function rEmailEditModal(){
   if(!target)return '';
   const subject=isParent?('parent of '+target.name):target.name;
   const current=(isParent?target.parentEmail:target.email)||'';
-  const valAttr=current.replace(/"/g,'&quot;');
+  const valAttr=escHtml(current);
   return `<div class="cov" onclick="closeEmailEditor()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px">
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">${current?'Edit email':'Add email'}</div>
-<div style="font-size:12px;color:var(--text3);margin-bottom:14px">for ${subject}</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:14px">for ${escHtml(subject)}</div>
 <input id="em-input" class="einput" type="email" autocomplete="email" placeholder="email@example.com" value="${valAttr}" style="width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:10px;font-family:Barlow,sans-serif;font-size:14px;color:var(--text);background:var(--input-bg);outline:none;margin-bottom:14px"/>
 <div style="display:flex;flex-direction:column;gap:8px">
   <button class="bblue" style="padding:11px" onclick="saveEmailEditor(true)">Save & send invite</button>
@@ -18623,10 +18623,10 @@ function closeChangeEmail(){S.changeEmail=null;render();}
 function rChangeEmailModal(){
   if(!S.changeEmail)return '';
   const{current,name}=S.changeEmail;
-  const cur=current?current.replace(/"/g,'&quot;'):'';
+  const cur=current?escHtml(current):'';
   return `<div class="cov" onclick="closeChangeEmail()" style="align-items:center;z-index:280"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:380px;margin:0 16px;padding:22px">
 <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px">${S.changeEmail.noAccount?'Add email':'Change email'}</div>
-<div style="font-size:12px;color:var(--text3);margin-bottom:14px">for ${(name||'').replace(/</g,'&lt;')}</div>
+<div style="font-size:12px;color:var(--text3);margin-bottom:14px">for ${escHtml(name||'')}</div>
 <div class="ef" style="margin-bottom:12px">
   <div class="erow"><div class="elbl">Current</div><input class="einput" value="${cur||'—'}" disabled style="color:var(--text2);background:var(--bg);cursor:not-allowed"/></div>
   <div class="erow"><div class="elbl">New email</div><input id="ce-input" class="einput" type="email" autocomplete="off" placeholder="email@example.com" value=""/></div>
@@ -19085,8 +19085,8 @@ function _avStuDisc(s,size){
   if(s&&s.prog==='kids')return av(s&&s.initials||'?',s&&s.belt||'',size);
   if(s&&s.photoUrl){
     const _rp=_avBeltPair(s&&s.belt||'');const ring=_rp[2]||_rp[0];
-    const iniEsc=_avq(s&&s.initials||'?');const beltEsc=_avq(s&&s.belt||'');
-    return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+(s.name||'').replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+iniEsc+'\',\''+beltEsc+'\','+size+')"/></div>';
+    const iniEsc=escHtml(_avq(s&&s.initials||'?'));const beltEsc=_avq(s&&s.belt||'');
+    return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;overflow:hidden;display:inline-flex;flex-shrink:0;background:#eee;box-shadow:0 0 0 2px '+ring+'"><img src="'+photoSrc(s.photoUrl)+'" alt="'+escHtml(s.name||'')+'" style="width:100%;height:100%;object-fit:cover;display:block" onerror="_avFallback(this,\''+iniEsc+'\',\''+beltEsc+'\','+size+')"/></div>';
   }
   return av(s&&s.initials||'?',s&&s.belt||'',size);
 }
@@ -19114,7 +19114,7 @@ function appTrialUrl(){return appShareUrl()+'/trial';}
 function shareWhatsApp(text){window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener');}
 const SHARE_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
 const LINK_ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-function inlineLinkHtml(url,title){if(!url)return '';return '<a href="'+escAttr(url)+'" target="_blank" rel="noopener" title="'+(title||'Open link').replace(/"/g,'&quot;')+'" style="display:inline-flex;align-items:center;margin-left:6px;color:var(--blue);vertical-align:-2px;text-decoration:none">'+LINK_ICON+'</a>';}
+function inlineLinkHtml(url,title){if(!url)return '';return '<a href="'+escAttr(url)+'" target="_blank" rel="noopener" title="'+escHtml(title||'Open link')+'" style="display:inline-flex;align-items:center;margin-left:6px;color:var(--blue);vertical-align:-2px;text-decoration:none">'+LINK_ICON+'</a>';}
 function shareBtnHtml(onclickAttr){return '<button onclick="'+onclickAttr+'" title="Share" style="background:none;border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--blue);cursor:pointer;font-family:Barlow Condensed,sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;display:inline-flex;align-items:center;gap:5px">'+SHARE_ICON+'Share</button>';}
 function sharePromoText(p,s){
   const prog=(s&&s.prog)||'adult';
@@ -19793,7 +19793,7 @@ function rAddStaffModal(){
   if(!S.addStaff)return '';
   const activeUnits=UNITS.filter(u=>u.active);
   const curUnit=UNITS.find(u=>u.name===S.unit);
-  const unitOpts=activeUnits.map(u=>'<option value="'+u.id+'" '+(curUnit&&u.id===curUnit.id?'selected':'')+'>'+u.name+', '+u.country+'</option>').join('');
+  const unitOpts=activeUnits.map(u=>'<option value="'+u.id+'" '+(curUnit&&u.id===curUnit.id?'selected':'')+'>'+escHtml(u.name)+', '+escHtml(u.country)+'</option>').join('');
   return `<div class="cov" onclick="closeAddStaff()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px;max-width:380px;width:100%;margin:0 auto;padding:22px;max-height:calc(100vh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch">
 <button onclick="closeAddStaff()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;z-index:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:4px;padding-right:40px">Add staff member</div>
@@ -19826,7 +19826,7 @@ function rEditStaff(){
   const sid=S.editStaff;
   const s=STAFF.find(x=>x.id===sid);if(!s)return '';
   const D=S.editStaffDraft||{};
-  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  const esc=escHtml;
   const draftOr=(d,fallback)=>d!==undefined?d:fallback;
   const first=draftOr(D.firstName,s.firstName||((s.name||'').split(' ')[0]||''));
   const last =draftOr(D.lastName ,s.lastName !=null?s.lastName:((s.name||'').split(' ').slice(1).join(' ')||''));
@@ -19918,7 +19918,7 @@ function rRemoveStaffConfirm(){
   const{name}=S.removeStaffConfirm;
   return `<div class="cov cov-w380" onclick="closeRemoveStaff()" style="align-items:center;justify-content:center;z-index:9999;padding:16px"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:340px;width:100%;margin:0 auto;padding:24px;text-align:center">
 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="1.5" style="margin-bottom:12px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;margin-bottom:8px">Remove ${name}?</div>
+<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;margin-bottom:8px">Remove ${escHtml(name)}?</div>
 <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px">They will lose access to the app on next sign-in. Their historical promotions and feedback remain intact.</div>
 <div style="display:flex;gap:10px">
 <button class="bout" style="flex:1;min-height:44px" onclick="closeRemoveStaff()">Cancel</button>
@@ -20674,7 +20674,7 @@ function rPhotoQueue(){
     const name=(r.student&&r.student.full_name)||(r.staff&&r.staff.full_name)||'Profile photo';
     const src=photoSrc(r.photo_url);
     const date=new Date(r.submitted_at).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
-    return '<div class="card" style="display:flex;gap:12px;align-items:center"><img src="'+src+'" alt="'+name.replace(/"/g,'&quot;')+'" style="width:64px;height:64px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#eee"/><div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Submitted '+date+'</div></div><div style="display:flex;flex-direction:column;gap:6px"><button onclick="approvePhoto(\''+r.id+'\')" style="background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:8px;padding:6px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer">Approve</button><button onclick="rejectPhoto(\''+r.id+'\')" style="background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);border-radius:8px;padding:6px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer">Reject</button></div></div>';
+    return '<div class="card" style="display:flex;gap:12px;align-items:center"><img src="'+src+'" alt="'+escHtml(name)+'" style="width:64px;height:64px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#eee"/><div style="flex:1;min-width:0"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:16px">'+name+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Submitted '+date+'</div></div><div style="display:flex;flex-direction:column;gap:6px"><button onclick="approvePhoto(\''+r.id+'\')" style="background:var(--green-bg);color:var(--green-text);border:1px solid var(--green-border);border-radius:8px;padding:6px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer">Approve</button><button onclick="rejectPhoto(\''+r.id+'\')" style="background:var(--red-bg);color:var(--red-text);border:1px solid var(--red-border);border-radius:8px;padding:6px 14px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;cursor:pointer">Reject</button></div></div>';
   }).join('');
 }
 
@@ -21712,7 +21712,7 @@ function rSetPwd(){
   if(!hasPwd&&!recovery&&sentReset){
     const userEmail=(S.profile&&S.profile.email)||(S.me&&S.me.email)||'';
     return `<div class="sub open"><div class="shdr">${BACK}<div class="stitle">Set a password</div></div><div class="sbody">
-<div style="background:var(--green-bg);border:1px solid var(--green-border);border-radius:10px;padding:14px 16px;margin-bottom:14px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:var(--green-text);margin-bottom:4px">Setup link sent</div><div style="font-size:12px;color:var(--green-text);line-height:1.5">Open the email we just sent to <strong>${userEmail||'your address'}</strong> and click the link on this device to choose your password.</div></div>
+<div style="background:var(--green-bg);border:1px solid var(--green-border);border-radius:10px;padding:14px 16px;margin-bottom:14px"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:var(--green-text);margin-bottom:4px">Setup link sent</div><div style="font-size:12px;color:var(--green-text);line-height:1.5">Open the email we just sent to <strong>${escHtml(userEmail||'your address')}</strong> and click the link on this device to choose your password.</div></div>
 <button class="bsm" style="width:100%;padding:12px;border-radius:10px;font-size:14px" onclick="closeSub()">Done</button>
 <div style="height:24px"></div></div></div>`;
   }
@@ -21819,7 +21819,7 @@ function _spBanner(kind,msg,actionLabel,actionFn){
   const icon=kind==='error'
     ?`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
     :`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2.5" stroke-linecap="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
-  b.innerHTML='<div role="alert" aria-live="polite" style="padding:10px 12px;background:'+bg+';border:1px solid '+bd+';border-radius:8px;display:flex;align-items:center;gap:10px;font-size:13px;color:'+fg+';line-height:1.4">'+icon+'<span style="flex:1">'+msg+'</span>'+action+closeX+'</div>';
+  b.innerHTML='<div role="alert" aria-live="polite" style="padding:10px 12px;background:'+bg+';border:1px solid '+bd+';border-radius:8px;display:flex;align-items:center;gap:10px;font-size:13px;color:'+fg+';line-height:1.4">'+icon+'<span style="flex:1">'+escHtml(msg)+'</span>'+action+closeX+'</div>';
   b.style.display='block';
 }
 function _spSetBusy(busy){
@@ -22123,7 +22123,7 @@ function rAuth(){
   // to be sending.
   const busyAction=S.authBusy?S.authBusyAction:null;
   const sent=S.authState==='magic-sent';
-  const msg=S.authMsg&&!sent?`<div class="inv" style="margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${S.authMsg}</span></div>`:'';
+  const msg=S.authMsg&&!sent?`<div class="inv" style="margin-top:14px;margin-bottom:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${escHtml(S.authMsg)}</span></div>`:'';
   const GICON=`<svg width="14" height="14" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>`;
   const MAIL=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
   const LOCK=`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
@@ -22131,7 +22131,7 @@ function rAuth(){
   const LINK_STYLE="background:none;border:none;color:var(--text2);font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:6px 8px;text-decoration:underline";
   const step=S.authStep===2?2:1;
   const lockedEmail=(S.authEmail||'').trim().toLowerCase();
-  const emailHeader=`<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:18px"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;font-weight:700">Signing in as</div><div style="font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lockedEmail}</div></div><button onclick="resetAuthStep()" style="background:none;border:none;color:var(--blue);font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:6px 4px;flex-shrink:0">Not you?</button></div>`;
+  const emailHeader=`<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:18px"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;font-weight:700">Signing in as</div><div style="font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(lockedEmail)}</div></div><button onclick="resetAuthStep()" style="background:none;border:none;color:var(--blue);font-family:'Barlow',sans-serif;font-size:12px;cursor:pointer;padding:6px 4px;flex-shrink:0">Not you?</button></div>`;
 
   // Step 1 — email entry (with inline "not authorized" error when present).
   // Hierarchy: Google is the single solid primary; the email Continue is a
@@ -22142,7 +22142,7 @@ function rAuth(){
   const formStep1=`<button class="bmain gbtn" onclick="signInGoogle()" ${busy}><span class="glogo">${GICON}</span>Continue with Google</button>
 <div class="adiv" style="margin:10px 0"><span>or</span></div>
 <div class="fg" style="margin-bottom:10px">
-<div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email" value="${S.authEmail||''}" oninput="S.authEmail=this.value;{var _b=document.getElementById('auth-continue');if(_b){var _v=/^\\S+@\\S+\\.\\S+$/.test((this.value||'').trim());_b.disabled=!_v;_b.style.opacity=_v?'1':'.5';_b.style.cursor=_v?'pointer':'not-allowed';}}" onkeydown="if(event.key==='Enter')advanceAuthStep()" autofocus/></div>
+<div class="lf"><div class="li">${MAIL}</div><input class="linput" type="email" autocomplete="email" placeholder="Email" value="${escHtml(S.authEmail||'')}" oninput="S.authEmail=this.value;{var _b=document.getElementById('auth-continue');if(_b){var _v=/^\\S+@\\S+\\.\\S+$/.test((this.value||'').trim());_b.disabled=!_v;_b.style.opacity=_v?'1':'.5';_b.style.cursor=_v?'pointer':'not-allowed';}}" onkeydown="if(event.key==='Enter')advanceAuthStep()" autofocus/></div>
 </div>
 ${msg}
 <button id="auth-continue" class="bout" onclick="advanceAuthStep()" ${busy} ${_step1EmailValid?'':'disabled'} style="margin-top:10px${_step1EmailValid?'':';opacity:.5;cursor:not-allowed'}">Continue</button>`;
@@ -22171,7 +22171,7 @@ ${msg}
 <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:8px;line-height:1.5">You'll sign in via email link first, then we'll ask you to choose a password.</div>`;
 
   const form=sent
-    ? `<div class="amsg" style="text-align:center;padding:14px 12px">${S.authMsg||'We sent you a sign-in link. Check your inbox to continue.'}</div><div style="height:10px"></div><button class="bout" onclick="resetAuthStep()">Use another method</button>`
+    ? `<div class="amsg" style="text-align:center;padding:14px 12px">${escHtml(S.authMsg||'We sent you a sign-in link. Check your inbox to continue.')}</div><div style="height:10px"></div><button class="bout" onclick="resetAuthStep()">Use another method</button>`
     : (step===2 ? (S.authHasPassword ? formStep2A : formStep2B) : formStep1);
   // Etapa 3 — the IS_DEV "Localhost dev shortcuts" block + demoCards()
   // is gone. Login screen is real-auth only (email continue + Google
@@ -22185,8 +22185,8 @@ function rPending(){
   const email=(S.profile&&S.profile.email)||'';
   const title=S.authState==='rejected'?'Access denied':'Pending approval';
   const body=S.authState==='rejected'
-    ? `Hi <strong>${email}</strong>.<br/>Your account has been rejected. Please contact your unit admin.`
-    : `Hi <strong>${email}</strong>.<br/>Your account isn’t on the access list yet. Once an admin approves you, you’ll be able to sign in here.`;
+    ? `Hi <strong>${escHtml(email)}</strong>.<br/>Your account has been rejected. Please contact your unit admin.`
+    : `Hi <strong>${escHtml(email)}</strong>.<br/>Your account isn’t on the access list yet. Once an admin approves you, you’ll be able to sign in here.`;
   return `<div class="lw">${authHero()}<div class="lbody"><div class="fg" style="padding:24px"><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);letter-spacing:.5px;margin-bottom:10px">${title}</div><div style="color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:18px">${body}</div><button class="bout" onclick="logout()">Sign out</button></div></div></div>`;
 }
 function setTab(t){S.tab=t;S.classAdd=null;S.profilePrev=null;render();/* natural break — take any pending SW update now (no-op unless one is waiting AND nothing is open) */try{if(typeof _swTryAutoUpdate==='function')_swTryAutoUpdate();}catch(_){}}
@@ -23609,7 +23609,7 @@ function confirmAttMove(){
   const dstLbl=_attMoveDestLabel(Object.assign({},dst.t,{time:dst.c.time}));
   openConfirm({
     title:'Move attendees',
-    message:'Move '+rows.length+' '+(rows.length===1?'attendee':'attendees')+' to '+dstLbl+'? Their status and class value are kept exactly as they are.',
+    message:'Move '+rows.length+' '+(rows.length===1?'attendee':'attendees')+' to '+escHtml(dstLbl)+'? Their status and class value are kept exactly as they are.',
     dangerLabel:'Move',
     onConfirm:_doAttMove
   });
@@ -23745,7 +23745,7 @@ function removeAtt(cid,sid){
   const first=(s.name||'').split(' ')[0]||'this student';
   openConfirm({
     title:'Remove from class',
-    message:'Remove '+first+' from this class? This deletes the attendance record.',
+    message:'Remove '+escHtml(first)+' from this class? This deletes the attendance record.',
     dangerLabel:'Remove',
     onConfirm:()=>_doRemoveAtt(s._dbId,t.classId||null,c.date,c.time,_unitId,first,t.id)
   });
@@ -23876,7 +23876,7 @@ function rMarkPSheet(){
     const weight=isDefault?700:600;
     return `<button onclick="confirmMarkPresent(${tier.value})" style="display:flex;align-items:center;gap:14px;width:100%;min-height:52px;padding:10px 14px;background:${bg};border:${border};border-radius:10px;cursor:pointer;text-align:left;margin-bottom:8px"><div style="flex:0 0 28px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:${accent};text-align:center">${tier.glyph}</div><div style="flex:1;min-width:0"><div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:${weight};color:var(--text);line-height:1.15">${tier.label}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${tier.sub}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:${accent};flex-shrink:0">${tier.value.toFixed(2)}</div></button>`;
   }).join('');
-  return `<div class="cov" onclick="closeMarkPSheet()" style="align-items:flex-end;z-index:290"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;margin:0 auto;padding:18px;max-height:calc(100vh - 40px);overflow:auto"><button onclick="closeMarkPSheet()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;color:var(--text);margin-bottom:14px;padding-right:40px">${headerLbl}</div>${rows}</div></div>`;
+  return `<div class="cov" onclick="closeMarkPSheet()" style="align-items:flex-end;z-index:290"><div class="csheet" onclick="event.stopPropagation()" style="position:relative;border-radius:16px 16px 0 0;width:100%;max-width:460px;margin:0 auto;padding:18px;max-height:calc(100vh - 40px);overflow:auto"><button onclick="closeMarkPSheet()" aria-label="Close" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;background:var(--input-bg);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;color:var(--text);margin-bottom:14px;padding-right:40px">${escHtml(headerLbl)}</div>${rows}</div></div>`;
 }
 
 // Item 2 — "+ Add student" modal. Lets an instructor register a walk-in
@@ -23956,7 +23956,7 @@ function _memberPickRowHTML(s,opts){
   const onclick=opts.onclick||'';
   const b=beltDef(s.belt,s.prog);
   const progChip='<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;color:'+(s.prog==='kids'?'var(--amber-text)':'var(--text3)')+';letter-spacing:.5px;margin-left:6px">'+s.prog.toUpperCase()+'</span>';
-  const unitChip=visitorUnit?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:6px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px">'+String(visitorUnit).toUpperCase()+'</span>':'';
+  const unitChip=visitorUnit?'<span style="font-size:10px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:.5px;margin-left:6px;color:var(--blue);background:var(--blue-tint);border:1px solid var(--blue-mid);padding:1px 6px;border-radius:4px">'+escHtml(String(visitorUnit).toUpperCase())+'</span>':'';
   // opts.desk (Add student to class only): the desk flag line and the amber row.
   // It informs the instructor; it does NOT gate the row (still addable). The row
   // already spans the scroll box, so no inset; the dim is appended last.
@@ -24048,7 +24048,7 @@ function rClassAddStudentModal(){
 <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${ctLabel} · ${c.date} · ${fmtT12(c.time)}</div>
 <div style="display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px 12px;margin-bottom:10px">
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-  <input id="cas-input" value="${(q||'').replace(/"/g,'&quot;')}" oninput="setClassAddQ(this.value)" placeholder="Search by name…" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)" autocomplete="off"/>
+  <input id="cas-input" value="${escHtml(q||'')}" oninput="setClassAddQ(this.value)" placeholder="Search by name…" style="flex:1;background:none;border:none;outline:none;font-family:Barlow,sans-serif;font-size:14px;color:var(--text)" autocomplete="off"/>
 </div>
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
   <button onclick="toggleClassAddAllProgs()" style="border-radius:20px;padding:5px 12px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid ${allProgs?'var(--blue)':'var(--border)'};background:${allProgs?'#1A5DAD15':'transparent'};color:${allProgs?'var(--blue)':'var(--text3)'}">Show all programmes${allProgs?' ✓':''}</button>
@@ -24352,7 +24352,7 @@ function rDeleteUnitConfirm(){
   var stuCount=STUDENTS.filter(function(s){return s.unit===d.id;}).length;
   return '<div class="cov cov-w380" onclick="cancelDeleteUnit()" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:340px;margin:0 auto;padding:24px;text-align:center">'
     +'<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="1.5" style="margin-bottom:12px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
-    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;margin-bottom:8px">Delete '+d.name+'?</div>'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:20px;margin-bottom:8px">Delete '+escHtml(d.name)+'?</div>'
     +'<div style="font-size:13px;color:var(--text2);margin-bottom:6px;line-height:1.5">This action cannot be undone. The unit and all its configuration will be permanently removed.</div>'
     +(stuCount>0?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin:10px 0;font-size:12px;color:#DC2626;font-weight:600">'+stuCount+' students are assigned to this unit. Reassign them first.</div>':'')
     +'<div style="display:flex;gap:10px;margin-top:16px">'
@@ -24495,7 +24495,7 @@ function rEditCounts(){
   // (ecRecalc's gi+nogi Total preview is gone — nothing to sum.)
   return `<div class="cov" onclick="closeEditCounts()" style="align-items:center"><div class="csheet" onclick="event.stopPropagation()" style="border-radius:16px;max-width:360px;margin:0 auto;padding:22px">
 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;color:var(--text);margin-bottom:2px">Edit class counts</div>
-<div style="font-size:12px;color:var(--text2);margin-bottom:4px">${s.name}</div>
+<div style="font-size:12px;color:var(--text2);margin-bottom:4px">${escHtml(s.name)}</div>
 <div style="color:var(--text3);font-size:11px;margin-bottom:16px;line-height:1.5">Historical count only. Gi and No-Gi are tracked automatically from real attendance.</div>
 <div class="ef" style="margin-bottom:0">
 <div class="erow"><div class="elbl">Total classes before app</div><input class="einput" id="ec-total-input" type="number" min="0" step="0.25" value="${safe(s.total)}"/></div>
@@ -25064,8 +25064,8 @@ function askTransferStudent(sid){
   if(!isOwner())msg+=' You won’t be able to edit them from '+curName+' after this.';
   openConfirm({
     title:'Move student',
-    message:msg,
-    dangerLabel:'Move to '+dest.name,
+    message:escHtml(msg),
+    dangerLabel:escHtml('Move to '+dest.name),
     confirmColor:'var(--blue)',
     onConfirm:async()=>{
       const cli=initSupabase();if(!cli)return;
@@ -25087,7 +25087,7 @@ function rEditStu(){
   const sid=S.editStuFor||S.viewStu;
   const s=STUDENTS.find(x=>x.id===sid);if(!s)return '';
   const D=S.editStuDraft||{};
-  const esc=v=>String(v==null?'':v).replace(/"/g,'&quot;');
+  const esc=escHtml;
   // G16a — every form value reads from S.editStuDraft first (if the
   // user has touched the field) so tab switches don't wipe in-flight
   // edits. Falls back to the student row, then to a derived default
@@ -26057,7 +26057,7 @@ function rParentPicker(){
     .filter(a=>a.prog==='adult'&&a._active!==false&&a._dbId&&a._dbId!==kid._dbId&&a.unit===kid.unit)
     .slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const rows=adults.map(a=>{
-    const key=(a.name||'').toLowerCase().replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    const key=escHtml((a.name||'').toLowerCase());
     const beltLbl=(BA[a.belt]||{}).label||'';
     return '<div data-psearch="'+key+'" onclick="'+(_ppGuardian?'kgLinkMember':'pickParentStudent')+'(\''+escHtml(kid.id)+'\',\''+escHtml(a._dbId)+'\')" style="display:flex;align-items:center;gap:12px;padding:12px 12px 10px;border-bottom:1px solid var(--border);cursor:pointer">'
       +avStu(a,36)
