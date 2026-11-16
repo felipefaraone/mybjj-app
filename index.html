@@ -7314,13 +7314,25 @@ function rStuAttList(){
       +'<div style="height:24px"></div>'
     +'</div></div>';
 }
+// Newest-first copy of s.feedback: _isoDate desc, then _createdAt desc, then
+// _dbId. Items without _isoDate go last. Never sort on .date - it is the
+// display string ("Oct 2026"), which orders alphabetically, not by time.
+function _fbSorted(s){
+  const cmp=(a,b)=>String(b||'').localeCompare(String(a||''));
+  return ((s&&s.feedback)||[]).slice().sort((a,b)=>{
+    if(!a._isoDate!==!b._isoDate)return a._isoDate?-1:1;
+    return cmp(a._isoDate,b._isoDate)||cmp(a._createdAt,b._createdAt)||cmp(a._dbId,b._dbId);
+  });
+}
+// Progress "From your instructors" — See all / Show less, per subject.
+function toggleFbAll(key){S._fbAll=S._fbAll||{};S._fbAll[key]=!S._fbAll[key];render();}
 // G16b — Feedback summary card + subview. feedback rows are already in
 // s.feedback (hydrated from public.feedback at startup); no DB roundtrip
 // needed for either surface. Add feedback continues to flow through
 // the existing openFbModal which is already permission-gated.
 function _stuFbSummaryCard(s,opts){
   const fromParent=!!(opts&&opts.fromParent);
-  const fb=(s.feedback||[]);
+  const fb=_fbSorted(s);
   // Batch 3 — opts.allowAdd defaults true (back-compat for callers that
   // don't pass it, e.g. Progress tab). rStuProf passes false from
   // community-entry so the "+ Add" affordance disappears even when
@@ -7366,9 +7378,9 @@ function rStuFbList(){
   if(!S.stuFbList)return '';
   const s=STUDENTS.find(x=>x.id===S.stuFbList.sid);if(!s)return '';
   const canAdd=canEditClassCounts();
-  const fb=s.feedback||[];
+  const fb=_fbSorted(s);
   const empty=!fb.length?'<div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:13px">No feedback yet.</div>':'';
-  const list=fb.map((f,i)=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(f.ins)+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+f.date+'</div>'+(canDeleteFeedback(f)?'<button onclick="deleteFeedback(\''+s.id+'\','+i+')" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>':'')+'</div></div><div class="fbtxt">'+_noteBodyHtml(f.text)+'</div></div>').join('');
+  const list=fb.map(f=>'<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(f.ins)+'</div><div style="display:flex;align-items:center;gap:8px"><div class="fbdate">'+f.date+'</div>'+(canDeleteFeedback(f)?'<button onclick="deleteFeedback(\''+s.id+'\','+s.feedback.indexOf(f)+')" title="Delete feedback" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>':'')+'</div></div><div class="fbtxt">'+_noteBodyHtml(f.text)+'</div></div>').join('');
   const addBtn=canAdd?'<button onclick="openFbModal(\''+s.id+'\')" style="background:#1A5DAD;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer">+ Add feedback</button>':'';
   return '<div class="sub open">'
     +'<div class="shdr"><button class="sback" onclick="closeStuFbList()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg> Back</button><div class="stitle">Feedback · '+escHtml(s.name.split(' ')[0])+'</div></div>'
@@ -7680,7 +7692,7 @@ async function saveFbModal(sid){
   const insName=(S.me&&S.me.name)||'Instructor';
   const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});
   const fbId=newId();
-  s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});
+  s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,_isoDate:dk(new Date()),_createdAt:new Date().toISOString(),text:txt});
   S.fbModalFor=null;
   render();
   if(s._dbId){
@@ -14029,7 +14041,7 @@ function rProgress(){
     // Layout unchanged — no .prog-pair, this branch has no Recent card to pair
     // with. It only gains the declare button.
     var journeyTab='<div class="slbl">My BJJ journey</div><div class="card" style="padding:12px 16px">'+rTL(_jnyFromPromotions(coachStu),coachStu)+_rDeclareBtn(coachStu)+'</div>';
-    var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+(coachStu.feedback||[]).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(f.ins)+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+_noteBodyHtml(f.text)+'</div></div>';}).join('')+'</div>';
+    var feedbackTab='<div class="card"><div class="slbl" style="margin-bottom:4px">From your instructors</div><div style="font-size:12px;color:var(--text3);margin-bottom:14px">Notes from your instructors.</div>'+((coachStu.feedback||[]).length===0?'<div style="font-size:13px;color:var(--text3)">No feedback yet.</div>':'')+_fbSorted(coachStu).map(function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(f.ins)+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+_noteBodyHtml(f.text)+'</div></div>';}).join('')+'</div>';
     var cContent=S.ptab==='rank'?rankTab:S.ptab==='journey'?journeyTab:feedbackTab;
     return '<div style="height:16px"></div><div class="stabs"><button class="stab '+(S.ptab==='rank'?'active':'')+'" onclick="setPtab(\'rank\')">Rank</button><button class="stab '+(S.ptab==='journey'?'active':'')+'" onclick="setPtab(\'journey\')">Journey</button><button class="stab '+(S.ptab==='feedback'?'active':'')+'" onclick="setPtab(\'feedback\')">Feedback</button></div>'+cContent+'<div style="height:16px"></div>';
   }
@@ -14117,9 +14129,14 @@ function rProgress(){
   // block at the top of _renderRankBox suppressed for students.
   // E. Latest instructor feedback note (fold-in of the old Feedback tab). Nothing
   // at all when there is none -- no empty "No feedback yet" card.
-  var _fbArr=(stu.feedback||[]).slice().sort(function(a,b2){return String(b2.date||'').localeCompare(String(a.date||''));});
-  var _latestFb=_fbArr[0]||null;
-  var feedbackCard=_latestFb?('<div class="slbl" style="margin-top:16px">From your instructors</div><div class="card"><div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(_latestFb.ins)+'</div><div class="fbdate">'+_latestFb.date+'</div></div><div class="fbtxt">'+_noteBodyHtml(_latestFb.text)+'</div></div></div>'):'';
+  // Newest first via _fbSorted; "See all N" expands the rest inline. Open state
+  // is per subject (S._fbAll keyed by student) so one kid's does not leak to another.
+  var _fbArr=_fbSorted(stu);
+  var _fbKey=String(stu._dbId||stu.id||'me');
+  var _fbOpen=!!(S._fbAll&&S._fbAll[_fbKey]);
+  var _fbItem=function(f){return '<div class="fbitem"><div class="fbhdr"><div class="fbins">'+escHtml(f.ins)+'</div><div class="fbdate">'+f.date+'</div></div><div class="fbtxt">'+_noteBodyHtml(f.text)+'</div></div>';};
+  var _fbMore=_fbArr.length>1?'<div style="margin-top:10px"><span class="aexp" onclick="toggleFbAll(\''+escHtml(_avq(_fbKey))+'\')">'+(_fbOpen?'Show less':'See all '+_fbArr.length)+'</span></div>':'';
+  var feedbackCard=_fbArr.length?('<div class="slbl" style="margin-top:16px">From your instructors</div><div class="card">'+(_fbOpen?_fbArr:_fbArr.slice(0,1)).map(_fbItem).join('')+_fbMore+'</div>'):'';
   // MY BELT tab: hero (belt box + stat strip) -> YOUR TRAINING -> CLASS HISTORY
   // -> feedback. JOURNEY tab: timeline -> RECENT. Class history and Recent
   // swapped tabs here to match the approved mockup; both viewports get the same
@@ -21218,6 +21235,9 @@ function _applyUnitScoped(res,uMap){
         ins:insName,
         insStaffId:r.instructor_id||null,
         date:_fmtJnyDate(r.date)||r.date,
+        // Raw values for ordering only (_fbSorted); .date above is display text.
+        _isoDate:r.date||null,
+        _createdAt:r.created_at||null,
         text:r.text||'',
       });
       byStudent.set(sid,arr);
@@ -24490,7 +24510,7 @@ function profileBack(){
 }
 function openFb(sid){S.addFb=sid;render();}
 function newId(){try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(_){}return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
-function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:dk(new Date())}),'insert feedback');}}
+function saveFb(sid){const txt=document.getElementById('fb-input')?.value;if(!txt)return;const s=STUDENTS.find(x=>x.id===sid);if(!s)return;if(!s.feedback)s.feedback=[];const insName=(S.me&&S.me.name)||'Prof. Mario';const dateLbl=new Date().toLocaleDateString('en-AU',{month:'short',year:'numeric'});const fbId=newId();s.feedback.unshift({_dbId:fbId,ins:insName,date:dateLbl,_isoDate:dk(new Date()),_createdAt:new Date().toISOString(),text:txt});S.addFb=null;render();if(s._dbId){withSb(c=>c.from('feedback').insert({id:fbId,student_id:s._dbId,instructor_id:meStaffDbId(),text:txt,date:dk(new Date())}),'insert feedback');}}
 // G17.2d — feedback delete now flows through the generic confirm modal
 // + delete_feedback RPC (migration 51). The RPC cascades a dismiss to
 // any notification(s) keyed to the feedback row so the recipient's
